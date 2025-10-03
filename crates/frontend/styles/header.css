@@ -1,0 +1,14 @@
+/* styles/header.css */
+.header {
+	background: linear-gradient(
+		to right,
+		#4776da 0%,
+		#abc5fc 100%
+	);
+	color: #ffffff;
+}
+
+.header .icon-btn svg {
+	fill: currentColor;
+}
+

@@ -1,0 +1,77 @@
+/* Контейнер закладок */
+.tabs-container {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+/* Полоса закладок (горизонтально) */
+.tabs-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 1px solid #ccc;
+}
+
+/* Стили закладок */
+.tab {
+    padding: 5px 10px;
+    cursor: pointer;
+    border-right: 1px solid #ccc;
+    background-color: #eee;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+
+.tab.active {
+    background-color: #fff;
+    border-bottom: 1px solid #fff;
+    margin-bottom: -1px;
+}
+
+.tab-content {
+    padding: 10px;
+    flex-grow: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+/* Круглые пиктограммы для закрытия закладок */
+.tab-close {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  transition: background-color 0.2s;
+  margin-left: 5px;
+}
+
+/* Неактивные закладки - серые круглые пиктограммы */
+.tab:not(.active) .tab-close {
+  background-color: #ccc;
+  color: #666;
+}
+
+.tab:not(.active) .tab-close:hover {
+  background-color: #ff69b4;
+  color: #fff;
+}
+
+/* Активная закладка - светло-зеленая круглая пиктограмма */
+.tab.active .tab-close {
+  background-color: #90EE90;
+  color: #333;
+}
+
+.tab.active .tab-close:hover {
+  background-color: #ff69b4;
+  color: #fff;
+}

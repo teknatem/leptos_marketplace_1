@@ -1,0 +1,14 @@
+# Explicitly point to the client crate's Cargo.toml
+[build]
+manifest_path = "crates/frontend/Cargo.toml"
+target = "crates/frontend/index.html"
+dist = "dist"
+public_url = "/"
+watch = ["./crates/frontend"]
+# Explicitly point to the workspace's target directory to fix artifact discovery.
+target_path = "target"
+
+# Proxy API requests to the backend server during development.
+[[proxy]]
+backend = "http://localhost:3000/api/"
+uri = "/api/"
