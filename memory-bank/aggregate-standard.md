@@ -124,7 +124,7 @@ value_objects = [
     "Connection1CDatabaseId",
 ]
 forms = [
-    "Connection1CDatabaseForm",
+    "Connection1CDatabaseDto",
 ]
 
 [dependencies]
@@ -311,7 +311,7 @@ pub mod meta {
 pub use aggregate::{
     Connection1CDatabase,
     Connection1CDatabaseId,
-    Connection1CDatabaseForm,
+    Connection1CDatabaseDto,
 };
 ```
 
@@ -388,7 +388,7 @@ impl AggregateRoot for Connection1CDatabase {
 
 /// Form for creating/updating Connection1CDatabase
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Connection1CDatabaseForm {
+pub struct Connection1CDatabaseDto {
     pub id: Option<String>,
     pub description: String,
     pub url: String,
@@ -412,7 +412,7 @@ use crate::shared::data::db::get_connection;
 use api::domain::a001_connection_1c::aggregate::{
     Connection1CDatabase,
     Connection1CDatabaseId,
-    Connection1CDatabaseForm,
+    Connection1CDatabaseDto,
 };
 
 // ============================================================================
@@ -465,7 +465,7 @@ pub async fn get_by_id(id: i32) -> anyhow::Result<Option<Connection1CDatabase>> 
     // Implementation...
 }
 
-pub async fn upsert(form: Connection1CDatabaseForm) -> anyhow::Result<i32> {
+pub async fn upsert(dto: Connection1CDatabaseDto) -> anyhow::Result<i32> {
     // Implementation...
 }
 
@@ -565,7 +565,7 @@ CREATE TABLE a001_connection_1c_database (
 ❌ Connection1CDb, C1CDatabase
 
 // Form: {AggregateName}Form
-✅ Connection1CDatabaseForm
+✅ Connection1CDatabaseDto
 ❌ Connection1CDbForm, CreateConnection1C
 ```
 

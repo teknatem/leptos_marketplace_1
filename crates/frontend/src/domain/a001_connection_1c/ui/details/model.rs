@@ -1,90 +1,6 @@
-use contracts::domain::connection_1c::aggregate::{
-    Connection1CDatabase, Connection1CDatabaseForm, ConnectionTestResult,
+use contracts::domain::a001_connection_1c::aggregate::{
+    Connection1CDatabase, Connection1CDatabaseDto, ConnectionTestResult,
 };
-
-#[derive(Clone, Debug)]
-pub struct FormState {
-    pub id: Option<String>,
-    pub description: String,
-    pub url: String,
-    pub comment: String,
-    pub login: String,
-    pub password: String,
-    pub is_primary: bool,
-}
-
-impl Default for FormState {
-    fn default() -> Self {
-        Self {
-            id: None,
-            description: String::new(),
-            url: String::new(),
-            comment: String::new(),
-            login: String::new(),
-            password: String::new(),
-            is_primary: false,
-        }
-    }
-}
-
-impl From<Connection1CDatabaseForm> for FormState {
-    fn from(form: Connection1CDatabaseForm) -> Self {
-        Self {
-            id: form.id,
-            description: form.description,
-            url: form.url,
-            comment: form.comment.unwrap_or_default(),
-            login: form.login,
-            password: form.password,
-            is_primary: form.is_primary,
-        }
-    }
-}
-
-impl From<FormState> for Connection1CDatabaseForm {
-    fn from(state: FormState) -> Self {
-        Self {
-            id: state.id,
-            description: state.description,
-            url: state.url,
-            comment: if state.comment.is_empty() {
-                None
-            } else {
-                Some(state.comment)
-            },
-            login: state.login,
-            password: state.password,
-            is_primary: state.is_primary,
-        }
-    }
-}
-
-impl From<Connection1CDatabase> for FormState {
-    fn from(c: Connection1CDatabase) -> Self {
-        Self {
-            id: Some(c.base.id.0.to_string()),
-            description: c.description,
-            url: c.url,
-            comment: c.comment.unwrap_or_default(),
-            login: c.login,
-            password: c.password,
-            is_primary: c.is_primary,
-        }
-    }
-}
-
-pub fn validate_form(state: &FormState) -> Result<(), String> {
-    if state.description.trim().is_empty() {
-        return Err("Description is required".to_string());
-    }
-    if state.url.trim().is_empty() {
-        return Err("URL is required".to_string());
-    }
-    if state.login.trim().is_empty() {
-        return Err("Login is required".to_string());
-    }
-    Ok(())
-}
 
 fn api_base() -> String {
     let window = match web_sys::window() {
@@ -99,7 +15,7 @@ fn api_base() -> String {
     format!("{}//{}:3000", protocol, hostname)
 }
 
-pub async fn fetch_by_id(id: i32) -> Result<Connection1CDatabase, String> {
+pub async fn fetch_by_id(id: String) -> Result<Connection1CDatabase, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -135,12 +51,11 @@ pub async fn fetch_by_id(id: i32) -> Result<Connection1CDatabase, String> {
     Ok(data)
 }
 
-pub async fn save_form(state: &FormState) -> Result<(), String> {
+pub async fn save_form(dto: &Connection1CDatabaseDto) -> Result<(), String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
-    let form = Connection1CDatabaseForm::from(state.clone());
-    let json_data = serde_json::to_string(&form).map_err(|e| format!("{e}"))?;
+    let json_data = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
 
     let opts = RequestInit::new();
     opts.set_method("POST");
@@ -171,12 +86,13 @@ pub async fn save_form(state: &FormState) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn test_connection(state: &FormState) -> Result<ConnectionTestResult, String> {
+pub async fn test_connection(
+    dto: &Connection1CDatabaseDto,
+) -> Result<ConnectionTestResult, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
-    let form = Connection1CDatabaseForm::from(state.clone());
-    let json_data = serde_json::to_string(&form).map_err(|e| format!("{e}"))?;
+    let json_data = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
 
     let opts = RequestInit::new();
     opts.set_method("POST");
@@ -209,8 +125,7 @@ pub async fn test_connection(state: &FormState) -> Result<ConnectionTestResult, 
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let result: ConnectionTestResult =
-        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let result: ConnectionTestResult = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
 
     Ok(result)
 }

@@ -258,7 +258,7 @@ pub mod meta {
 pub use aggregate::{
     Connection1CDatabase,
     Connection1CDatabaseId,
-    Connection1CDatabaseForm,
+    Connection1CDatabaseDto,
 };
 ```
 
@@ -376,7 +376,7 @@ columns = [
 [domain]
 aggregates = ["Connection1CDatabase"]
 value_objects = ["Connection1CDatabaseId"]
-forms = ["Connection1CDatabaseForm"]
+dtos = ["Connection1CDatabaseDto"]
 
 [domain.types.Connection1CDatabase]
 description = "Aggregate root representing 1C database connection"

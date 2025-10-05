@@ -280,6 +280,7 @@ dependencies = [
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -568,9 +569,11 @@ checksum = "f67855af358fcb20fac58f9d714c94e2b228fe5694c1c9b4ead4a366343eda1b"
 name = "contracts"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -955,6 +958,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "contracts",
+ "gloo-timers",
  "js-sys",
  "leptos",
  "leptos-struct-table",

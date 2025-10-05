@@ -61,8 +61,8 @@ impl Connection1CDatabase {
         self.base.metadata.updated_at = chrono::Utc::now();
     }
 
-    pub fn update_from_form(&mut self, form: Connection1CDatabaseForm) {
-        self.description = form.description;
+    pub fn update(&mut self, dto: &Connection1CDatabaseDto) {
+        self.description = dto.description.clone();
         // ... остальные поля
     }
 
@@ -86,6 +86,7 @@ impl Connection1CDatabase {
 **Статические функции-обработчики (аналог методов класса в ООП):**
 
 Создается **только** если:
+
 - Логика валидации сложная
 - Есть кастомные обработчики событий
 - Нужно разделить код по смысловым блокам
@@ -131,10 +132,10 @@ use super::{aggregate::*, repository};
 // Опционально: use super::events; (если есть events.rs)
 
 // Создание нового агрегата
-pub async fn create(form: Connection1CDatabaseForm) -> anyhow::Result<i32> {
+pub async fn create(dto: Connection1CDatabaseDto) -> anyhow::Result<i32> {
     let mut aggregate = Connection1CDatabase::new_for_insert(
-        form.description, form.url, form.comment,
-        form.login, form.password, form.is_primary
+        dto.description, dto.url, dto.comment,
+        dto.login, dto.password, dto.is_primary
     );
 
     // Вызов обработчиков
@@ -151,15 +152,15 @@ pub async fn create(form: Connection1CDatabaseForm) -> anyhow::Result<i32> {
 }
 
 // Обновление агрегата
-pub async fn update(form: Connection1CDatabaseForm) -> anyhow::Result<()> {
-    let id = form.id.as_ref()
+pub async fn update(dto: Connection1CDatabaseDto) -> anyhow::Result<()> {
+    let id = dto.id.as_ref()
         .and_then(|s| s.parse::<i32>().ok())
         .ok_or_else(|| anyhow::anyhow!("Invalid ID"))?;
 
     let mut aggregate = repository::get_by_id(id).await?
         .ok_or_else(|| anyhow::anyhow!("Not found"))?;
 
-    aggregate.update_from_form(form);
+    aggregate.update(&dto);
 
     aggregate.validate()?;
     aggregate.before_write();
@@ -192,6 +193,7 @@ pub async fn list_all() -> anyhow::Result<Vec<Connection1CDatabase>> {
 ```
 
 **Ответственность service:**
+
 - Координация операций (create, update, delete)
 - Вызов обработчиков событий в правильном порядке
 - Применение бизнес-правил специфичных для агрегата
@@ -249,6 +251,7 @@ pub async fn clear_other_primary_flags(except_id: Option<i32>) -> anyhow::Result
 ```
 
 **Ответственность repository:**
+
 - Маппинг Model ↔ Aggregate
 - CRUD операции (insert, update, delete, get, list)
 - Специфичные запросы для бизнес-логики агрегата (например, clear_other_primary_flags)
@@ -286,6 +289,7 @@ pub async fn sync_products_from_1c(connection_id: i32) -> anyhow::Result<()> {
 ```
 
 **UseCase НЕ создается для:**
+
 - Операций над одним агрегатом (это делает service внутри агрегата)
 - Простых CRUD операций (это делает service)
 
@@ -317,15 +321,15 @@ pub async fn sync_products_from_1c(connection_id: i32) -> anyhow::Result<()> {
 
 По аналогии с 1С модулями (Справочник/Документ):
 
-| Событие 1С          | Rust аналог              | Где размещается               |
-|---------------------|--------------------------|-------------------------------|
-| `ПередЗаписью`      | `before_write()`         | aggregate.rs или events.rs    |
-| `ПриЗаписи`         | после `repository::save()` | service.rs                    |
-| `ПередУдалением`    | `before_delete()`        | aggregate.rs или events.rs    |
-| `ПриУдалении`       | после `repository::delete()` | service.rs                |
-| `Заполнение`        | конструктор `new_with_defaults()` | aggregate.rs          |
-| `Проведение`        | `post()` / `on_posting()` | aggregate.rs или events.rs   |
-| `ОтменаПроведения`  | `unpost()`               | aggregate.rs или events.rs    |
+| Событие 1С         | Rust аналог                       | Где размещается            |
+| ------------------ | --------------------------------- | -------------------------- |
+| `ПередЗаписью`     | `before_write()`                  | aggregate.rs или events.rs |
+| `ПриЗаписи`        | после `repository::save()`        | service.rs                 |
+| `ПередУдалением`   | `before_delete()`                 | aggregate.rs или events.rs |
+| `ПриУдалении`      | после `repository::delete()`      | service.rs                 |
+| `Заполнение`       | конструктор `new_with_defaults()` | aggregate.rs               |
+| `Проведение`       | `post()` / `on_posting()`         | aggregate.rs или events.rs |
+| `ОтменаПроведения` | `unpost()`                        | aggregate.rs или events.rs |
 
 **Методы могут отсутствовать** - они опциональны и вызываются только если существуют.
 

@@ -3,6 +3,7 @@ pub mod domain;
 pub mod layout;
 pub mod routes;
 pub mod shared;
+pub mod usecases;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 

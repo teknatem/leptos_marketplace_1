@@ -1,5 +1,5 @@
-use contracts::domain::connection_1c::aggregate::Connection1CDatabase;
-use crate::domain::connection_1c::ui::details::Connection1CDetails;
+use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
+use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
 use leptos_struct_table::TableDataProvider;
 use leptos_struct_table::{TableRow, TailwindClassesPreset};
@@ -22,7 +22,7 @@ impl fmt::Display for DisplayableUrl {
 #[derive(TableRow, Clone, Debug)]
 #[table(impl_vec_data_provider, classes_provider = "TailwindClassesPreset")]
 pub struct Connection1CDatabaseRow {
-    pub id: i32,
+    pub id: String,
     pub description: String,
     pub url: String,
     pub login: String,
@@ -36,9 +36,11 @@ pub struct Connection1CDatabaseRow {
 
 impl From<Connection1CDatabase> for Connection1CDatabaseRow {
     fn from(c: Connection1CDatabase) -> Self {
+        use contracts::domain::common::AggregateId;
+
         Self {
-            id: c.base.id.0,
-            description: c.description,
+            id: c.base.id.as_string(),
+            description: c.base.description,
             url: {
                 let mut s = c.url;
                 if s.len() > 64 {
@@ -47,14 +49,18 @@ impl From<Connection1CDatabase> for Connection1CDatabaseRow {
                 s
             },
             login: c.login,
-            comment: c.comment.unwrap_or_else(|| "-".to_string()),
+            comment: c.base.comment.unwrap_or_else(|| "-".to_string()),
             password: "••••".to_string(),
             is_primary: c.is_primary,
             is_deleted: c.base.metadata.is_deleted,
-            created_at: c.base.metadata.created_at.to_rfc3339(),
-            updated_at: c.base.metadata.updated_at.to_rfc3339(),
+            created_at: format_timestamp(c.base.metadata.created_at),
+            updated_at: format_timestamp(c.base.metadata.updated_at),
         }
     }
+}
+
+fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 #[component]
@@ -63,7 +69,7 @@ pub fn Connection1CList() -> impl IntoView {
     let (items, set_items) = signal::<Vec<Connection1CDatabaseRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let (show_modal, set_show_modal) = signal(false);
-    let (editing_id, set_editing_id) = signal::<Option<i32>>(None);
+    let (editing_id, set_editing_id) = signal::<Option<String>>(None);
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -84,7 +90,7 @@ pub fn Connection1CList() -> impl IntoView {
         set_show_modal.set(true);
     };
 
-    let handle_edit = move |id: i32| {
+    let handle_edit = move |id: String| {
         let items_clone = items.get();
         if items_clone.iter().any(|item| item.id == id) {
             set_editing_id.set(Some(id));
@@ -121,7 +127,6 @@ pub fn Connection1CList() -> impl IntoView {
                 <table>
                     <thead>
                         <tr>
-                            <th>{"ID"}</th>
                             <th>{"Description"}</th>
                             <th>{"URL"}</th>
                             <th>{"Login"}</th>
@@ -132,10 +137,9 @@ pub fn Connection1CList() -> impl IntoView {
                     </thead>
                     <tbody>
                         {move || items.get().into_iter().map(|row| {
-                            let id = row.id;
+                            let id = row.id.clone();
                             view! {
-                                <tr on:click=move |_| handle_edit(id)>
-                                    <td>{id}</td>
+                                <tr on:click=move |_| handle_edit(id.clone())>
                                     <td>{row.description}</td>
                                     <td>{row.url}</td>
                                     <td>{row.login}</td>

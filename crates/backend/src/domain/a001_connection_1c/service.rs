@@ -1,18 +1,21 @@
 use super::repository;
-use contracts::domain::connection_1c::aggregate::{
-    Connection1CDatabase, Connection1CDatabaseForm, ConnectionTestResult,
-};
 use chrono::Utc;
+use contracts::domain::a001_connection_1c::aggregate::{
+    Connection1CDatabase, Connection1CDatabaseDto, ConnectionTestResult,
+};
+use uuid::Uuid;
 
 /// Создание нового подключения к 1C
-pub async fn create(form: Connection1CDatabaseForm) -> anyhow::Result<i32> {
+pub async fn create(dto: Connection1CDatabaseDto) -> anyhow::Result<Uuid> {
+    let code = dto.code.clone().unwrap_or_else(|| format!("CON-{}", Uuid::new_v4()));
     let mut aggregate = Connection1CDatabase::new_for_insert(
-        form.description,
-        form.url,
-        form.comment,
-        form.login,
-        form.password,
-        form.is_primary,
+        code,
+        dto.description,
+        dto.url,
+        dto.comment,
+        dto.login,
+        dto.password,
+        dto.is_primary,
     );
 
     // Валидация
@@ -33,18 +36,18 @@ pub async fn create(form: Connection1CDatabaseForm) -> anyhow::Result<i32> {
 }
 
 /// Обновление существующего подключения
-pub async fn update(form: Connection1CDatabaseForm) -> anyhow::Result<()> {
-    let id = form
+pub async fn update(dto: Connection1CDatabaseDto) -> anyhow::Result<()> {
+    let id = dto
         .id
         .as_ref()
-        .and_then(|s| s.parse::<i32>().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| anyhow::anyhow!("Invalid ID"))?;
 
     let mut aggregate = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Not found"))?;
 
-    aggregate.update_from_form(&form);
+    aggregate.update(&dto);
 
     // Валидация
     aggregate
@@ -64,12 +67,12 @@ pub async fn update(form: Connection1CDatabaseForm) -> anyhow::Result<()> {
 }
 
 /// Мягкое удаление подключения
-pub async fn delete(id: i32) -> anyhow::Result<bool> {
+pub async fn delete(id: Uuid) -> anyhow::Result<bool> {
     repository::soft_delete(id).await
 }
 
 /// Получение подключения по ID
-pub async fn get_by_id(id: i32) -> anyhow::Result<Option<Connection1CDatabase>> {
+pub async fn get_by_id(id: Uuid) -> anyhow::Result<Option<Connection1CDatabase>> {
     repository::get_by_id(id).await
 }
 
@@ -86,8 +89,9 @@ pub async fn get_primary() -> anyhow::Result<Option<Connection1CDatabase>> {
 /// Вставка тестовых данных
 pub async fn insert_test_data() -> anyhow::Result<()> {
     let data = vec![
-        Connection1CDatabaseForm {
+        Connection1CDatabaseDto {
             id: None,
+            code: Some("CON-PROD-001".into()),
             description: "Test Production 1C Server".into(),
             url: "http://192.168.1.10/test_base/odata/standard.odata".into(),
             comment: Some("Main production server for testing".into()),
@@ -95,8 +99,9 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             password: "test_password".into(),
             is_primary: true,
         },
-        Connection1CDatabaseForm {
+        Connection1CDatabaseDto {
             id: None,
+            code: Some("CON-DEV-001".into()),
             description: "Development 1C Environment".into(),
             url: "http://dev.company.local/dev_base/odata/standard.odata".into(),
             comment: Some("Development environment for 1C integration".into()),
@@ -106,19 +111,19 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         },
     ];
 
-    for form in data {
-        create(form).await?;
+    for dto in data {
+        create(dto).await?;
     }
 
     Ok(())
 }
 
 /// Тестирование подключения к 1C
-pub async fn test_connection(form: Connection1CDatabaseForm) -> anyhow::Result<ConnectionTestResult> {
+pub async fn test_connection(dto: Connection1CDatabaseDto) -> anyhow::Result<ConnectionTestResult> {
     let start = std::time::Instant::now();
 
     // Валидация базовых данных
-    if form.url.trim().is_empty() {
+    if dto.url.trim().is_empty() {
         return Ok(ConnectionTestResult {
             success: false,
             message: "URL не может быть пустым".into(),
@@ -127,7 +132,7 @@ pub async fn test_connection(form: Connection1CDatabaseForm) -> anyhow::Result<C
         });
     }
 
-    if form.login.trim().is_empty() {
+    if dto.login.trim().is_empty() {
         return Ok(ConnectionTestResult {
             success: false,
             message: "Логин не может быть пустым".into(),
@@ -142,8 +147,8 @@ pub async fn test_connection(form: Connection1CDatabaseForm) -> anyhow::Result<C
         .build()?;
 
     let response = client
-        .get(&form.url)
-        .basic_auth(&form.login, Some(&form.password))
+        .get(&dto.url)
+        .basic_auth(&dto.login, Some(&dto.password))
         .send()
         .await;
 
