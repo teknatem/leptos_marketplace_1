@@ -1,10 +1,12 @@
 use super::api;
+use chrono::Utc;
 use contracts::usecases::u501_import_from_ut::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use serde_json;
 
 #[component]
 pub fn ImportWidget() -> impl IntoView {
@@ -14,6 +16,44 @@ pub fn ImportWidget() -> impl IntoView {
     let (error_msg, set_error_msg) = signal(String::new());
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
+    let (import_a002, set_import_a002) = signal(true);
+    let (import_a003, set_import_a003) = signal(true);
+    let (import_a004, set_import_a004) = signal(true);
+
+    // Ключи для localStorage
+    const SESSION_KEY: &str = "u501_session_id";
+    const PROGRESS_KEY: &str = "u501_progress";
+
+    // Вспомогательные функции работы с localStorage
+    fn storage() -> Option<web_sys::Storage> {
+        web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+    }
+    fn save_session_id(id: &str) {
+        if let Some(s) = storage() {
+            let _ = s.set_item(SESSION_KEY, id);
+        }
+    }
+    fn load_session_id() -> Option<String> {
+        storage().and_then(|s| s.get_item(SESSION_KEY).ok().flatten())
+    }
+    fn clear_session_storage() {
+        if let Some(s) = storage() {
+            let _ = s.remove_item(SESSION_KEY);
+            let _ = s.remove_item(PROGRESS_KEY);
+        }
+    }
+    fn save_progress_snapshot(p: &ImportProgress) {
+        if let Ok(json) = serde_json::to_string(p) {
+            if let Some(s) = storage() {
+                let _ = s.set_item(PROGRESS_KEY, &json);
+            }
+        }
+    }
+    fn load_progress_snapshot() -> Option<ImportProgress> {
+        storage()
+            .and_then(|s| s.get_item(PROGRESS_KEY).ok().flatten())
+            .and_then(|j| serde_json::from_str::<ImportProgress>(&j).ok())
+    }
 
     // Загрузить список подключений при монтировании
     Effect::new(move || {
@@ -47,8 +87,10 @@ pub fn ImportWidget() -> impl IntoView {
                                     | ImportStatus::Failed
                                     | ImportStatus::Cancelled
                             );
-                            set_progress.set(Some(prog));
+                            save_progress_snapshot(&prog);
+                            set_progress.set(Some(prog.clone()));
                             if is_finished {
+                                clear_session_storage();
                                 break;
                             }
                         }
@@ -64,6 +106,18 @@ pub fn ImportWidget() -> impl IntoView {
         }
     });
 
+    // Восстановить сессию и последний прогресс при монтировании
+    Effect::new(move || {
+        if session_id.get().is_none() {
+            if let Some(saved_id) = load_session_id() {
+                set_session_id.set(Some(saved_id));
+                if let Some(snapshot) = load_progress_snapshot() {
+                    set_progress.set(Some(snapshot));
+                }
+            }
+        }
+    });
+
     let on_start_import = move |_| {
         let conn_id = selected_connection.get();
         if conn_id.is_empty() {
@@ -76,15 +130,35 @@ pub fn ImportWidget() -> impl IntoView {
         set_progress.set(None);
 
         spawn_local(async move {
+            let mut targets: Vec<String> = Vec::new();
+            if import_a002.get() {
+                targets.push("a002_organization".to_string());
+            }
+            if import_a003.get() {
+                targets.push("a003_counterparty".to_string());
+            }
+            if import_a004.get() {
+                targets.push("a004_nomenclature".to_string());
+            }
+
+            if targets.is_empty() {
+                set_error_msg.set("Выберите агрегаты для импорта".to_string());
+                set_is_loading.set(false);
+                return;
+            }
+
             let request = ImportRequest {
                 connection_id: conn_id,
-                target_aggregates: vec!["a002_organization".to_string()],
+                target_aggregates: targets,
                 mode: ImportMode::Interactive,
             };
 
             match api::start_import(request).await {
                 Ok(response) => {
                     set_session_id.set(Some(response.session_id));
+                    if let Some(id) = session_id.get() {
+                        save_session_id(&id);
+                    }
                     set_is_loading.set(false);
                 }
                 Err(e) => {
@@ -96,7 +170,7 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div class="import-widget" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto;">
+        <div class="import-widget" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto; max-height: 80vh; overflow-y: auto;">
             <h2>"u501: Импорт из УТ 11"</h2>
 
             // Выбор подключения
@@ -124,50 +198,43 @@ pub fn ImportWidget() -> impl IntoView {
                 </select>
             </div>
 
-            // Отображение пути загрузки
-            {move || {
-                let conn_id = selected_connection.get();
-                if !conn_id.is_empty() {
-                    if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
-                        let base_url = conn.url.trim_end_matches('/');
-                        let odata_path = if base_url.contains("/odata/") {
-                            base_url.to_string()
-                        } else {
-                            format!("{}/odata/standard.odata", base_url)
-                        };
-                        let full_url = format!("{}/Catalog_Организации", odata_path);
 
-                        view! {
-                            <div style="margin: 20px 0; padding: 10px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
-                                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">
-                                    "Путь загрузки:"
-                                </div>
-                                <div style="font-family: monospace; font-size: 12px; color: #555; word-break: break-all;">
-                                    {full_url}
-                                </div>
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <div></div> }.into_any()
-                    }
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
 
-            // Список агрегатов (пока hardcoded)
+            // Список агрегатов
             <div style="margin: 20px 0;">
                 <label style="display: block; margin-bottom: 8px; font-weight: bold;">
                     "Агрегаты для импорта:"
                 </label>
                 <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
                     <label>
-                        <input type="checkbox" checked disabled />
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a002.get()
+                            on:change=move |ev| { set_import_a002.set(event_target_checked(&ev)); }
+                        />
                         " a002_organization - Организации"
+                    </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a003.get()
+                            on:change=move |ev| { set_import_a003.set(event_target_checked(&ev)); }
+                        />
+                        " a003_counterparty - Контрагенты"
+                    </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a004.get()
+                            on:change=move |ev| { set_import_a004.set(event_target_checked(&ev)); }
+                        />
+                        " a004_nomenclature - Номенклатура"
                     </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "OData коллекция: Catalog_Организации"
+                    "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура"
                 </div>
             </div>
 
@@ -232,6 +299,10 @@ pub fn ImportWidget() -> impl IntoView {
                                 <strong>"Обновлено: "</strong> {prog.total_updated} " | "
                                 <strong>"Ошибок: "</strong> {prog.total_errors}
                             </div>
+                            <div style="margin: 10px 0; font-size: 12px; color: #666;">
+                                <strong>"Последнее обновление: "</strong>
+                                {prog.updated_at.to_rfc3339()}
+                            </div>
 
                             // Прогресс по агрегатам
                             <div style="margin-top: 15px;">
@@ -259,6 +330,11 @@ pub fn ImportWidget() -> impl IntoView {
                                             <div style="background: #e0e0e0; height: 20px; border-radius: 4px; overflow: hidden;">
                                                 <div style={format!("width: {}%; height: 100%; background: #007bff; transition: width 0.3s;", percent)}></div>
                                             </div>
+                                            {agg.current_item.as_ref().map(|ci| view! {
+                                                <div style="margin-top: 5px; font-size: 12px; color: #333;">
+                                                    <strong>{"Текущий элемент: "}</strong>{ci.clone()}
+                                                </div>
+                                            })}
                                             <div style="margin-top: 5px; font-size: 12px; color: #666;">
                                                 "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Ошибок: " {agg.errors}
                                             </div>
@@ -292,6 +368,76 @@ pub fn ImportWidget() -> impl IntoView {
                 } else {
                     view! { <div></div> }.into_any()
                 }
+            }}
+
+            // Отображение пути загрузки (перемещено вниз)
+            {move || {
+                let conn_id = selected_connection.get();
+                if !conn_id.is_empty() {
+                    if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
+                        let base_url = conn.url.trim_end_matches('/');
+                        let odata_path = if base_url.contains("/odata/") {
+                            base_url.to_string()
+                        } else {
+                            format!("{}/odata/standard.odata", base_url)
+                        };
+                        let mut endpoints: Vec<String> = Vec::new();
+                        if import_a002.get() { endpoints.push(format!("{}/Catalog_Организации", odata_path)); }
+                        if import_a003.get() { endpoints.push(format!("{}/Catalog_Контрагенты", odata_path)); }
+
+                        view! {
+                            <div style="margin: 20px 0; padding: 10px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
+                                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">
+                                    "Путь загрузки:"
+                                </div>
+                                {endpoints.iter().map(|e| {
+                                    let e_clone = e.clone();
+                                    view! { <div style="font-family: monospace; font-size: 12px; color: #555; word-break: break-all;">{e_clone}</div> }
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                } else {
+                    view! { <div></div> }.into_any()
+                }
+            }}
+
+            // Результаты загрузки
+            {move || {
+                if let Some(prog) = progress.get() {
+                    let is_success = matches!(prog.status, ImportStatus::Completed);
+                    let is_error = matches!(prog.status, ImportStatus::Failed | ImportStatus::CompletedWithErrors);
+                    let end = prog.completed_at.unwrap_or_else(Utc::now);
+                    let secs = (end - prog.started_at).num_seconds();
+                    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+                    let elapsed = format!("{:02}:{:02}:{:02}", h, m, s);
+                    if is_success {
+                        view! {
+                            <div style="margin: 10px 0; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 4px;">
+                                <div><strong>{"Успех: "}</strong>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
+                                <div><strong>{"Количество элементов: "}</strong>{prog.total_processed}</div>
+                                <div><strong>{"Время работы: "}</strong>{elapsed}</div>
+                            </div>
+                        }.into_any()
+                    } else if is_error {
+                        view! {
+                            <div style="margin: 10px 0; padding: 10px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px;">
+                                <div style="font-weight: bold; color: #c62828;">{"Ошибка импорта"}</div>
+                                {if let Some(last) = prog.errors.last() {
+                                    let details = last.details.clone().unwrap_or_default();
+                                    view! { <div><div><strong>{last.message.clone()}</strong></div><div style="font-size: 12px; color: #666;">{details}</div></div> }.into_any()
+                                } else {
+                                    view! { <div>{"Нет подробностей ошибки"}</div> }.into_any()
+                                }}
+                                <div style="margin-top: 5px; font-size: 12px; color: #666;">{"Статус: "}{format!("{:?}", prog.status)}</div>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                } else { view! { <div></div> }.into_any() }
             }}
         </div>
     }

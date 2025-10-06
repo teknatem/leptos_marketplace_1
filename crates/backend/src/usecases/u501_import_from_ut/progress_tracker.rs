@@ -1,5 +1,5 @@
 use contracts::usecases::u501_import_from_ut::progress::{
-    AggregateProgress, ImportProgress, ImportStatus, AggregateImportStatus,
+    AggregateImportStatus, AggregateProgress, ImportProgress, ImportStatus,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -44,6 +44,7 @@ impl ProgressTracker {
                 errors: 0,
                 current_item: None,
             });
+            progress.updated_at = chrono::Utc::now();
         }
     }
 
@@ -74,6 +75,22 @@ impl ProgressTracker {
                 progress.total_processed = progress.aggregates.iter().map(|a| a.processed).sum();
                 progress.total_inserted = progress.aggregates.iter().map(|a| a.inserted).sum();
                 progress.total_updated = progress.aggregates.iter().map(|a| a.updated).sum();
+                progress.updated_at = chrono::Utc::now();
+            }
+        }
+    }
+
+    /// Установить текущий обрабатываемый элемент для агрегата
+    pub fn set_current_item(&self, session_id: &str, aggregate_index: &str, label: Option<String>) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            if let Some(agg) = progress
+                .aggregates
+                .iter_mut()
+                .find(|a| a.aggregate_index == aggregate_index)
+            {
+                agg.current_item = label;
+                progress.updated_at = chrono::Utc::now();
             }
         }
     }
@@ -88,6 +105,7 @@ impl ProgressTracker {
                 .find(|a| a.aggregate_index == aggregate_index)
             {
                 agg.status = AggregateImportStatus::Completed;
+                progress.updated_at = chrono::Utc::now();
             }
         }
     }
@@ -105,14 +123,22 @@ impl ProgressTracker {
                 agg.errors += 1;
             }
             progress.add_error(Some(aggregate_index.to_string()), error, None);
+            progress.updated_at = chrono::Utc::now();
         }
     }
 
     /// Добавить ошибку
-    pub fn add_error(&self, session_id: &str, aggregate_index: Option<String>, message: String, details: Option<String>) {
+    pub fn add_error(
+        &self,
+        session_id: &str,
+        aggregate_index: Option<String>,
+        message: String,
+        details: Option<String>,
+    ) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {
             progress.add_error(aggregate_index, message, details);
+            progress.updated_at = chrono::Utc::now();
         }
     }
 
@@ -122,6 +148,7 @@ impl ProgressTracker {
         if let Some(progress) = sessions.get_mut(session_id) {
             progress.status = status;
             progress.completed_at = Some(chrono::Utc::now());
+            progress.updated_at = chrono::Utc::now();
         }
     }
 

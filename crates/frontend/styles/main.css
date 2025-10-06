@@ -238,34 +238,6 @@ body {
     margin-bottom: 15px;
 }
 
-/* Table styles */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-table th {
-    background: #f8f9fa;
-    padding: 12px;
-    text-align: left;
-    font-weight: 600;
-    border-bottom: 1px solid #ddd;
-}
-
-table td {
-    padding: 12px;
-    border-bottom: 1px solid #eee;
-}
-
-table tr:hover {
-    background: #f8f9fa;
-    cursor: pointer;
-}
-
 /* Modal styles */
 .modal-overlay {
     position: fixed;

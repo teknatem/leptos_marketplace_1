@@ -23,11 +23,11 @@ pub fn Navbar() -> impl IntoView {
         ("users", "Users"),
         ("a001_connection_1c", "1C Connections"),
         ("a002_organization", "Организации"),
+        ("a003_counterparty", "Контрагенты"),
+        ("a004_nomenclature", "Номенклатура"),
     ];
 
-    let usecases = vec![
-        ("u501_import_from_ut", "Импорт из УТ 11"),
-    ];
+    let usecases = vec![("u501_import_from_ut", "Импорт из УТ 11")];
 
     view! {
         <nav class="main-nav-bar">

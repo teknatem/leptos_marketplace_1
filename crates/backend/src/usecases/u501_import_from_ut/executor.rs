@@ -1,8 +1,10 @@
 use super::{progress_tracker::ProgressTracker, ut_odata_client::UtODataClient};
-use crate::domain::{a001_connection_1c, a002_organization};
+use crate::domain::{a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature};
 use anyhow::Result;
 use contracts::usecases::u501_import_from_ut::{
-    progress::ImportStatus, request::ImportRequest, response::{ImportResponse, ImportStartStatus},
+    progress::ImportStatus,
+    request::ImportRequest,
+    response::{ImportResponse, ImportStartStatus},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -40,10 +42,15 @@ impl ImportExecutor {
         for aggregate_index in &request.target_aggregates {
             let aggregate_name = match aggregate_index.as_str() {
                 "a002_organization" => "Организации",
+                "a003_counterparty" => "Контрагенты",
+                "a004_nomenclature" => "Номенклатура",
                 _ => "Unknown",
             };
-            self.progress_tracker
-                .add_aggregate(&session_id, aggregate_index.clone(), aggregate_name.to_string());
+            self.progress_tracker.add_aggregate(
+                &session_id,
+                aggregate_index.clone(),
+                aggregate_name.to_string(),
+            );
         }
 
         // Запустить импорт в фоне
@@ -78,7 +85,10 @@ impl ImportExecutor {
     }
 
     /// Получить текущий прогресс импорта
-    pub fn get_progress(&self, session_id: &str) -> Option<contracts::usecases::u501_import_from_ut::progress::ImportProgress> {
+    pub fn get_progress(
+        &self,
+        session_id: &str,
+    ) -> Option<contracts::usecases::u501_import_from_ut::progress::ImportProgress> {
         self.progress_tracker.get_progress(session_id)
     }
 
@@ -96,6 +106,12 @@ impl ImportExecutor {
                 "a002_organization" => {
                     self.import_organizations(session_id, connection).await?;
                 }
+                "a003_counterparty" => {
+                    self.import_counterparties(session_id, connection).await?;
+                }
+                "a004_nomenclature" => {
+                    self.import_nomenclature(session_id, connection).await?;
+                }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
                     tracing::warn!("{}", msg);
@@ -110,7 +126,9 @@ impl ImportExecutor {
         }
 
         // Завершить импорт
-        let final_status = if self.progress_tracker.get_progress(session_id)
+        let final_status = if self
+            .progress_tracker
+            .get_progress(session_id)
             .map(|p| p.total_errors > 0)
             .unwrap_or(false)
         {
@@ -119,7 +137,8 @@ impl ImportExecutor {
             ImportStatus::Completed
         };
 
-        self.progress_tracker.complete_session(session_id, final_status);
+        self.progress_tracker
+            .complete_session(session_id, final_status);
         tracing::info!("Import completed for session: {}", session_id);
 
         Ok(())
@@ -131,7 +150,7 @@ impl ImportExecutor {
         session_id: &str,
         connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
     ) -> Result<()> {
-        use a002_organization::from_ut_odata::UtOrganizationListResponse;
+        use a002_organization::u501_import_from_ut::UtOrganizationListResponse;
 
         tracing::info!("Importing organizations for session: {}", session_id);
 
@@ -156,7 +175,12 @@ impl ImportExecutor {
             // Получить страницу данных
             let response: UtOrganizationListResponse = self
                 .odata_client
-                .fetch_collection(connection, "Catalog_Организации", Some(page_size), Some(skip))
+                .fetch_collection(
+                    connection,
+                    "Catalog_Организации",
+                    Some(page_size),
+                    Some(skip),
+                )
                 .await?;
 
             if response.value.is_empty() {
@@ -167,6 +191,12 @@ impl ImportExecutor {
 
             // Обработать каждую организацию
             for odata_org in response.value {
+                // Обновить текущий элемент
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("{} - {}", odata_org.code, odata_org.description)),
+                );
                 match self.process_organization(&odata_org).await {
                     Ok(is_new) => {
                         processed += 1;
@@ -198,6 +228,10 @@ impl ImportExecutor {
                 );
             }
 
+            // Очистить текущий элемент после страницы
+            self.progress_tracker
+                .set_current_item(session_id, aggregate_index, None);
+
             skip += page_size;
 
             // Если получили меньше page_size, значит это последняя страница
@@ -206,18 +240,417 @@ impl ImportExecutor {
             }
         }
 
-        self.progress_tracker.complete_aggregate(session_id, aggregate_index);
-        tracing::info!("Organizations import completed: processed={}, inserted={}, updated={}", processed, inserted, updated);
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "Organizations import completed: processed={}, inserted={}, updated={}",
+            processed,
+            inserted,
+            updated
+        );
 
         Ok(())
     }
 
-    /// Обработать одну организацию (upsert)
-    async fn process_organization(&self, odata_org: &a002_organization::from_ut_odata::UtOrganizationOData) -> Result<bool> {
+    /// Импорт контрагентов из УТ - упрощенная версия
+    async fn import_counterparties(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+    ) -> Result<()> {
+        use crate::domain::a003_counterparty::u501_import_from_ut::UtCounterpartyListResponse;
+
+        tracing::info!("Importing counterparties for session: {}", session_id);
+
+        let aggregate_index = "a003_counterparty";
+
+        // Получаем общее количество элементов
+        let total = self
+            .odata_client
+            .get_collection_count(connection, "Catalog_Контрагенты")
+            .await
+            .ok()
+            .flatten();
+
+        tracing::info!("Total counterparty items to import: {:?}", total);
+
+        let page_size = 100;
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+        let mut skip = 0;
+
+        // Загружаем ВСЕ элементы последовательно блоками по 100
+        loop {
+            let response: UtCounterpartyListResponse = self
+                .odata_client
+                .fetch_collection(
+                    connection,
+                    "Catalog_Контрагенты",
+                    Some(page_size),
+                    Some(skip),
+                )
+                .await?;
+
+            if response.value.is_empty() {
+                break;
+            }
+
+            let batch_size = response.value.len();
+            tracing::info!("Processing batch: skip={}, size={}", skip, batch_size);
+
+            // Обрабатываем ВСЕ элементы из пакета (и папки, и элементы)
+            for odata_item in response.value {
+                let item_type = if odata_item.is_folder { "Папка" } else { "Элемент" };
+
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("[{}] {} - {}", item_type, odata_item.code, odata_item.description)),
+                );
+
+                match self.process_counterparty(&odata_item).await {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process {} {}: {}", item_type, odata_item.code, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process {} {}", item_type, odata_item.code),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                // Обновляем прогресс после каждого элемента
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    total,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            skip += page_size;
+
+            // Если получили меньше элементов чем запрашивали - это последний батч
+            if batch_size < page_size as usize {
+                break;
+            }
+        }
+
+        // Очистить текущий элемент после завершения
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Counterparties import completed: total_processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Импорт номенклатуры из УТ - упрощенная версия
+    async fn import_nomenclature(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+    ) -> Result<()> {
+        use a004_nomenclature::u501_import_from_ut::UtNomenclatureListResponse;
+
+        tracing::info!("Importing nomenclature for session: {}", session_id);
+
+        let aggregate_index = "a004_nomenclature";
+
+        // Получаем общее количество элементов
+        let total = self
+            .odata_client
+            .get_collection_count(connection, "Catalog_Номенклатура")
+            .await
+            .ok()
+            .flatten();
+
+        tracing::info!("Total nomenclature items to import: {:?}", total);
+
+        let page_size = 100;
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+        let mut skip = 0;
+        let mut unique_ids = std::collections::HashSet::new();
+        let mut empty_ref_keys = 0;
+        let mut invalid_ref_keys = 0;
+
+        // Создаем файл для записи всех элементов OData
+        let odata_log_path = std::path::Path::new("target")
+            .join("logs")
+            .join("nomenclature_odata.csv");
+        let mut odata_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&odata_log_path)?;
+        use std::io::Write;
+        writeln!(odata_file, "Ref_Key,Code,Description")?;
+
+        // Загружаем ВСЕ элементы последовательно блоками по 100
+        loop {
+            let response: UtNomenclatureListResponse = self
+                .odata_client
+                .fetch_collection(
+                    connection,
+                    "Catalog_Номенклатура",
+                    Some(page_size),
+                    Some(skip),
+                )
+                .await?;
+
+            if response.value.is_empty() {
+                break;
+            }
+
+            let batch_size = response.value.len();
+            tracing::info!(
+                "📦 Nomenclature batch: skip={}, size={}, total_so_far={}",
+                skip,
+                batch_size,
+                total_processed
+            );
+
+            // Обрабатываем ВСЕ элементы из пакета (и папки, и элементы)
+            for odata_item in response.value {
+                let item_type = if odata_item.is_folder { "Папка" } else { "Элемент" };
+
+                // Записываем в CSV файл
+                let ref_key = if odata_item.ref_key.is_empty() {
+                    "EMPTY".to_string()
+                } else {
+                    odata_item.ref_key.clone()
+                };
+                let code = odata_item.code.replace(',', ";").replace('\n', " ");
+                let description = odata_item.description.replace(',', ";").replace('\n', " ");
+                writeln!(odata_file, "{},{},{}", ref_key, code, description)?;
+
+                // Статистика по ref_key
+                if odata_item.ref_key.is_empty() {
+                    empty_ref_keys += 1;
+                } else if let Err(_) = uuid::Uuid::parse_str(&odata_item.ref_key) {
+                    invalid_ref_keys += 1;
+                } else {
+                    unique_ids.insert(odata_item.ref_key.clone());
+                }
+
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("[{}] {} - {}", item_type, odata_item.code, odata_item.description)),
+                );
+
+                match self.process_nomenclature(&odata_item).await {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process {} {}: {}", item_type, odata_item.code, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process {} {}", item_type, odata_item.code),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                // Обновляем прогресс после каждого элемента
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    total,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            skip += page_size;
+
+            // Если получили меньше элементов чем запрашивали - это последний батч
+            if batch_size < page_size as usize {
+                break;
+            }
+        }
+
+        // Очистить текущий элемент после завершения
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "✅ Nomenclature import completed: total_processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+        tracing::info!(
+            "🔑 UUID statistics: unique={}, empty={}, invalid={}",
+            unique_ids.len(),
+            empty_ref_keys,
+            invalid_ref_keys
+        );
+        tracing::info!(
+            "📄 OData dump saved to: {}",
+            odata_log_path.display()
+        );
+
+        // Проверяем сколько записей реально в базе
+        match a004_nomenclature::repository::list_all().await {
+            Ok(items) => {
+                tracing::info!(
+                    "📊 Database verification: {} items in a004_nomenclature table",
+                    items.len()
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to verify database: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_nomenclature(
+        &self,
+        odata: &a004_nomenclature::u501_import_from_ut::UtNomenclatureOData,
+    ) -> Result<bool> {
         use uuid::Uuid;
 
-        tracing::debug!("Processing organization: ref_key={}, code={}, description={}",
-            odata_org.ref_key, odata_org.code, odata_org.description);
+        let existing = if !odata.ref_key.is_empty() {
+            if let Ok(uuid) = Uuid::parse_str(&odata.ref_key) {
+                a004_nomenclature::repository::get_by_id(uuid).await?
+            } else {
+                tracing::warn!("Invalid ref_key UUID: {}", odata.ref_key);
+                None
+            }
+        } else {
+            tracing::warn!("Empty ref_key for item: {} - {}", odata.code, odata.description);
+            None
+        };
+
+        if let Some(mut existing_item) = existing {
+            tracing::debug!("Updating existing nomenclature: {} - {}", odata.ref_key, odata.description);
+            // ВСЕГДА обновляем для диагностики - убрана проверка should_update
+            existing_item.base.code = odata.code.clone();
+            existing_item.base.description = odata.description.clone();
+            existing_item.full_description = odata.full_description.clone().unwrap_or_default();
+            existing_item.is_folder = odata.is_folder;
+            existing_item.parent_id = odata
+                .parent_key
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .map(|u| u.to_string());
+            existing_item.article = odata.article.clone().unwrap_or_default();
+            existing_item.base.metadata.is_deleted = odata.deletion_mark;
+            existing_item.before_write();
+
+            a004_nomenclature::repository::update(&existing_item).await?;
+            Ok(false)
+        } else {
+            tracing::debug!("Inserting new nomenclature: {} - {}", odata.ref_key, odata.description);
+            let mut new_item = odata.to_aggregate().map_err(|e| anyhow::anyhow!(e))?;
+            new_item.before_write();
+
+            match a004_nomenclature::repository::insert(&new_item).await {
+                Ok(_) => {
+                    tracing::debug!("Successfully inserted: {} - {}", odata.ref_key, odata.description);
+                    Ok(true)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to insert {} - {}: {}", odata.ref_key, odata.description, e);
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    async fn process_counterparty(
+        &self,
+        odata: &a003_counterparty::u501_import_from_ut::UtCounterpartyOData,
+    ) -> Result<bool> {
+        use uuid::Uuid;
+
+        let existing = if !odata.ref_key.is_empty() {
+            if let Ok(uuid) = Uuid::parse_str(&odata.ref_key) {
+                a003_counterparty::repository::get_by_id(uuid).await?
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(mut existing_item) = existing {
+            // ВСЕГДА обновляем для диагностики - убрана проверка should_update
+            existing_item.base.code = odata.code.clone();
+            existing_item.base.description = odata.description.clone();
+            existing_item.is_folder = odata.is_folder;
+            existing_item.parent_id = odata
+                .parent_key
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .map(|u| u.to_string());
+            existing_item.inn = odata.inn.clone().unwrap_or_default();
+            existing_item.kpp = odata.kpp.clone().unwrap_or_default();
+            existing_item.base.metadata.is_deleted = odata.deletion_mark;
+            existing_item.before_write();
+
+            a003_counterparty::repository::update(&existing_item).await?;
+            Ok(false)
+        } else {
+            let mut new_item = odata.to_aggregate().map_err(|e| anyhow::anyhow!(e))?;
+            new_item.before_write();
+
+            match a003_counterparty::repository::insert(&new_item).await {
+                Ok(_) => Ok(true),
+                Err(e) => Err(e),
+            }
+        }
+    }
+
+    /// Обработать одну организацию (upsert)
+    async fn process_organization(
+        &self,
+        odata_org: &a002_organization::u501_import_from_ut::UtOrganizationOData,
+    ) -> Result<bool> {
+        use uuid::Uuid;
+
+        tracing::debug!(
+            "Processing organization: ref_key={}, code={}, description={}",
+            odata_org.ref_key,
+            odata_org.code,
+            odata_org.description
+        );
 
         // Попытаться найти существующую организацию по ID (Ref_Key из 1С)
         let existing = if !odata_org.ref_key.is_empty() {
@@ -233,46 +666,69 @@ impl ImportExecutor {
         if let Some(mut existing_org) = existing {
             tracing::debug!("Found existing organization with code={}", odata_org.code);
 
-            // Проверить, нужно ли обновление
-            if odata_org.should_update(&existing_org) {
-                tracing::info!("Updating organization: ref_key={}, code={}", odata_org.ref_key, odata_org.code);
+            // ВСЕГДА обновляем для диагностики - убрана проверка should_update
+            tracing::info!(
+                "Updating organization: ref_key={}, code={}",
+                odata_org.ref_key,
+                odata_org.code
+            );
 
-                // Обновить
-                existing_org.base.code = odata_org.code.clone();
-                existing_org.base.description = odata_org.description.clone();
-                existing_org.full_name = odata_org.full_name.clone().unwrap_or_else(|| odata_org.description.clone());
-                existing_org.inn = odata_org.inn.clone().unwrap_or_default();
-                existing_org.kpp = odata_org.kpp.clone().unwrap_or_default();
-                existing_org.before_write();
+            existing_org.base.code = odata_org.code.clone();
+            existing_org.base.description = odata_org.description.clone();
+            existing_org.full_name = odata_org
+                .full_name
+                .clone()
+                .unwrap_or_else(|| odata_org.description.clone());
+            existing_org.inn = odata_org.inn.clone().unwrap_or_default();
+            existing_org.kpp = odata_org.kpp.clone().unwrap_or_default();
+            existing_org.base.metadata.is_deleted = odata_org.deletion_mark;
+            existing_org.before_write();
 
-                a002_organization::repository::update(&existing_org).await?;
-                tracing::info!("Successfully updated organization: ref_key={}, code={}", odata_org.ref_key, odata_org.code);
-                Ok(false) // Обновление
-            } else {
-                tracing::debug!("No changes needed for organization: code={}", odata_org.code);
-                Ok(false) // Без изменений
-            }
+            a002_organization::repository::update(&existing_org).await?;
+            tracing::info!(
+                "Successfully updated organization: ref_key={}, code={}",
+                odata_org.ref_key,
+                odata_org.code
+            );
+            Ok(false) // Обновление
         } else {
-            tracing::info!("Creating new organization: code={}, description={}",
-                odata_org.code, odata_org.description);
+            tracing::info!(
+                "Creating new organization: code={}, description={}",
+                odata_org.code,
+                odata_org.description
+            );
 
             // Создать новую
             let mut new_org = odata_org.to_aggregate().map_err(|e| anyhow::anyhow!(e))?;
 
-            tracing::debug!("Organization aggregate created: id={}, code={}, inn={}, kpp={}",
-                new_org.to_string_id(), new_org.base.code, new_org.inn, new_org.kpp);
+            tracing::debug!(
+                "Organization aggregate created: id={}, code={}, inn={}, kpp={}",
+                new_org.to_string_id(),
+                new_org.base.code,
+                new_org.inn,
+                new_org.kpp
+            );
 
             // Предупреждения о потенциальных проблемах (не блокируем импорт)
             if new_org.base.code.trim().is_empty() {
-                tracing::warn!("Organization has empty code: ref_key={}, description={}",
-                    odata_org.ref_key, new_org.base.description);
+                tracing::warn!(
+                    "Organization has empty code: ref_key={}, description={}",
+                    odata_org.ref_key,
+                    new_org.base.description
+                );
             }
             if new_org.base.description.trim().is_empty() {
-                tracing::warn!("Organization has empty description: ref_key={}", odata_org.ref_key);
+                tracing::warn!(
+                    "Organization has empty description: ref_key={}",
+                    odata_org.ref_key
+                );
             }
             if new_org.inn.trim().is_empty() {
-                tracing::warn!("Organization has empty INN: ref_key={}, description={}",
-                    odata_org.ref_key, new_org.base.description);
+                tracing::warn!(
+                    "Organization has empty INN: ref_key={}, description={}",
+                    odata_org.ref_key,
+                    new_org.base.description
+                );
             }
 
             // Вызов before_write для обновления метаданных
@@ -282,13 +738,19 @@ impl ImportExecutor {
 
             match result {
                 Ok(uuid) => {
-                    tracing::info!("Successfully inserted organization: code={}, uuid={}",
-                        odata_org.code, uuid);
+                    tracing::info!(
+                        "Successfully inserted organization: code={}, uuid={}",
+                        odata_org.code,
+                        uuid
+                    );
                     Ok(true) // Вставка
                 }
                 Err(e) => {
-                    tracing::error!("Failed to insert organization: code={}, error={}",
-                        odata_org.code, e);
+                    tracing::error!(
+                        "Failed to insert organization: code={}, error={}",
+                        odata_org.code,
+                        e
+                    );
                     Err(e)
                 }
             }

@@ -39,7 +39,9 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
 
         // If old name exists, migrate to new name and schema
         if table_name == "connection_1c_database" {
-            tracing::info!("Migrating connection_1c_database to a001_connection_1c_database with new schema");
+            tracing::info!(
+                "Migrating connection_1c_database to a001_connection_1c_database with new schema"
+            );
 
             // Create new table with new schema
             let create_new_table = r#"
@@ -163,6 +165,113 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_organization_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a003_counterparty
+    let check_counterparty_table = r#"
+        SELECT name FROM sqlite_master WHERE type='table' AND name='a003_counterparty';
+    "#;
+    let counterparty_table_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_counterparty_table.to_string(),
+        ))
+        .await?;
+
+    if counterparty_table_exists.is_empty() {
+        tracing::info!("Creating a003_counterparty table");
+        let create_counterparty_table_sql = r#"
+            CREATE TABLE a003_counterparty (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                is_folder INTEGER NOT NULL DEFAULT 0,
+                parent_id TEXT,
+                inn TEXT NOT NULL DEFAULT '',
+                kpp TEXT NOT NULL DEFAULT '',
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_counterparty_table_sql.to_string(),
+        ))
+        .await?;
+    } else {
+        // Ensure inn and kpp columns exist; add if missing
+        let pragma = format!("PRAGMA table_info('{}');", "a003_counterparty");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_inn = false;
+        let mut has_kpp = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "inn" {
+                has_inn = true;
+            }
+            if name == "kpp" {
+                has_kpp = true;
+            }
+        }
+        if !has_inn {
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a003_counterparty ADD COLUMN inn TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+        if !has_kpp {
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a003_counterparty ADD COLUMN kpp TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+    }
+
+    // a004_nomenclature
+    let check_nomenclature_table = r#"
+        SELECT name FROM sqlite_master WHERE type='table' AND name='a004_nomenclature';
+    "#;
+    let nomenclature_table_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_nomenclature_table.to_string(),
+        ))
+        .await?;
+
+    if nomenclature_table_exists.is_empty() {
+        tracing::info!("Creating a004_nomenclature table");
+        let create_nomenclature_table_sql = r#"
+            CREATE TABLE a004_nomenclature (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                full_description TEXT NOT NULL DEFAULT '',
+                comment TEXT,
+                is_folder INTEGER NOT NULL DEFAULT 0,
+                parent_id TEXT,
+                article TEXT NOT NULL DEFAULT '',
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_nomenclature_table_sql.to_string(),
         ))
         .await?;
     }

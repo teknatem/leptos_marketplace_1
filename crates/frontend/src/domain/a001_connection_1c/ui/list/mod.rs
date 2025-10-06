@@ -1,8 +1,6 @@
 use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
-use leptos_struct_table::TableDataProvider;
-use leptos_struct_table::{TableRow, TailwindClassesPreset};
 use std::fmt;
 use std::rc::Rc;
 
@@ -19,8 +17,7 @@ impl fmt::Display for DisplayableUrl {
     }
 }
 
-#[derive(TableRow, Clone, Debug)]
-#[table(impl_vec_data_provider, classes_provider = "TailwindClassesPreset")]
+#[derive(Clone, Debug)]
 pub struct Connection1CDatabaseRow {
     pub id: String,
     pub description: String,

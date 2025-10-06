@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Текущий прогресс импорта (для real-time мониторинга)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8,6 +8,8 @@ pub struct ImportProgress {
     pub status: ImportStatus,
     pub started_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// Последнее обновление прогресса
+    pub updated_at: DateTime<Utc>,
 
     /// Прогресс по каждому агрегату
     pub aggregates: Vec<AggregateProgress>,
@@ -80,6 +82,7 @@ impl ImportProgress {
             status: ImportStatus::Running,
             started_at: Utc::now(),
             completed_at: None,
+            updated_at: Utc::now(),
             aggregates: Vec::new(),
             total_processed: 0,
             total_inserted: 0,
@@ -89,7 +92,12 @@ impl ImportProgress {
         }
     }
 
-    pub fn add_error(&mut self, aggregate_index: Option<String>, message: String, details: Option<String>) {
+    pub fn add_error(
+        &mut self,
+        aggregate_index: Option<String>,
+        message: String,
+        details: Option<String>,
+    ) {
         self.errors.push(ImportError {
             aggregate_index,
             message,

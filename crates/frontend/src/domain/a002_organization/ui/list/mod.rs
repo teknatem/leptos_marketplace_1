@@ -1,13 +1,10 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
 use contracts::domain::a002_organization::aggregate::Organization;
 use leptos::prelude::*;
-use leptos_struct_table::TableDataProvider;
-use leptos_struct_table::{TableRow, TailwindClassesPreset};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-#[derive(TableRow, Clone, Debug)]
-#[table(impl_vec_data_provider, classes_provider = "TailwindClassesPreset")]
+#[derive(Clone, Debug)]
 pub struct OrganizationRow {
     pub id: String,
     pub code: String,

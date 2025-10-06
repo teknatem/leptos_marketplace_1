@@ -1,0 +1,110 @@
+/* styles/table.css */
+
+/* Generic container for tables to enable scrolling and sticky headers */
+.table-container {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 6px;
+    /* Default height, can be overridden by specific components */
+    max-height: calc(100vh - 220px); 
+    overflow-y: auto;
+}
+
+/* Base table styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgb(255, 255, 255);
+    /* Allow sticky header inside tables */
+    overflow: visible;
+}
+
+/* Table header cell styles */
+table th {
+    padding: 6px 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+    font-size: 15px; /* Unified font size */
+}
+
+/* Globally sticky table headers */
+thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    /* A slightly translucent background to see scrolled content underneath */
+    background: rgba(226, 245, 226, 0.95);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Add subtle shadow */
+}
+
+/* Table data cell styles */
+table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 15px; /* Unified font size */
+}
+
+table tr {
+    height: 32px;
+}
+
+
+/* Hover effect for table rows */
+.table-container tr:hover {
+    background: #f8f9fa;
+    cursor: pointer;
+}
+
+/* -- Utility classes for table cells -- */
+
+.th-w-10p, .td-w-10p { width: 10%; }
+.th-w-15p, .td-w-15p { width: 15%; }
+.th-w-20p, .td-w-20p { width: 20%; }
+.th-w-35p, .td-w-35p { width: 35%; }
+.th-w-46p, .td-w-46p { width: 46%; } /* For counterparty */
+.th-w-14p, .td-w-14p { width: 14%; } /* For counterparty */
+
+
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.whitespace-nowrap { white-space: nowrap; }
+
+.p-0-8 { padding: 0 8px; }
+.p-6-8 { padding: 6px 8px; }
+
+.cursor-pointer { cursor: pointer; }
+.user-select-none { user-select: none; }
+
+.tree-label {
+    cursor: pointer;
+    color: #0b5ed7;
+    font-size: 15px;
+}
+
+.tree-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    color: #666;
+}
+
+.tree-toggle-placeholder {
+    display: inline-block;
+    width: 16px; /* Width of the toggle button */
+}
+
+.icon-cell-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cell-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

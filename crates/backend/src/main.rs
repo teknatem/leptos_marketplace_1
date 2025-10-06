@@ -7,7 +7,7 @@ async fn main() -> anyhow::Result<()> {
     use axum::http::{header, Method};
     use axum::{
         extract::Path,
-        routing::{delete, get, post},
+        routing::{get, post},
         Json, Router,
     };
     use serde_json::json;
@@ -17,11 +17,24 @@ async fn main() -> anyhow::Result<()> {
     use tower_http::services::ServeDir;
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+    // Создаем директорию для логов
+    let log_dir = std::path::Path::new("target").join("logs");
+    std::fs::create_dir_all(&log_dir)?;
+
+    let log_file_path = log_dir.join("backend.log");
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file_path)?;
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer()
+            .with_writer(std::sync::Arc::new(log_file))
+            .with_ansi(false))
         .init();
 
     // Define a database path in the `target` directory in a platform-agnostic way
@@ -237,6 +250,114 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/organization/testdata",
             post(insert_organization_test_data_handler),
+        )
+        // Counterparty handlers
+        .route(
+            "/api/counterparty",
+            get(|| async {
+                match domain::a003_counterparty::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a003_counterparty::aggregate::CounterpartyDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a003_counterparty::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a003_counterparty::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/counterparty/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a003_counterparty::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a003_counterparty::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
+        // Nomenclature handlers
+        .route(
+            "/api/nomenclature",
+            get(|| async {
+                match domain::a004_nomenclature::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a004_nomenclature::aggregate::NomenclatureDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a004_nomenclature::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a004_nomenclature::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/nomenclature/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a004_nomenclature::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a004_nomenclature::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
         )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
