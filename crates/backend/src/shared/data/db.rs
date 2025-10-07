@@ -276,6 +276,106 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // a005_marketplace
+    let check_marketplace_table = r#"
+        SELECT name FROM sqlite_master WHERE type='table' AND name='a005_marketplace';
+    "#;
+    let marketplace_table_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_marketplace_table.to_string(),
+        ))
+        .await?;
+
+    if marketplace_table_exists.is_empty() {
+        tracing::info!("Creating a005_marketplace table");
+        let create_marketplace_table_sql = r#"
+            CREATE TABLE a005_marketplace (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                url TEXT NOT NULL,
+                logo_path TEXT,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_marketplace_table_sql.to_string(),
+        ))
+        .await?;
+    } else {
+        // Ensure logo_path column exists; add if missing
+        let pragma = format!("PRAGMA table_info('{}');", "a005_marketplace");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_logo_path = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "logo_path" {
+                has_logo_path = true;
+            }
+        }
+        if !has_logo_path {
+            tracing::info!("Adding logo_path column to a005_marketplace");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a005_marketplace ADD COLUMN logo_path TEXT;".to_string(),
+            ))
+            .await?;
+        }
+    }
+
+    // a006_connection_mp table
+    let check_connection_mp = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a006_connection_mp';
+    "#;
+    let connection_mp_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_connection_mp.to_string(),
+        ))
+        .await?;
+
+    if connection_mp_exists.is_empty() {
+        tracing::info!("Creating a006_connection_mp table");
+        let create_connection_mp_table_sql = r#"
+            CREATE TABLE a006_connection_mp (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                marketplace TEXT NOT NULL,
+                organization TEXT NOT NULL,
+                api_key TEXT NOT NULL,
+                supplier_id TEXT,
+                application_id TEXT,
+                is_used INTEGER NOT NULL DEFAULT 0,
+                business_account_id TEXT,
+                api_key_stats TEXT,
+                test_mode INTEGER NOT NULL DEFAULT 0,
+                authorization_type TEXT NOT NULL DEFAULT 'API Key',
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_connection_mp_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
     DB_CONN
         .set(conn)
         .map_err(|_| anyhow::anyhow!("Failed to set DB_CONN"))?;

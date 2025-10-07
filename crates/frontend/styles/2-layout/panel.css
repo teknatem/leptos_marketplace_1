@@ -1,0 +1,91 @@
+/* ============================================
+   Right Panel Layout Styles
+   ============================================ */
+
+.right {
+    width: var(--panel-width);
+    flex-shrink: 0;
+    transition: width var(--transition-base),
+                padding var(--transition-base);
+    border-left: 1px solid var(--color-border);
+    overflow: hidden;
+    position: relative;
+    opacity: var(--opacity-panel);
+    padding-left: 0;
+    padding-right: 0;
+    background-color: var(--color-panel-bg);
+}
+
+.right.hidden {
+    width: 0;
+    border: none;
+    min-width: 0;
+}
+
+/* Disable transitions while resizing to avoid lag */
+.right.resizing {
+    transition: none;
+}
+
+/* Draggable handle at left edge of right panel */
+.right-resizer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--panel-resizer-width);
+    cursor: col-resize;
+    background: transparent;
+}
+
+.right-resizer:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* Fullscreen overlay to capture mouse events while dragging */
+.resize-overlay {
+    position: fixed;
+    inset: 0;
+    cursor: col-resize;
+    z-index: var(--z-overlay);
+}
+
+/* Right panel content styles */
+.right-panel {
+    background-color: var(--color-panel-bg);
+    padding: var(--space-2xl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.right-panel h3 {
+    margin: 0 0 var(--space-2xl) 0;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-h3);
+    font-weight: var(--font-weight-semibold);
+}
+
+.right-panel p {
+    margin: 0 0 var(--space-lg) 0;
+    color: var(--color-text-secondary);
+    line-height: var(--line-height-normal);
+}
+
+.right-panel .info-item {
+    background: var(--color-panel-info-bg);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-md);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-primary);
+}
+
+.right-panel .info-label {
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.right-panel .info-value {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}

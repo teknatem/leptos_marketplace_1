@@ -1,4 +1,5 @@
 use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
+use crate::shared::icons::icon;
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
 use std::fmt;
@@ -110,10 +111,12 @@ pub fn Connection1CList() -> impl IntoView {
                 <h2>{"1C Database Connections"}</h2>
                 <div class="header-actions">
                     <button class="btn btn-primary" on:click=move |_| handle_create_new()>
-                        {"➕ New Connection"}
+                        {icon("plus")}
+                        {"New Connection"}
                     </button>
                     <button class="btn btn-secondary" on:click=move |_| fetch()>
-                        {"🔄 Refresh"}
+                        {icon("refresh")}
+                        {"Refresh"}
                     </button>
                 </div>
             </div>

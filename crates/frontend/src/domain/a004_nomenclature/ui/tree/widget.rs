@@ -225,11 +225,57 @@ fn filter_tree(nodes: Vec<TreeNode>, filter: &str) -> Vec<TreeNode> {
     result
 }
 
+/// Подсветка совпадений в тексте (case-insensitive)
+fn highlight_matches(text: &str, filter: &str) -> AnyView {
+    if filter.trim().is_empty() || filter.trim().len() < 3 {
+        return view! { <span>{text}</span> }.into_any();
+    }
+
+    let filter_lower = filter.to_lowercase();
+    let text_lower = text.to_lowercase();
+
+    // Если нет совпадений, возвращаем текст как есть
+    if !text_lower.contains(&filter_lower) {
+        return view! { <span>{text}</span> }.into_any();
+    }
+
+    // Находим все совпадения
+    let mut parts: Vec<AnyView> = Vec::new();
+    let mut last_pos = 0;
+
+    while let Some(pos) = text_lower[last_pos..].find(&filter_lower) {
+        let actual_pos = last_pos + pos;
+
+        // Добавляем текст до совпадения
+        if actual_pos > last_pos {
+            parts.push(view! { <span>{&text[last_pos..actual_pos]}</span> }.into_any());
+        }
+
+        // Добавляем подсвеченное совпадение
+        let match_end = actual_pos + filter_lower.len();
+        parts.push(view! {
+            <span style="background-color: #ff9800; color: white; padding: 1px 2px; border-radius: 2px; font-weight: 500;">
+                {&text[actual_pos..match_end]}
+            </span>
+        }.into_any());
+
+        last_pos = match_end;
+    }
+
+    // Добавляем оставшийся текст
+    if last_pos < text.len() {
+        parts.push(view! { <span>{&text[last_pos..]}</span> }.into_any());
+    }
+
+    view! { <>{parts}</> }.into_any()
+}
+
 fn render_rows_with_lookup(
     node: TreeNode,
     level: usize,
     id_to_label: HashMap<String, String>,
     on_open: Rc<dyn Fn(String)>,
+    filter: String,
 ) -> Vec<AnyView> {
     let mut rows: Vec<AnyView> = Vec::new();
 
@@ -240,12 +286,6 @@ fn render_rows_with_lookup(
     let id = node.item.base.id.as_string();
     let is_folder = node.item.is_folder;
     let article = node.item.article.clone();
-    let parent_label = node
-        .item
-        .parent_id
-        .as_ref()
-        .and_then(|pid| id_to_label.get(pid).cloned())
-        .unwrap_or_else(|| "-".to_string());
 
     // Кнопка раскрытия/закрытия
     let toggle: AnyView = if is_folder && has_children {
@@ -266,12 +306,12 @@ fn render_rows_with_lookup(
     // Иконка узла
     let node_icon_view = if is_folder {
         if has_children && expanded.get() {
-            view! { <span style="color: #d4a017;">{icon("folder-open")}</span> }.into_any()
+            view! { <span style="color: #f4b942;">{icon("folder-open")}</span> }.into_any()
         } else {
-            view! { <span style="color: #d4a017;">{icon("folder-closed")}</span> }.into_any()
+            view! { <span style="color: #f4b942;">{icon("folder-closed")}</span> }.into_any()
         }
     } else {
-        view! { <span style="color: #666;">{icon("item")}</span> }.into_any()
+        view! { <span style="color: #888;">{icon("item")}</span> }.into_any()
     };
 
     let open = {
@@ -279,6 +319,15 @@ fn render_rows_with_lookup(
         let id_clone = id.clone();
         move |_| (on_open)(id_clone.clone())
     };
+
+    // Подсветка текста в зависимости от фильтра
+    let label_view = highlight_matches(&label, &filter);
+    let article_view = if is_folder {
+        view! { <span>{""}</span> }.into_any()
+    } else {
+        highlight_matches(&article, &filter)
+    };
+    let code_view = highlight_matches(&code, &filter);
 
     let row = view! {
         <tr>
@@ -297,14 +346,12 @@ fn render_rows_with_lookup(
                 )}>
                     {toggle}
                     <span class="tree-label" on:click=open>
-                        {label.clone()}
+                        {label_view}
                     </span>
                 </div>
             </td>
-            <td class="cell-truncate p-0-8">{code.clone()}</td>
-            <td class="cell-truncate p-0-8">{ if is_folder { "Да" } else { "Нет" } }</td>
-            <td class="cell-truncate p-0-8">{parent_label.clone()}</td>
-            <td class="cell-truncate p-0-8">{ if is_folder { String::new() } else { article.clone() } }</td>
+            <td class="cell-truncate p-0-8">{article_view}</td>
+            <td class="cell-truncate p-0-8">{code_view}</td>
         </tr>
     }
     .into_any();
@@ -313,8 +360,13 @@ fn render_rows_with_lookup(
 
     if expanded.get() {
         for child in node.children.clone().into_iter() {
-            let mut child_rows =
-                render_rows_with_lookup(child, level + 1, id_to_label.clone(), on_open.clone());
+            let mut child_rows = render_rows_with_lookup(
+                child,
+                level + 1,
+                id_to_label.clone(),
+                on_open.clone(),
+                filter.clone(),
+            );
             rows.append(&mut child_rows);
         }
     }
@@ -437,24 +489,44 @@ pub fn NomenclatureTree() -> impl IntoView {
             <div class="header" style="margin-bottom: 8px; flex-shrink: 0;">
                 <h2 style="margin: 0;">{list_name}</h2>
                 <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
-                    <input
-                        type="text"
-                        placeholder="Поиск (мин. 3 символа)..."
-                        style=move || format!(
-                            "width: 250px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 15px; background: {};",
-                            if is_filter_active() { "#fffbea" } else { "white" }
-                        )
-                        prop:value=move || filter_input.get()
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            handle_input_change(val);
-                        }
-                    />
+                    <div style="position: relative; display: inline-flex; align-items: center;">
+                        <input
+                            type="text"
+                            placeholder="Поиск (мин. 3 символа)..."
+                            style=move || format!(
+                                "width: 250px; padding: 6px 32px 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 15px; background: {};",
+                                if is_filter_active() { "#fffbea" } else { "white" }
+                            )
+                            prop:value=move || filter_input.get()
+                            on:input=move |ev| {
+                                let val = event_target_value(&ev);
+                                handle_input_change(val);
+                            }
+                        />
+                        {move || if !filter_input.get().is_empty() {
+                            view! {
+                                <button
+                                    style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #666; line-height: 1;"
+                                    on:click=move |_| {
+                                        set_filter_input.set(String::new());
+                                        set_filter_text.set(String::new());
+                                    }
+                                    title="Очистить"
+                                >
+                                    {icon("x")}
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
+                    </div>
                     <button class="btn btn-primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
-                        {"➕ Новый"}
+                        {icon("plus")}
+                        {"Новый"}
                     </button>
                     <button class="btn btn-secondary" on:click=move |_| load()>
-                        {"🔄 Обновить"}
+                        {icon("refresh")}
+                        {"Обновить"}
                     </button>
                 </div>
             </div>
@@ -473,31 +545,29 @@ pub fn NomenclatureTree() -> impl IntoView {
                                             <input type="checkbox" style="margin: 0; cursor: pointer;"/>
                                         </th>
                                         <th class="text-center whitespace-nowrap p-0-8" style="width: 40px; border-bottom: 2px solid #ddd;">{""}</th>
-                                        <th 
-                                            class="th-w-35p whitespace-nowrap cursor-pointer user-select-none p-0-8" 
+                                        <th
+                                            class="th-w-40p whitespace-nowrap cursor-pointer user-select-none p-0-8"
                                             style="border-bottom: 2px solid #ddd;"
-                                            title="Сортировать" 
+                                            title="Сортировать"
                                             on:click=toggle_sort("description")
                                         >
                                             {move || format!("Наименование{}", sort_indicator("description"))}
                                         </th>
-                                        <th 
-                                            class="th-w-15p whitespace-nowrap cursor-pointer user-select-none p-0-8" 
+                                        <th
+                                            class="th-w-20p whitespace-nowrap cursor-pointer user-select-none p-0-8"
                                             style="border-bottom: 2px solid #ddd;"
-                                            title="Сортировать" 
-                                            on:click=toggle_sort("code")
-                                        >
-                                            {move || format!("Код{}", sort_indicator("code"))}
-                                        </th>
-                                        <th class="th-w-10p whitespace-nowrap p-0-8" style="border-bottom: 2px solid #ddd;">{"Папка"}</th>
-                                        <th class="th-w-20p whitespace-nowrap p-0-8" style="border-bottom: 2px solid #ddd;">{"Родитель"}</th>
-                                        <th 
-                                            class="th-w-15p whitespace-nowrap cursor-pointer user-select-none p-0-8" 
-                                            style="border-bottom: 2px solid #ddd;"
-                                            title="Сортировать" 
+                                            title="Сортировать"
                                             on:click=toggle_sort("article")
                                         >
                                             {move || format!("Артикул{}", sort_indicator("article"))}
+                                        </th>
+                                        <th
+                                            class="th-w-40p whitespace-nowrap cursor-pointer user-select-none p-0-8"
+                                            style="border-bottom: 2px solid #ddd;"
+                                            title="Сортировать"
+                                            on:click=toggle_sort("code")
+                                        >
+                                            {move || format!("Код{}", sort_indicator("code"))}
                                         </th>
                                     </tr>
                                 </thead>
@@ -505,6 +575,7 @@ pub fn NomenclatureTree() -> impl IntoView {
                                     {move || {
                                         let lookup = id_to_label.get();
                                         let roots = filtered_roots();
+                                        let current_filter = filter_text.get();
                                         if roots.is_empty() {
                                             let all_count = all_roots.get().len();
                                             let msg = if all_count == 0 {
@@ -512,11 +583,11 @@ pub fn NomenclatureTree() -> impl IntoView {
                                             } else {
                                                 "По фильтру ничего не найдено"
                                             };
-                                            view! { <tr><td colspan="7" class="text-center" style="color: #888; padding: 20px;">{msg}</td></tr> }.into_any()
+                                            view! { <tr><td colspan="5" class="text-center" style="color: #888; padding: 20px;">{msg}</td></tr> }.into_any()
                                         } else {
                                             let all_rows = roots
                                                 .into_iter()
-                                                .flat_map(move |n| render_rows_with_lookup(n, 0, lookup.clone(), Rc::new(move |id: String| { set_editing_id.set(Some(id)); set_show_modal.set(true); })))
+                                                .flat_map(move |n| render_rows_with_lookup(n, 0, lookup.clone(), Rc::new(move |id: String| { set_editing_id.set(Some(id)); set_show_modal.set(true); }), current_filter.clone()))
                                                 .collect::<Vec<_>>();
                                             all_rows.into_view().into_any()
                                         }

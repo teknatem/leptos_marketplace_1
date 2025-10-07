@@ -1,4 +1,5 @@
 use super::super::details::CounterpartyDetails;
+use crate::shared::icons::icon;
 use contracts::domain::a003_counterparty::aggregate::Counterparty;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
@@ -190,11 +191,57 @@ fn filter_tree(nodes: Vec<TreeNode>, filter: &str) -> Vec<TreeNode> {
     result
 }
 
+/// Подсветка совпадений в тексте (case-insensitive)
+fn highlight_matches(text: &str, filter: &str) -> AnyView {
+    if filter.trim().is_empty() {
+        return view! { <span>{text}</span> }.into_any();
+    }
+
+    let filter_lower = filter.to_lowercase();
+    let text_lower = text.to_lowercase();
+
+    // Если нет совпадений, возвращаем текст как есть
+    if !text_lower.contains(&filter_lower) {
+        return view! { <span>{text}</span> }.into_any();
+    }
+
+    // Находим все совпадения
+    let mut parts: Vec<AnyView> = Vec::new();
+    let mut last_pos = 0;
+
+    while let Some(pos) = text_lower[last_pos..].find(&filter_lower) {
+        let actual_pos = last_pos + pos;
+
+        // Добавляем текст до совпадения
+        if actual_pos > last_pos {
+            parts.push(view! { <span>{&text[last_pos..actual_pos]}</span> }.into_any());
+        }
+
+        // Добавляем подсвеченное совпадение
+        let match_end = actual_pos + filter_lower.len();
+        parts.push(view! {
+            <span style="background-color: #ff9800; color: white; padding: 1px 2px; border-radius: 2px; font-weight: 500;">
+                {&text[actual_pos..match_end]}
+            </span>
+        }.into_any());
+
+        last_pos = match_end;
+    }
+
+    // Добавляем оставшийся текст
+    if last_pos < text.len() {
+        parts.push(view! { <span>{&text[last_pos..]}</span> }.into_any());
+    }
+
+    view! { <>{parts}</> }.into_any()
+}
+
 fn render_rows_with_lookup(
     node: TreeNode,
     level: usize,
     id_to_label: HashMap<String, String>,
     on_open: Rc<dyn Fn(String)>,
+    filter: String,
 ) -> Vec<AnyView> {
     let mut rows: Vec<AnyView> = Vec::new();
 
@@ -206,23 +253,32 @@ fn render_rows_with_lookup(
     let is_folder = node.item.is_folder;
     let inn = node.item.inn.clone();
     let kpp = node.item.kpp.clone();
-    let parent_label = node
-        .item
-        .parent_id
-        .as_ref()
-        .and_then(|pid| id_to_label.get(pid).cloned())
-        .unwrap_or_else(|| "-".to_string());
 
-    let toggle: AnyView = if is_folder {
-        if has_children {
-            view! { <button class="tree-toggle" on:click=move |_| expanded.update(|v| *v = !*v)>{move || if expanded.get() {"▼"} else {"▶"}}</button> }.into_any()
+    // Кнопка раскрытия/закрытия
+    let toggle: AnyView = if is_folder && has_children {
+        let chevron_icon = move || if expanded.get() { icon("chevron-down") } else { icon("chevron-right") };
+        view! {
+            <button
+                class="tree-toggle"
+                style="background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; color: #666;"
+                on:click=move |_| expanded.update(|v| *v = !*v)
+            >
+                {chevron_icon}
+            </button>
+        }.into_any()
+    } else {
+        view! { <span style="display:inline-block; width: 16px;">{""}</span> }.into_any()
+    };
+
+    // Иконка узла
+    let node_icon_view = if is_folder {
+        if has_children && expanded.get() {
+            view! { <span style="color: #f4b942;">{icon("folder-open")}</span> }.into_any()
         } else {
-            // Папка без детей - показываем неактивную стрелку
-            view! { <span class="tree-toggle" style="color: #ccc; cursor: default;">{"▶"}</span> }
-                .into_any()
+            view! { <span style="color: #f4b942;">{icon("folder-closed")}</span> }.into_any()
         }
     } else {
-        view! { <span class="tree-toggle-placeholder">{""}</span> }.into_any()
+        view! { <span style="color: #888;">{icon("item")}</span> }.into_any()
     };
 
     let open = {
@@ -231,24 +287,43 @@ fn render_rows_with_lookup(
         move |_| (on_open)(id_clone.clone())
     };
 
+    // Подсветка текста в зависимости от фильтра
+    let label_view = highlight_matches(&label, &filter);
+    let code_view = highlight_matches(&code, &filter);
+    let inn_kpp_text = if is_folder {
+        String::new()
+    } else {
+        format!("{}{}{}", inn, if !inn.is_empty() && !kpp.is_empty() { " / " } else { "" }, kpp)
+    };
+    let inn_kpp_view = if is_folder {
+        view! { <span>{""}</span> }.into_any()
+    } else {
+        highlight_matches(&inn_kpp_text, &filter)
+    };
+
     let row = view! {
         <tr class="tree-row">
-            <td class="p-0-8">
+            <td class="text-center p-0-8 whitespace-nowrap" style="width: 40px;">
+                <input type="checkbox" style="margin: 0; cursor: pointer;"/>
+            </td>
+            <td class="text-center p-0-8 whitespace-nowrap" style="width: 40px;">
+                <div class="icon-cell-container">
+                    {node_icon_view}
+                </div>
+            </td>
+            <td class="cell-truncate p-0-8">
                 <div style={format!(
                     "display: flex; align-items: center; gap: 6px; padding-left: {}px;",
                     level * 16
                 )}>
                     {toggle}
-                    <span>{ if is_folder { "📂" } else { "📄" } }</span>
                     <span class="tree-label" on:click=open>
-                        {label.clone()}
+                        {label_view}
                     </span>
                 </div>
             </td>
-            <td>{code.clone()}</td>
-            <td>{ if is_folder { "Да" } else { "Нет" } }</td>
-            <td>{parent_label.clone()}</td>
-            <td>{ if is_folder { String::new() } else { format!("{}{}{}", inn.clone(), if !inn.is_empty() && !kpp.is_empty() { " / " } else { "" }, kpp.clone()) } }</td>
+            <td class="cell-truncate p-0-8">{code_view}</td>
+            <td class="cell-truncate p-0-8">{inn_kpp_view}</td>
         </tr>
     }
     .into_any();
@@ -257,8 +332,13 @@ fn render_rows_with_lookup(
 
     if expanded.get() {
         for child in node.children.clone().into_iter() {
-            let mut child_rows =
-                render_rows_with_lookup(child, level + 1, id_to_label.clone(), on_open.clone());
+            let mut child_rows = render_rows_with_lookup(
+                child,
+                level + 1,
+                id_to_label.clone(),
+                on_open.clone(),
+                filter.clone(),
+            );
             rows.append(&mut child_rows);
         }
     }
@@ -315,10 +395,12 @@ pub fn CounterpartyTree() -> impl IntoView {
                 <h2>{"Контрагенты"}</h2>
                 <div class="header-actions">
                     <button class="btn btn-primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
-                        {"➕ Новый"}
+                        {icon("plus")}
+                        {"Новый"}
                     </button>
                     <button class="btn btn-secondary" on:click=move |_| load()>
-                        {"🔄 Обновить"}
+                        {icon("refresh")}
+                        {"Обновить"}
                     </button>
                 </div>
             </div>
@@ -329,25 +411,40 @@ pub fn CounterpartyTree() -> impl IntoView {
             } else {
                 view! {
                     <>
-                        <div style="margin-top: 12px; margin-bottom: 8px;">
+                        <div style="margin-top: 12px; margin-bottom: 8px; position: relative; display: inline-flex; align-items: center; width: 100%;">
                             <input
                                 type="text"
                                 placeholder="Поиск по наименованию, коду, ИНН или КПП..."
-                                style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                                style="width: 100%; padding: 8px 32px 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                                 prop:value=move || filter_text.get()
                                 on:input=move |ev| set_filter_text.set(event_target_value(&ev))
                             />
+                            {move || if !filter_text.get().is_empty() {
+                                view! {
+                                    <button
+                                        style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #666; line-height: 1;"
+                                        on:click=move |_| set_filter_text.set(String::new())
+                                        title="Очистить"
+                                    >
+                                        {icon("x")}
+                                    </button>
+                                }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
                         </div>
 
                         <div class="table-container">
                             <table>
                                 <thead>
-                                    <tr class="text-left" style="border-bottom: 1px solid #ddd;">
-                                        <th class="th-w-46p p-6-8">{"Наименование"}</th>
-                                        <th class="th-w-14p p-6-8">{"Код"}</th>
-                                        <th class="th-w-10p p-6-8">{"Папка"}</th>
-                                        <th class="th-w-15p p-6-8">{"Родитель"}</th>
-                                        <th class="th-w-15p p-6-8">{"ИНН / КПП"}</th>
+                                    <tr class="text-left" style="border-bottom: 2px solid #ddd;">
+                                        <th class="text-center whitespace-nowrap p-0-8" style="width: 40px; border-bottom: 2px solid #ddd;">
+                                            <input type="checkbox" style="margin: 0; cursor: pointer;"/>
+                                        </th>
+                                        <th class="text-center whitespace-nowrap p-0-8" style="width: 40px; border-bottom: 2px solid #ddd;">{""}</th>
+                                        <th class="th-w-50p p-6-8">{"Наименование"}</th>
+                                        <th class="th-w-25p p-6-8">{"Код"}</th>
+                                        <th class="th-w-25p p-6-8">{"ИНН / КПП"}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -363,9 +460,10 @@ pub fn CounterpartyTree() -> impl IntoView {
                                             };
                                             view! { <tr><td colspan="5" class="text-center" style="color: #888; padding: 20px;">{msg}</td></tr> }.into_any()
                                         } else {
+                                            let current_filter = filter_text.get();
                                             let all_rows = roots
                                                 .into_iter()
-                                                .flat_map(move |n| render_rows_with_lookup(n, 0, lookup.clone(), Rc::new(move |id: String| { set_editing_id.set(Some(id)); set_show_modal.set(true); })))
+                                                .flat_map(move |n| render_rows_with_lookup(n, 0, lookup.clone(), Rc::new(move |id: String| { set_editing_id.set(Some(id)); set_show_modal.set(true); }), current_filter.clone()))
                                                 .collect::<Vec<_>>();
                                             all_rows.into_view().into_any()
                                         }

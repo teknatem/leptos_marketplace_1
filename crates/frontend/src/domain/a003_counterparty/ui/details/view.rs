@@ -1,4 +1,5 @@
 use super::view_model::CounterpartyDetailsViewModel;
+use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -194,8 +195,14 @@ pub fn CounterpartyDetails(
                                 vm.save_command(on_saved.clone())();
                             }
                         }
-                    >{"💾 Сохранить"}</button>
-                    <button class="btn btn-secondary" on:click=move |_| on_cancel(())>{"Отмена"}</button>
+                    >
+                        {icon("save")}
+                        {"Сохранить"}
+                    </button>
+                    <button class="btn btn-secondary" on:click=move |_| on_cancel(())>
+                        {icon("cancel")}
+                        {"Отмена"}
+                    </button>
                 </div>
             </div>
         </div>

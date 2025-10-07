@@ -4,6 +4,8 @@
 // This is the component
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
+use crate::domain::a005_marketplace::ui::list::MarketplaceList;
+use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut::ImportWidget;
@@ -26,6 +28,8 @@ pub fn Tabs() -> impl IntoView {
         Some(key) if key == "a004_nomenclature" => {
             view! { <crate::domain::a004_nomenclature::ui::tree::NomenclatureTree /> }.into_any()
         }
+        Some(key) if key == "a005_marketplace" => view! { <MarketplaceList /> }.into_any(),
+        Some(key) if key == "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
         Some(key) if key == "u501_import_from_ut" => view! { <ImportWidget /> }.into_any(),
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }

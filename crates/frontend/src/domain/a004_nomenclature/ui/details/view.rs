@@ -1,4 +1,5 @@
 use super::view_model::NomenclatureDetailsViewModel;
+use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -179,12 +180,14 @@ pub fn NomenclatureDetails(
                         move || !vm.is_form_valid()()
                     }
                 >
+                    {icon("save")}
                     {"Сохранить"}
                 </button>
                 <button
                     class="btn btn-secondary"
                     on:click=move |_| on_cancel(())
                 >
+                    {icon("cancel")}
                     {"Отмена"}
                 </button>
             </div>

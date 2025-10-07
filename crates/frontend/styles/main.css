@@ -1,266 +1,28 @@
-/* styles/main.css */
-body {
-    margin: 0;
-    /*font-family: sans-serif;*/
-    font-family: roboto, sans-serif;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-    background: url('./background.jpg') no-repeat center center fixed;
-    background-size: cover;
-}
+/* ============================================
+   Main CSS Entry Point
+   CSS Cascade Layers Architecture
+   ============================================ */
 
-.header {
-    height: 32px;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background-color: #f0f0f0;
-    border-bottom: 1px solid #ccc;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 10px;
-    z-index: 10;
-}
+/* Define layer order (lower layers have lower priority) */
+@layer tokens, reset, base, layout, components, utilities;
 
-.header-title {
-    font-weight: 500;
-}
+/* Import design tokens (CSS variables) */
+@import url('./0-tokens/variables.css') layer(tokens);
 
-.header-actions {
-    display: flex;
-    gap: 6px;
-}
+/* Import base styles */
+@import url('./1-base/reset.css') layer(reset);
+@import url('./1-base/utilities.css') layer(utilities);
 
-.icon-btn {
-    background: transparent;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
+/* Import layout styles */
+@import url('./2-layout/header.css') layer(layout);
+@import url('./2-layout/footer.css') layer(layout);
+@import url('./2-layout/sidebar.css') layer(layout);
+@import url('./2-layout/panel.css') layer(layout);
+@import url('./2-layout/center.css') layer(layout);
 
-.icon-btn svg {
-    width: 18px;
-    height: 18px;
-    fill: currentColor;
-}
-
-.status-bar {
-    height: 30px;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background-color: #f0f0f0;
-    border-top: 1px solid #ccc;
-    padding: 0 10px;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-}
-
-/* Статус сервера */
-.status-online {
-    color: #28a745;
-    font-weight: 500;
-}
-
-.status-offline {
-    color: #dc3545;
-    font-weight: 500;
-}
-
-.status-checking {
-    color: #ffc107;
-    font-weight: 500;
-}
-
-.main-content {
-    display: flex;
-    flex-grow: 1;
-    margin-top: 32px;
-    margin-bottom: 30px;
-    overflow: hidden;
-}
-
-.left {
-    width: 260px;
-    flex-shrink: 0;
-    transition: width 0.3s ease;
-    border-right: 1px solid #6f6f6f;
-    overflow: hidden;
-    opacity: 0.7;
-}
-
-.center {
-    flex-grow: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Center area dimming when tabs are open */
-.center.dimmed {
-    opacity: 0.8;
-}
-
-.right {
-    width: 260px;
-    flex-shrink: 0;
-    transition: width 0.3s ease, padding 0.3s ease;
-    border-left: 1px solid #ccc;
-    overflow: hidden;
-    position: relative;
-    opacity: 0.6;
-    padding-left: 0;
-    padding-right: 0;
-}
-
-.left.hidden, .right.hidden {
-    width: 0;
-    border: none;
-    min-width: 0;
-}
-
-/* Disable transitions while resizing to avoid lag */
-.right.resizing {
-    transition: none;
-}
-
-/* Draggable handle at left edge of right panel */
-.right-resizer {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 6px;
-    cursor: col-resize;
-    background: transparent;
-}
-.right-resizer:hover {
-    background: rgba(0,0,0,0.05);
-}
-
-/* Fullscreen overlay to capture mouse events while dragging */
-.resize-overlay {
-    position: fixed;
-    inset: 0;
-    cursor: col-resize;
-    z-index: 9999;
-}
-
-/* Content area styles */
-.content {
-    padding: 20px;
-    height: 100%;
-    overflow: visible;
-    box-sizing: border-box;
-}
-
-.content .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding: 0;
-    position: static;
-    height: auto;
-    background: none;
-    border: none;
-}
-
-.content .header h2 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-}
-
-.content .header-actions {
-    display: flex;
-    gap: 10px;
-}
-
-/* Button styles */
-.btn {
-    padding: 8px 16px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: white;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s ease;
-}
-
-.btn:hover {
-    background: #f5f5f5;
-}
-
-.btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.btn-primary {
-    background: #007bff;
-    color: white;
-    border-color: #007bff;
-}
-
-.btn-primary:hover:not(:disabled) {
-    background: #0056b3;
-    border-color: #0056b3;
-}
-
-.btn-secondary {
-    background: #6c757d;
-    color: white;
-    border-color: #6c757d;
-}
-
-.btn-secondary:hover:not(:disabled) {
-    background: #545b62;
-    border-color: #545b62;
-}
-
-/* Error styles */
-.error {
-    background: #f8d7da;
-    color: #721c24;
-    padding: 10px;
-    border: 1px solid #f5c6cb;
-    border-radius: 4px;
-    margin-bottom: 15px;
-}
-
-/* Modal styles */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.modal-content {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    max-width: 600px;
-    width: 90%;
-    max-height: 90vh;
-    overflow: auto;
-}
-
-/* Details form styles moved to details_widget.css */
-
+/* Import component styles */
+@import url('./3-components/buttons.css') layer(components);
+@import url('./3-components/forms.css') layer(components);
+@import url('./3-components/tables.css') layer(components);
+@import url('./3-components/tabs.css') layer(components);
+@import url('./3-components/modals.css') layer(components);

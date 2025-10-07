@@ -11,20 +11,12 @@ pub fn Navbar() -> impl IntoView {
         icons::icon(kind)
     }
     let aggregates = vec![
-        ("customers", "Customers"),
-        ("orders", "Orders"),
-        ("products", "Products"),
-        ("inventory", "Inventory"),
-        ("suppliers", "Suppliers"),
-        ("purchases", "Purchases"),
-        ("invoices", "Invoices"),
-        ("payments", "Payments"),
-        ("shipments", "Shipments"),
-        ("users", "Users"),
-        ("a001_connection_1c", "1C Connections"),
+        ("a001_connection_1c", "Connections 1C"),
         ("a002_organization", "Организации"),
         ("a003_counterparty", "Контрагенты"),
         ("a004_nomenclature", "Номенклатура"),
+        ("a005_marketplace", "Маркетплейсы"),
+        ("a006_connection_mp", "Подключения МП"),
     ];
 
     let usecases = vec![("u501_import_from_ut", "Импорт из УТ 11")];
@@ -32,7 +24,7 @@ pub fn Navbar() -> impl IntoView {
     view! {
         <nav class="main-nav-bar">
             <>
-                <div style="padding: 10px; font-weight: bold; color: #888; font-size: 12px; text-transform: uppercase;">
+                <div style="padding: 10px; padding-top: 30px; font-weight: bold; color: #888; font-size: 12px; text-transform: uppercase;">
                     "Справочники"
                 </div>
                 <ul>

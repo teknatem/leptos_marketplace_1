@@ -1,0 +1,43 @@
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+/* ===== Width utilities ===== */
+.th-w-10p, .td-w-10p { width: 10%; }
+.th-w-14p, .td-w-14p { width: 14%; }
+.th-w-15p, .td-w-15p { width: 15%; }
+.th-w-20p, .td-w-20p { width: 20%; }
+.th-w-35p, .td-w-35p { width: 35%; }
+.th-w-46p, .td-w-46p { width: 46%; }
+
+/* ===== Text utilities ===== */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+
+/* ===== Whitespace utilities ===== */
+.whitespace-nowrap { white-space: nowrap; }
+
+/* ===== Padding utilities ===== */
+.p-0-8 { padding: 0 var(--space-md); }
+.p-6-8 { padding: 6px var(--space-md); }
+
+/* ===== Cursor utilities ===== */
+.cursor-pointer { cursor: pointer; }
+
+/* ===== User select utilities ===== */
+.user-select-none { user-select: none; }
+
+/* ===== Flex utilities ===== */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-sm { gap: var(--space-sm); }
+.gap-md { gap: var(--space-md); }
+.gap-lg { gap: var(--space-lg); }
+
+/* ===== Font weight utilities ===== */
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }

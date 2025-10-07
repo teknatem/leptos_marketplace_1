@@ -1,0 +1,44 @@
+/* ============================================
+   Header Layout Styles
+   ============================================ */
+
+.header {
+    height: var(--header-height);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: var(--gradient-header);
+    color: var(--color-text-white);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-lg);
+    z-index: var(--z-header);
+}
+
+.header-title {
+    font-weight: var(--font-weight-medium);
+}
+
+.header-actions {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.icon-btn {
+    background: transparent;
+    border: none;
+    padding: var(--space-xs);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-btn svg {
+    width: var(--font-size-xl);
+    height: var(--font-size-xl);
+    fill: currentColor;
+}

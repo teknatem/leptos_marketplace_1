@@ -1,4 +1,5 @@
 use super::view_model::Connection1CDetailsViewModel;
+use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -164,6 +165,7 @@ pub fn Connection1CDetails(
                         move || vm.is_testing.get()
                     }
                 >
+                    {icon("check")}
                     {
                         let vm = vm_clone.clone();
                         move || if vm.is_testing.get() { "Testing..." } else { "Test Connection" }
@@ -181,6 +183,7 @@ pub fn Connection1CDetails(
                         move || !vm.is_form_valid()()
                     }
                 >
+                    {icon("save")}
                     {
                         let vm = vm_clone.clone();
                         move || if vm.is_edit_mode()() { "Update" } else { "Create" }
@@ -190,6 +193,7 @@ pub fn Connection1CDetails(
                     class="btn btn-secondary"
                     on:click=move |_| (on_cancel)(())
                 >
+                    {icon("cancel")}
                     {"Cancel"}
                 </button>
             </div>

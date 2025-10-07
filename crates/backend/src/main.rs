@@ -359,6 +359,134 @@ async fn main() -> anyhow::Result<()> {
                 }
             }),
         )
+        // Marketplace handlers
+        .route(
+            "/api/marketplace",
+            get(|| async {
+                match domain::a005_marketplace::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a005_marketplace::aggregate::MarketplaceDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a005_marketplace::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a005_marketplace::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/marketplace/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a005_marketplace::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a005_marketplace::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
+        .route(
+            "/api/marketplace/testdata",
+            post(|| async {
+                match domain::a005_marketplace::service::insert_test_data().await {
+                    Ok(_) => axum::http::StatusCode::OK,
+                    Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                }
+            }),
+        )
+        // Connection MP handlers
+        .route(
+            "/api/connection_mp",
+            get(|| async {
+                match domain::a006_connection_mp::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a006_connection_mp::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a006_connection_mp::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/connection_mp/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a006_connection_mp::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a006_connection_mp::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
+        .route(
+            "/api/connection_mp/test",
+            post(|Json(dto): Json<
+                contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
+            >| async move {
+                match domain::a006_connection_mp::service::test_connection(dto).await {
+                    Ok(result) => Ok(Json(result)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
         .route(

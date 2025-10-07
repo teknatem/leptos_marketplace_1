@@ -1,0 +1,56 @@
+/* ============================================
+   Left Sidebar (Navbar) Layout Styles
+   ============================================ */
+
+.main-nav-bar {
+    background: var(--gradient-navbar);
+    width: var(--sidebar-width);
+    color: var(--color-text-light);
+    min-height: 100vh;
+    padding: 0;
+    margin: 0;
+    font-family: var(--font-family-base);
+}
+
+.main-nav-bar ul {
+    list-style: none;
+    padding: var(--space-4xl) 0 0;
+    margin: 0;
+}
+
+.main-nav-bar li {
+    display: flex;
+    align-items: center;
+    padding: var(--space-xl) var(--space-4xl);
+    color: var(--color-text-light);
+    font-size: var(--font-size-base);
+    cursor: pointer;
+    position: relative;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-slow),
+                color var(--transition-slow),
+                font-size var(--transition-slow);
+}
+
+.main-nav-bar li:hover,
+.main-nav-bar li:focus-visible {
+    background: var(--gradient-navbar-hover);
+    font-size: var(--font-size-lg);
+}
+
+.main-nav-bar li i,
+.main-nav-bar li svg {
+    margin-right: 14px;
+    font-size: var(--font-size-xl);
+}
+
+.main-nav-bar .main-nav-bar-header {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-base);
+    padding: var(--space-3xl) var(--space-5xl);
+    color: #484848;
+}
+
+.main-nav-bar li:last-child {
+    margin-bottom: var(--space-xl);
+}

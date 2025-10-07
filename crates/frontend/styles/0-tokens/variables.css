@@ -1,0 +1,169 @@
+/* ============================================
+   CSS Custom Properties (Design Tokens)
+   ============================================ */
+
+:root {
+  /* ===== Colors ===== */
+
+  /* Primary colors */
+  --color-primary: #007bff;
+  --color-primary-hover: #0056b3;
+  --color-primary-light: #abc5fc;
+
+  /* Secondary colors */
+  --color-secondary: #6c757d;
+  --color-secondary-hover: #545b62;
+
+  /* Status colors */
+  --color-success: #28a745;
+  --color-danger: #dc3545;
+  --color-warning: #ffc107;
+
+  /* UI colors */
+  --color-bg-body: #ffffff;
+  --color-bg-panel: rgba(255, 255, 255, 0.6);
+  --color-bg-header: #f0f0f0;
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Text colors */
+  --color-text-primary: #333;
+  --color-text-secondary: #555;
+  --color-text-muted: #666;
+  --color-text-light: #f4efef;
+  --color-text-dark: #0a0a0a;
+  --color-text-white: #ffffff;
+
+  /* Border colors */
+  --color-border: #ccc;
+  --color-border-light: #ddd;
+  --color-border-lighter: #eee;
+  --color-border-dark: #6f6f6f;
+
+  /* Link colors */
+  --color-link: #0b5ed7;
+
+  /* Error colors */
+  --color-error-bg: #f8d7da;
+  --color-error-text: #721c24;
+  --color-error-border: #f5c6cb;
+
+  /* Navbar gradient */
+  --gradient-navbar: linear-gradient(90deg, rgba(70, 70, 70, 0.1) 0%, rgba(249, 228, 137, 0.1) 100%);
+  --gradient-navbar-hover: linear-gradient(90deg, rgba(94, 224, 109, 0.9) 0%, rgba(249, 228, 137, 0.1) 100%);
+
+  /* Header gradient */
+  --gradient-header: linear-gradient(to right, #4776da 0%, #abc5fc 100%);
+
+  /* Table header background */
+  --color-table-header-bg: rgba(226, 245, 226, 0.95);
+
+  /* Right panel background */
+  --color-panel-bg: rgb(186, 205, 253);
+  --color-panel-info-bg: rgba(255, 255, 255, 0.7);
+
+  /* Hover states */
+  --color-hover-bg: #f5f5f5;
+  --color-hover-table: #f8f9fa;
+
+  /* Tab colors */
+  --color-tab-bg: #eee;
+  --color-tab-active-bg: #fff;
+  --color-tab-close: #ccc;
+  --color-tab-close-text: #666;
+  --color-tab-close-hover: #ff69b4;
+  --color-tab-close-active: #90EE90;
+
+
+  /* ===== Layout Dimensions ===== */
+
+  --header-height: 32px;
+  --footer-height: 30px;
+  --sidebar-width: 260px;
+  --panel-width: 260px;
+  --panel-resizer-width: 6px;
+
+  /* Table dimensions */
+  --table-row-height: 32px;
+  --table-header-height: 40px;
+  --table-max-height: calc(100vh - 220px);
+
+
+  /* ===== Spacing Scale ===== */
+
+  --space-0: 0;
+  --space-xs: 4px;
+  --space-sm: 5px;
+  --space-md: 8px;
+  --space-lg: 10px;
+  --space-xl: 12px;
+  --space-2xl: 15px;
+  --space-3xl: 16px;
+  --space-4xl: 20px;
+  --space-5xl: 24px;
+
+
+  /* ===== Typography ===== */
+
+  /* Font families */
+  --font-family-base: roboto, sans-serif;
+
+  /* Font sizes */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 18px;
+  --font-size-h3: 1.3rem;
+  --font-size-h2: 1.5rem;
+
+  /* Font weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Line heights */
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.4;
+  --line-height-relaxed: 1.6;
+
+
+  /* ===== Border Radius ===== */
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 50%;
+
+
+  /* ===== Shadows ===== */
+
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --shadow-table-header: 0 8px 20px rgba(0, 0, 0, 0.5);
+
+
+  /* ===== Transitions ===== */
+
+  --transition-fast: 0.2s ease;
+  --transition-base: 0.3s ease;
+  --transition-slow: 220ms ease 40ms;
+
+
+  /* ===== Z-index Scale ===== */
+
+  --z-base: 1;
+  --z-header: 10;
+  --z-sticky: 10;
+  --z-modal: 1000;
+  --z-overlay: 9999;
+
+
+  /* ===== Opacity ===== */
+
+  --opacity-disabled: 0.6;
+  --opacity-dimmed: 0.8;
+  --opacity-sidebar: 0.7;
+  --opacity-panel: 0.6;
+  --opacity-backdrop: 0.95;
+}

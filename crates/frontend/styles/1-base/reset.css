@@ -1,0 +1,20 @@
+/* ============================================
+   Base Styles & Reset
+   ============================================ */
+
+body {
+    margin: var(--space-0);
+    font-family: var(--font-family-base);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background: url('/assets/images/background.jpg') no-repeat center center fixed;
+    background-size: cover;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}

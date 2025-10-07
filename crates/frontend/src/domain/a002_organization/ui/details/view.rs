@@ -1,4 +1,5 @@
 use super::view_model::OrganizationDetailsViewModel;
+use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -145,6 +146,7 @@ pub fn OrganizationDetails(
                         move || !vm.is_form_valid()()
                     }
                 >
+                    {icon("save")}
                     {
                         let vm = vm_clone.clone();
                         move || if vm.is_edit_mode()() { "Сохранить" } else { "Создать" }
@@ -154,6 +156,7 @@ pub fn OrganizationDetails(
                     class="btn btn-secondary"
                     on:click=move |_| (on_cancel)(())
                 >
+                    {icon("cancel")}
                     {"Отмена"}
                 </button>
             </div>

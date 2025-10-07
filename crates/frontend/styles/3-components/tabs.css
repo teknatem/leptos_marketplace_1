@@ -1,0 +1,81 @@
+/* ============================================
+   Tabs Component Styles
+   ============================================ */
+
+/* Tabs container */
+.tabs-container {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+/* Tabs bar (horizontal) */
+.tabs-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* Tab styles */
+.tab {
+    padding: var(--space-sm) var(--space-lg);
+    cursor: pointer;
+    border-right: 1px solid var(--color-border);
+    background-color: var(--color-tab-bg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex: 0 0 auto;
+}
+
+.tab.active {
+    background-color: var(--color-tab-active-bg);
+    border-bottom: 1px solid var(--color-tab-active-bg);
+    margin-bottom: -1px;
+}
+
+.tab-content {
+    padding: var(--space-lg);
+    flex-grow: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+/* Close button for tabs */
+.tab-close {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-full);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    transition: background-color var(--transition-fast);
+    margin-left: var(--space-sm);
+}
+
+/* Inactive tabs - grey close button */
+.tab:not(.active) .tab-close {
+    background-color: var(--color-tab-close);
+    color: var(--color-tab-close-text);
+}
+
+.tab:not(.active) .tab-close:hover {
+    background-color: var(--color-tab-close-hover);
+    color: var(--color-text-white);
+}
+
+/* Active tab - light green close button */
+.tab.active .tab-close {
+    background-color: var(--color-tab-close-active);
+    color: var(--color-text-primary);
+}
+
+.tab.active .tab-close:hover {
+    background-color: var(--color-tab-close-hover);
+    color: var(--color-text-white);
+}
