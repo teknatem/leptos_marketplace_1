@@ -2,7 +2,6 @@ use crate::shared::icons::icon;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
-use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct MarketplacePickerItem {
@@ -25,6 +24,7 @@ impl From<Marketplace> for MarketplacePickerItem {
 
 #[component]
 pub fn MarketplacePicker<F, G>(
+    initial_selected_id: Option<String>,
     on_selected: F,
     on_cancel: G,
 ) -> impl IntoView
@@ -34,7 +34,7 @@ where
 {
     let (items, set_items) = signal::<Vec<MarketplacePickerItem>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (selected_id, set_selected_id) = signal::<Option<String>>(initial_selected_id);
 
     // Загрузка списка маркетплейсов при монтировании
     wasm_bindgen_futures::spawn_local(async move {
@@ -138,19 +138,6 @@ where
     }
 }
 
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
-
 async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -158,6 +145,16 @@ async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
+
+    let api_base = || {
+        let window = web_sys::window().expect("no window");
+        let location = window.location();
+        let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
+        let hostname = location
+            .hostname()
+            .unwrap_or_else(|_| "127.0.0.1".to_string());
+        format!("{}//{}:3000", protocol, hostname)
+    };
 
     let url = format!("{}/api/marketplace", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;

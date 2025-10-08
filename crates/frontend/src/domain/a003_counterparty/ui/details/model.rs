@@ -64,7 +64,7 @@ pub async fn save_form(dto: CounterpartyDto) -> Result<String, String> {
         .set("Content-Type", "application/json")
         .map_err(|e| format!("{e:?}"))?;
 
-    let body = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
+    let _body = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
     // Use fetch_with_str for body, as Request::set_body is not available in web_sys
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let fetch_promise = window.fetch_with_str_and_init(&url, &opts);
