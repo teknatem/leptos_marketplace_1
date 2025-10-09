@@ -17,6 +17,7 @@ pub fn Navbar() -> impl IntoView {
         ("a004_nomenclature", "Номенклатура"),
         ("a005_marketplace", "Маркетплейсы"),
         ("a006_connection_mp", "Подключения МП"),
+        ("a007_marketplace_product", "Товары МП"),
     ];
 
     let usecases = vec![("u501_import_from_ut", "Импорт из УТ 11")];

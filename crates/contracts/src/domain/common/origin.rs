@@ -9,6 +9,8 @@ pub enum Origin {
     Bitrix,
     /// Ozon Marketplace
     Ozon,
+    /// Маркетплейсы (общий источник для товаров)
+    Marketplace,
     /// Собственная система
     #[serde(rename = "self")]
     Self_,
@@ -20,6 +22,7 @@ impl Origin {
             Origin::C1 => "1c",
             Origin::Bitrix => "bitrix",
             Origin::Ozon => "ozon",
+            Origin::Marketplace => "marketplace",
             Origin::Self_ => "self",
         }
     }

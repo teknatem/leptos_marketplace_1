@@ -4,4 +4,5 @@ pub mod a003_counterparty;
 pub mod a004_nomenclature;
 pub mod a005_marketplace;
 pub mod a006_connection_mp;
+pub mod a007_marketplace_product;
 pub mod common;

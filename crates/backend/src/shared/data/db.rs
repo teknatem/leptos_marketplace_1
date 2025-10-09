@@ -389,6 +389,53 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // a007_marketplace_product table
+    let check_marketplace_product = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a007_marketplace_product';
+    "#;
+    let marketplace_product_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_marketplace_product.to_string(),
+        ))
+        .await?;
+
+    if marketplace_product_exists.is_empty() {
+        tracing::info!("Creating a007_marketplace_product table");
+        let create_marketplace_product_table_sql = r#"
+            CREATE TABLE a007_marketplace_product (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                marketplace_id TEXT NOT NULL,
+                marketplace_sku TEXT NOT NULL,
+                barcode TEXT,
+                art TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                brand TEXT,
+                category_id TEXT,
+                category_name TEXT,
+                price REAL,
+                stock INTEGER,
+                last_update TEXT,
+                marketplace_url TEXT,
+                nomenclature_id TEXT,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_marketplace_product_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
     // system_log table
     let check_system_log = r#"
         SELECT name FROM sqlite_master
