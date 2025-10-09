@@ -1,5 +1,6 @@
 use super::repository;
 use contracts::domain::a005_marketplace::aggregate::{Marketplace, MarketplaceDto};
+use contracts::enums::marketplace_type::MarketplaceType;
 use uuid::Uuid;
 
 /// Создание нового маркетплейса
@@ -13,6 +14,7 @@ pub async fn create(dto: MarketplaceDto) -> anyhow::Result<Uuid> {
         dto.description,
         dto.url,
         dto.logo_path,
+        dto.marketplace_type,
         dto.comment,
     );
 
@@ -74,42 +76,47 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
     let data = vec![
         MarketplaceDto {
             id: None,
-            code: Some("MP-WB".into()),
+            code: Some("mp-wb".into()),
             description: "Wildberries".into(),
             url: "https://www.wildberries.ru".into(),
             logo_path: Some("/assets/images/Wildberries.svg".into()),
+            marketplace_type: Some(MarketplaceType::Wildberries),
             comment: Some("Крупнейший маркетплейс России".into()),
         },
         MarketplaceDto {
             id: None,
-            code: Some("MP-OZON".into()),
+            code: Some("mp-ozon".into()),
             description: "Ozon".into(),
             url: "https://www.ozon.ru".into(),
             logo_path: Some("/assets/images/OZON.svg".into()),
+            marketplace_type: Some(MarketplaceType::Ozon),
             comment: Some("Один из ведущих маркетплейсов".into()),
         },
         MarketplaceDto {
             id: None,
-            code: Some("MP-YM".into()),
+            code: Some("mp-ym".into()),
             description: "Яндекс.Маркет".into(),
             url: "https://market.yandex.ru".into(),
             logo_path: Some("/assets/images/Yandex.svg".into()),
+            marketplace_type: Some(MarketplaceType::YandexMarket),
             comment: None,
         },
         MarketplaceDto {
             id: None,
-            code: Some("MP-KUPER".into()),
+            code: Some("mp-kuper".into()),
             description: "Kuper".into(),
             url: "https://kuper.ru".into(),
             logo_path: Some("/assets/images/Kuper.svg".into()),
+            marketplace_type: Some(MarketplaceType::Kuper),
             comment: None,
         },
         MarketplaceDto {
             id: None,
-            code: Some("MP-LEMANA".into()),
+            code: Some("mp-lemana".into()),
             description: "Lemana Pro".into(),
             url: "https://lemanapro.ru".into(),
             logo_path: Some("/assets/images/lemanapro.svg".into()),
+            marketplace_type: Some(MarketplaceType::LemanaPro),
             comment: None,
         },
     ];

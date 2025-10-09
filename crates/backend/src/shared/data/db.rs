@@ -297,6 +297,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 comment TEXT,
                 url TEXT NOT NULL,
                 logo_path TEXT,
+                marketplace_type TEXT,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -310,16 +311,20 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Ensure logo_path column exists; add if missing
+        // Ensure logo_path and marketplace_type columns exist; add if missing
         let pragma = format!("PRAGMA table_info('{}');", "a005_marketplace");
         let cols = conn
             .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
             .await?;
         let mut has_logo_path = false;
+        let mut has_marketplace_type = false;
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
             if name == "logo_path" {
                 has_logo_path = true;
+            }
+            if name == "marketplace_type" {
+                has_marketplace_type = true;
             }
         }
         if !has_logo_path {
@@ -327,6 +332,14 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "ALTER TABLE a005_marketplace ADD COLUMN logo_path TEXT;".to_string(),
+            ))
+            .await?;
+        }
+        if !has_marketplace_type {
+            tracing::info!("Adding marketplace_type column to a005_marketplace");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a005_marketplace ADD COLUMN marketplace_type TEXT;".to_string(),
             ))
             .await?;
         }
@@ -372,6 +385,36 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_connection_mp_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // system_log table
+    let check_system_log = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='system_log';
+    "#;
+    let system_log_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_system_log.to_string(),
+        ))
+        .await?;
+
+    if system_log_exists.is_empty() {
+        tracing::info!("Creating system_log table");
+        let create_system_log_table_sql = r#"
+            CREATE TABLE system_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source TEXT NOT NULL,
+                category TEXT NOT NULL,
+                message TEXT NOT NULL
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_system_log_table_sql.to_string(),
         ))
         .await?;
     }

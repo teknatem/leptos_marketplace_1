@@ -1,5 +1,6 @@
 use super::view_model::MarketplaceDetailsViewModel;
 use crate::shared::icons::icon;
+use contracts::enums::marketplace_type::MarketplaceType;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -68,6 +69,59 @@ pub fn MarketplaceDetails(
                         }
                         placeholder="https://example.com"
                     />
+                </div>
+
+                <div class="form-group">
+                    <label for="marketplace_type">{"Тип маркетплейса"}</label>
+                    <select
+                        id="marketplace_type"
+                        on:change={
+                            let vm = vm_clone.clone();
+                            move |ev| {
+                                let value = event_target_value(&ev);
+                                let mp_type = if value.is_empty() {
+                                    None
+                                } else {
+                                    MarketplaceType::from_code(&value)
+                                };
+                                vm.form.update(|f| {
+                                    f.marketplace_type = mp_type;
+                                    // Синхронизация кода с выбранным типом
+                                    if let Some(t) = mp_type {
+                                        f.code = Some(t.code().to_string());
+                                    }
+                                });
+                            }
+                        }
+                    >
+                        <option value="" selected={
+                            let vm = vm_clone.clone();
+                            move || vm.form.get().marketplace_type.is_none()
+                        }>
+                            {"-- Не выбрано --"}
+                        </option>
+                        {
+                            MarketplaceType::all().into_iter().map(|mp_type| {
+                                let code = mp_type.code();
+                                let name = mp_type.display_name();
+                                let vm_for_selected = vm_clone.clone();
+                                view! {
+                                    <option
+                                        value={code}
+                                        selected={
+                                            move || {
+                                                vm_for_selected.form.get().marketplace_type
+                                                    .map(|t| t == mp_type)
+                                                    .unwrap_or(false)
+                                            }
+                                        }
+                                    >
+                                        {name}
+                                    </option>
+                                }
+                            }).collect_view()
+                        }
+                    </select>
                 </div>
 
                 <div class="form-group">

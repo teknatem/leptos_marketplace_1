@@ -126,28 +126,7 @@ pub fn ConnectionMPDetails(
 
             {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
 
-            {move || test_result.get().map(|result| {
-                let class = if result.success { "success" } else { "error" };
-                view! {
-                    <div class={class}>
-                        <div>
-                            {result.message.clone()}
-                            {" "}
-                            <small>{"("}{result.duration_ms}{"ms)"}</small>
-                        </div>
-                        {result.details.as_ref().map(|details| view! {
-                            <details style="margin-top: 8px;">
-                                <summary style="cursor: pointer;">{"Детали ошибки"}</summary>
-                                <pre style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">
-                                    {details.clone()}
-                                </pre>
-                            </details>
-                        })}
-                    </div>
-                }
-            })}
-
-            <div class="details-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; column-gap: 24px;">
+            <div class="details-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; column-gap: 24px;">
                 // Колонка 1
                 <div class="form-group">
                     <label for="description">{"Наименование"}</label>
@@ -306,6 +285,27 @@ pub fn ConnectionMPDetails(
                     />
                 </div>
             </div>
+
+            {move || test_result.get().map(|result| {
+                let class = if result.success { "success" } else { "error" };
+                view! {
+                    <div class={class} style="margin-top: 16px;">
+                        <div>
+                            {result.message.clone()}
+                            {" "}
+                            <small>{"("}{result.duration_ms}{"ms)"}</small>
+                        </div>
+                        {result.details.as_ref().map(|details| view! {
+                            <details style="margin-top: 8px;">
+                                <summary style="cursor: pointer;">{"Результат теста"}</summary>
+                                <pre style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; overflow-x: auto; font-size: 12px;">
+                                    {details.clone()}
+                                </pre>
+                            </details>
+                        })}
+                    </div>
+                }
+            })}
 
             <div class="details-actions">
                 <button

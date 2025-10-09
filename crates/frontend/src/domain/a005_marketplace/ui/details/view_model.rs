@@ -61,6 +61,7 @@ impl MarketplaceDetailsViewModel {
                 description: aggregate.base.description,
                 url: aggregate.url,
                 logo_path: aggregate.logo_path,
+                marketplace_type: aggregate.marketplace_type,
                 comment: aggregate.base.comment,
             };
             form.set(dto);

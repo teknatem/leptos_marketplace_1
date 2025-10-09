@@ -496,6 +496,30 @@ async fn main() -> anyhow::Result<()> {
             "/api/u501/import/:session_id/progress",
             get(get_import_progress_handler),
         )
+        // Logs handlers
+        .route(
+            "/api/logs",
+            get(|| async {
+                match shared::logger::repository::get_all_logs().await {
+                    Ok(logs) => Ok(Json(logs)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(req): Json<contracts::shared::logger::CreateLogRequest>| async move {
+                    match shared::logger::repository::log_event(&req.source, &req.category, &req.message).await {
+                        Ok(_) => axum::http::StatusCode::OK,
+                        Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    }
+                },
+            )
+            .delete(|| async {
+                match shared::logger::repository::clear_all_logs().await {
+                    Ok(_) => axum::http::StatusCode::OK,
+                    Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                }
+            }),
+        )
         .fallback_service(ServeDir::new("dist"))
         .layer(cors);
 

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::domain::common::{AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin};
+use crate::enums::marketplace_type::MarketplaceType;
 
 // ============================================================================
 // ID Type
@@ -51,6 +52,9 @@ pub struct Marketplace {
 
     #[serde(rename = "logoPath")]
     pub logo_path: Option<String>,
+
+    #[serde(rename = "marketplaceType")]
+    pub marketplace_type: Option<MarketplaceType>,
 }
 
 impl Marketplace {
@@ -60,6 +64,7 @@ impl Marketplace {
         description: String,
         url: String,
         logo_path: Option<String>,
+        marketplace_type: Option<MarketplaceType>,
         comment: Option<String>,
     ) -> Self {
         let mut base = BaseAggregate::new(
@@ -73,6 +78,7 @@ impl Marketplace {
             base,
             url,
             logo_path,
+            marketplace_type,
         }
     }
 
@@ -83,6 +89,7 @@ impl Marketplace {
         description: String,
         url: String,
         logo_path: Option<String>,
+        marketplace_type: Option<MarketplaceType>,
         comment: Option<String>,
     ) -> Self {
         let mut base = BaseAggregate::new(
@@ -96,6 +103,7 @@ impl Marketplace {
             base,
             url,
             logo_path,
+            marketplace_type,
         }
     }
 
@@ -116,6 +124,7 @@ impl Marketplace {
         self.base.comment = dto.comment.clone();
         self.url = dto.url.clone();
         self.logo_path = dto.logo_path.clone();
+        self.marketplace_type = dto.marketplace_type;
     }
 
     /// Валидация данных
@@ -209,5 +218,7 @@ pub struct MarketplaceDto {
     pub url: String,
     #[serde(rename = "logoPath")]
     pub logo_path: Option<String>,
+    #[serde(rename = "marketplaceType")]
+    pub marketplace_type: Option<MarketplaceType>,
     pub comment: Option<String>,
 }

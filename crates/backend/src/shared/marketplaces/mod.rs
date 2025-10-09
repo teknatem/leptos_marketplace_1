@@ -4,6 +4,7 @@ pub mod yandex_market;
 
 use async_trait::async_trait;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto;
+use contracts::enums::marketplace_type::MarketplaceType;
 
 /// Результат тестирования подключения к маркетплейсу
 #[derive(Debug, Clone)]
@@ -25,11 +26,8 @@ pub fn get_marketplace_type(marketplace_code: &str) -> Option<MarketplaceType> {
     let code_lower = marketplace_code.to_lowercase();
 
     // Сначала проверяем точные совпадения кодов
-    match code_lower.as_str() {
-        "mp-ozon" => return Some(MarketplaceType::Ozon),
-        "mp-wb" => return Some(MarketplaceType::Wildberries),
-        "mp-ym" => return Some(MarketplaceType::YandexMarket),
-        _ => {}
+    if let Some(mp_type) = MarketplaceType::from_code(&code_lower) {
+        return Some(mp_type);
     }
 
     // Затем проверяем частичные совпадения
@@ -42,17 +40,16 @@ pub fn get_marketplace_type(marketplace_code: &str) -> Option<MarketplaceType> {
     if code_lower.contains("yandex") || code_lower.contains("яндекс") || code_lower.contains("market") || code_lower.contains("ym") {
         return Some(MarketplaceType::YandexMarket);
     }
+    if code_lower.contains("kuper") || code_lower.contains("купер") {
+        return Some(MarketplaceType::Kuper);
+    }
+    if code_lower.contains("lemana") || code_lower.contains("лемана") {
+        return Some(MarketplaceType::LemanaPro);
+    }
 
     None
 }
 
-/// Типы маркетплейсов
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MarketplaceType {
-    Ozon,
-    Wildberries,
-    YandexMarket,
-}
 
 /// Основная функция для тестирования подключения к маркетплейсу
 pub async fn test_marketplace_connection(
@@ -76,5 +73,15 @@ pub async fn test_marketplace_connection(
         MarketplaceType::YandexMarket => {
             yandex_market::YandexMarketClient::test_connection(dto).await
         }
+        MarketplaceType::Kuper => TestConnectionResult {
+            success: false,
+            message: "Интеграция с Купер пока не реализована".into(),
+            details: None,
+        },
+        MarketplaceType::LemanaPro => TestConnectionResult {
+            success: false,
+            message: "Интеграция с ЛеманаПро пока не реализована".into(),
+            details: None,
+        },
     }
 }
