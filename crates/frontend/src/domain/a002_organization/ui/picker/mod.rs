@@ -1,4 +1,6 @@
-use crate::shared::{AggregatePickerResult, GenericAggregatePicker, TableDisplayable};
+use crate::shared::picker_aggregate::{
+    AggregatePickerResult, GenericAggregatePicker, TableDisplayable,
+};
 use contracts::domain::a002_organization::aggregate::Organization;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;

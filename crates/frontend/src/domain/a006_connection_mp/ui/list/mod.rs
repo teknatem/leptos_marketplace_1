@@ -18,15 +18,21 @@ pub struct ConnectionMPRow {
     pub created_at: String,
 }
 
-impl From<ConnectionMP> for ConnectionMPRow {
-    fn from(c: ConnectionMP) -> Self {
+impl ConnectionMPRow {
+    async fn from_async(c: ConnectionMP) -> Self {
         use contracts::domain::common::AggregateId;
+
+        // Загружаем название маркетплейса
+        let marketplace = match fetch_marketplace_name(&c.marketplace_id).await {
+            Ok(name) => name,
+            Err(_) => c.marketplace_id.clone(),
+        };
 
         Self {
             id: c.base.id.as_string(),
             code: c.base.code,
             description: c.base.description,
-            marketplace: c.marketplace_id.clone(), // Показываем ID, позже можно улучшить
+            marketplace,
             organization: c.organization,
             is_used: c.is_used,
             test_mode: c.test_mode,
@@ -53,7 +59,10 @@ pub fn ConnectionMPList() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_connections().await {
                 Ok(v) => {
-                    let rows: Vec<ConnectionMPRow> = v.into_iter().map(Into::into).collect();
+                    let mut rows = Vec::new();
+                    for conn in v {
+                        rows.push(ConnectionMPRow::from_async(conn).await);
+                    }
                     set_items.set(rows);
                     set_error.set(None);
                 }
@@ -161,7 +170,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                     <thead>
                         <tr>
                             <th></th>
-                            <th>{"Код"}</th>
+                            //<th>{"Код"}</th>
                             <th>{"Наименование"}</th>
                             <th>{"Маркетплейс"}</th>
                             <th>{"Организация"}</th>
@@ -192,7 +201,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                                             }
                                         />
                                     </td>
-                                    <td>{row.code}</td>
+                                    //<td>{row.code}</td>
                                     <td>{row.description}</td>
                                     <td>{row.marketplace}</td>
                                     <td>{row.organization}</td>
@@ -210,7 +219,7 @@ pub fn ConnectionMPList() -> impl IntoView {
             {move || if show_modal.get() {
                 view! {
                     <div class="modal-overlay">
-                        <div class="modal-content">
+                        <div class="modal-content-wide">
                             <ConnectionMPDetails
                                 id=editing_id.get()
                                 on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
@@ -294,4 +303,36 @@ async fn delete_connection(id: &str) -> Result<(), String> {
         return Err(format!("HTTP {}", resp.status()));
     }
     Ok(())
+}
+
+async fn fetch_marketplace_name(id: &str) -> Result<String, String> {
+    use contracts::domain::a005_marketplace::aggregate::Marketplace;
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/marketplace/{}", api_base(), id);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let marketplace: Marketplace = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(marketplace.base.description)
 }

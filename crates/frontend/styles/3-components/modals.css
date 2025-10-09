@@ -25,6 +25,16 @@
     overflow: auto;
 }
 
+.modal-content-wide {
+    background: var(--color-bg-body);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    max-width: 1200px;
+    width: 90%;
+    max-height: 90vh;
+    overflow: auto;
+}
+
 /* Error display styles */
 .error {
     background: var(--color-error-bg);

@@ -1,6 +1,6 @@
 use crate::domain::a002_organization::ui::{OrganizationPicker, OrganizationPickerItem};
 use crate::domain::a005_marketplace::ui::{MarketplacePicker, MarketplacePickerItem};
-use crate::layout::{Modal, ModalService};
+use crate::shared::picker_aggregate::{Modal, ModalService};
 use crate::shared::icons::icon;
 use contracts::domain::a006_connection_mp::{ConnectionMPDto, ConnectionTestResult};
 use contracts::domain::common::AggregateId;
@@ -34,6 +34,11 @@ pub fn ConnectionMPDetails(
                 // Сохраняем organization в organization_name для отображения
                 set_organization_name.set(conn.organization.clone());
 
+                // Загружаем название маркетплейса
+                if let Ok(mp_name) = fetch_marketplace_name(&conn.marketplace_id).await {
+                    set_marketplace_name.set(mp_name);
+                }
+
                 let dto = ConnectionMPDto {
                     id: Some(conn.base.id.as_string()),
                     code: Some(conn.base.code),
@@ -51,8 +56,6 @@ pub fn ConnectionMPDetails(
                     authorization_type: conn.authorization_type,
                 };
                 set_form.set(dto);
-                // TODO: загрузить название маркетплейса по ID
-                set_marketplace_name.set("".to_string());
             }
         });
     }
@@ -116,7 +119,7 @@ pub fn ConnectionMPDetails(
     };
 
     view! {
-        <div class="details-container connection-mp-details">
+        <div class="details-container connection-mp-details" style="max-width: 1200px;">
             <div class="details-header">
                 <h3>{if id.is_some() { "Редактирование подключения" } else { "Новое подключение" }}</h3>
             </div>
@@ -127,14 +130,25 @@ pub fn ConnectionMPDetails(
                 let class = if result.success { "success" } else { "error" };
                 view! {
                     <div class={class}>
-                        {result.message}
-                        {" "}
-                        <small>{"("}{result.duration_ms}{"ms)"}</small>
+                        <div>
+                            {result.message.clone()}
+                            {" "}
+                            <small>{"("}{result.duration_ms}{"ms)"}</small>
+                        </div>
+                        {result.details.as_ref().map(|details| view! {
+                            <details style="margin-top: 8px;">
+                                <summary style="cursor: pointer;">{"Детали ошибки"}</summary>
+                                <pre style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">
+                                    {details.clone()}
+                                </pre>
+                            </details>
+                        })}
                     </div>
                 }
             })}
 
-            <div class="details-form">
+            <div class="details-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; column-gap: 24px;">
+                // Колонка 1
                 <div class="form-group">
                     <label for="description">{"Наименование"}</label>
                     <input
@@ -146,6 +160,19 @@ pub fn ConnectionMPDetails(
                     />
                 </div>
 
+                // Колонка 2
+                <div class="form-group">
+                    <label for="api_key">{"API Key"}</label>
+                    <textarea
+                        id="api_key"
+                        prop:value={move || form.get().api_key}
+                        on:input=move |ev| set_form.update(|f| f.api_key = event_target_value(&ev))
+                        placeholder="Вставьте API ключ"
+                        rows="3"
+                    />
+                </div>
+
+                // Колонка 1
                 <div class="form-group">
                     <label for="marketplace">{"Маркетплейс"}</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
@@ -171,6 +198,22 @@ pub fn ConnectionMPDetails(
                     </div>
                 </div>
 
+                // Колонка 2
+                <div class="form-group">
+                    <label for="supplier_id">{"ID Поставщика / Client ID"}</label>
+                    <input
+                        type="text"
+                        id="supplier_id"
+                        prop:value={move || form.get().supplier_id.clone().unwrap_or_default()}
+                        on:input=move |ev| {
+                            let val = event_target_value(&ev);
+                            set_form.update(|f| f.supplier_id = if val.is_empty() { None } else { Some(val) });
+                        }
+                        placeholder="Для Озон"
+                    />
+                </div>
+
+                // Колонка 1
                 <div class="form-group">
                     <label for="organization">{"Организация"}</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
@@ -196,31 +239,7 @@ pub fn ConnectionMPDetails(
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="api_key">{"API Key"}</label>
-                    <textarea
-                        id="api_key"
-                        prop:value={move || form.get().api_key}
-                        on:input=move |ev| set_form.update(|f| f.api_key = event_target_value(&ev))
-                        placeholder="Вставьте API ключ"
-                        rows="3"
-                    />
-                </div>
-
-                <div class="form-group">
-                    <label for="supplier_id">{"ID Поставщика / Client ID"}</label>
-                    <input
-                        type="text"
-                        id="supplier_id"
-                        prop:value={move || form.get().supplier_id.clone().unwrap_or_default()}
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            set_form.update(|f| f.supplier_id = if val.is_empty() { None } else { Some(val) });
-                        }
-                        placeholder="Для Озон"
-                    />
-                </div>
-
+                // Колонка 2
                 <div class="form-group">
                     <label for="application_id">{"ID Приложения"}</label>
                     <input
@@ -234,6 +253,18 @@ pub fn ConnectionMPDetails(
                     />
                 </div>
 
+                // Колонка 1
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input
+                        type="checkbox"
+                        id="is_used"
+                        prop:checked={move || form.get().is_used}
+                        on:change=move |ev| set_form.update(|f| f.is_used = event_target_checked(&ev))
+                    />
+                    <label for="is_used" style="margin: 0; cursor: pointer;">{"Используется"}</label>
+                </div>
+
+                // Колонка 2
                 <div class="form-group">
                     <label for="business_account_id">{"Бизнес Аккаунт ID"}</label>
                     <input
@@ -248,29 +279,21 @@ pub fn ConnectionMPDetails(
                     />
                 </div>
 
-                <div class="form-group">
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked={move || form.get().is_used}
-                            on:change=move |ev| set_form.update(|f| f.is_used = event_target_checked(&ev))
-                        />
-                        {" Используется"}
-                    </label>
+                // Колонка 1
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input
+                        type="checkbox"
+                        id="test_mode"
+                        prop:checked={move || form.get().test_mode}
+                        on:change=move |ev| set_form.update(|f| f.test_mode = event_target_checked(&ev))
+                    />
+                    <label for="test_mode" style="margin: 0; cursor: pointer;">{"Тестовый режим"}</label>
                 </div>
 
-                <div class="form-group">
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked={move || form.get().test_mode}
-                            on:change=move |ev| set_form.update(|f| f.test_mode = event_target_checked(&ev))
-                        />
-                        {" Тестовый режим"}
-                    </label>
-                </div>
+                // Колонка 2 - пустое место
+                <div></div>
 
-                <div class="form-group">
+                <div class="form-group" style="grid-column: 1 / -1;">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea
                         id="comment"
@@ -456,4 +479,36 @@ async fn test_connection(dto: ConnectionMPDto) -> Result<ConnectionTestResult, S
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+async fn fetch_marketplace_name(id: &str) -> Result<String, String> {
+    use contracts::domain::a005_marketplace::aggregate::Marketplace;
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/marketplace/{}", api_base(), id);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let marketplace: Marketplace = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(marketplace.base.description)
 }

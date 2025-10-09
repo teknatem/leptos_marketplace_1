@@ -34,7 +34,11 @@
     color: var(--color-text-primary);
 }
 
-.form-group input,
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group input[type="url"],
 .form-group textarea {
     width: 100%;
     padding: var(--space-md) var(--space-xl);
@@ -43,6 +47,12 @@
     font-size: var(--font-size-sm);
     transition: border-color var(--transition-fast);
     box-sizing: border-box;
+}
+
+.form-group input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
 }
 
 .form-group input:focus,

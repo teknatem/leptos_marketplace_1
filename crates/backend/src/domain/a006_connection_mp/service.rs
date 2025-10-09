@@ -90,16 +90,61 @@ pub async fn test_connection(dto: ConnectionMPDto) -> anyhow::Result<ConnectionT
             message: "API Key не может быть пустым".into(),
             duration_ms: 0,
             tested_at: Utc::now(),
+            details: None,
         });
     }
 
-    // Заглушка - просто проверяем что данные заполнены
+    if dto.marketplace_id.trim().is_empty() {
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: "Маркетплейс должен быть выбран".into(),
+            duration_ms: 0,
+            tested_at: Utc::now(),
+            details: None,
+        });
+    }
+
+    // Получаем информацию о маркетплейсе из БД
+    let marketplace_uuid = match Uuid::parse_str(&dto.marketplace_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Ok(ConnectionTestResult {
+                success: false,
+                message: "Некорректный ID маркетплейса".into(),
+                duration_ms: 0,
+                tested_at: Utc::now(),
+                details: None,
+            });
+        }
+    };
+
+    let marketplace = match crate::domain::a005_marketplace::repository::get_by_id(marketplace_uuid)
+        .await?
+    {
+        Some(mp) => mp,
+        None => {
+            return Ok(ConnectionTestResult {
+                success: false,
+                message: "Маркетплейс не найден в базе данных".into(),
+                duration_ms: 0,
+                tested_at: Utc::now(),
+                details: None,
+            });
+        }
+    };
+
+    // Тестируем подключение через соответствующий клиент
+    let test_result =
+        crate::shared::marketplaces::test_marketplace_connection(&marketplace.base.code, &dto)
+            .await;
+
     let duration = start.elapsed();
 
     Ok(ConnectionTestResult {
-        success: true,
-        message: "Тестирование пока не реализовано полностью".into(),
+        success: test_result.success,
+        message: test_result.message,
         duration_ms: duration.as_millis() as u64,
         tested_at: Utc::now(),
+        details: test_result.details,
     })
 }

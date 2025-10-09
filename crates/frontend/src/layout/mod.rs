@@ -3,11 +3,10 @@ pub mod footer;
 pub mod global_context;
 pub mod header;
 pub mod left;
-pub mod modal_service;
 pub mod right;
 
+use crate::shared::picker_aggregate::ModalRenderer;
 use leptos::prelude::*;
-pub use modal_service::{Modal, ModalRenderer, ModalService};
 
 #[component]
 pub fn Shell<L, C, R>(left: L, center: C, right: R) -> impl IntoView

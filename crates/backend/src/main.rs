@@ -446,7 +446,10 @@ async fn main() -> anyhow::Result<()> {
                     };
                     match result {
                         Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                        Err(e) => {
+                            tracing::error!("Failed to save connection_mp: {}", e);
+                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                        }
                     }
                 },
             ),

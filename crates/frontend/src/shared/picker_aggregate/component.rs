@@ -1,20 +1,9 @@
-use leptos::prelude::*;
+use super::traits::TableDisplayable;
 use leptos::html::Tr;
-
-/// Базовый трейт для элементов, которые можно выбирать через пикер
-pub trait AggregatePickerResult {
-    fn id(&self) -> String;
-    fn display_name(&self) -> String;
-}
-
-/// Трейт для элементов, которые можно отобразить в виде таблицы
-pub trait TableDisplayable: AggregatePickerResult {
-    fn code(&self) -> String;
-    fn description(&self) -> String;
-}
+use leptos::prelude::*;
 
 /// Универсальный компонент для выбора агрегата из списка
-/// 
+///
 /// Поддерживает:
 /// - Отображение списка элементов
 /// - Предвыбор элемента через initial_selected_id
@@ -45,7 +34,7 @@ where
 {
     let (selected_id, set_selected_id) = signal::<Option<String>>(initial_selected_id.clone());
     let title = title.unwrap_or_else(|| "Выбор элемента".to_string());
-    
+
     let loading_signal = loading.unwrap_or_else(|| {
         let (r, _) = signal(false);
         r
@@ -171,4 +160,3 @@ where
         </div>
     }
 }
-
