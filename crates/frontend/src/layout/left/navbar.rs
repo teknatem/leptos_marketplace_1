@@ -20,7 +20,11 @@ pub fn Navbar() -> impl IntoView {
         ("a007_marketplace_product", "Товары МП"),
     ];
 
-    let usecases = vec![("u501_import_from_ut", "Импорт из УТ 11")];
+    let usecases = vec![
+        ("u501_import_from_ut", "Импорт из УТ 11"),
+        ("u502_import_from_ozon", "Импорт из OZON"),
+        ("u503_import_from_yandex", "Импорт из Yandex Market"),
+    ];
 
     view! {
         <nav class="main-nav-bar">

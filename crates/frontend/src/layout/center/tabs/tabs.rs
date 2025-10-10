@@ -9,7 +9,9 @@ use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
-use crate::usecases::u501_import_from_ut::ImportWidget;
+use crate::usecases::u501_import_from_ut;
+use crate::usecases::u502_import_from_ozon;
+use crate::usecases::u503_import_from_yandex;
 use leptos::prelude::*;
 
 #[component]
@@ -32,7 +34,9 @@ pub fn Tabs() -> impl IntoView {
         Some(key) if key == "a005_marketplace" => view! { <MarketplaceList /> }.into_any(),
         Some(key) if key == "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
         Some(key) if key == "a007_marketplace_product" => view! { <MarketplaceProductList /> }.into_any(),
-        Some(key) if key == "u501_import_from_ut" => view! { <ImportWidget /> }.into_any(),
+        Some(key) if key == "u501_import_from_ut" => view! { <u501_import_from_ut::ImportWidget /> }.into_any(),
+        Some(key) if key == "u502_import_from_ozon" => view! { <u502_import_from_ozon::ImportWidget /> }.into_any(),
+        Some(key) if key == "u503_import_from_yandex" => view! { <u503_import_from_yandex::ImportWidget /> }.into_any(),
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }
             .into_any(),

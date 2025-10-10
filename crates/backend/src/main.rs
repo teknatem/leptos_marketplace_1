@@ -224,6 +224,74 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // UseCase u502: Import from OZON handlers
+    static OZON_IMPORT_EXECUTOR: Lazy<Arc<usecases::u502_import_from_ozon::ImportExecutor>> =
+        Lazy::new(|| {
+            let tracker = Arc::new(usecases::u502_import_from_ozon::ProgressTracker::new());
+            Arc::new(usecases::u502_import_from_ozon::ImportExecutor::new(tracker))
+        });
+
+    async fn start_ozon_import_handler(
+        Json(request): Json<contracts::usecases::u502_import_from_ozon::ImportRequest>,
+    ) -> Result<
+        Json<contracts::usecases::u502_import_from_ozon::ImportResponse>,
+        axum::http::StatusCode,
+    > {
+        match OZON_IMPORT_EXECUTOR.start_import(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(e) => {
+                tracing::error!("Failed to start OZON import: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn get_ozon_import_progress_handler(
+        Path(session_id): Path<String>,
+    ) -> Result<
+        Json<contracts::usecases::u502_import_from_ozon::progress::ImportProgress>,
+        axum::http::StatusCode,
+    > {
+        match OZON_IMPORT_EXECUTOR.get_progress(&session_id) {
+            Some(progress) => Ok(Json(progress)),
+            None => Err(axum::http::StatusCode::NOT_FOUND),
+        }
+    }
+
+    // UseCase u503: Import from Yandex Market handlers
+    static YANDEX_IMPORT_EXECUTOR: Lazy<Arc<usecases::u503_import_from_yandex::ImportExecutor>> =
+        Lazy::new(|| {
+            let tracker = Arc::new(usecases::u503_import_from_yandex::ProgressTracker::new());
+            Arc::new(usecases::u503_import_from_yandex::ImportExecutor::new(tracker))
+        });
+
+    async fn start_yandex_import_handler(
+        Json(request): Json<contracts::usecases::u503_import_from_yandex::ImportRequest>,
+    ) -> Result<
+        Json<contracts::usecases::u503_import_from_yandex::ImportResponse>,
+        axum::http::StatusCode,
+    > {
+        match YANDEX_IMPORT_EXECUTOR.start_import(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(e) => {
+                tracing::error!("Failed to start Yandex Market import: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn get_yandex_import_progress_handler(
+        Path(session_id): Path<String>,
+    ) -> Result<
+        Json<contracts::usecases::u503_import_from_yandex::progress::ImportProgress>,
+        axum::http::StatusCode,
+    > {
+        match YANDEX_IMPORT_EXECUTOR.get_progress(&session_id) {
+            Some(progress) => Ok(Json(progress)),
+            None => Err(axum::http::StatusCode::NOT_FOUND),
+        }
+    }
+
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route(
@@ -564,6 +632,18 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/u501/import/:session_id/progress",
             get(get_import_progress_handler),
+        )
+        // UseCase u502: Import from OZON
+        .route("/api/u502/import/start", post(start_ozon_import_handler))
+        .route(
+            "/api/u502/import/:session_id/progress",
+            get(get_ozon_import_progress_handler),
+        )
+        // UseCase u503: Import from Yandex Market
+        .route("/api/u503/import/start", post(start_yandex_import_handler))
+        .route(
+            "/api/u503/import/:session_id/progress",
+            get(get_yandex_import_progress_handler),
         )
         // Logs handlers
         .route(

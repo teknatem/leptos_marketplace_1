@@ -1,8 +1,9 @@
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::shared::icons::icon;
+use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 use leptos::prelude::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -16,11 +17,17 @@ pub struct MarketplaceProductRow {
     pub price: String,
     pub stock: String,
     pub marketplace_id: String,
+    pub marketplace_name: String,
 }
 
-impl From<MarketplaceProduct> for MarketplaceProductRow {
-    fn from(m: MarketplaceProduct) -> Self {
+impl MarketplaceProductRow {
+    fn from_product(m: MarketplaceProduct, marketplace_map: &HashMap<String, String>) -> Self {
         use contracts::domain::common::AggregateId;
+
+        let marketplace_name = marketplace_map
+            .get(&m.marketplace_id)
+            .cloned()
+            .unwrap_or_else(|| "Неизвестно".to_string());
 
         Self {
             id: m.base.id.as_string(),
@@ -29,9 +36,16 @@ impl From<MarketplaceProduct> for MarketplaceProductRow {
             art: m.art,
             marketplace_sku: m.marketplace_sku,
             barcode: m.barcode,
-            price: m.price.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "-".to_string()),
-            stock: m.stock.map(|s| s.to_string()).unwrap_or_else(|| "-".to_string()),
+            price: m
+                .price
+                .map(|p| format!("{:.2}", p))
+                .unwrap_or_else(|| "-".to_string()),
+            stock: m
+                .stock
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             marketplace_id: m.marketplace_id,
+            marketplace_name,
         }
     }
 }
@@ -44,16 +58,45 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let (show_modal, set_show_modal) = signal(false);
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
+    let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
+    let (selected_marketplace, set_selected_marketplace) = signal::<Option<String>>(None);
+
+    // Создаем HashMap для маппинга marketplace_id -> description
+    let marketplace_map = move || -> HashMap<String, String> {
+        marketplaces
+            .get()
+            .into_iter()
+            .map(|mp| {
+                use contracts::domain::common::AggregateId;
+                (mp.base.id.as_string(), mp.base.description.clone())
+            })
+            .collect()
+    };
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_marketplace_products().await {
                 Ok(v) => {
-                    let rows: Vec<MarketplaceProductRow> = v.into_iter().map(Into::into).collect();
+                    let mp_map = marketplace_map();
+                    let rows: Vec<MarketplaceProductRow> = v
+                        .into_iter()
+                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map))
+                        .collect();
                     set_items.set(rows);
                     set_error.set(None);
                 }
                 Err(e) => set_error.set(Some(e)),
+            }
+        });
+    };
+
+    let fetch_mp = move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_marketplaces().await {
+                Ok(v) => {
+                    set_marketplaces.set(v);
+                }
+                Err(e) => set_error.set(Some(format!("Ошибка загрузки маркетплейсов: {}", e))),
             }
         });
     };
@@ -128,6 +171,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         clear_selection();
     };
 
+    fetch_mp();
     fetch();
 
     view! {
@@ -135,6 +179,27 @@ pub fn MarketplaceProductList() -> impl IntoView {
             <div class="header">
                 <h2>{"Товары маркетплейсов"}</h2>
                 <div class="header-actions">
+                    <select
+                        class="form-control"
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            if value.is_empty() {
+                                set_selected_marketplace.set(None);
+                            } else {
+                                set_selected_marketplace.set(Some(value));
+                            }
+                        }
+                    >
+                        <option value="">{"Все маркетплейсы"}</option>
+                        {move || marketplaces.get().into_iter().map(|mp| {
+                            use contracts::domain::common::AggregateId;
+                            let id = mp.base.id.as_string();
+                            let name = mp.base.description.clone();
+                            view! {
+                                <option value={id.clone()}>{name}</option>
+                            }
+                        }).collect_view()}
+                    </select>
                     <button class="btn btn-primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
                         {"Новый товар"}
@@ -169,6 +234,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                         <tr>
                             <th></th>
                             <th>{"Код"}</th>
+                            <th>{"Маркетплейс"}</th>
                             <th>{"Наименование"}</th>
                             <th>{"Артикул"}</th>
                             <th>{"SKU"}</th>
@@ -178,7 +244,15 @@ pub fn MarketplaceProductList() -> impl IntoView {
                         </tr>
                     </thead>
                     <tbody>
-                        {move || items.get().into_iter().map(|row| {
+                        {move || items.get().into_iter()
+                            .filter(|row| {
+                                if let Some(ref mp_id) = selected_marketplace.get() {
+                                    &row.marketplace_id == mp_id
+                                } else {
+                                    true
+                                }
+                            })
+                            .map(|row| {
                             let id = row.id.clone();
                             view! {
                                 <tr on:click=move |_| handle_edit(id.clone())>
@@ -199,6 +273,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                         />
                                     </td>
                                     <td>{row.code}</td>
+                                    <td>{row.marketplace_name}</td>
                                     <td>{row.product_name}</td>
                                     <td>{row.art}</td>
                                     <td>{row.marketplace_sku}</td>
@@ -325,4 +400,35 @@ async fn fill_test_data() -> Result<(), String> {
         return Err(format!("HTTP {}", resp.status()));
     }
     Ok(())
+}
+
+async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/marketplace", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<Marketplace> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
 }
