@@ -89,6 +89,7 @@ pub async fn save_form(dto: CounterpartyDto) -> Result<String, String> {
     Ok(data.id)
 }
 
+#[allow(dead_code)]
 pub async fn delete_by_id(id: String) -> Result<(), String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};

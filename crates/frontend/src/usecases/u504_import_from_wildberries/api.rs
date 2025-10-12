@@ -1,11 +1,11 @@
-use contracts::usecases::u503_import_from_yandex::{
+use contracts::usecases::u504_import_from_wildberries::{
     ImportRequest, ImportResponse, ImportProgress,
 };
 use serde_json;
 use wasm_bindgen::{JsValue, JsCast};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
-/// API клиент для UseCase u503
+/// API клиент для UseCase u504
 pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, String> {
     let window = window().ok_or("No window object")?;
 
@@ -17,7 +17,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     opts.set_body(&JsValue::from_str(&body));
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/u503/import/start",
+        "http://localhost:3000/api/u504/import/start",
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;
@@ -53,7 +53,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!("http://localhost:3000/api/u503/import/{}/progress", session_id);
+    let url = format!("http://localhost:3000/api/u504/import/{}/progress", session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");

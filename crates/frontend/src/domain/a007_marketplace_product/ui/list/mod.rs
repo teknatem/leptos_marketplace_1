@@ -1,8 +1,12 @@
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
+use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
+use crate::shared::list_utils::{highlight_matches, Searchable, Sortable, SearchInput, get_sort_indicator};
+use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 use leptos::prelude::*;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -18,16 +22,26 @@ pub struct MarketplaceProductRow {
     pub stock: String,
     pub marketplace_id: String,
     pub marketplace_name: String,
+    pub nomenclature_id: Option<String>,
+    pub nomenclature_name: Option<String>,
 }
 
 impl MarketplaceProductRow {
-    fn from_product(m: MarketplaceProduct, marketplace_map: &HashMap<String, String>) -> Self {
+    fn from_product(
+        m: MarketplaceProduct,
+        marketplace_map: &HashMap<String, String>,
+        nomenclature_map: &HashMap<String, String>,
+    ) -> Self {
         use contracts::domain::common::AggregateId;
 
         let marketplace_name = marketplace_map
             .get(&m.marketplace_id)
             .cloned()
             .unwrap_or_else(|| "Неизвестно".to_string());
+
+        let nomenclature_name = m.nomenclature_id
+            .as_ref()
+            .and_then(|id| nomenclature_map.get(id).cloned());
 
         Self {
             id: m.base.id.as_string(),
@@ -46,6 +60,101 @@ impl MarketplaceProductRow {
                 .unwrap_or_else(|| "-".to_string()),
             marketplace_id: m.marketplace_id,
             marketplace_name,
+            nomenclature_id: m.nomenclature_id.clone(),
+            nomenclature_name,
+        }
+    }
+}
+
+impl ExcelExportable for MarketplaceProductRow {
+    fn headers() -> Vec<&'static str> {
+        vec![
+            "Код",
+            "Маркетплейс",
+            "Наименование",
+            "Артикул",
+            "SKU",
+            "Штрихкод",
+            "Цена",
+            "Остаток",
+            "Связь 1С",
+            "Номенклатура 1С",
+        ]
+    }
+
+    fn to_csv_row(&self) -> Vec<String> {
+        vec![
+            self.code.clone(),
+            self.marketplace_name.clone(),
+            self.product_name.clone(),
+            self.art.clone(),
+            self.marketplace_sku.clone(),
+            self.barcode.clone().unwrap_or_else(|| "-".to_string()),
+            self.price.clone(),
+            self.stock.clone(),
+            if self.nomenclature_id.is_some() { "Да" } else { "Нет" }.to_string(),
+            self.nomenclature_name.clone().unwrap_or_else(|| "-".to_string()),
+        ]
+    }
+}
+
+impl Searchable for MarketplaceProductRow {
+    fn matches_filter(&self, filter: &str) -> bool {
+        let filter_lower = filter.to_lowercase();
+
+        self.code.to_lowercase().contains(&filter_lower)
+            || self.product_name.to_lowercase().contains(&filter_lower)
+            || self.art.to_lowercase().contains(&filter_lower)
+            || self.marketplace_sku.to_lowercase().contains(&filter_lower)
+            || self.marketplace_name.to_lowercase().contains(&filter_lower)
+            || self.barcode.as_ref().map_or(false, |b| b.to_lowercase().contains(&filter_lower))
+            || self.nomenclature_name.as_ref().map_or(false, |n| n.to_lowercase().contains(&filter_lower))
+    }
+
+    fn get_field_value(&self, field: &str) -> Option<String> {
+        match field {
+            "code" => Some(self.code.clone()),
+            "product_name" => Some(self.product_name.clone()),
+            "art" => Some(self.art.clone()),
+            "marketplace_sku" => Some(self.marketplace_sku.clone()),
+            "marketplace_name" => Some(self.marketplace_name.clone()),
+            "barcode" => self.barcode.clone(),
+            "nomenclature_name" => self.nomenclature_name.clone(),
+            _ => None,
+        }
+    }
+}
+
+impl Sortable for MarketplaceProductRow {
+    fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
+        match field {
+            "code" => self.code.to_lowercase().cmp(&other.code.to_lowercase()),
+            "marketplace_name" => self.marketplace_name.to_lowercase().cmp(&other.marketplace_name.to_lowercase()),
+            "product_name" => self.product_name.to_lowercase().cmp(&other.product_name.to_lowercase()),
+            "art" => self.art.to_lowercase().cmp(&other.art.to_lowercase()),
+            "marketplace_sku" => self.marketplace_sku.to_lowercase().cmp(&other.marketplace_sku.to_lowercase()),
+            "barcode" => {
+                let a = self.barcode.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                let b = other.barcode.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                a.cmp(&b)
+            },
+            "price" => {
+                // Сортируем числа правильно (парсим из строки)
+                let a = self.price.parse::<f64>().unwrap_or(0.0);
+                let b = other.price.parse::<f64>().unwrap_or(0.0);
+                a.partial_cmp(&b).unwrap_or(Ordering::Equal)
+            },
+            "stock" => {
+                let a = self.stock.parse::<i32>().unwrap_or(0);
+                let b = other.stock.parse::<i32>().unwrap_or(0);
+                a.cmp(&b)
+            },
+            "nomenclature_name" => {
+                let a = self.nomenclature_name.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                let b = other.nomenclature_name.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                a.cmp(&b)
+            },
+            _ => Ordering::Equal,
         }
     }
 }
@@ -59,7 +168,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
     let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
+    let (nomenclatures, set_nomenclatures) = signal::<Vec<Nomenclature>>(Vec::new());
     let (selected_marketplace, set_selected_marketplace) = signal::<Option<String>>(None);
+
+    // Поиск и сортировка
+    let (filter_text, set_filter_text) = signal(String::new());
+    let (sort_field, set_sort_field) = signal::<String>("code".to_string());
+    let (sort_ascending, set_sort_ascending) = signal(true);
 
     // Создаем HashMap для маппинга marketplace_id -> description
     let marketplace_map = move || -> HashMap<String, String> {
@@ -73,14 +188,27 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .collect()
     };
 
+    // Создаем HashMap для маппинга nomenclature_id -> description
+    let nomenclature_map = move || -> HashMap<String, String> {
+        nomenclatures
+            .get()
+            .into_iter()
+            .map(|nom| {
+                use contracts::domain::common::AggregateId;
+                (nom.base.id.as_string(), nom.base.description.clone())
+            })
+            .collect()
+    };
+
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_marketplace_products().await {
                 Ok(v) => {
                     let mp_map = marketplace_map();
+                    let nom_map = nomenclature_map();
                     let rows: Vec<MarketplaceProductRow> = v
                         .into_iter()
-                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map))
+                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map, &nom_map))
                         .collect();
                     set_items.set(rows);
                     set_error.set(None);
@@ -97,6 +225,17 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     set_marketplaces.set(v);
                 }
                 Err(e) => set_error.set(Some(format!("Ошибка загрузки маркетплейсов: {}", e))),
+            }
+        });
+    };
+
+    let fetch_nomenclature = move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_nomenclatures().await {
+                Ok(v) => {
+                    set_nomenclatures.set(v);
+                }
+                Err(e) => set_error.set(Some(format!("Ошибка загрузки номенклатуры: {}", e))),
             }
         });
     };
@@ -171,7 +310,91 @@ pub fn MarketplaceProductList() -> impl IntoView {
         clear_selection();
     };
 
+    // Функция для получения отфильтрованных и отсортированных данных
+    let get_filtered_sorted_items = move || -> Vec<MarketplaceProductRow> {
+        let mut result: Vec<MarketplaceProductRow> = items
+            .get()
+            .into_iter()
+            // Фильтр по маркетплейсу
+            .filter(|row| {
+                if let Some(ref mp_id) = selected_marketplace.get() {
+                    &row.marketplace_id == mp_id
+                } else {
+                    true
+                }
+            })
+            // Поиск
+            .filter(|row| {
+                let filter = filter_text.get();
+                if filter.trim().is_empty() || filter.trim().len() < 3 {
+                    true
+                } else {
+                    row.matches_filter(&filter)
+                }
+            })
+            .collect();
+
+        // Сортировка
+        let field = sort_field.get();
+        let ascending = sort_ascending.get();
+        result.sort_by(|a, b| {
+            let cmp = a.compare_by_field(b, &field);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+
+        result
+    };
+
+    let handle_export = move || {
+        // Получаем текущие отфильтрованные элементы
+        let filtered_items = get_filtered_sorted_items();
+
+        if filtered_items.is_empty() {
+            if let Some(win) = web_sys::window() {
+                let _ = win.alert_with_message("Нет данных для экспорта");
+            }
+            return;
+        }
+
+        // Формируем имя файла с учетом фильтра
+        let filename = if let Some(ref mp_id) = selected_marketplace.get() {
+            // Находим имя маркетплейса
+            let mp_name = marketplaces
+                .get()
+                .into_iter()
+                .find(|mp| {
+                    use contracts::domain::common::AggregateId;
+                    mp.base.id.as_string() == *mp_id
+                })
+                .map(|mp| mp.base.description.clone())
+                .unwrap_or_else(|| "маркетплейс".to_string());
+            format!("товары_{}.csv", mp_name)
+        } else {
+            "товары_маркетплейсов.csv".to_string()
+        };
+
+        // Экспортируем данные
+        if let Err(e) = export_to_excel(&filtered_items, &filename) {
+            if let Some(win) = web_sys::window() {
+                let _ = win.alert_with_message(&format!("Ошибка экспорта: {}", e));
+            }
+        }
+    };
+
+    // Обработчик переключения сортировки
+    let toggle_sort = move |field: &'static str| {
+        move |_| {
+            if sort_field.get() == field {
+                set_sort_ascending.update(|v| *v = !*v);
+            } else {
+                set_sort_field.set(field.to_string());
+                set_sort_ascending.set(true);
+            }
+        }
+    };
+
     fetch_mp();
+    fetch_nomenclature();
     fetch();
 
     view! {
@@ -179,6 +402,11 @@ pub fn MarketplaceProductList() -> impl IntoView {
             <div class="header">
                 <h2>{"Товары маркетплейсов"}</h2>
                 <div class="header-actions">
+                    <SearchInput
+                        value=filter_text
+                        on_change=Callback::new(move |val: String| set_filter_text.set(val))
+                        placeholder="Поиск по товарам...".to_string()
+                    />
                     <select
                         class="form-control"
                         on:change=move |ev| {
@@ -219,6 +447,10 @@ pub fn MarketplaceProductList() -> impl IntoView {
                         {icon("refresh")}
                         {"Обновить"}
                     </button>
+                    <button class="btn btn-success" on:click=move |_| handle_export()>
+                        {icon("excel")}
+                        {"Excel"}
+                    </button>
                     <button class="btn btn-danger" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
                         {icon("delete")}
                         {move || format!("Удалить ({})", selected.get().len())}
@@ -233,56 +465,163 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     <thead>
                         <tr>
                             <th></th>
-                            <th>{"Код"}</th>
-                            <th>{"Маркетплейс"}</th>
-                            <th>{"Наименование"}</th>
-                            <th>{"Артикул"}</th>
-                            <th>{"SKU"}</th>
-                            <th>{"Штрихкод"}</th>
-                            <th>{"Цена"}</th>
-                            <th>{"Остаток"}</th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("code")
+                                title="Сортировать"
+                            >
+                                {move || format!("Код{}", get_sort_indicator(&sort_field.get(), "code", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("marketplace_name")
+                                title="Сортировать"
+                            >
+                                {move || format!("Маркетплейс{}", get_sort_indicator(&sort_field.get(), "marketplace_name", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("product_name")
+                                title="Сортировать"
+                            >
+                                {move || format!("Наименование{}", get_sort_indicator(&sort_field.get(), "product_name", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("art")
+                                title="Сортировать"
+                            >
+                                {move || format!("Артикул{}", get_sort_indicator(&sort_field.get(), "art", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("marketplace_sku")
+                                title="Сортировать"
+                            >
+                                {move || format!("SKU{}", get_sort_indicator(&sort_field.get(), "marketplace_sku", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("barcode")
+                                title="Сортировать"
+                            >
+                                {move || format!("Штрихкод{}", get_sort_indicator(&sort_field.get(), "barcode", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("price")
+                                title="Сортировать"
+                            >
+                                {move || format!("Цена{}", get_sort_indicator(&sort_field.get(), "price", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("stock")
+                                title="Сортировать"
+                            >
+                                {move || format!("Остаток{}", get_sort_indicator(&sort_field.get(), "stock", sort_ascending.get()))}
+                            </th>
+                            <th>{"Связь 1С"}</th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("nomenclature_name")
+                                title="Сортировать"
+                            >
+                                {move || format!("Номенклатура 1С{}", get_sort_indicator(&sort_field.get(), "nomenclature_name", sort_ascending.get()))}
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {move || items.get().into_iter()
-                            .filter(|row| {
-                                if let Some(ref mp_id) = selected_marketplace.get() {
-                                    &row.marketplace_id == mp_id
+                        {move || {
+                            let filtered = get_filtered_sorted_items();
+                            let current_filter = filter_text.get();
+
+                            filtered.into_iter().map(|row| {
+                                let id = row.id.clone();
+
+                                // Подсветка совпадений в ячейках
+                                let code_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.code, &current_filter)
                                 } else {
-                                    true
-                                }
-                            })
-                            .map(|row| {
-                            let id = row.id.clone();
-                            view! {
-                                <tr on:click=move |_| handle_edit(id.clone())>
-                                    <td>
-                                        <input type="checkbox"
-                                            prop:checked={
-                                                let selected = selected.get();
-                                                selected.contains(&id)
-                                            }
-                                            on:click=move |ev| ev.stop_propagation()
-                                            on:change={
-                                                let id2 = id.clone();
-                                                move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    toggle_select(id2.clone(), checked);
+                                    view! { <span>{row.code.clone()}</span> }.into_any()
+                                };
+
+                                let marketplace_name_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.marketplace_name, &current_filter)
+                                } else {
+                                    view! { <span>{row.marketplace_name.clone()}</span> }.into_any()
+                                };
+
+                                let product_name_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.product_name, &current_filter)
+                                } else {
+                                    view! { <span>{row.product_name.clone()}</span> }.into_any()
+                                };
+
+                                let art_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.art, &current_filter)
+                                } else {
+                                    view! { <span>{row.art.clone()}</span> }.into_any()
+                                };
+
+                                let sku_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.marketplace_sku, &current_filter)
+                                } else {
+                                    view! { <span>{row.marketplace_sku.clone()}</span> }.into_any()
+                                };
+
+                                let barcode_str = row.barcode.clone().unwrap_or_else(|| "-".to_string());
+                                let barcode_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&barcode_str, &current_filter)
+                                } else {
+                                    view! { <span>{barcode_str}</span> }.into_any()
+                                };
+
+                                let nomenclature_str = row.nomenclature_name.clone().unwrap_or_else(|| "-".to_string());
+                                let nomenclature_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&nomenclature_str, &current_filter)
+                                } else {
+                                    view! { <span>{nomenclature_str}</span> }.into_any()
+                                };
+
+                                view! {
+                                    <tr on:click=move |_| handle_edit(id.clone())>
+                                        <td>
+                                            <input type="checkbox"
+                                                prop:checked={
+                                                    let selected = selected.get();
+                                                    selected.contains(&id)
                                                 }
-                                            }
-                                        />
-                                    </td>
-                                    <td>{row.code}</td>
-                                    <td>{row.marketplace_name}</td>
-                                    <td>{row.product_name}</td>
-                                    <td>{row.art}</td>
-                                    <td>{row.marketplace_sku}</td>
-                                    <td>{row.barcode.unwrap_or_else(|| "-".to_string())}</td>
-                                    <td>{row.price}</td>
-                                    <td>{row.stock}</td>
-                                </tr>
-                            }
-                        }).collect_view()}
+                                                on:click=move |ev| ev.stop_propagation()
+                                                on:change={
+                                                    let id2 = id.clone();
+                                                    move |ev| {
+                                                        let checked = event_target_checked(&ev);
+                                                        toggle_select(id2.clone(), checked);
+                                                    }
+                                                }
+                                            />
+                                        </td>
+                                        <td>{code_view}</td>
+                                        <td>{marketplace_name_view}</td>
+                                        <td>{product_name_view}</td>
+                                        <td>{art_view}</td>
+                                        <td>{sku_view}</td>
+                                        <td>{barcode_view}</td>
+                                        <td>{row.price.clone()}</td>
+                                        <td>{row.stock.clone()}</td>
+                                        <td style="text-align: center;">
+                                            {if row.nomenclature_id.is_some() {
+                                                view! { <span style="color: green; font-weight: bold;">{"✓"}</span> }.into_any()
+                                            } else {
+                                                view! { <span style="color: red;">{"✗"}</span> }.into_any()
+                                            }}
+                                        </td>
+                                        <td>{nomenclature_view}</td>
+                                    </tr>
+                                }
+                            }).collect_view()
+                        }}
                     </tbody>
                 </table>
             </div>
@@ -430,5 +769,36 @@ async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: Vec<Marketplace> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
+async fn fetch_nomenclatures() -> Result<Vec<Nomenclature>, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/nomenclature", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<Nomenclature> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }

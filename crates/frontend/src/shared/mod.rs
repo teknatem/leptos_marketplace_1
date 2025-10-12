@@ -1,5 +1,7 @@
 pub mod data;
+pub mod export;
 pub mod icons;
+pub mod list_utils;
 pub mod picker_aggregate;
 
 // Unified init function: no-op on client WASM

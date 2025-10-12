@@ -11,7 +11,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 
     let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
 
-    let mut opts = RequestInit::new();
+    let opts = RequestInit::new();
     opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
     opts.set_body(&JsValue::from_str(&body));
@@ -55,7 +55,7 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
 
     let url = format!("http://localhost:3000/api/u501/import/{}/progress", session_id);
 
-    let mut opts = RequestInit::new();
+    let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
@@ -88,7 +88,7 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
 pub async fn get_connections() -> Result<Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>, String> {
     let window = window().ok_or("No window object")?;
 
-    let mut opts = RequestInit::new();
+    let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 

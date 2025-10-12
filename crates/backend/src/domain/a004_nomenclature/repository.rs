@@ -141,3 +141,45 @@ pub async fn soft_delete(id: Uuid) -> anyhow::Result<bool> {
         .await?;
     Ok(result.rows_affected > 0)
 }
+
+/// Найти номенклатуру по артикулу
+/// Возвращает только элементы (не папки) и не удаленные
+/// ВАЖНО: article должен быть уже trimmed
+pub async fn find_by_article(article: &str) -> anyhow::Result<Vec<Nomenclature>> {
+    // Загружаем все элементы и фильтруем на стороне приложения для корректного trim
+    let all_items: Vec<Model> = Entity::find()
+        .filter(Column::IsFolder.eq(false))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?;
+
+    let items: Vec<Nomenclature> = all_items
+        .into_iter()
+        .filter(|m| m.article.trim() == article)
+        .map(Into::into)
+        .collect();
+
+    Ok(items)
+}
+
+/// Найти номенклатуру по артикулу (без учета регистра)
+/// Возвращает только элементы (не папки) и не удаленные
+/// ВАЖНО: article должен быть уже trimmed
+pub async fn find_by_article_ignore_case(article: &str) -> anyhow::Result<Vec<Nomenclature>> {
+    let article_lower = article.to_lowercase();
+
+    // Загружаем все элементы и фильтруем на стороне приложения для корректного trim и lowercase
+    let all_items: Vec<Model> = Entity::find()
+        .filter(Column::IsFolder.eq(false))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?;
+
+    let items: Vec<Nomenclature> = all_items
+        .into_iter()
+        .filter(|m| m.article.trim().to_lowercase() == article_lower)
+        .map(Into::into)
+        .collect();
+
+    Ok(items)
+}

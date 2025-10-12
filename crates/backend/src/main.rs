@@ -292,6 +292,74 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // UseCase u504: Import from Wildberries handlers
+    static WB_IMPORT_EXECUTOR: Lazy<Arc<usecases::u504_import_from_wildberries::ImportExecutor>> =
+        Lazy::new(|| {
+            let tracker = Arc::new(usecases::u504_import_from_wildberries::ProgressTracker::new());
+            Arc::new(usecases::u504_import_from_wildberries::ImportExecutor::new(tracker))
+        });
+
+    async fn start_wildberries_import_handler(
+        Json(request): Json<contracts::usecases::u504_import_from_wildberries::ImportRequest>,
+    ) -> Result<
+        Json<contracts::usecases::u504_import_from_wildberries::ImportResponse>,
+        axum::http::StatusCode,
+    > {
+        match WB_IMPORT_EXECUTOR.start_import(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(e) => {
+                tracing::error!("Failed to start Wildberries import: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn get_wildberries_import_progress_handler(
+        Path(session_id): Path<String>,
+    ) -> Result<
+        Json<contracts::usecases::u504_import_from_wildberries::progress::ImportProgress>,
+        axum::http::StatusCode,
+    > {
+        match WB_IMPORT_EXECUTOR.get_progress(&session_id) {
+            Some(progress) => Ok(Json(progress)),
+            None => Err(axum::http::StatusCode::NOT_FOUND),
+        }
+    }
+
+    // UseCase u505: Match Nomenclature handlers
+    static MATCH_NOMENCLATURE_EXECUTOR: Lazy<Arc<usecases::u505_match_nomenclature::MatchExecutor>> =
+        Lazy::new(|| {
+            let tracker = Arc::new(usecases::u505_match_nomenclature::ProgressTracker::new());
+            Arc::new(usecases::u505_match_nomenclature::MatchExecutor::new(tracker))
+        });
+
+    async fn start_match_nomenclature_handler(
+        Json(request): Json<contracts::usecases::u505_match_nomenclature::MatchRequest>,
+    ) -> Result<
+        Json<contracts::usecases::u505_match_nomenclature::MatchResponse>,
+        axum::http::StatusCode,
+    > {
+        match MATCH_NOMENCLATURE_EXECUTOR.start_matching(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(e) => {
+                tracing::error!("Failed to start nomenclature matching: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn get_match_nomenclature_progress_handler(
+        Path(session_id): Path<String>,
+    ) -> Result<
+        Json<contracts::usecases::u505_match_nomenclature::progress::MatchProgress>,
+        axum::http::StatusCode,
+    > {
+        match MATCH_NOMENCLATURE_EXECUTOR.get_progress(&session_id) {
+            Some(progress) => Ok(Json(progress)),
+            None => Err(axum::http::StatusCode::NOT_FOUND),
+        }
+    }
+
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route(
@@ -644,6 +712,18 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/u503/import/:session_id/progress",
             get(get_yandex_import_progress_handler),
+        )
+        // UseCase u504: Import from Wildberries
+        .route("/api/u504/import/start", post(start_wildberries_import_handler))
+        .route(
+            "/api/u504/import/:session_id/progress",
+            get(get_wildberries_import_progress_handler),
+        )
+        // UseCase u505: Match Nomenclature
+        .route("/api/u505/match/start", post(start_match_nomenclature_handler))
+        .route(
+            "/api/u505/match/:session_id/progress",
+            get(get_match_nomenclature_progress_handler),
         )
         // Logs handlers
         .route(

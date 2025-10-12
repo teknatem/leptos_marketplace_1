@@ -1,12 +1,12 @@
-use contracts::usecases::u503_import_from_yandex::{
-    ImportRequest, ImportResponse, ImportProgress,
+use contracts::usecases::u505_match_nomenclature::{
+    MatchRequest, MatchResponse, MatchProgress,
 };
 use serde_json;
 use wasm_bindgen::{JsValue, JsCast};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
-/// API клиент для UseCase u503
-pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, String> {
+/// API клиент для UseCase u505
+pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, String> {
     let window = window().ok_or("No window object")?;
 
     let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
@@ -17,7 +17,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     opts.set_body(&JsValue::from_str(&body));
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/u503/import/start",
+        "http://localhost:3000/api/u505/match/start",
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;
@@ -43,17 +43,17 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
 
-    let response: ImportResponse =
+    let response: MatchResponse =
         serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(response)
 }
 
-/// Получить прогресс импорта
-pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
+/// Получить прогресс сопоставления
+pub async fn get_progress(session_id: &str) -> Result<MatchProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!("http://localhost:3000/api/u503/import/{}/progress", session_id);
+    let url = format!("http://localhost:3000/api/u505/match/{}/progress", session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -78,44 +78,8 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
 
-    let progress: ImportProgress =
+    let progress: MatchProgress =
         serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(progress)
-}
-
-/// Получить список подключений маркетплейсов
-pub async fn get_connections() -> Result<Vec<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>, String> {
-    let window = window().ok_or("No window object")?;
-
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-
-    let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/connection_mp",
-        &opts,
-    )
-    .map_err(|e| format!("Failed to create request: {:?}", e))?;
-
-    let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("Fetch failed: {:?}", e))?;
-
-    let response: Response = response_value.dyn_into().map_err(|_| "Not a Response")?;
-
-    if !response.ok() {
-        return Err(format!("HTTP error: {}", response.status()));
-    }
-
-    let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
-    )
-    .await
-    .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
-
-    let connections =
-        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
-
-    Ok(connections)
 }

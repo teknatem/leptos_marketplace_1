@@ -12,6 +12,8 @@ use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
 use crate::usecases::u503_import_from_yandex;
+use crate::usecases::u504_import_from_wildberries;
+use crate::usecases::u505_match_nomenclature;
 use leptos::prelude::*;
 
 #[component]
@@ -37,6 +39,8 @@ pub fn Tabs() -> impl IntoView {
         Some(key) if key == "u501_import_from_ut" => view! { <u501_import_from_ut::ImportWidget /> }.into_any(),
         Some(key) if key == "u502_import_from_ozon" => view! { <u502_import_from_ozon::ImportWidget /> }.into_any(),
         Some(key) if key == "u503_import_from_yandex" => view! { <u503_import_from_yandex::ImportWidget /> }.into_any(),
+        Some(key) if key == "u504_import_from_wildberries" => view! { <u504_import_from_wildberries::ImportWidget /> }.into_any(),
+        Some(key) if key == "u505_match_nomenclature" => view! { <u505_match_nomenclature::MatchNomenclatureView /> }.into_any(),
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }
             .into_any(),
