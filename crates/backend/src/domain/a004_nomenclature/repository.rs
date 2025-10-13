@@ -21,6 +21,7 @@ pub struct Model {
     pub is_folder: bool,
     pub parent_id: Option<String>,
     pub article: String,
+    pub mp_ref_count: i32,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -56,6 +57,7 @@ impl From<Model> for Nomenclature {
             is_folder: m.is_folder,
             parent_id: m.parent_id,
             article: m.article,
+            mp_ref_count: m.mp_ref_count,
         }
     }
 }
@@ -100,6 +102,7 @@ pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
         is_folder: Set(aggregate.is_folder),
         parent_id: Set(aggregate.parent_id.clone()),
         article: Set(aggregate.article.clone()),
+        mp_ref_count: Set(aggregate.mp_ref_count),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -121,6 +124,7 @@ pub async fn update(aggregate: &Nomenclature) -> anyhow::Result<()> {
         is_folder: Set(aggregate.is_folder),
         parent_id: Set(aggregate.parent_id.clone()),
         article: Set(aggregate.article.clone()),
+        mp_ref_count: Set(aggregate.mp_ref_count),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),
@@ -182,4 +186,16 @@ pub async fn find_by_article_ignore_case(article: &str) -> anyhow::Result<Vec<No
         .collect();
 
     Ok(items)
+}
+
+/// Обновить счетчик ссылок на маркетплейс для номенклатуры
+pub async fn update_mp_ref_count(nomenclature_id: Uuid, count: i32) -> anyhow::Result<()> {
+    use sea_orm::sea_query::Expr;
+    Entity::update_many()
+        .col_expr(Column::MpRefCount, Expr::value(count))
+        .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
+        .filter(Column::Id.eq(nomenclature_id.to_string()))
+        .exec(conn())
+        .await?;
+    Ok(())
 }

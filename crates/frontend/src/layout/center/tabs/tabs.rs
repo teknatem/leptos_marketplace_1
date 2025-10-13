@@ -7,6 +7,8 @@ use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a005_marketplace::ui::list::MarketplaceList;
 use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
+use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
+use crate::domain::a009_ozon_returns::ui::list::OzonReturnsList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
@@ -35,12 +37,30 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "a005_marketplace" => view! { <MarketplaceList /> }.into_any(),
         Some(key) if key == "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
-        Some(key) if key == "a007_marketplace_product" => view! { <MarketplaceProductList /> }.into_any(),
-        Some(key) if key == "u501_import_from_ut" => view! { <u501_import_from_ut::ImportWidget /> }.into_any(),
-        Some(key) if key == "u502_import_from_ozon" => view! { <u502_import_from_ozon::ImportWidget /> }.into_any(),
-        Some(key) if key == "u503_import_from_yandex" => view! { <u503_import_from_yandex::ImportWidget /> }.into_any(),
-        Some(key) if key == "u504_import_from_wildberries" => view! { <u504_import_from_wildberries::ImportWidget /> }.into_any(),
-        Some(key) if key == "u505_match_nomenclature" => view! { <u505_match_nomenclature::MatchNomenclatureView /> }.into_any(),
+        Some(key) if key == "a007_marketplace_product" => {
+            view! { <MarketplaceProductList /> }.into_any()
+        }
+        Some(key) if key == "a008_marketplace_sales" => {
+            view! { <MarketplaceSalesList /> }.into_any()
+        }
+        Some(key) if key == "a009_ozon_returns" => {
+            view! { <OzonReturnsList /> }.into_any()
+        }
+        Some(key) if key == "u501_import_from_ut" => {
+            view! { <u501_import_from_ut::ImportWidget /> }.into_any()
+        }
+        Some(key) if key == "u502_import_from_ozon" => {
+            view! { <u502_import_from_ozon::ImportWidget /> }.into_any()
+        }
+        Some(key) if key == "u503_import_from_yandex" => {
+            view! { <u503_import_from_yandex::ImportWidget /> }.into_any()
+        }
+        Some(key) if key == "u504_import_from_wildberries" => {
+            view! { <u504_import_from_wildberries::ImportWidget /> }.into_any()
+        }
+        Some(key) if key == "u505_match_nomenclature" => {
+            view! { <u505_match_nomenclature::MatchNomenclatureView /> }.into_any()
+        }
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }
             .into_any(),

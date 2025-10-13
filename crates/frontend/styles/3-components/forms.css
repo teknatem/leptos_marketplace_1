@@ -39,6 +39,7 @@
 .form-group input[type="password"],
 .form-group input[type="number"],
 .form-group input[type="url"],
+.form-group input[type="date"],
 .form-group select,
 .form-group textarea {
     width: 100%;
@@ -48,6 +49,18 @@
     font-size: var(--font-size-sm);
     transition: border-color var(--transition-fast);
     box-sizing: border-box;
+}
+
+/* Form row - horizontal layout for multiple fields */
+.form-row {
+    display: flex;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-2xl);
+}
+
+.form-row .form-group {
+    flex: 1;
+    margin-bottom: 0;
 }
 
 .form-group input[type="checkbox"] {

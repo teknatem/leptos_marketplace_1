@@ -17,6 +17,13 @@ pub fn ImportWidget() -> impl IntoView {
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
+    let (import_a008, set_import_a008) = signal(false);
+    let (import_a009, set_import_a009) = signal(false);
+    // Даты периода (по умолчанию вчера)
+    let now = Utc::now().date_naive();
+    let yesterday = now - chrono::Duration::days(1);
+    let (date_from, set_date_from) = signal(yesterday);
+    let (date_to, set_date_to) = signal(yesterday);
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u502_session_id";
@@ -89,6 +96,7 @@ pub fn ImportWidget() -> impl IntoView {
                             set_progress.set(Some(prog.clone()));
                             if is_finished {
                                 clear_session_storage();
+                                set_session_id.set(None);
                                 break;
                             }
                         }
@@ -139,6 +147,12 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a007.get() {
                 targets.push("a007_marketplace_product".to_string());
             }
+            if import_a008.get() {
+                targets.push("a008_marketplace_sales".to_string());
+            }
+            if import_a009.get() {
+                targets.push("a009_ozon_returns".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -150,6 +164,8 @@ pub fn ImportWidget() -> impl IntoView {
                 connection_id: conn_id,
                 target_aggregates: targets,
                 mode: ImportMode::Interactive,
+                date_from: date_from.get(),
+                date_to: date_to.get(),
             };
 
             match api::start_import(request).await {
@@ -211,10 +227,64 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a007_marketplace_product - Товары маркетплейса"
                     </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a008.get()
+                            on:change=move |ev| { set_import_a008.set(event_target_checked(&ev)); }
+                        />
+                        " a008_marketplace_sales - Продажи (фин. транзакции)"
+                    </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a009.get()
+                            on:change=move |ev| { set_import_a009.set(event_target_checked(&ev)); }
+                        />
+                        " a009_ozon_returns - Возвраты OZON"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /v3/product/list, POST /v3/product/info/list"
+                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list"
                 </div>
+            </div>
+
+            // Период
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold;">{"Период:"}</label>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date_from">{"С даты"}</label>
+                        <input
+                            type="date"
+                            id="date_from"
+                            prop:value=move || date_from.get().format("%Y-%m-%d").to_string()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                    set_date_from.set(d);
+                                }
+                            }
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="date_to">{"По дату"}</label>
+                        <input
+                            type="date"
+                            id="date_to"
+                            prop:value=move || date_to.get().format("%Y-%m-%d").to_string()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                    set_date_to.set(d);
+                                }
+                            }
+                        />
+                    </div>
+                </div>
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">{"По умолчанию выбран вчерашний день."}</div>
             </div>
 
             // Кнопка запуска

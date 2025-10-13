@@ -142,6 +142,18 @@ impl MatchExecutor {
         // Очистить текущий элемент
         self.progress_tracker.set_current_item(session_id, None);
 
+        // Обновить счетчики mp_ref_count для всей номенклатуры
+        tracing::info!("Updating mp_ref_count for all nomenclature...");
+        if let Err(e) = self.update_mp_ref_counts().await {
+            tracing::error!("Failed to update mp_ref_count: {}", e);
+            self.progress_tracker.add_error(
+                session_id,
+                "Failed to update mp_ref_count".to_string(),
+                Some(e.to_string()),
+                None,
+            );
+        }
+
         // Завершить сессию
         let final_status = if self
             .progress_tracker
@@ -167,6 +179,45 @@ impl MatchExecutor {
             ambiguous
         );
 
+        Ok(())
+    }
+
+    /// Обновить счетчики mp_ref_count для всей номенклатуры
+    async fn update_mp_ref_counts(&self) -> Result<()> {
+        use std::collections::HashMap;
+
+        // Получить все товары маркетплейса с nomenclature_id
+        let all_products = a007_marketplace_product::service::list_all().await?;
+
+        // Подсчитать количество ссылок для каждой номенклатуры
+        let mut ref_counts: HashMap<String, i32> = HashMap::new();
+        for product in all_products {
+            if let Some(nomenclature_id) = &product.nomenclature_id {
+                *ref_counts.entry(nomenclature_id.clone()).or_insert(0) += 1;
+            }
+        }
+
+        tracing::info!("Found {} nomenclature items with marketplace references", ref_counts.len());
+
+        // Получить всю номенклатуру
+        let all_nomenclature = a004_nomenclature::service::list_all().await?;
+
+        // Обновить счетчики для всей номенклатуры
+        for nomenclature in all_nomenclature {
+            let nomenclature_id_str = nomenclature.base.id.as_string();
+            let count = ref_counts.get(&nomenclature_id_str).copied().unwrap_or(0);
+
+            // Обновить только если значение изменилось
+            if nomenclature.mp_ref_count != count {
+                a004_nomenclature::repository::update_mp_ref_count(
+                    nomenclature.base.id.value(),
+                    count,
+                )
+                .await?;
+            }
+        }
+
+        tracing::info!("Successfully updated mp_ref_count for all nomenclature");
         Ok(())
     }
 

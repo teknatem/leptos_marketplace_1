@@ -1,7 +1,9 @@
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
-use crate::shared::list_utils::{highlight_matches, Searchable, Sortable, SearchInput, get_sort_indicator};
+use crate::shared::list_utils::{
+    get_sort_indicator, highlight_matches, SearchInput, Searchable, Sortable,
+};
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
@@ -39,7 +41,8 @@ impl MarketplaceProductRow {
             .cloned()
             .unwrap_or_else(|| "Неизвестно".to_string());
 
-        let nomenclature_name = m.nomenclature_id
+        let nomenclature_name = m
+            .nomenclature_id
             .as_ref()
             .and_then(|id| nomenclature_map.get(id).cloned());
 
@@ -92,8 +95,15 @@ impl ExcelExportable for MarketplaceProductRow {
             self.barcode.clone().unwrap_or_else(|| "-".to_string()),
             self.price.clone(),
             self.stock.clone(),
-            if self.nomenclature_id.is_some() { "Да" } else { "Нет" }.to_string(),
-            self.nomenclature_name.clone().unwrap_or_else(|| "-".to_string()),
+            if self.nomenclature_id.is_some() {
+                "Да"
+            } else {
+                "Нет"
+            }
+            .to_string(),
+            self.nomenclature_name
+                .clone()
+                .unwrap_or_else(|| "-".to_string()),
         ]
     }
 }
@@ -107,8 +117,14 @@ impl Searchable for MarketplaceProductRow {
             || self.art.to_lowercase().contains(&filter_lower)
             || self.marketplace_sku.to_lowercase().contains(&filter_lower)
             || self.marketplace_name.to_lowercase().contains(&filter_lower)
-            || self.barcode.as_ref().map_or(false, |b| b.to_lowercase().contains(&filter_lower))
-            || self.nomenclature_name.as_ref().map_or(false, |n| n.to_lowercase().contains(&filter_lower))
+            || self
+                .barcode
+                .as_ref()
+                .map_or(false, |b| b.to_lowercase().contains(&filter_lower))
+            || self
+                .nomenclature_name
+                .as_ref()
+                .map_or(false, |n| n.to_lowercase().contains(&filter_lower))
     }
 
     fn get_field_value(&self, field: &str) -> Option<String> {
@@ -129,31 +145,56 @@ impl Sortable for MarketplaceProductRow {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
             "code" => self.code.to_lowercase().cmp(&other.code.to_lowercase()),
-            "marketplace_name" => self.marketplace_name.to_lowercase().cmp(&other.marketplace_name.to_lowercase()),
-            "product_name" => self.product_name.to_lowercase().cmp(&other.product_name.to_lowercase()),
+            "marketplace_name" => self
+                .marketplace_name
+                .to_lowercase()
+                .cmp(&other.marketplace_name.to_lowercase()),
+            "product_name" => self
+                .product_name
+                .to_lowercase()
+                .cmp(&other.product_name.to_lowercase()),
             "art" => self.art.to_lowercase().cmp(&other.art.to_lowercase()),
-            "marketplace_sku" => self.marketplace_sku.to_lowercase().cmp(&other.marketplace_sku.to_lowercase()),
+            "marketplace_sku" => self
+                .marketplace_sku
+                .to_lowercase()
+                .cmp(&other.marketplace_sku.to_lowercase()),
             "barcode" => {
-                let a = self.barcode.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                let b = other.barcode.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                let a = self
+                    .barcode
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+                let b = other
+                    .barcode
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
                 a.cmp(&b)
-            },
+            }
             "price" => {
                 // Сортируем числа правильно (парсим из строки)
                 let a = self.price.parse::<f64>().unwrap_or(0.0);
                 let b = other.price.parse::<f64>().unwrap_or(0.0);
                 a.partial_cmp(&b).unwrap_or(Ordering::Equal)
-            },
+            }
             "stock" => {
                 let a = self.stock.parse::<i32>().unwrap_or(0);
                 let b = other.stock.parse::<i32>().unwrap_or(0);
                 a.cmp(&b)
-            },
+            }
             "nomenclature_name" => {
-                let a = self.nomenclature_name.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                let b = other.nomenclature_name.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                let a = self
+                    .nomenclature_name
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+                let b = other
+                    .nomenclature_name
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
                 a.cmp(&b)
-            },
+            }
             _ => Ordering::Equal,
         }
     }
@@ -339,7 +380,11 @@ pub fn MarketplaceProductList() -> impl IntoView {
         let ascending = sort_ascending.get();
         result.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         result

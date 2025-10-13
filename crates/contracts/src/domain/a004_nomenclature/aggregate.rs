@@ -55,6 +55,9 @@ pub struct Nomenclature {
 
     #[serde(rename = "article")]
     pub article: String,
+
+    #[serde(rename = "mpRefCount", default)]
+    pub mp_ref_count: i32,
 }
 
 impl Nomenclature {
@@ -76,6 +79,7 @@ impl Nomenclature {
             is_folder,
             parent_id,
             article,
+            mp_ref_count: 0,
         }
     }
 
@@ -98,6 +102,7 @@ impl Nomenclature {
             is_folder,
             parent_id,
             article,
+            mp_ref_count: 0,
         }
     }
 
@@ -117,6 +122,7 @@ impl Nomenclature {
         self.is_folder = dto.is_folder;
         self.parent_id = dto.parent_id.clone();
         self.article = dto.article.clone().unwrap_or_default();
+        // mp_ref_count обновляется только автоматически при сопоставлении
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -204,4 +210,6 @@ pub struct NomenclatureDto {
     pub comment: Option<String>,
     #[serde(rename = "updatedAt")]
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(rename = "mpRefCount", default)]
+    pub mp_ref_count: i32,
 }

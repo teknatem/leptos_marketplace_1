@@ -18,6 +18,8 @@ pub fn Navbar() -> impl IntoView {
         ("a004_nomenclature", "Номенклатура", "list"),
         ("a005_marketplace", "Маркетплейсы", "store"),
         ("a007_marketplace_product", "Товары МП", "package"),
+        ("a008_marketplace_sales", "Продажи МП", "cash"),
+        ("a009_ozon_returns", "Возвраты OZON", "package-x"),
     ];
 
     // Интеграции: подключения + импорты
@@ -29,19 +31,21 @@ pub fn Navbar() -> impl IntoView {
         ("u501_import_from_ut", "Импорт из УТ 11", "import"),
         ("u502_import_from_ozon", "Импорт из OZON", "import"),
         ("u503_import_from_yandex", "Импорт из Yandex", "import"),
-        ("u504_import_from_wildberries", "Импорт из Wildberries", "import"),
+        (
+            "u504_import_from_wildberries",
+            "Импорт из Wildberries",
+            "import",
+        ),
     ];
 
     // Операции
-    let operations = vec![
-        ("u505_match_nomenclature", "Сопоставление", "layers"),
-    ];
+    let operations = vec![("u505_match_nomenclature", "Сопоставление", "layers")];
 
     view! {
         <nav class="main-nav-bar">
             <>
                 // Справочники
-                <div style="padding: 10px; padding-top: 30px; font-weight: bold; color: #888; font-size: 12px; text-transform: uppercase;">
+                <div class="main-nav-bar-header">
                     "Справочники"
                 </div>
                 <ul>
@@ -56,7 +60,7 @@ pub fn Navbar() -> impl IntoView {
                 </ul>
 
                 // Интеграции
-                <div style="padding: 10px; font-weight: bold; color: #888; font-size: 12px; text-transform: uppercase; margin-top: 20px;">
+                <div class="main-nav-bar-header">
                     "Интеграции"
                 </div>
                 <ul>
@@ -71,7 +75,7 @@ pub fn Navbar() -> impl IntoView {
                 </ul>
 
                 // Операции
-                <div style="padding: 10px; font-weight: bold; color: #888; font-size: 12px; text-transform: uppercase; margin-top: 20px;">
+                <div class="main-nav-bar-header">
                     "Операции"
                 </div>
                 <ul>

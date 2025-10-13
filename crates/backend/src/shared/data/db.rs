@@ -262,6 +262,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 is_folder INTEGER NOT NULL DEFAULT 0,
                 parent_id TEXT,
                 article TEXT NOT NULL DEFAULT '',
+                mp_ref_count INTEGER NOT NULL DEFAULT 0,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -274,6 +275,28 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_nomenclature_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Ensure mp_ref_count column exists; add if missing
+        let pragma = format!("PRAGMA table_info('{}');", "a004_nomenclature");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_mp_ref_count = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "mp_ref_count" {
+                has_mp_ref_count = true;
+                break;
+            }
+        }
+        if !has_mp_ref_count {
+            tracing::info!("Adding mp_ref_count column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN mp_ref_count INTEGER NOT NULL DEFAULT 0;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // a005_marketplace
@@ -432,6 +455,161 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_marketplace_product_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a008_marketplace_sales table
+    let check_marketplace_sales = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a008_marketplace_sales';
+    "#;
+    let marketplace_sales_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_marketplace_sales.to_string(),
+        ))
+        .await?;
+
+    if marketplace_sales_exists.is_empty() {
+        tracing::info!("Creating a008_marketplace_sales table");
+        let create_marketplace_sales_table_sql = r#"
+            CREATE TABLE a008_marketplace_sales (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                connection_id TEXT NOT NULL,
+                organization_id TEXT NOT NULL,
+                marketplace_id TEXT NOT NULL,
+                accrual_date TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                revenue REAL NOT NULL,
+                operation_type TEXT NOT NULL DEFAULT '',
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_marketplace_sales_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Unique index on (connection_id, product_id, accrual_date, operation_type)
+        let create_idx_sql = r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_a008_sales_unique
+            ON a008_marketplace_sales (connection_id, product_id, accrual_date, operation_type);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_sql.to_string(),
+        ))
+        .await?;
+    } else {
+        // Ensure operation_type column and new unique index exist
+        let pragma = format!("PRAGMA table_info('{}');", "a008_marketplace_sales");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_operation_type = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "operation_type" {
+                has_operation_type = true;
+                break;
+            }
+        }
+        if !has_operation_type {
+            tracing::info!("Adding operation_type column to a008_marketplace_sales");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a008_marketplace_sales ADD COLUMN operation_type TEXT NOT NULL DEFAULT '';".to_string(),
+            ))
+            .await?;
+        }
+
+        // Recreate unique index with operation_type if the old one exists
+        let drop_old_idx = r#"
+            DROP INDEX IF EXISTS idx_a008_sales_unique;
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            drop_old_idx.to_string(),
+        ))
+        .await?;
+        let create_new_idx = r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_a008_sales_unique
+            ON a008_marketplace_sales (connection_id, product_id, accrual_date, operation_type);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_new_idx.to_string(),
+        ))
+        .await?;
+    }
+
+    // a009_ozon_returns table
+    let check_ozon_returns = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a009_ozon_returns';
+    "#;
+    let ozon_returns_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ozon_returns.to_string(),
+        ))
+        .await?;
+
+    if ozon_returns_exists.is_empty() {
+        tracing::info!("Creating a009_ozon_returns table");
+        let create_ozon_returns_table_sql = r#"
+            CREATE TABLE a009_ozon_returns (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                connection_id TEXT NOT NULL,
+                organization_id TEXT NOT NULL,
+                marketplace_id TEXT NOT NULL,
+                return_id TEXT NOT NULL,
+                return_date TEXT NOT NULL,
+                return_reason_name TEXT NOT NULL,
+                return_type TEXT NOT NULL,
+                order_id TEXT NOT NULL,
+                order_number TEXT NOT NULL,
+                sku TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL,
+                posting_number TEXT NOT NULL,
+                clearing_id TEXT,
+                return_clearing_id TEXT,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_ozon_returns_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Unique index on (connection_id, return_id, sku) to prevent duplicates
+        let create_idx_sql = r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_a009_returns_unique
+            ON a009_ozon_returns (connection_id, return_id, sku);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_sql.to_string(),
         ))
         .await?;
     }

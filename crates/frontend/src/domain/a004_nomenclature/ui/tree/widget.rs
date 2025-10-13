@@ -192,23 +192,49 @@ fn sort_tree_nodes(nodes: &mut Vec<TreeNode>, sort_field: &str, ascending: bool)
 }
 
 /// Фильтрация дерева: возвращает узлы, соответствующие фильтру (рекурсивно)
-fn filter_tree(nodes: Vec<TreeNode>, filter: &str) -> Vec<TreeNode> {
-    // Минимум 3 символа для поиска
-    if filter.trim().is_empty() || filter.trim().len() < 3 {
-        return nodes;
-    }
-
-    let filter_lower = filter.to_lowercase();
+fn filter_tree(nodes: Vec<TreeNode>, filter: &str, show_only_mp: bool) -> Vec<TreeNode> {
     let mut result = Vec::new();
 
     for node in nodes {
-        let matches = node.item.base.description.to_lowercase().contains(&filter_lower)
-            || node.item.base.code.to_lowercase().contains(&filter_lower)
-            || node.item.article.to_lowercase().contains(&filter_lower);
+        // Проверка текстового фильтра
+        let text_matches = if filter.trim().is_empty() || filter.trim().len() < 3 {
+            true
+        } else {
+            let filter_lower = filter.to_lowercase();
+            node.item.base.description.to_lowercase().contains(&filter_lower)
+                || node.item.base.code.to_lowercase().contains(&filter_lower)
+                || node.item.article.to_lowercase().contains(&filter_lower)
+        };
 
-        let filtered_children = filter_tree(node.children.clone(), filter);
+        // Проверка фильтра "Только из маркетплейсов"
+        let mp_matches = if show_only_mp {
+            // Для элементов (не папок) проверяем mp_ref_count > 0
+            if !node.item.is_folder {
+                node.item.mp_ref_count > 0
+            } else {
+                // Для папок всегда true, но проверим детей ниже
+                true
+            }
+        } else {
+            true
+        };
 
-        if matches || !filtered_children.is_empty() {
+        // Рекурсивно фильтруем детей
+        let filtered_children = filter_tree(node.children.clone(), filter, show_only_mp);
+
+        // Включаем узел если:
+        // 1. Он сам подходит по всем фильтрам
+        // 2. Или у него есть дети, которые подходят (для папок)
+        let should_include = if node.item.is_folder {
+            // Папка включается если у нее есть подходящие дети
+            // (не проверяем text_matches для папки, только наличие детей)
+            !filtered_children.is_empty()
+        } else {
+            // Элемент включается если он сам подходит по всем фильтрам
+            text_matches && mp_matches
+        };
+
+        if should_include {
             let new_node = TreeNode {
                 item: node.item.clone(),
                 children: filtered_children,
@@ -383,6 +409,7 @@ pub fn NomenclatureTree() -> impl IntoView {
     let (id_to_label, set_id_to_label) = signal::<HashMap<String, String>>(HashMap::new());
     let (filter_text, set_filter_text) = signal(String::new());
     let (filter_input, set_filter_input) = signal(String::new()); // Для debounce
+    let (show_only_mp, set_show_only_mp) = signal(false); // Фильтр "Только из маркетплейсов"
     let (is_loading, set_is_loading) = signal(false);
     let (sort_field, set_sort_field) = signal::<String>("description".to_string());
     let (sort_ascending, set_sort_ascending) = signal(true);
@@ -446,7 +473,8 @@ pub fn NomenclatureTree() -> impl IntoView {
     let filtered_roots = move || {
         let roots = all_roots.get();
         let filter = filter_text.get();
-        let mut filtered = filter_tree(roots, &filter);
+        let only_mp = show_only_mp.get();
+        let mut filtered = filter_tree(roots, &filter, only_mp);
         let field = sort_field.get();
         let ascending = sort_ascending.get();
         sort_tree_nodes(&mut filtered, &field, ascending);
@@ -520,6 +548,17 @@ pub fn NomenclatureTree() -> impl IntoView {
                             view! { <></> }.into_any()
                         }}
                     </div>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 15px;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || show_only_mp.get()
+                            on:change=move |ev| {
+                                set_show_only_mp.set(event_target_checked(&ev));
+                            }
+                            style="cursor: pointer;"
+                        />
+                        <span>{"Только из маркетплейсов"}</span>
+                    </label>
                     <button class="btn btn-primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
                         {icon("plus")}
                         {"Новый"}

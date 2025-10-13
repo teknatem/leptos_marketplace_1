@@ -10,23 +10,29 @@
     padding: 0;
     margin: 0;
     font-family: var(--font-family-base);
+    /* Stable row height for nav items */
+    --nav-item-height: 40px;
 }
 
 .main-nav-bar ul {
     list-style: none;
-    padding: var(--space-4xl) 0 0;
+    /* ~10% tighter from 20px top padding */
+    padding: calc(var(--space-4xl) - 2px) 0 0;
     margin: 0;
 }
 
 .main-nav-bar li {
     display: flex;
     align-items: center;
-    padding: var(--space-xl) var(--space-4xl);
+    /* 12px -> 10px vertical padding */
+    padding: var(--space-lg) var(--space-4xl);
     color: var(--color-text-light);
     font-size: var(--font-size-base);
     cursor: pointer;
     position: relative;
     border-radius: var(--radius-sm);
+    height: var(--nav-item-height);
+    line-height: 1;
     transition: background var(--transition-slow),
                 color var(--transition-slow),
                 font-size var(--transition-slow);
@@ -35,7 +41,7 @@
 .main-nav-bar li:hover,
 .main-nav-bar li:focus-visible {
     background: var(--gradient-navbar-hover);
-    font-size: var(--font-size-lg);
+    font-size: calc(var(--font-size-base) + 1px);
 }
 
 .main-nav-bar li i,
@@ -46,9 +52,11 @@
 
 .main-nav-bar .main-nav-bar-header {
     font-weight: var(--font-weight-semibold);
-    font-size: var(--font-size-base);
-    padding: var(--space-3xl) var(--space-5xl);
-    color: #484848;
+    font-size: var(--font-size-sm);
+    /* was var(--space-3xl)/var(--space-5xl); tighten ~10% */
+    padding: 5px 5px;
+    margin-top: var(--space-2xl);
+    color: #87c48b;
 }
 
 .main-nav-bar li:last-child {

@@ -5,3 +5,5 @@ pub mod a004_nomenclature;
 pub mod a005_marketplace;
 pub mod a006_connection_mp;
 pub mod a007_marketplace_product;
+pub mod a008_marketplace_sales;
+pub mod a009_ozon_returns;

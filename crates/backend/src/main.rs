@@ -32,9 +32,11 @@ async fn main() -> anyhow::Result<()> {
             std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::fmt::layer()
-            .with_writer(std::sync::Arc::new(log_file))
-            .with_ansi(false))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::sync::Arc::new(log_file))
+                .with_ansi(false),
+        )
         .init();
 
     // Define a database path in the `target` directory in a platform-agnostic way
@@ -228,7 +230,9 @@ async fn main() -> anyhow::Result<()> {
     static OZON_IMPORT_EXECUTOR: Lazy<Arc<usecases::u502_import_from_ozon::ImportExecutor>> =
         Lazy::new(|| {
             let tracker = Arc::new(usecases::u502_import_from_ozon::ProgressTracker::new());
-            Arc::new(usecases::u502_import_from_ozon::ImportExecutor::new(tracker))
+            Arc::new(usecases::u502_import_from_ozon::ImportExecutor::new(
+                tracker,
+            ))
         });
 
     async fn start_ozon_import_handler(
@@ -262,7 +266,9 @@ async fn main() -> anyhow::Result<()> {
     static YANDEX_IMPORT_EXECUTOR: Lazy<Arc<usecases::u503_import_from_yandex::ImportExecutor>> =
         Lazy::new(|| {
             let tracker = Arc::new(usecases::u503_import_from_yandex::ProgressTracker::new());
-            Arc::new(usecases::u503_import_from_yandex::ImportExecutor::new(tracker))
+            Arc::new(usecases::u503_import_from_yandex::ImportExecutor::new(
+                tracker,
+            ))
         });
 
     async fn start_yandex_import_handler(
@@ -296,7 +302,9 @@ async fn main() -> anyhow::Result<()> {
     static WB_IMPORT_EXECUTOR: Lazy<Arc<usecases::u504_import_from_wildberries::ImportExecutor>> =
         Lazy::new(|| {
             let tracker = Arc::new(usecases::u504_import_from_wildberries::ProgressTracker::new());
-            Arc::new(usecases::u504_import_from_wildberries::ImportExecutor::new(tracker))
+            Arc::new(usecases::u504_import_from_wildberries::ImportExecutor::new(
+                tracker,
+            ))
         });
 
     async fn start_wildberries_import_handler(
@@ -327,11 +335,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // UseCase u505: Match Nomenclature handlers
-    static MATCH_NOMENCLATURE_EXECUTOR: Lazy<Arc<usecases::u505_match_nomenclature::MatchExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u505_match_nomenclature::ProgressTracker::new());
-            Arc::new(usecases::u505_match_nomenclature::MatchExecutor::new(tracker))
-        });
+    static MATCH_NOMENCLATURE_EXECUTOR: Lazy<
+        Arc<usecases::u505_match_nomenclature::MatchExecutor>,
+    > = Lazy::new(|| {
+        let tracker = Arc::new(usecases::u505_match_nomenclature::ProgressTracker::new());
+        Arc::new(usecases::u505_match_nomenclature::MatchExecutor::new(
+            tracker,
+        ))
+    });
 
     async fn start_match_nomenclature_handler(
         Json(request): Json<contracts::usecases::u505_match_nomenclature::MatchRequest>,
@@ -617,14 +628,16 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/connection_mp/test",
-            post(|Json(dto): Json<
-                contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
-            >| async move {
-                match domain::a006_connection_mp::service::test_connection(dto).await {
-                    Ok(result) => Ok(Json(result)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            post(
+                |Json(dto): Json<
+                    contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
+                >| async move {
+                    match domain::a006_connection_mp::service::test_connection(dto).await {
+                        Ok(result) => Ok(Json(result)),
+                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    }
+                },
+            ),
         )
         // Marketplace product handlers
         .route(
@@ -695,6 +708,120 @@ async fn main() -> anyhow::Result<()> {
                 }
             }),
         )
+        // Marketplace sales handlers
+        .route(
+            "/api/marketplace_sales",
+            get(|| async {
+                match domain::a008_marketplace_sales::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a008_marketplace_sales::aggregate::MarketplaceSalesDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a008_marketplace_sales::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a008_marketplace_sales::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(e) => {
+                            tracing::error!("Failed to save marketplace_sales: {}", e);
+                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                        }
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/marketplace_sales/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a008_marketplace_sales::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a008_marketplace_sales::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
+        // OZON Returns handlers
+        .route(
+            "/api/ozon_returns",
+            get(|| async {
+                match domain::a009_ozon_returns::service::list_all().await {
+                    Ok(v) => Ok(Json(v)),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .post(
+                |Json(dto): Json<
+                    contracts::domain::a009_ozon_returns::aggregate::OzonReturnsDto,
+                >| async move {
+                    let result = if dto.id.is_some() {
+                        domain::a009_ozon_returns::service::update(dto)
+                            .await
+                            .map(|_| uuid::Uuid::nil().to_string())
+                    } else {
+                        domain::a009_ozon_returns::service::create(dto)
+                            .await
+                            .map(|id| id.to_string())
+                    };
+                    match result {
+                        Ok(id) => Ok(Json(json!({"id": id}))),
+                        Err(e) => {
+                            tracing::error!("Failed to save ozon_returns: {}", e);
+                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                        }
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/ozon_returns/:id",
+            get(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a009_ozon_returns::service::get_by_id(uuid).await {
+                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            })
+            .delete(|Path(id): Path<String>| async move {
+                let uuid = match uuid::Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+                };
+                match domain::a009_ozon_returns::service::delete(uuid).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                }
+            }),
+        )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
         .route(
@@ -714,13 +841,19 @@ async fn main() -> anyhow::Result<()> {
             get(get_yandex_import_progress_handler),
         )
         // UseCase u504: Import from Wildberries
-        .route("/api/u504/import/start", post(start_wildberries_import_handler))
+        .route(
+            "/api/u504/import/start",
+            post(start_wildberries_import_handler),
+        )
         .route(
             "/api/u504/import/:session_id/progress",
             get(get_wildberries_import_progress_handler),
         )
         // UseCase u505: Match Nomenclature
-        .route("/api/u505/match/start", post(start_match_nomenclature_handler))
+        .route(
+            "/api/u505/match/start",
+            post(start_match_nomenclature_handler),
+        )
         .route(
             "/api/u505/match/:session_id/progress",
             get(get_match_nomenclature_progress_handler),
@@ -736,7 +869,13 @@ async fn main() -> anyhow::Result<()> {
             })
             .post(
                 |Json(req): Json<contracts::shared::logger::CreateLogRequest>| async move {
-                    match shared::logger::repository::log_event(&req.source, &req.category, &req.message).await {
+                    match shared::logger::repository::log_event(
+                        &req.source,
+                        &req.category,
+                        &req.message,
+                    )
+                    .await
+                    {
                         Ok(_) => axum::http::StatusCode::OK,
                         Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     }
