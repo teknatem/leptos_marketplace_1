@@ -4,7 +4,8 @@
 *.pdb
 
 # Leptos / Trunk
-/dist/
+crates/frontend/dist/
+dist/
 
 # IDE
 .vscode/
@@ -31,3 +32,4 @@ Thumbs.db
 .env.local
 
 .claude/settings.local.json
+

@@ -49,6 +49,20 @@ Leptos CSR app with global context pattern:
 - REST endpoints in `main.rs` call service methods
 - Database initialized at startup with schema bootstrapping
 
+## Prerequisites
+
+### Frontend Dependencies
+
+Before running the frontend, install the following:
+
+```bash
+# Install Trunk (WebAssembly bundler)
+cargo install trunk
+
+# Add WebAssembly target
+rustup target add wasm32-unknown-unknown
+```
+
 ## Development Commands
 
 ### Build & Run
