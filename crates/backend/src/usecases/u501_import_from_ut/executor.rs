@@ -238,6 +238,9 @@ impl ImportExecutor {
             if value_len < page_size as usize {
                 break;
             }
+
+            // Небольшая пауза между батчами для снижения нагрузки на сервер 1С
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
         self.progress_tracker
@@ -346,6 +349,9 @@ impl ImportExecutor {
             if batch_size < page_size as usize {
                 break;
             }
+
+            // Небольшая пауза между батчами для снижения нагрузки на сервер 1С
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
         // Очистить текущий элемент после завершения
@@ -432,6 +438,8 @@ impl ImportExecutor {
                 total_processed
             );
 
+            let batch_start = std::time::Instant::now();
+
             // Обрабатываем ВСЕ элементы из пакета (и папки, и элементы)
             for odata_item in response.value {
                 let item_type = if odata_item.is_folder { "Папка" } else { "Элемент" };
@@ -492,12 +500,22 @@ impl ImportExecutor {
                 );
             }
 
+            let batch_elapsed = batch_start.elapsed();
+            tracing::info!(
+                "✅ Nomenclature batch processed in {:.2}s",
+                batch_elapsed.as_secs_f64()
+            );
+
             skip += page_size;
 
             // Если получили меньше элементов чем запрашивали - это последний батч
             if batch_size < page_size as usize {
                 break;
             }
+
+            // Небольшая пауза между батчами для снижения нагрузки на сервер 1С
+            tracing::info!("⏸️  Pausing 1s before next batch...");
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
         // Очистить текущий элемент после завершения

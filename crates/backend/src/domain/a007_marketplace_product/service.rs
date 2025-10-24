@@ -15,6 +15,7 @@ pub async fn create(dto: MarketplaceProductDto) -> anyhow::Result<Uuid> {
         code,
         dto.description,
         dto.marketplace_id,
+        dto.connection_mp_id,
         dto.marketplace_sku,
         dto.barcode,
         dto.art,
@@ -112,6 +113,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             code: Some("mp-wb-001".into()),
             description: "Тестовый товар Wildberries".into(),
             marketplace_id: "marketplace-wb-id".into(), // Здесь нужен реальный ID из a005
+            connection_mp_id: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
             marketplace_sku: "WB12345678".into(),
             barcode: Some("4607012345678".into()),
             art: "ART-WB-001".into(),
@@ -131,6 +133,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             code: Some("mp-ozon-001".into()),
             description: "Тестовый товар Ozon".into(),
             marketplace_id: "marketplace-ozon-id".into(), // Здесь нужен реальный ID из a005
+            connection_mp_id: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
             marketplace_sku: "OZON87654321".into(),
             barcode: Some("4607087654321".into()),
             art: "ART-OZON-001".into(),

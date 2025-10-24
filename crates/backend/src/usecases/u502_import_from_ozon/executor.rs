@@ -346,6 +346,7 @@ impl ImportExecutor {
                 product.offer_id.clone(),
                 product.name.clone(),
                 connection.marketplace_id.clone(),
+                connection.base.id.as_string(),
                 marketplace_sku,
                 barcode,
                 product.offer_id.clone(),
@@ -482,7 +483,23 @@ impl ImportExecutor {
                             mp.to_string_id()
                         } else {
                             let new = contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct::new_for_insert(
-                                key.clone(), key.clone(), connection.marketplace_id.clone(), key.clone(), None, key.clone(), key.clone(), None, None, None, None, None, Some(chrono::Utc::now()), None, None, Some("auto-created from finance operation".to_string()),
+                                key.clone(),
+                                key.clone(),
+                                connection.marketplace_id.clone(),
+                                connection.base.id.as_string(),
+                                key.clone(),
+                                None,
+                                key.clone(),
+                                key.clone(),
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                Some(chrono::Utc::now()),
+                                None,
+                                None,
+                                Some("auto-created from finance operation".to_string()),
                             );
                             let id = a007_marketplace_product::repository::insert(&new).await?;
                             id.to_string()

@@ -1,6 +1,7 @@
 pub mod ozon;
 pub mod wildberries;
 pub mod yandex_market;
+pub mod lemanapro;
 
 use async_trait::async_trait;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto;
@@ -78,10 +79,6 @@ pub async fn test_marketplace_connection(
             message: "Интеграция с Купер пока не реализована".into(),
             details: None,
         },
-        MarketplaceType::LemanaPro => TestConnectionResult {
-            success: false,
-            message: "Интеграция с ЛеманаПро пока не реализована".into(),
-            details: None,
-        },
+        MarketplaceType::LemanaPro => lemanapro::LemanaProClient::test_connection(dto).await,
     }
 }

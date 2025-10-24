@@ -50,6 +50,10 @@ pub struct MarketplaceProduct {
     #[serde(rename = "marketplaceId")]
     pub marketplace_id: String,
 
+    /// ID подключения к маркетплейсу (ссылка на a006_connection_mp)
+    #[serde(rename = "connectionMpId")]
+    pub connection_mp_id: String,
+
     /// Внутренний ID товара в маркетплейсе
     #[serde(rename = "marketplaceSku")]
     pub marketplace_sku: String,
@@ -101,6 +105,7 @@ impl MarketplaceProduct {
         code: String,
         description: String,
         marketplace_id: String,
+        connection_mp_id: String,
         marketplace_sku: String,
         barcode: Option<String>,
         art: String,
@@ -125,6 +130,7 @@ impl MarketplaceProduct {
         Self {
             base,
             marketplace_id,
+            connection_mp_id,
             marketplace_sku,
             barcode,
             art,
@@ -147,6 +153,7 @@ impl MarketplaceProduct {
         code: String,
         description: String,
         marketplace_id: String,
+        connection_mp_id: String,
         marketplace_sku: String,
         barcode: Option<String>,
         art: String,
@@ -171,6 +178,7 @@ impl MarketplaceProduct {
         Self {
             base,
             marketplace_id,
+            connection_mp_id,
             marketplace_sku,
             barcode,
             art,
@@ -202,6 +210,7 @@ impl MarketplaceProduct {
         self.base.description = dto.description.clone();
         self.base.comment = dto.comment.clone();
         self.marketplace_id = dto.marketplace_id.clone();
+        self.connection_mp_id = dto.connection_mp_id.clone();
         self.marketplace_sku = dto.marketplace_sku.clone();
         self.barcode = dto.barcode.clone();
         self.art = dto.art.clone();
@@ -334,6 +343,8 @@ pub struct MarketplaceProductDto {
     pub description: String,
     #[serde(rename = "marketplaceId")]
     pub marketplace_id: String,
+    #[serde(rename = "connectionMpId")]
+    pub connection_mp_id: String,
     #[serde(rename = "marketplaceSku")]
     pub marketplace_sku: String,
     pub barcode: Option<String>,

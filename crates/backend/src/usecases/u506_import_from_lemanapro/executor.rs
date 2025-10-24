@@ -1,8 +1,8 @@
-use super::{progress_tracker::ProgressTracker, yandex_api_client::YandexApiClient};
+use super::{lemanapro_api_client::LemanaProApiClient, progress_tracker::ProgressTracker};
 use crate::domain::a007_marketplace_product;
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
-use contracts::usecases::u503_import_from_yandex::{
+use contracts::usecases::u506_import_from_lemanapro::{
     progress::ImportStatus,
     request::ImportRequest,
     response::{ImportResponse, ImportStartStatus},
@@ -10,16 +10,16 @@ use contracts::usecases::u503_import_from_yandex::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Executor для UseCase импорта из Yandex Market
+/// Executor для UseCase импорта из ЛеманаПро
 pub struct ImportExecutor {
-    api_client: Arc<YandexApiClient>,
+    api_client: Arc<LemanaProApiClient>,
     progress_tracker: Arc<ProgressTracker>,
 }
 
 impl ImportExecutor {
     pub fn new(progress_tracker: Arc<ProgressTracker>) -> Self {
         Self {
-            api_client: Arc::new(YandexApiClient::new()),
+            api_client: Arc::new(LemanaProApiClient::new()),
             progress_tracker,
         }
     }
@@ -87,7 +87,7 @@ impl ImportExecutor {
     pub fn get_progress(
         &self,
         session_id: &str,
-    ) -> Option<contracts::usecases::u503_import_from_yandex::progress::ImportProgress> {
+    ) -> Option<contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress> {
         self.progress_tracker.get_progress(session_id)
     }
 
@@ -98,7 +98,7 @@ impl ImportExecutor {
         request: &ImportRequest,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
     ) -> Result<()> {
-        tracing::info!("Starting Yandex Market import for session: {}", session_id);
+        tracing::info!("Starting LemanaPro import for session: {}", session_id);
 
         for aggregate_index in &request.target_aggregates {
             match aggregate_index.as_str() {
@@ -138,7 +138,7 @@ impl ImportExecutor {
         Ok(())
     }
 
-    /// Импорт товаров из Yandex Market
+    /// Импорт товаров из ЛеманаПро
     async fn import_marketplace_products(
         &self,
         session_id: &str,
@@ -147,79 +147,42 @@ impl ImportExecutor {
         tracing::info!("Importing marketplace products for session: {}", session_id);
 
         let aggregate_index = "a007_marketplace_product";
-        let page_size = 100;
+        let per_page = 100; // API supports up to 1500, but 100 is reasonable for batch processing
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
-        let mut page_token: Option<String> = None;
-        let mut expected_total: Option<i32> = None;
+        let mut page = 1;
+        let mut total_count: Option<i32> = None;
 
-        // Получаем товары страницами через Yandex Market API
+        // Получаем товары страницами через /b2bintegration-products/v1/products
         loop {
-            tracing::info!(
-                "Fetching page with page_token: {:?}",
-                page_token.as_ref().map(|t| &t[..t.len().min(50)])
-            );
-
-            let list_response = self
+            let response = self
                 .api_client
-                .fetch_product_list(connection, page_size, page_token.clone())
+                .fetch_products(connection, page, per_page, None)
                 .await?;
 
-            // Сохраняем paging ДО того, как заберем entries
-            let next_page_token = list_response.result.paging.next_page_token.clone();
-
-            // Если API вернул total, сохраняем его (только при первом запросе)
-            if expected_total.is_none() {
-                if let Some(total) = list_response.result.paging.total {
-                    expected_total = Some(total as i32);
-                    tracing::info!("API returned total count: {}", total);
-                }
+            // На первой странице получаем общее количество
+            if page == 1 {
+                total_count = response.paging.as_ref().map(|p| p.total_count);
+                tracing::info!("Total products available: {:?}", total_count);
             }
 
-            let entries = list_response.result.offer_mapping_entries;
-            let first_ids_preview: Vec<String> = entries
-                .iter()
-                .take(3)
-                .map(|e| e.offer.offer_id.clone())
-                .collect();
-            tracing::info!(
-                "Page stats: token_in={:?}, token_out={:?}, batch_size={}, first_ids={:?}",
-                page_token.as_ref().map(|t| &t[..t.len().min(50)]),
-                next_page_token.as_ref().map(|t| &t[..t.len().min(50)]),
-                entries.len(),
-                first_ids_preview
-            );
-            if entries.is_empty() {
-                tracing::info!("Received empty batch, stopping pagination");
+            let products = response.products;
+            if products.is_empty() {
                 break;
             }
 
-            let batch_size = entries.len();
+            let batch_size = products.len();
             tracing::info!(
-                "Processing batch: {} items, total so far: {}",
+                "Processing page {}: {} items, total so far: {}",
+                page,
                 batch_size,
                 total_processed
             );
 
-            // Группируем offer_id для batch запроса к offer-cards
-            let offer_ids: Vec<String> = entries.iter().map(|e| e.offer.offer_id.clone()).collect();
-
-            // Получаем детальную информацию
-            let info_response = self
-                .api_client
-                .fetch_product_info(connection, offer_ids)
-                .await?;
-
             // Обрабатываем каждый товар
-            for offer_card in info_response.result.offer_cards {
-                let product_name = offer_card
-                    .mapping
-                    .as_ref()
-                    .and_then(|m| m.market_sku_name.clone())
-                    .unwrap_or_else(|| "Без названия".to_string());
-
-                let display_name = format!("{} - {}", offer_card.offer_id, product_name);
+            for product in products {
+                let display_name = format!("{} - {}", product.product_item, product.product_name);
 
                 self.progress_tracker.set_current_item(
                     session_id,
@@ -227,7 +190,7 @@ impl ImportExecutor {
                     Some(display_name),
                 );
 
-                match self.process_product(connection, &offer_card).await {
+                match self.process_product(connection, &product).await {
                     Ok(is_new) => {
                         total_processed += 1;
                         if is_new {
@@ -237,22 +200,26 @@ impl ImportExecutor {
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to process product {}: {}", offer_card.offer_id, e);
+                        tracing::error!(
+                            "Failed to process product {}: {}",
+                            product.product_item,
+                            e
+                        );
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
-                            format!("Failed to process product {}", offer_card.offer_id),
+                            format!("Failed to process product {}", product.product_item),
                             Some(e.to_string()),
                         );
                     }
                 }
 
-                // Обновить прогресс (используем expected_total если API его вернул)
+                // Обновить прогресс
                 self.progress_tracker.update_aggregate(
                     session_id,
                     aggregate_index,
                     total_processed,
-                    expected_total,
+                    response.paging.as_ref().map(|p| p.total_count),
                     total_inserted,
                     total_updated,
                 );
@@ -262,39 +229,23 @@ impl ImportExecutor {
             self.progress_tracker
                 .set_current_item(session_id, aggregate_index, None);
 
-            // Обновляем page_token для следующей страницы
-            let old_token = page_token.clone();
-            page_token = next_page_token;
-
-            tracing::info!(
-                "Page token updated: old={:?}, new={:?}",
-                old_token.as_ref().map(|t| &t[..t.len().min(50)]),
-                page_token.as_ref().map(|t| &t[..t.len().min(50)])
-            );
-
-            // Если нет next_page_token, значит это последняя страница
-            if page_token.is_none() {
-                tracing::info!("No next_page_token, stopping pagination");
+            // Проверяем, есть ли еще страницы
+            if let Some(paging) = &response.paging {
+                let total_pages = (paging.total_count as f64 / paging.per_page as f64).ceil() as i32;
+                if page >= total_pages {
+                    break;
+                }
+            } else {
+                // Если нет информации о пагинации, выходим
                 break;
             }
 
-            // Защита от зацикливания: если токен не изменился, прекращаем
-            if old_token.is_some() && old_token == page_token {
-                tracing::warn!(
-                    "Page token did not change, stopping to prevent infinite loop. Token: {:?}",
-                    page_token.as_ref().map(|t| &t[..t.len().min(50)])
-                );
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    "Pagination stopped".to_string(),
-                    Some(
-                        "API returned the same page token, possible API issue or server caching"
-                            .to_string(),
-                    ),
-                );
+            // Если получили меньше per_page, значит это последняя страница
+            if batch_size < per_page as usize {
                 break;
             }
+
+            page += 1;
         }
 
         self.progress_tracker
@@ -313,56 +264,56 @@ impl ImportExecutor {
     async fn process_product(
         &self,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
-        product: &super::yandex_api_client::YandexOfferCard,
+        product: &super::lemanapro_api_client::LemanaProProduct,
     ) -> Result<bool> {
         use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 
-        // Используем offer_id как marketplace_sku
-        let marketplace_sku = product.offer_id.clone();
+        // Проверяем, существует ли товар по marketplace_sku (productItem)
+        let marketplace_sku = product.product_item.to_string();
         let existing = a007_marketplace_product::repository::get_by_marketplace_sku(
             &connection.marketplace_id,
             &marketplace_sku,
         )
         .await?;
 
-        // Парсим цену
-        let price = product.price.as_ref().map(|p| p.value);
-
-        // Берем первый barcode из списка
-        let barcode = product.barcodes.first().cloned();
-
-        // Получаем category_id и category_name из mapping
+        // Получаем category_id и category_name из categories
         let (category_id, category_name) = product
-            .mapping
+            .categories
             .as_ref()
-            .and_then(|m| {
-                m.market_category_id
-                    .map(|id| (Some(id.to_string()), m.market_category_name.clone()))
+            .map(|cat| {
+                (
+                    cat.category_id.clone(),
+                    cat.category_name.clone(),
+                )
             })
             .unwrap_or((None, None));
 
-        // Получаем название товара из mapping.marketSkuName
-        let product_name = product
-            .mapping
-            .as_ref()
-            .and_then(|m| m.market_sku_name.clone())
-            .unwrap_or_else(|| "Без названия".to_string());
+        // Получаем бренд
+        let brand = product.product_brand.clone();
+
+        // Получаем barcode
+        let barcode = product.product_barcode.clone();
+
+        // Получаем URL товара
+        let marketplace_url = product.product_url.clone();
 
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
             tracing::debug!("Updating existing product: {}", marketplace_sku);
 
-            existing_product.base.code = product.offer_id.clone();
-            existing_product.base.description = product_name.clone();
-            existing_product.marketplace_sku = marketplace_sku;
+            existing_product.base.code = marketplace_sku.clone();
+            existing_product.base.description = product.product_name.clone();
+            existing_product.marketplace_sku = marketplace_sku.clone();
             existing_product.barcode = barcode.clone();
-            existing_product.art = product.offer_id.clone();
-            existing_product.product_name = product_name.clone();
-            existing_product.brand = product.vendor.clone();
-            existing_product.category_id = category_id;
-            existing_product.category_name = category_name;
-            existing_product.price = price;
+            existing_product.art = marketplace_sku.clone();
+            existing_product.product_name = product.product_name.clone();
+            existing_product.brand = brand.clone();
+            existing_product.category_id = category_id.clone();
+            existing_product.category_name = category_name.clone();
+            existing_product.marketplace_url = marketplace_url.clone();
             existing_product.last_update = Some(chrono::Utc::now());
+            // Примечание: цена должна быть получена через отдельный API /b2bintegration/sale-prices/v1/sales-prices
+            // Пока оставляем существующую цену
             existing_product.before_write();
 
             a007_marketplace_product::repository::update(&existing_product).await?;
@@ -372,23 +323,23 @@ impl ImportExecutor {
             tracing::debug!("Inserting new product: {}", marketplace_sku);
 
             let new_product = MarketplaceProduct::new_for_insert(
-                product.offer_id.clone(),
-                product_name.clone(),
+                marketplace_sku.clone(),
+                product.product_name.clone(),
                 connection.marketplace_id.clone(),
                 connection.base.id.as_string(),
-                marketplace_sku,
+                marketplace_sku.clone(),
                 barcode,
-                product.offer_id.clone(),
-                product_name,
-                product.vendor.clone(),
+                marketplace_sku.clone(),
+                product.product_name.clone(),
+                brand,
                 category_id,
                 category_name,
-                price,
-                None, // stock - не доступен в базовом API
+                None, // price - должна быть получена через отдельный API
+                None, // stock - информация о остатках не предоставляется в products API
                 Some(chrono::Utc::now()),
-                None, // marketplace_url
+                marketplace_url,
                 None, // nomenclature_id
-                None, // comment
+                Some("Imported from LemanaPro".to_string()),
             );
 
             a007_marketplace_product::repository::insert(&new_product).await?;
@@ -405,3 +356,4 @@ impl Clone for ImportExecutor {
         }
     }
 }
+

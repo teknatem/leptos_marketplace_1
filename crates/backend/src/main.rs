@@ -371,6 +371,42 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // UseCase u506: Import from LemanaPro handlers
+    static LEMANAPRO_IMPORT_EXECUTOR: Lazy<Arc<usecases::u506_import_from_lemanapro::ImportExecutor>> =
+        Lazy::new(|| {
+            let tracker = Arc::new(usecases::u506_import_from_lemanapro::ProgressTracker::new());
+            Arc::new(usecases::u506_import_from_lemanapro::ImportExecutor::new(
+                tracker,
+            ))
+        });
+
+    async fn start_lemanapro_import_handler(
+        Json(request): Json<contracts::usecases::u506_import_from_lemanapro::ImportRequest>,
+    ) -> Result<
+        Json<contracts::usecases::u506_import_from_lemanapro::ImportResponse>,
+        axum::http::StatusCode,
+    > {
+        match LEMANAPRO_IMPORT_EXECUTOR.start_import(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(e) => {
+                tracing::error!("Failed to start LemanaPro import: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn get_lemanapro_import_progress_handler(
+        Path(session_id): Path<String>,
+    ) -> Result<
+        Json<contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress>,
+        axum::http::StatusCode,
+    > {
+        match LEMANAPRO_IMPORT_EXECUTOR.get_progress(&session_id) {
+            Some(progress) => Ok(Json(progress)),
+            None => Err(axum::http::StatusCode::NOT_FOUND),
+        }
+    }
+
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route(
@@ -857,6 +893,15 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/u505/match/:session_id/progress",
             get(get_match_nomenclature_progress_handler),
+        )
+        // UseCase u506: Import from LemanaPro
+        .route(
+            "/api/u506/import/start",
+            post(start_lemanapro_import_handler),
+        )
+        .route(
+            "/api/u506/import/:session_id/progress",
+            get(get_lemanapro_import_progress_handler),
         )
         // Logs handlers
         .route(

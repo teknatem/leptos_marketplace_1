@@ -12,7 +12,7 @@ impl UtODataClient {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(120)) // Увеличен таймаут до 120 секунд для больших запросов
                 .build()
                 .expect("Failed to create HTTP client"),
         }
@@ -77,9 +77,10 @@ impl UtODataClient {
         // ВАЖНО: При использовании пагинации ($skip/$top) ОБЯЗАТЕЛЬНО нужен $orderby для стабильного порядка
         if skip.is_some() || top.is_some() {
             // Определяем поле для сортировки в зависимости от коллекции
+            // Используем Ref_Key для всех типов, так как это поле гарантированно есть во всех коллекциях 1С
             let order_by = match collection_name {
-                name if name.starts_with("Catalog_") => "Code",
-                name if name.starts_with("Document_") => "Number",
+                name if name.starts_with("Catalog_") => "Ref_Key",
+                name if name.starts_with("Document_") => "Ref_Key",
                 _ => "Ref_Key",
             };
             params.push(format!("$orderby={} asc", order_by));
@@ -96,16 +97,37 @@ impl UtODataClient {
             url
         ));
 
-        let response = self
+        let start_time = std::time::Instant::now();
+        
+        let response = match self
             .client
             .get(&url)
             .basic_auth(&connection.login, Some(&connection.password))
             .header("Accept", "application/json")
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = if e.is_timeout() {
+                    format!("Request timeout after {:?}", e)
+                } else if e.is_connect() {
+                    format!("Connection error: {:?}", e)
+                } else if e.is_request() {
+                    format!("Request error: {:?}", e)
+                } else {
+                    format!("Network error: {:?}", e)
+                };
+                self.log_to_file(&format!("ERROR: {}", error_msg));
+                tracing::error!("{}", error_msg);
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
+        };
 
+        let elapsed = start_time.elapsed();
         let status = response.status();
-        self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!("Response status: {} (took {:.2}s)", status, elapsed.as_secs_f64()));
+        tracing::info!("Request completed in {:.2}s with status {}", elapsed.as_secs_f64(), status);
 
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();

@@ -36,6 +36,11 @@ pub fn Navbar() -> impl IntoView {
             "Импорт из Wildberries",
             "import",
         ),
+        (
+            "u506_import_from_lemanapro",
+            "Импорт из ЛеманаПро",
+            "import",
+        ),
     ];
 
     // Операции

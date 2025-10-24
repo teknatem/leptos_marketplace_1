@@ -6,6 +6,7 @@ use crate::shared::list_utils::{
 };
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 use leptos::prelude::*;
 use std::cmp::Ordering;
@@ -24,6 +25,8 @@ pub struct MarketplaceProductRow {
     pub stock: String,
     pub marketplace_id: String,
     pub marketplace_name: String,
+    pub connection_mp_id: String,
+    pub connection_mp_name: String,
     pub nomenclature_id: Option<String>,
     pub nomenclature_name: Option<String>,
 }
@@ -32,12 +35,18 @@ impl MarketplaceProductRow {
     fn from_product(
         m: MarketplaceProduct,
         marketplace_map: &HashMap<String, String>,
+        connection_mp_map: &HashMap<String, String>,
         nomenclature_map: &HashMap<String, String>,
     ) -> Self {
         use contracts::domain::common::AggregateId;
 
         let marketplace_name = marketplace_map
             .get(&m.marketplace_id)
+            .cloned()
+            .unwrap_or_else(|| "Неизвестно".to_string());
+
+        let connection_mp_name = connection_mp_map
+            .get(&m.connection_mp_id)
             .cloned()
             .unwrap_or_else(|| "Неизвестно".to_string());
 
@@ -63,6 +72,8 @@ impl MarketplaceProductRow {
                 .unwrap_or_else(|| "-".to_string()),
             marketplace_id: m.marketplace_id,
             marketplace_name,
+            connection_mp_id: m.connection_mp_id,
+            connection_mp_name,
             nomenclature_id: m.nomenclature_id.clone(),
             nomenclature_name,
         }
@@ -74,6 +85,7 @@ impl ExcelExportable for MarketplaceProductRow {
         vec![
             "Код",
             "Маркетплейс",
+            "Кабинет",
             "Наименование",
             "Артикул",
             "SKU",
@@ -89,6 +101,7 @@ impl ExcelExportable for MarketplaceProductRow {
         vec![
             self.code.clone(),
             self.marketplace_name.clone(),
+            self.connection_mp_name.clone(),
             self.product_name.clone(),
             self.art.clone(),
             self.marketplace_sku.clone(),
@@ -117,6 +130,7 @@ impl Searchable for MarketplaceProductRow {
             || self.art.to_lowercase().contains(&filter_lower)
             || self.marketplace_sku.to_lowercase().contains(&filter_lower)
             || self.marketplace_name.to_lowercase().contains(&filter_lower)
+            || self.connection_mp_name.to_lowercase().contains(&filter_lower)
             || self
                 .barcode
                 .as_ref()
@@ -134,6 +148,7 @@ impl Searchable for MarketplaceProductRow {
             "art" => Some(self.art.clone()),
             "marketplace_sku" => Some(self.marketplace_sku.clone()),
             "marketplace_name" => Some(self.marketplace_name.clone()),
+            "connection_mp_name" => Some(self.connection_mp_name.clone()),
             "barcode" => self.barcode.clone(),
             "nomenclature_name" => self.nomenclature_name.clone(),
             _ => None,
@@ -149,6 +164,10 @@ impl Sortable for MarketplaceProductRow {
                 .marketplace_name
                 .to_lowercase()
                 .cmp(&other.marketplace_name.to_lowercase()),
+            "connection_mp_name" => self
+                .connection_mp_name
+                .to_lowercase()
+                .cmp(&other.connection_mp_name.to_lowercase()),
             "product_name" => self
                 .product_name
                 .to_lowercase()
@@ -209,6 +228,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
     let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
+    let (connections_mp, set_connections_mp) = signal::<Vec<ConnectionMP>>(Vec::new());
     let (nomenclatures, set_nomenclatures) = signal::<Vec<Nomenclature>>(Vec::new());
     let (selected_marketplace, set_selected_marketplace) = signal::<Option<String>>(None);
 
@@ -229,6 +249,18 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .collect()
     };
 
+    // Создаем HashMap для маппинга connection_mp_id -> description
+    let connection_mp_map = move || -> HashMap<String, String> {
+        connections_mp
+            .get()
+            .into_iter()
+            .map(|conn| {
+                use contracts::domain::common::AggregateId;
+                (conn.base.id.as_string(), conn.base.description.clone())
+            })
+            .collect()
+    };
+
     // Создаем HashMap для маппинга nomenclature_id -> description
     let nomenclature_map = move || -> HashMap<String, String> {
         nomenclatures
@@ -241,15 +273,55 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .collect()
     };
 
+    // Обновляем отображаемые названия после загрузки справочников
+    Effect::new(move |_| {
+        let mp_map = marketplace_map();
+        set_items.update(|rows| {
+            for row in rows.iter_mut() {
+                let name = mp_map
+                    .get(&row.marketplace_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Неизвестно".to_string());
+                row.marketplace_name = name;
+            }
+        });
+    });
+
+    Effect::new(move |_| {
+        let conn_map = connection_mp_map();
+        set_items.update(|rows| {
+            for row in rows.iter_mut() {
+                let name = conn_map
+                    .get(&row.connection_mp_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Неизвестно".to_string());
+                row.connection_mp_name = name;
+            }
+        });
+    });
+
+    Effect::new(move |_| {
+        let nom_map = nomenclature_map();
+        set_items.update(|rows| {
+            for row in rows.iter_mut() {
+                row.nomenclature_name = row
+                    .nomenclature_id
+                    .as_ref()
+                    .and_then(|id| nom_map.get(id).cloned());
+            }
+        });
+    });
+
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_marketplace_products().await {
                 Ok(v) => {
                     let mp_map = marketplace_map();
+                    let conn_map = connection_mp_map();
                     let nom_map = nomenclature_map();
                     let rows: Vec<MarketplaceProductRow> = v
                         .into_iter()
-                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map, &nom_map))
+                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map, &conn_map, &nom_map))
                         .collect();
                     set_items.set(rows);
                     set_error.set(None);
@@ -266,6 +338,17 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     set_marketplaces.set(v);
                 }
                 Err(e) => set_error.set(Some(format!("Ошибка загрузки маркетплейсов: {}", e))),
+            }
+        });
+    };
+
+    let fetch_connection_mp = move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_connections_mp().await {
+                Ok(v) => {
+                    set_connections_mp.set(v);
+                }
+                Err(e) => set_error.set(Some(format!("Ошибка загрузки кабинетов: {}", e))),
             }
         });
     };
@@ -439,6 +522,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
     };
 
     fetch_mp();
+    fetch_connection_mp();
     fetch_nomenclature();
     fetch();
 
@@ -523,6 +607,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                 title="Сортировать"
                             >
                                 {move || format!("Маркетплейс{}", get_sort_indicator(&sort_field.get(), "marketplace_name", sort_ascending.get()))}
+                            </th>
+                            <th
+                                class="cursor-pointer user-select-none"
+                                on:click=toggle_sort("connection_mp_name")
+                                title="Сортировать"
+                            >
+                                {move || format!("Кабинет{}", get_sort_indicator(&sort_field.get(), "connection_mp_name", sort_ascending.get()))}
                             </th>
                             <th
                                 class="cursor-pointer user-select-none"
@@ -649,6 +740,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                         </td>
                                         <td>{code_view}</td>
                                         <td>{marketplace_name_view}</td>
+                                        <td>{
+                                            if current_filter.len() >= 3 {
+                                                highlight_matches(&row.connection_mp_name, &current_filter)
+                                            } else {
+                                                view! { <span>{row.connection_mp_name.clone()}</span> }.into_any()
+                                            }
+                                        }</td>
                                         <td>{product_name_view}</td>
                                         <td>{art_view}</td>
                                         <td>{sku_view}</td>
@@ -814,6 +912,37 @@ async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: Vec<Marketplace> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
+async fn fetch_connections_mp() -> Result<Vec<ConnectionMP>, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/connection_mp", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<ConnectionMP> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }
 

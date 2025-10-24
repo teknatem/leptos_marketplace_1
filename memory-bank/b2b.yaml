@@ -1,0 +1,1427 @@
+openapi: 3.0.3
+info:
+  title: Описание API-методов b2b ЛеманаПРО
+  version: 1.0.0
+  description: Описание API-методов для интеграционного взаимодействия b2b с ЛеманаПРО
+servers:
+  - url: https://api-test.lemanapro.ru:443
+    description: testext
+  - url: https://api.lemanapro.ru:443
+    description: prodext
+tags:
+  - name: Товары
+    description: >-
+      API предназначен для внешних B2B клиентов, для получения ассортимента
+      товаров  с их детальными характеристиками
+    x-displayName: Товары
+  - name: Заказы
+    x-displayName: Заказы
+  - name: Цены на товары
+    description: Информация о ценах на товары
+    x-displayName: Цены на товары
+paths:
+  /b2bintegration-products/v1/products:
+    get:
+      tags:
+        - Товары
+      operationId: GetProductsList
+      summary: Список товаров
+      description: Получение ассортимента товаров с их детальными характеристиками
+      parameters:
+        - in: query
+          name: regionId
+          required: false
+          explode: true
+          description: >-
+            Id региона, для которого запрашивается информация. Можно не
+            указывать, и принять все товары, вне зависимости от доступности на
+            искомом регионе и далее, управлять доступностью, используя API
+            цен(prices-b2bintegration-sales-prices-v1 - если цена есть,
+            соответственно товар доступен к продаже в искомом регионе).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 9999
+        - in: query
+          name: page
+          required: false
+          description: Номер страницы
+          schema:
+            type: integer
+            minimum: 0
+            default: 1
+        - in: query
+          name: perPage
+          required: false
+          description: Количество значений на странице
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1500
+            default: 100
+        - in: header
+          name: If-Modified-Since
+          description: >-
+            Вы можете использовать заголовок «If-Modified-Since», чтобы получать
+            только те товары, которые были изменены после указанной даты. Сервер
+            ответит статусом 304 Not Modified, если продукт не был изменен.
+            Формат «2025-01-31T08:19:42.349Z»
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Запрос обработан успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: >-
+                        #/components/schemas/Методы_b2b_API_ProductsCatalogResponse
+                  paging:
+                    $ref: '#/components/schemas/Методы_b2b_API_paging'
+        '304':
+          description: >-
+            Ресурс не был изменен с даты, указанной в заголовке
+            If-Modified-Since
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_NotBeenModified'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_BadRequest'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_UnauthorizedError'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_NotFound'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_InternalServerError'
+        '523':
+          description: Origin is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_OriginIsUnreachable'
+      security:
+        - Методы_b2b_API_bearer: []
+  /b2bintegration/quotations/v1/quotations:
+    post:
+      summary: Создание заказа
+      tags:
+        - Заказы
+      operationId: CreateQuotation
+      description: Создание заказа (заявки) через клиентское приложение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/Методы_b2b_API_QDeliveryRequest'
+                - $ref: '#/components/schemas/Методы_b2b_API_QPickupRequest'
+      responses:
+        '201':
+          description: Запрос обработан успешно
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Методы_b2b_API_QDeliveryResponse'
+                  - $ref: '#/components/schemas/Методы_b2b_API_QPickupResponse'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+      security:
+        - Методы_b2b_API_bearer: []
+    get:
+      summary: Получение списка заказов, соответствующих фильтру
+      tags:
+        - Заказы
+      operationId: getAllquotation
+      parameters:
+        - name: customerId
+          in: query
+          required: true
+          description: Идентификатор клиента. Выдается с регистрационными данными
+          schema:
+            type: string
+          example: 000-136770
+        - name: deliveryType
+          in: query
+          required: false
+          description: Тип получения. DELIVERY - Доставка, PICKUP_SERVICE - Самовывоз
+          schema:
+            type: string
+            enum:
+              - DELIVERY
+              - PICKUP_SERVICE
+          example: DELIVERY
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Статус заявок. DRAFT - Черновик, CONFIRMED - Подтвержден,
+            IN_PROGRESS - В работе, PICKING_IN_PROGRESS - В процессе сборки,
+            PICKED - Собран, GIVEN_AWAY - Отгружен, COMPLETED - Закрыт,
+            CANCELLATION_IN_PROGRESS - В процессе отмены, CANCELLED - Отменен, 
+            EXPIRED - Истекший
+          schema:
+            type: string
+            enum:
+              - DRAFT
+              - CONFIRMED
+              - IN_PROGRESS
+              - PICKING_IN_PROGRESS
+              - PICKED
+              - GIVEN_AWAY
+              - COMPLETED
+              - CANCELLATION_IN_PROGRESS
+              - CANCELLED
+              - EXPIRED
+          example: DRAFT
+        - name: limit
+          in: query
+          required: true
+          description: Количество возвращаемых заявок/заказов
+          schema:
+            minimum: 1
+            maximum: 100
+            type: number
+            example: 25
+        - name: offset
+          in: query
+          required: true
+          description: Смещение, с которого начинается выборка данных
+          schema:
+            minimum: 0
+            maximum: 100
+            example: 0
+            type: number
+      responses:
+        '200':
+          description: Успешный ответ со списком заявок
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/Методы_b2b_API_QDeliveryArrayResponse'
+                  - $ref: '#/components/schemas/Методы_b2b_API_QPickupArrayResponse'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+      security:
+        - Методы_b2b_API_bearer: []
+  /b2bintegration/quotations/v1/quotations/{id}:
+    get:
+      summary: Получение информации по конкретному заказу
+      tags:
+        - Заказы
+      operationId: GetQuotationById
+      description: >-
+        Поиск возможен также по вашему идентификатору, если это необходимо. Либо
+        по сгенерированному на нашей стороне сквозному номеру.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Идентификатор заявки
+          schema:
+            type: string
+          example: api-lm-6
+      responses:
+        '200':
+          description: Запрос обработан успешно
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Методы_b2b_API_QDeliveryResponse'
+                  - $ref: '#/components/schemas/Методы_b2b_API_QPickupResponse'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_errorResponse'
+      security:
+        - Методы_b2b_API_bearer: []
+  /b2bintegration/sale-prices/v1/sales-prices:
+    get:
+      tags:
+        - Цены на товары
+      operationId: GetSalesPriceList
+      summary: Получение цен по товарам
+      parameters:
+        - in: query
+          name: regionId
+          required: true
+          explode: true
+          description: >-
+            Идентификатор региона, для которого запрашивается информация по
+            ценам. Идентификаторы регионов предварительно необходимо смапить.
+            Запросить идентификаторы регионов можно у B2B интеграторов.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 9999
+        - in: query
+          name: retailPrice
+          required: false
+          explode: true
+          description: Розничная цена
+          schema:
+            type: boolean
+            enum:
+              - false
+              - true
+            default: false
+        - in: query
+          name: page
+          required: false
+          description: Номер страницы
+          schema:
+            type: integer
+            minimum: 0
+            default: 1
+        - in: query
+          name: perPage
+          required: false
+          description: Количество значений на странице
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1500
+            default: 100
+        - in: header
+          name: If-Modified-Since
+          description: >-
+            Вы можете использовать заголовок «If-Modified-Since», чтобы получать
+            только те цены на товары, которые были изменены после указанной
+            даты. Сервис ответит статусом 304 Not Modified, если продукт не был
+            изменен. Формат «2025-01-31T08:19:42.349Z»"
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Запрос обработан успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  productsPrice:
+                    type: array
+                    description: Массив товаров с ценами
+                    items:
+                      type: object
+                      properties:
+                        productItem:
+                          type: string
+                          description: Артикул товара
+                          example: 85087716
+                        salesPrices:
+                          type: array
+                          items:
+                            anyOf:
+                              - $ref: '#/components/schemas/Методы_b2b_API_salesPrice'
+                              - $ref: >-
+                                  #/components/schemas/Методы_b2b_API_retailPrice
+                  paging:
+                    $ref: '#/components/schemas/Методы_b2b_API_paging'
+        '304':
+          description: >-
+            Ресурс не был изменен с даты, указанной в заголовке
+            If-Modified-Since
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_NotBeenModified'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_BadRequest'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_UnauthorizedError'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_NotFound'
+        '429':
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: string
+                    example: API rate limit exceeded
+                example:
+                  messages: API rate limit exceeded
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_InternalServerError'
+        '523':
+          description: Источник недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_OriginIsUnreachable'
+      security:
+        - Методы_b2b_API_bearer: []
+  /b2bintegration/sale-prices/v1/sale-prices:search:
+    post:
+      tags:
+        - Цены на товары
+      operationId: GetSalePricesByProductsList
+      summary: Получение цен по заданному списку товаров
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Методы_b2b_API_salesPricesRequestSchema'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  productPrice:
+                    type: array
+                    description: Массив товаров с ценами
+                    items:
+                      type: object
+                      properties:
+                        productItem:
+                          type: string
+                          description: Артикул товара
+                          example: 85087716
+                        salesPrices:
+                          type: array
+                          items:
+                            anyOf:
+                              - $ref: '#/components/schemas/Методы_b2b_API_salesPrice'
+                              - $ref: >-
+                                  #/components/schemas/Методы_b2b_API_retailPrice
+                  paging:
+                    $ref: '#/components/schemas/Методы_b2b_API_paging'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_BadRequest'
+        '401':
+          description: Ошибка валидации токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_UnauthorizedError'
+        '404':
+          description: Страница не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_NotFound'
+        '429':
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: string
+                    example: API rate limit exceeded
+                example:
+                  messages: API rate limit exceeded
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_InternalServerError'
+        '523':
+          description: Источник недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Методы_b2b_API_OriginIsUnreachable'
+      security:
+        - Методы_b2b_API_bearer: []
+components:
+  responses:
+    Методы_b2b_API_UnauthorizedError:
+      description: Authentication information is missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Методы_b2b_API_UnauthorizedError'
+    Методы_b2b_API_InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Методы_b2b_API_InternalServerError'
+    Методы_b2b_API_NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Методы_b2b_API_NotFound'
+    Методы_b2b_API_BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Методы_b2b_API_BadRequest'
+    Методы_b2b_API_OriginIsUnreachable:
+      description: Origin is unreachable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Методы_b2b_API_OriginIsUnreachable'
+  securitySchemes:
+    Методы_b2b_API_bearer:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+  schemas:
+    Методы_b2b_API_ProductsUpdateCatalogRequest:
+      type: object
+      properties:
+        updatedSince:
+          type: string
+          format: data-time
+          example: 2024-08-31T:00:00Z
+        page:
+          type: number
+          minimum: 0
+          default: 1
+          example: 1
+        perPage:
+          type: number
+          minimum: 1
+          maximum: 500
+          default: 200
+      required:
+        - updatedSince
+        - page
+        - perPage
+    Методы_b2b_API_ProductsCatalogResponse:
+      type: object
+      properties:
+        productItem:
+          type: integer
+          description: Артикул товара
+          example: 85087716
+        productAvailible:
+          type: boolean
+          description: Доступность товара
+          example: true
+        productName:
+          type: string
+          description: Наименование товара
+          example: Тепловая пушка электрическая Monlan MPK-30R 3000 Вт
+        productVat:
+          type: integer
+          description: Ндс товара
+          example: 20
+        productUnitSale:
+          type: object
+          properties:
+            unitOkeiCode:
+              type: string
+              description: Код ОКЕИ ЕИ товара
+              example: 796
+            unitName:
+              type: string
+              description: Наименование ЕИ товара
+              example: шт
+          required:
+            - productItem
+            - unitOkeiCode
+            - unitName
+        productDescription:
+          type: string
+          description: Описание товара
+          example: >-
+            Тепловая пушка электрическая Monlan MPK-30R используется для
+            обогрева жилых помещений, офисов...
+        categories:
+          type: object
+          properties:
+            categoryId:
+              type: string
+              description: Идентификатор категории товара
+              example: 87778678
+            categoryName:
+              type: string
+              description: Наименование категории
+              example: Тепловые пушки
+            parentCategoryId:
+              type: string
+              description: Идентификатор родительской категории товара
+              example: 40001302
+          required:
+            - categoryId
+            - categoryName
+        productUrl:
+          type: string
+          description: Ссылка на товар
+          example: >-
+            https://lemanapro.ru/product/teplovaya-pushka-elektricheskaya-monlan-mpk-30r-3000-vt-85087716/
+        productModel:
+          type: string
+          description: Модель товара
+          example: MPK-30R
+        productBrand:
+          type: string
+          description: Брэнд товара
+          example: MONLAN
+        productWeight:
+          type: number
+          description: Вес товара
+          example: 2.033
+        productCountryOfOrigin:
+          type: string
+          description: Страна производства товара
+          example: Китай
+        productDimensions:
+          type: string
+          description: Логистические характеристика товара. Глубина/Ширина/Высота
+          example: 26/14.4/28.4
+        productPhoto:
+          type: object
+          description: Ссылки на фото товара
+          properties:
+            value:
+              type: array
+              description: Массив ссылок на фото товара
+              items:
+                type: string
+                example: >-
+                  https://cdn.leroymerlin.ru/lmru/image/upload/v1669385415/b_white,c_pad,d_photoiscoming.png,f_auto,h_600,q_auto,w_600/lmcode/bDLcvy2ufUq6F4EysWnMzw/85087716.png
+        productBarcode:
+          type: string
+          description: Штрих-код товара
+          example: 4640130926267
+        productMarkNeed:
+          type: boolean
+          description: Признак маркировки
+          example: false
+        productTraceability:
+          type: boolean
+          description: Признак прослеживаемости
+          example: false
+        productTnvedCode:
+          type: string
+          description: Код ТН ВЭД
+          example: 3925908009
+        productOkpd2:
+          type: string
+          description: ОКПД2
+          example: 25.73.40.160
+        productParams:
+          type: array
+          description: Характеристики товара
+          items:
+            type: object
+            properties:
+              paramId:
+                type: string
+                description: Идентификатор характеристики товара
+                example: 10837
+              paramName:
+                type: string
+                description: Название параметра
+                example: Цвет
+              paramValue:
+                type: string
+                description: Значение параметра
+                example: Красный
+      required:
+        - productId
+        - productAvailible
+        - productName
+        - productVat
+    Методы_b2b_API_paging:
+      description: Страничный контент
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Номер страницы
+          example: 0
+        perPage:
+          type: integer
+          description: Количество товаров на страниц
+          example: 200
+        totalCount:
+          type: integer
+          description: Общее количество товаров с ценами
+          example: 90000
+    Методы_b2b_API_UnauthorizedError:
+      description: Ошибка валидации токена
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 401
+        code:
+          description: Код внутренних ошибок сервисов ЛМ
+          type: number
+          example: 401
+        error:
+          description: Название ошибки
+          type: string
+          example: Unauthorized
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Unauthorized
+    Методы_b2b_API_InternalServerError:
+      description: Внутренняя ошибка сервера
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 500
+        error:
+          description: Название ошибки
+          type: string
+          example: Internal Server Error
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Internal Server Error
+    Методы_b2b_API_OriginIsUnreachable:
+      description: Источник недоступен
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 523
+        code:
+          description: Код внутренних ошибок сервисов ЛМ
+          type: number
+          example: 523
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Origin is unreachable
+    Методы_b2b_API_NotFound:
+      description: Страница не найдена
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 404
+        code:
+          description: Код внутренних ошибок сервисов ЛМ
+          type: number
+          example: 404
+        error:
+          description: Название ошибки
+          type: string
+          example: Not Found
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Not Found
+    Методы_b2b_API_BadRequest:
+      description: Некорректные параметры запроса
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 400
+        code:
+          description: Код внутренних ошибок сервисов ЛМ
+          type: number
+          example: 400
+        error:
+          description: Название ошибки
+          type: string
+          example: Bad Request
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Bad request
+    Методы_b2b_API_NotBeenModified:
+      description: Ресурс не был изменен с даты, указанной в заголовке If-Modified-Since
+      type: object
+      properties:
+        statusCode:
+          description: Код ошибки
+          type: number
+          example: 304
+        code:
+          description: Код внутренних ошибок сервисов ЛМ
+          type: number
+          example: 304
+        error:
+          description: Название ошибки
+          type: string
+          example: Not Modified
+        message:
+          description: Сообщение ошибки
+          type: string
+          example: Not Modified
+    Методы_b2b_API_QDeliveryRequest:
+      type: object
+      required:
+        - customerId
+        - deliveryType
+      properties:
+        customerId:
+          type: string
+          description: Идентификатор клиента. Выдается с регистрационными данными
+          example: 000-136770
+        regionId:
+          type: string
+          description: >-
+            Код ОКАТО региона клиента. Если атрибут указан, мы определяем регион
+            по переданному клиентом коду, исходя из справочника ОКАТО. Если код
+            не указан мы используем обязательный атрибут address, в переданном
+            объекте delivery. И определяем код ОКАТО для наших систем на своей
+            стороне.
+          example: '46000000000'
+        deliveryType:
+          enum:
+            - DELIVERY
+          type: string
+          description: Тип получения. DELIVERY - Доставка
+        paymentType:
+          type: string
+          description: >-
+            Тип оплаты. CLIENT_ACCOUNT - Предоплата, PAYMANT_TERMS - Отсрочка,
+            CONTRACT_ACCOUNT - Счет-договор
+          enum:
+            - CLIENT_ACCOUNT
+            - PAYMANT_TERMS
+            - CONTRACT_ACCOUNT
+          example: PAYMANT_TERMS
+        lines:
+          type: array
+          description: Список позиций
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_requestLine'
+        delivery:
+          $ref: '#/components/schemas/Методы_b2b_API_delivery'
+        comment:
+          type: string
+          description: Комментарий к заказу или к доставке
+          example: Если товара нет, просьба, подобрать аналоги
+        constructionId:
+          type: string
+          description: Идентификатор объекта строительства
+          example: de696322-b0fe-11ed-b8d7-005056b6f8a2
+        requestNumber:
+          type: string
+          description: >-
+            Номер заявки из системы клиента. Если не генерируете на своей
+            стороне, в ответ на запрос отдадим нашу нумерацию, иначе будем
+            учитывать вашу
+          example: R-014223001342
+        requestedExecutionDate:
+          type: string
+          format: date-time
+          description: >-
+            Желаемая дата доставки. Менеджер может скорректировать дату
+            поставки, согласовав ее с клиентом. Получить новую дату доставки
+            можно по методу GET/quotation/{Id}
+        totalSum:
+          type: number
+          description: Итоговая сумма заявки с НДС.
+          example: 3163.08
+    Методы_b2b_API_QPickupRequest:
+      type: object
+      required:
+        - customerId
+        - deliveryType
+      properties:
+        customerId:
+          type: string
+          description: Идентификатор клиента. Выдается с регистрационными данными
+          example: 000-136770
+        regionId:
+          type: string
+          description: >-
+            Код ОКАТО региона клиента. Если выбран deliveryType =
+            PICKUP_SERVICE. Можно не передавать атрибут regionId. Если атрибут
+            все же указан, мы на него НЕ ориентируемся, а используем атрибут
+            storeid, в переданном объекте pickupService.
+          example: '46000000000'
+        deliveryType:
+          enum:
+            - PICKUP_SERVICE
+          type: string
+          description: Тип получения. PICKUP_SERVICE - Самовывоз
+        paymentType:
+          type: string
+          description: >-
+            Тип оплаты. CLIENT_ACCOUNT - Предоплата, PAYMANT_TERMS - Отсрочка,
+            CONTRACT_ACCOUNT - Счет-договор
+          enum:
+            - CLIENT_ACCOUNT
+            - PAYMANT_TERMS
+            - CONTRACT_ACCOUNT
+          example: PAYMANT_TERMS
+        lines:
+          type: array
+          description: Список позиций
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_requestLine'
+        pickupService:
+          $ref: '#/components/schemas/Методы_b2b_API_pickupService'
+        comment:
+          type: string
+          description: Комментарий к заказу или к доставке
+          example: Если товара нет, просьба, подобрать аналоги
+        constructionId:
+          type: string
+          description: Идентификатор объекта строительства
+          example: de696322-b0fe-11ed-b8d7-005056b6f8a2
+        requestNumber:
+          type: string
+          description: >-
+            Номер заявки из системы клиента. Если не генерируете на своей
+            стороне, в ответ на запрос отдадим нашу нумерацию, иначе будем
+            учитывать вашу
+          example: R-014223001342
+        requestedExecutionDate:
+          type: string
+          format: date-time
+          description: >-
+            Желаемая дата доставки. Менеджер может скорректировать дату
+            поставки, согласовав ее с клиентом. Получить новую дату доставки
+            можно по методу GET/quotation/{Id}
+        totalSum:
+          type: number
+          description: Итоговая сумма заявки с НДС.
+          example: 3163.08
+    Методы_b2b_API_QDeliveryResponse:
+      type: object
+      required:
+        - regionId
+        - customerId
+        - deliveryType
+        - quotationId
+        - creationInformation
+        - lastUpdateInformation
+      properties:
+        quotationId:
+          type: string
+          example: АБКП-109531
+          description: Сквозной номер заявки в системе Лемана ПРО.
+        customerId:
+          type: string
+          example: 000-136770
+          description: Идентификатор клиента. Выдается с регистрационными данными
+        regionId:
+          type: string
+          description: >-
+            Если атрибут был указан в запросе, мы определяем регион по
+            переданному клиентом, коду исходя из справочника ОКАТО. Если код не
+            указан мы используем обязательный атрибут address, в переданном
+            объекте delivery. И определяем код ОКАТО для наших систем на своей
+            стороне. В ответе, вернем Код ОКАТО, который мы определили исходя из
+            переданного адреса.
+          example: '46000000000'
+        deliveryType:
+          enum:
+            - DELIVERY
+          type: string
+          description: Тип получения. DELIVERY - Доставка
+        paymentType:
+          type: string
+          description: >-
+            Тип оплаты. CLIENT_ACCOUNT - Предоплата, PAYMANT_TERMS - Отсрочка,
+            CONTRACT_ACCOUNT - Счет-договор
+          enum:
+            - CLIENT_ACCOUNT
+            - PAYMANT_TERMS
+            - CONTRACT_ACCOUNT
+          example: PAYMANT_TERMS
+        creationInformation:
+          type: array
+          description: Информация о создании заявки/заказа
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_creationInfo'
+        lastUpdateInformation:
+          type: array
+          description: Информация об обновлении заявки/заказа
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_updateInfo'
+        status:
+          type: string
+          example: DRAFT
+          description: >-
+            Статус заявки в системе Лемана ПРО. DRAFT - Черновик, CONFIRMED -
+            Подтвержден, IN_PROGRESS - В работе, PICKING_IN_PROGRESS - В
+            процессе сборки, PICKED - Собран, GIVEN_AWAY - Отгружен, COMPLETED -
+            Закрыт, CANCELLATION_IN_PROGRES - В процессе отмены, CANCELLED -
+            Отменен,  EXPIRED - Истекший
+        lines:
+          type: array
+          description: Массив позиций товаров в заявке/заказе
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_QLine'
+        delivery:
+          $ref: '#/components/schemas/Методы_b2b_API_delivery'
+        comment:
+          type: string
+          description: Комментарий к доставке
+          example: Если товара нет, просьба, подобрать аналоги
+        constructionId:
+          type: string
+          example: de696322-b0fe-11ed-b8d7-005056b6f8a2
+          description: Объект строительства
+        requestNumber:
+          type: string
+          example: R-014223001342
+          description: Номер заявки из системы клиента
+        requestedExecutionDate:
+          type: string
+          format: '2023-07-01T14:00:00.000Z'
+          example: 2023-07-01:12:00:00
+          description: >-
+            Желаемая дата доставки. Менеджер может скорректировать дату
+            поставки, согласовав ее с клиентом. Получить новую дату доставки
+            можно по методу GET/quotation/{Id}
+        totalSum:
+          type: number
+          description: Итоговая сумма заявки с НДС.
+          example: 3163.08
+    Методы_b2b_API_QDeliveryArrayResponse:
+      type: object
+      properties:
+        quotations:
+          description: Элементы данных
+          type: array
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_QDeliveryResponse'
+        limit:
+          type: number
+          example: 25
+          description: Параметр ограничения пагинации
+        offset:
+          type: number
+          example: 50
+          description: Параметр смещения пагинации
+        total:
+          type: number
+          example: 150
+          description: Общее количество
+      required:
+        - quotations
+        - limit
+        - offset
+        - total
+    Методы_b2b_API_QPickupResponse:
+      type: object
+      required:
+        - regionId
+        - customerId
+        - deliveryType
+        - quotationId
+        - creationInformation
+        - lastUpdateInformation
+      properties:
+        quotationId:
+          type: string
+          example: АБКП-109531
+          description: Сквозной номер заявки в системе Лемана ПРО.
+        customerId:
+          type: string
+          description: Идентификатор клиента. Выдается с регистрационными данными
+          example: 000-136770
+        regionId:
+          type: string
+          description: >-
+            Код ОКАТО региона клиента. Если атрибут, с кодом ОКАТО, был указан в
+            запросе, мы НЕ ориентируемся на этот код и возвращаем код ОКАТО в
+            соответствии с расположением магазина самовывоза Лемана ПРО,
+            указанном в атрибуте storeid на входе.
+          example: '46000000000'
+        deliveryType:
+          enum:
+            - PICKUP_SERVICE
+          type: string
+          description: Тип получения. PICKUP_SERVICE - Самовывоз
+        paymentType:
+          type: string
+          description: >-
+            Тип оплаты. CLIENT_ACCOUNT - Предоплата, PAYMANT_TERMS - Отсрочка,
+            CONTRACT_ACCOUNT - Счет-договор
+          enum:
+            - CLIENT_ACCOUNT
+            - PAYMANT_TERMS
+            - CONTRACT_ACCOUNT
+          example: PAYMANT_TERMS
+        status:
+          type: string
+          example: DRAFT
+          description: >-
+            Статус заявок. DRAFT - Черновик, CONFIRMED - Подтвержден,
+            IN_PROGRESS - В работе, PICKING_IN_PROGRESS - В процессе сборки,
+            PICKED - Собран, GIVEN_AWAY - Отгружен, COMPLETED - Закрыт,
+            CANCELLATION_IN_PROGRESS - В процессе отмены, CANCELLED - Отменен, 
+            EXPIRED - Истекший
+        creationInformation:
+          type: array
+          description: Информация о создании заявки/заказа
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_creationInfo'
+        lastUpdateInformation:
+          type: array
+          description: Информация об обновлении заявки/заказа
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_updateInfo'
+        lines:
+          type: array
+          description: Массив позиций товаров в заявке/заказе
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_QLine'
+        pickupService:
+          $ref: '#/components/schemas/Методы_b2b_API_pickupService'
+        comment:
+          type: string
+          description: Комментарий заказу
+          example: Если товара нет, просьба, подобрать аналоги
+        constructionId:
+          type: string
+          example: de696322-b0fe-11ed-b8d7-005056b6f8a2
+          description: Объект строительства
+        requestNumber:
+          type: string
+          example: R-014223001342
+          description: Номер заявки из системы клиента
+        requestedExecutionDate:
+          type: string
+          format: '2023-07-01T14:00:00.000Z'
+          example: 2023-07-01:12:00:00
+          description: Желаемая дата доставки.
+        totalSum:
+          type: number
+          description: Итоговая сумма заявки с НДС.
+          example: 3163.08
+    Методы_b2b_API_QPickupArrayResponse:
+      type: object
+      properties:
+        quotations:
+          description: Элементы данных
+          type: array
+          items:
+            $ref: '#/components/schemas/Методы_b2b_API_QPickupResponse'
+        limit:
+          type: number
+          example: 25
+          description: Параметр ограничения пагинации
+        offset:
+          type: number
+          example: 50
+          description: Параметр смещения пагинации
+        total:
+          type: number
+          example: 150
+          description: Общее количество
+      required:
+        - quotations
+        - limit
+        - offset
+        - total
+    Методы_b2b_API_requestLine:
+      type: object
+      required:
+        - itemReference
+        - quantity
+        - price
+      properties:
+        itemReference:
+          type: string
+          description: Артикул товара ЛМ
+          example: '84505429'
+        quantity:
+          type: number
+          description: Количество товара
+          example: 5
+        price:
+          type: number
+          description: Цена товара с НДС
+          example: 632.62
+        priceWithoutVat:
+          type: number
+          description: Цена товара без НДС
+          example: 527.18
+    Методы_b2b_API_QLine:
+      type: object
+      required:
+        - created
+        - lineId
+        - itemReference
+        - quantity
+        - price
+      properties:
+        lineId:
+          type: string
+          description: Уникальный номер позиции в заявке/заказе
+        itemReference:
+          type: string
+          description: Артикул товара ЛМ
+          example: '84505429'
+        quantity:
+          type: number
+          description: Количество товара
+          example: 5
+        price:
+          type: number
+          description: Цена товара с НДС
+          example: 632.62
+        priceWithoutVat:
+          type: number
+          description: Цена товара без НДС
+          example: 527.18
+        created:
+          type: string
+          description: Дата добавления позиции
+          format: data-time
+    Методы_b2b_API_delivery:
+      type: object
+      description: Объект доставки
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          example: Московская область, Люберцы, Вертолётная улица, 14/1
+          description: Адрес доставки
+        locationLat:
+          type: number
+          example: 55.707106
+          description: Координаты широты
+        locationLon:
+          example: 37.963397
+          type: number
+          description: Координаты долготы
+        floor:
+          type: number
+          description: >-
+            Этаж. Указывается, если передаете тариф(deliveryTariff) TO_DOOR и
+            дополнительную услугу подъема(deliveryServices)
+          example: 5
+        deliveryTariff:
+          description: >-
+            Тарифы доставки. TO_ENTRANCE- на улицу, TO_LIFT- к лифту или на
+            дачу, WITHOUT_LANDING- без выгрузки, TO_DOOR- в комнату на выбор
+          type: string
+          enum:
+            - TO_ENTRANCE
+            - TO_LIFT
+            - TO_DOOR
+            - WITHOUT_LANDING
+        deliveryServices:
+          type: string
+          description: >-
+            Дополнительные услуги подъема. LIFTUP - подъем на лифте,
+            LIFTUP_STAIRS - подъем пешком по лестнице, CRANE - услуга
+            крано-манипуляторной установки(КМУ)
+          enum:
+            - LIFTUP_STAIRS
+            - LIFTUP
+            - CRANE
+    Методы_b2b_API_pickupService:
+      type: object
+      description: Объект самовывоза
+      properties:
+        storeid:
+          type: integer
+          example: 153
+          description: id магазина самовывоза.
+    Методы_b2b_API_errorResponse:
+      type: object
+      required:
+        - statusCode
+        - error
+        - message
+      properties:
+        statusCode:
+          type: integer
+          description: Код ошибки
+        error:
+          type: string
+          description: Наименование ошибки
+        message:
+          type: string
+          description: Сообщение ошибки
+    Методы_b2b_API_creationInfo:
+      type: object
+      description: Данные о создании заявки/заказа
+      required:
+        - created
+      properties:
+        created:
+          type: string
+          description: Дата создания
+          format: date-time
+    Методы_b2b_API_updateInfo:
+      type: object
+      description: Данные о последнем изменении
+      required:
+        - updated
+      properties:
+        updated:
+          type: string
+          description: Дата последнего обновления
+          format: date-time
+    Методы_b2b_API_salesPrice:
+      type: object
+      properties:
+        salesPrice:
+          description: Цена товара(индивидуальная)
+          type: number
+          example: 796.14
+        currencyName:
+          type: string
+          description: Валюта
+          default: Rub
+    Методы_b2b_API_retailPrice:
+      type: object
+      properties:
+        retailPrice:
+          description: Цена товара с сайта(розничная)
+          type: number
+          example: 800
+        currencyName:
+          type: string
+          description: Валюта
+          default: Rub
+    Методы_b2b_API_salesPricesRequestSchema:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Количество возвращаемых товаров с ценами
+          default: 100
+        offset:
+          type: integer
+          description: Смещение, с которого начинается выборка данных
+          default: 0
+        productItem:
+          type: array
+          items:
+            type: string
+            description: >-
+              Массив артикулов товаров ЛМ, для проверки и обновления актуальной
+              цены, в корзине
+            example: 82331508
+        regionId:
+          type: integer
+          description: Id региона, по которому нужно вернуть цены для товаров
+          example: 34
+          minimum: 1
+          maximum: 9999
+        retailPrice:
+          type: boolean
+          description: Возвращает цену товара как на сайта(розничная)
+          example: false
+      required:
+        - regionId
+        - productItem
+x-tagGroups:
+  - name: Методы b2b API
+    tags:
+      - Товары
+      - Заказы
+      - Цены на товары

@@ -22,6 +22,7 @@ pub fn ConnectionMPDetails(
     let (show_marketplace_picker, set_show_marketplace_picker) = signal(false);
     let (show_organization_picker, set_show_organization_picker) = signal(false);
     let (marketplace_name, set_marketplace_name) = signal(String::new());
+    let (marketplace_code, set_marketplace_code) = signal(String::new());
     let (organization_name, set_organization_name) = signal(String::new());
     // Храним ID для предвыбора в пикерах
     let (organization_id, set_organization_id) = signal::<Option<String>>(None);
@@ -34,9 +35,10 @@ pub fn ConnectionMPDetails(
                 // Сохраняем organization в organization_name для отображения
                 set_organization_name.set(conn.organization.clone());
 
-                // Загружаем название маркетплейса
-                if let Ok(mp_name) = fetch_marketplace_name(&conn.marketplace_id).await {
-                    set_marketplace_name.set(mp_name);
+                // Загружаем информацию о маркетплейсе
+                if let Ok(mp_info) = fetch_marketplace_info(&conn.marketplace_id).await {
+                    set_marketplace_name.set(mp_info.name);
+                    set_marketplace_code.set(mp_info.code);
                 }
 
                 let dto = ConnectionMPDto {
@@ -78,10 +80,16 @@ pub fn ConnectionMPDetails(
         wasm_bindgen_futures::spawn_local(async move {
             match test_connection(dto).await {
                 Ok(result) => {
+                    // Debug log для проверки что приходит с сервера
+                    web_sys::console::log_1(&format!(
+                        "Test result: success={}, message={}, details={:?}", 
+                        result.success, result.message, result.details
+                    ).into());
                     set_test_result.set(Some(result));
                     set_is_testing.set(false);
                 }
                 Err(e) => {
+                    web_sys::console::error_1(&format!("Test connection error: {}", e).into());
                     set_error.set(Some(e));
                     set_is_testing.set(false);
                 }
@@ -288,21 +296,133 @@ pub fn ConnectionMPDetails(
 
             {move || test_result.get().map(|result| {
                 let class = if result.success { "success" } else { "error" };
+                let mp_code = marketplace_code.get();
                 view! {
-                    <div class={class} style="margin-top: 16px;">
-                        <div>
+                    <div class={class} style="margin-top: 16px; padding: 16px; border-radius: 8px;">
+                        <h4 style="margin-top: 0; margin-bottom: 12px;">
+                            {if result.success { "✅ Тест успешен" } else { "❌ Тест не пройден" }}
+                        </h4>
+                        <div style="margin-bottom: 8px;">
+                            <strong>{"Статус: "}</strong>
                             {result.message.clone()}
                             {" "}
-                            <small>{"("}{result.duration_ms}{"ms)"}</small>
+                            <span style="color: #666; font-size: 12px;">{"("}{result.duration_ms}{"ms)"}</span>
                         </div>
-                        {result.details.as_ref().map(|details| view! {
-                            <details style="margin-top: 8px;">
-                                <summary style="cursor: pointer;">{"Результат теста"}</summary>
-                                <pre style="margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; overflow-x: auto; font-size: 12px;">
+                        
+                        {if let Some(details) = result.details.as_ref() {
+                            view! {
+                                <div style="margin-top: 12px; padding: 12px; background: rgba(255,193,7,0.1); border-left: 4px solid #ffc107; border-radius: 4px;">
+                                    <div style="font-weight: bold; margin-bottom: 4px; color: #856404;">
+                                        {"📝 Подробности:"}
+                                    </div>
+                                    <div style="color: #856404;">
                                     {details.clone()}
-                                </pre>
+                                    </div>
+                                </div>
+                            }.into_any()
+                        } else if !result.success {
+                            view! {
+                                <div style="margin-top: 12px; padding: 12px; background: rgba(220,53,69,0.1); border-left: 4px solid #dc3545; border-radius: 4px;">
+                                    <div style="font-weight: bold; margin-bottom: 4px; color: #721c24;">
+                                        {"⚠️ Внимание:"}
+                                    </div>
+                                    <div style="color: #721c24;">
+                                        {"Подробная информация об ошибке отсутствует. Проверьте логи сервера для дополнительной информации."}
+                                    </div>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <div></div> }.into_any()
+                        }}
+                        
+                        <details style="margin-top: 12px;" open={!result.success}>
+                            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 8px;">
+                                {"📋 Информация о тестировании"}
+                            </summary>
+                            <div style="margin-top: 8px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 4px; font-size: 12px;">
+                                <div style="margin-bottom: 12px;">
+                                    <strong>{"🌐 Эндпоинт:"}</strong>
+                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px;">
+                                        {match mp_code.as_str() {
+                                            "mp-ozon" => "POST https://api-seller.ozon.ru/v3/product/list",
+                                            "mp-wb" => "GET https://suppliers-api.wildberries.ru/public/api/v1/info",
+                                            "mp-yandex" => "POST https://api.partner.market.yandex.ru/campaigns",
+                                            "mp-lemana" => "GET https://api.lemanapro.ru/b2bintegration-products/v1/products?page=1&perPage=1",
+                                            "mp-kuper" => "Не реализовано",
+                                            _ => "Неизвестный маркетплейс"
+                                        }}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <strong>{"📤 Отправляемые данные:"}</strong>
+                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; white-space: pre-wrap; word-break: break-all;">
+                                        {match mp_code.as_str() {
+                                            "mp-ozon" => {
+                                                format!("Headers:\n  Client-Id: {}\n  Api-Key: ****\n  Content-Type: application/json\n\nBody:\n{{\n  \"filter\": {{ \"visibility\": \"ALL\" }},\n  \"last_id\": \"\",\n  \"limit\": 1\n}}",
+                                                    form.get().application_id.clone().unwrap_or_else(|| "не указан".to_string()))
+                                            },
+                                            "mp-wb" => {
+                                                "Headers:\n  Authorization: ****\n  Accept: application/json\n\nQuery: ?locale=ru".to_string()
+                                            },
+                                            "mp-yandex" => {
+                                                format!("Headers:\n  Authorization: OAuth ****\n  Content-Type: application/json\n\nBody:\n{{\n  \"businessId\": {},\n  \"pageToken\": \"\"\n}}",
+                                                    form.get().business_account_id.clone().unwrap_or_else(|| "не указан".to_string()))
+                                            },
+                                            "mp-lemana" => {
+                                                "Headers:\n  Authorization: Bearer ****\n  Accept: application/json\n\nQuery: ?page=1&perPage=1".to_string()
+                                            },
+                                            _ => "Нет данных".to_string()
+                                        }}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <strong>{"📥 Ожидаемый ответ:"}</strong>
+                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; white-space: pre-wrap; word-break: break-all;">
+                                        {match mp_code.as_str() {
+                                            "mp-ozon" => "{\n  \"result\": {\n    \"items\": [...],\n    \"total\": 123,\n    \"last_id\": \"...\"\n  }\n}",
+                                            "mp-wb" => "HTTP 204 No Content (успешная авторизация)",
+                                            "mp-yandex" => "{\n  \"campaigns\": [...],\n  \"pager\": { ... }\n}",
+                                            "mp-lemana" => "{\n  \"products\": [...],\n  \"paging\": {\n    \"page\": 1,\n    \"perPage\": 1,\n    \"totalCount\": 123\n  }\n}",
+                                            _ => "Нет данных"
+                                        }}
+                                    </div>
+                                </div>
+                                
+                                {if !result.success && result.details.is_some() {
+                                    view! {
+                                        <div style="margin-bottom: 12px;">
+                                            <strong>{"❌ Фактический ответ API:"}</strong>
+                                            <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(220,53,69,0.1); border: 1px solid rgba(220,53,69,0.3); border-radius: 4px; white-space: pre-wrap; word-break: break-all; color: #721c24;">
+                                                {result.details.clone().unwrap_or_default()}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <div></div> }.into_any()
+                                }}
+                                
+                                {if !result.success {
+                                    view! {
+                                        <div style="margin-top: 12px; padding: 8px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404;">
+                                            <strong>{"💡 Подсказка:"}</strong>
+                                            <div style="margin-top: 4px;">
+                                                {match mp_code.as_str() {
+                                                    "mp-ozon" => "Проверьте правильность Client-Id и Api-Key. Убедитесь, что токен активен.",
+                                                    "mp-wb" => "Убедитесь, что API ключ Wildberries действителен и имеет права на чтение.",
+                                                    "mp-yandex" => "Проверьте OAuth токен и businessAccountId. Токен должен иметь права на campaigns:read.",
+                                                    "mp-lemana" => "Убедитесь, что Bearer токен действителен и имеет доступ к products API.",
+                                                    _ => "Проверьте правильность учетных данных."
+                                                }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <div></div> }.into_any()
+                                }}
+                            </div>
                             </details>
-                        })}
                     </div>
                 }
             })}
@@ -481,7 +601,13 @@ async fn test_connection(dto: ConnectionMPDto) -> Result<ConnectionTestResult, S
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
 
-async fn fetch_marketplace_name(id: &str) -> Result<String, String> {
+#[derive(Clone, Debug)]
+struct MarketplaceInfo {
+    code: String,
+    name: String,
+}
+
+async fn fetch_marketplace_info(id: &str) -> Result<MarketplaceInfo, String> {
     use contracts::domain::a005_marketplace::aggregate::Marketplace;
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -510,5 +636,13 @@ async fn fetch_marketplace_name(id: &str) -> Result<String, String> {
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let marketplace: Marketplace = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(marketplace.base.description)
+    Ok(MarketplaceInfo {
+        code: marketplace.base.code,
+        name: marketplace.base.description,
+    })
+}
+
+#[allow(dead_code)]
+async fn fetch_marketplace_name(id: &str) -> Result<String, String> {
+    fetch_marketplace_info(id).await.map(|info| info.name)
 }

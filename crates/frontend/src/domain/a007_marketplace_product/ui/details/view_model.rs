@@ -66,6 +66,7 @@ impl MarketplaceProductDetailsViewModel {
                 code: Some(aggregate.base.code),
                 description: aggregate.base.description,
                 marketplace_id: aggregate.marketplace_id,
+                connection_mp_id: aggregate.connection_mp_id,
                 marketplace_sku: aggregate.marketplace_sku,
                 barcode: aggregate.barcode,
                 art: aggregate.art,

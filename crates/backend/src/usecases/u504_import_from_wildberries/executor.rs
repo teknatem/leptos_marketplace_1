@@ -1,6 +1,7 @@
 use super::{progress_tracker::ProgressTracker, wildberries_api_client::WildberriesApiClient};
 use crate::domain::a007_marketplace_product;
 use anyhow::Result;
+use contracts::domain::common::AggregateId;
 use contracts::usecases::u504_import_from_wildberries::{
     progress::ImportStatus,
     request::ImportRequest,
@@ -153,15 +154,111 @@ impl ImportExecutor {
         let mut cursor: Option<super::wildberries_api_client::WildberriesCursor> = None;
         let mut expected_total: Option<i32> = None;
 
+        tracing::info!(
+            "╔═══════════════════════════════════════════════════════════"
+        );
+        tracing::info!(
+            "║ WILDBERRIES IMPORT DIAGNOSTICS"
+        );
+        tracing::info!(
+            "║ Connection: {} ({})",
+            connection.base.description,
+            connection.marketplace_id
+        );
+        tracing::info!(
+            "╚═══════════════════════════════════════════════════════════"
+        );
+
+        // ═══════════════════════════════════════════════════════════════
+        // ДИАГНОСТИЧЕСКИЙ РЕЖИМ: Тестируем различные варианты запросов
+        // ═══════════════════════════════════════════════════════════════
+        tracing::info!("┌─────────────────────────────────────────────────────────");
+        tracing::info!("│ 🔬 RUNNING API DIAGNOSTICS");
+        tracing::info!("│ Testing different API request variations...");
+        tracing::info!("└─────────────────────────────────────────────────────────");
+
+        match self.api_client.diagnostic_fetch_all_variations(connection).await {
+            Ok(results) => {
+                tracing::info!("┌─────────────────────────────────────────────────────────");
+                tracing::info!("│ 📊 DIAGNOSTIC RESULTS:");
+                for (idx, result) in results.iter().enumerate() {
+                    tracing::info!("│");
+                    tracing::info!("│ Test #{}: {}", idx + 1, result.test_name);
+                    if result.success {
+                        tracing::info!("│   ✓ SUCCESS");
+                        tracing::info!("│   Items returned: {}", result.total_returned);
+                        tracing::info!("│   Cursor total: {}", result.cursor_total);
+                        if result.cursor_total != result.total_returned as i32 {
+                            tracing::warn!(
+                                "│   ⚠️  MISMATCH: cursor.total ({}) != items.length ({})",
+                                result.cursor_total,
+                                result.total_returned
+                            );
+                        }
+                    } else {
+                        tracing::error!("│   ✗ FAILED");
+                        if let Some(ref error) = result.error {
+                            tracing::error!("│   Error: {}", error);
+                        }
+                    }
+                }
+                tracing::info!("└─────────────────────────────────────────────────────────");
+
+                // Анализ результатов
+                let best_result = results.iter()
+                    .filter(|r| r.success)
+                    .max_by_key(|r| r.cursor_total);
+
+                if let Some(best) = best_result {
+                    if best.cursor_total > 100 {
+                        tracing::warn!("┌─────────────────────────────────────────────────────────");
+                        tracing::warn!("│ 🔍 IMPORTANT FINDING:");
+                        tracing::warn!("│ Test '{}' returned cursor.total={}", best.test_name, best.cursor_total);
+                        tracing::warn!("│ This suggests there ARE more products available!");
+                        tracing::warn!("│ Current implementation might be using wrong parameters.");
+                        tracing::warn!("└─────────────────────────────────────────────────────────");
+                    } else if best.cursor_total <= 20 {
+                        tracing::info!("┌─────────────────────────────────────────────────────────");
+                        tracing::info!("│ 📌 CONCLUSION:");
+                        tracing::info!("│ All tests return similar low counts ({})", best.cursor_total);
+                        tracing::info!("│ This suggests:");
+                        tracing::info!("│   1. These might be ALL products in this account, OR");
+                        tracing::info!("│   2. Products have different status (archived, etc.), OR");
+                        tracing::info!("│   3. API key has limited scope/permissions");
+                        tracing::info!("│");
+                        tracing::info!("│ ⚠️  RECOMMENDATION: Check Wildberries personal account");
+                        tracing::info!("│ to verify actual product count and their statuses.");
+                        tracing::info!("└─────────────────────────────────────────────────────────");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to run diagnostics: {}", e);
+            }
+        }
+
+        tracing::info!("┌─────────────────────────────────────────────────────────");
+        tracing::info!("│ 📦 PROCEEDING WITH NORMAL IMPORT");
+        tracing::info!("└─────────────────────────────────────────────────────────");
+
         // Получаем товары страницами через Wildberries API
         loop {
-            tracing::info!(
-                "Fetching page with cursor: {:?}",
-                cursor.as_ref().map(|c| format!(
-                    "nmID={:?}, updatedAt={}",
+            let cursor_info = cursor.as_ref().map(|c| {
+                format!(
+                    "nmID={:?}, updatedAt={}, total={}",
                     c.nm_id,
-                    c.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none")
-                ))
+                    c.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none"),
+                    c.total
+                )
+            }).unwrap_or_else(|| "INITIAL REQUEST (no cursor)".to_string());
+
+            tracing::info!(
+                "┌─────────────────────────────────────────────────────────"
+            );
+            tracing::info!(
+                "│ Page Request #{} | Cursor: {}",
+                (total_processed / page_size) + 1,
+                cursor_info
             );
 
             let list_response = self
@@ -169,31 +266,42 @@ impl ImportExecutor {
                 .fetch_product_list(connection, page_size, cursor.clone())
                 .await?;
 
-            // Сохраняем курсор для следующей страницы
-            let next_cursor = if list_response.cards.is_empty() {
-                None
-            } else {
-                Some(list_response.cursor.clone())
-            };
+            // Логируем информацию о полученном курсоре
+            tracing::info!(
+                "│ Cursor in response: nmID={:?}, updatedAt={}, total={}",
+                list_response.cursor.nm_id,
+                list_response.cursor.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none"),
+                list_response.cursor.total
+            );
 
             // Если API вернул total, сохраняем его (только при первом запросе)
             if expected_total.is_none() && list_response.cursor.total > 0 {
                 expected_total = Some(list_response.cursor.total as i32);
-                tracing::info!("API returned total count: {}", list_response.cursor.total);
+                tracing::info!(
+                    "│ ✓ API returned TOTAL count: {} products",
+                    list_response.cursor.total
+                );
             }
 
             let cards = list_response.cards;
+            let batch_size = cards.len();
+            
+            tracing::info!(
+                "│ Response: {} items received | Total so far: {}/{}",
+                batch_size,
+                total_processed,
+                expected_total.map(|t| t.to_string()).unwrap_or_else(|| "?".to_string())
+            );
+
             if cards.is_empty() {
-                tracing::info!("Received empty batch, stopping pagination");
+                tracing::info!(
+                    "│ ⚠ Empty batch received - stopping pagination"
+                );
+                tracing::info!(
+                    "└─────────────────────────────────────────────────────────"
+                );
                 break;
             }
-
-            let batch_size = cards.len();
-            tracing::info!(
-                "Processing batch: {} items, total so far: {}",
-                batch_size,
-                total_processed
-            );
 
             // Обрабатываем каждый товар
             for card in cards {
@@ -241,19 +349,90 @@ impl ImportExecutor {
             self.progress_tracker
                 .set_current_item(session_id, aggregate_index, None);
 
+            tracing::info!(
+                "│ ✓ Batch processed: {} inserted, {} updated",
+                total_inserted,
+                total_updated
+            );
+
+            // Определяем, есть ли еще страницы
+            // API Wildberries возвращает cursor с информацией о следующей странице
+            // Если мы получили все товары, то нужно остановиться
+            let next_cursor = if total_processed >= expected_total.unwrap_or(i32::MAX) {
+                tracing::info!(
+                    "│ → All products received ({}/{}), no next page needed",
+                    total_processed,
+                    expected_total.unwrap_or(0)
+                );
+                None
+            } else if batch_size < page_size as usize {
+                // Если получили меньше чем запрашивали, значит это последняя страница
+                tracing::info!(
+                    "│ → Received {} items (less than page_size {}), last page",
+                    batch_size,
+                    page_size
+                );
+                None
+            } else {
+                // Есть еще страницы, используем курсор из ответа
+                tracing::info!(
+                    "│ → More pages available, using cursor from response"
+                );
+                Some(list_response.cursor.clone())
+            };
+
+            tracing::info!(
+                "└─────────────────────────────────────────────────────────"
+            );
+
             // Обновляем курсор для следующей страницы
-            cursor = next_cursor;
+            cursor = next_cursor.clone();
 
             // Если нет next_cursor, значит это последняя страница
             if cursor.is_none() {
-                tracing::info!("No next cursor, stopping pagination");
+                tracing::info!(
+                    "┌─────────────────────────────────────────────────────────"
+                );
+                tracing::info!(
+                    "│ ✓ PAGINATION COMPLETE: No more cursor"
+                );
+                tracing::info!(
+                    "│   Total products: {}/{}",
+                    total_processed,
+                    expected_total.map(|t| t.to_string()).unwrap_or_else(|| "?".to_string())
+                );
+                tracing::info!(
+                    "└─────────────────────────────────────────────────────────"
+                );
                 break;
             }
 
             // Защита от зацикливания
             if total_processed >= expected_total.unwrap_or(i32::MAX) {
-                tracing::info!("Reached expected total, stopping pagination");
+                tracing::info!(
+                    "┌─────────────────────────────────────────────────────────"
+                );
+                tracing::info!(
+                    "│ ✓ PAGINATION COMPLETE: Reached expected total"
+                );
+                tracing::info!(
+                    "│   Processed: {} | Expected: {}",
+                    total_processed,
+                    expected_total.unwrap_or(0)
+                );
+                tracing::info!(
+                    "└─────────────────────────────────────────────────────────"
+                );
                 break;
+            }
+
+            // Логируем информацию о следующей странице
+            if let Some(ref c) = cursor {
+                tracing::info!(
+                    "│ → Next cursor: nmID={:?}, updatedAt={}",
+                    c.nm_id,
+                    c.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none")
+                );
             }
         }
 
@@ -327,6 +506,7 @@ impl ImportExecutor {
                 card.vendor_code.clone(),
                 product_name.clone(),
                 connection.marketplace_id.clone(),
+                connection.base.id.as_string(),
                 marketplace_sku,
                 barcode,
                 card.vendor_code.clone(),

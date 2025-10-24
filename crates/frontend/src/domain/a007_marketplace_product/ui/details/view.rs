@@ -90,6 +90,22 @@ pub fn MarketplaceProductDetails(
                     </div>
 
                     <div class="form-group">
+                        <label for="connection_mp_id">{"Кабинет"}</label>
+                        <input
+                            type="text"
+                            id="connection_mp_id"
+                            disabled
+                            prop:value={
+                                let vm = vm_clone.clone();
+                                move || vm.form.get().connection_mp_id
+                            }
+                            placeholder="ID кабинета (авто)"
+                        />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="marketplace_sku">{"SKU маркетплейса"}</label>
                         <input
                             type="text"
