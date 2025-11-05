@@ -1,6 +1,7 @@
 use contracts::usecases::u504_import_from_wildberries::{
     ImportRequest, ImportResponse, ImportProgress,
 };
+use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use serde_json;
 use wasm_bindgen::{JsValue, JsCast};
 use web_sys::{window, RequestInit, RequestMode, Response};
@@ -118,4 +119,45 @@ pub async fn get_connections() -> Result<Vec<contracts::domain::a006_connection_
         serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(connections)
+}
+
+/// Получить список маркетплейсов
+pub async fn get_marketplaces() -> Result<Vec<Marketplace>, String> {
+    let window = window().ok_or("No window object")?;
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let request = web_sys::Request::new_with_str_and_init(
+        "http://localhost:3000/api/marketplace",
+        &opts,
+    )
+    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("Failed to set header: {:?}", e))?;
+
+    let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+    let response: Response = response_value.dyn_into().map_err(|_| "Not a Response")?;
+
+    if !response.ok() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(
+        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
+
+    let marketplaces =
+        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+
+    Ok(marketplaces)
 }

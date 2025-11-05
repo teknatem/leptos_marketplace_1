@@ -1,4 +1,5 @@
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress;
 use contracts::usecases::u506_import_from_lemanapro::request::ImportRequest;
 use contracts::usecases::u506_import_from_lemanapro::response::ImportResponse;
@@ -24,6 +25,33 @@ pub async fn get_connections() -> Result<Vec<ConnectionMP>, String> {
     opts.set_mode(RequestMode::Cors);
 
     let url = format!("{}/api/connection_mp", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+pub async fn get_marketplaces() -> Result<Vec<Marketplace>, String> {
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/marketplace", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()

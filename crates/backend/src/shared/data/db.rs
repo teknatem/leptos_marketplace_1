@@ -433,6 +433,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 description TEXT NOT NULL,
                 comment TEXT,
                 marketplace_id TEXT NOT NULL,
+                connection_mp_id TEXT NOT NULL DEFAULT '',
                 marketplace_sku TEXT NOT NULL,
                 barcode TEXT,
                 art TEXT NOT NULL,
@@ -457,6 +458,34 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_marketplace_product_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Ensure connection_mp_id column exists; add if missing
+        let pragma = format!("PRAGMA table_info('{}');", "a007_marketplace_product");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_connection_mp_id = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "connection_mp_id" {
+                has_connection_mp_id = true;
+            }
+        }
+        if !has_connection_mp_id {
+            tracing::info!("Adding connection_mp_id column to a007_marketplace_product");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a007_marketplace_product ADD COLUMN connection_mp_id TEXT NOT NULL DEFAULT '';".to_string(),
+            ))
+            .await?;
+            // Delete existing records as they are test data
+            tracing::info!("Deleting existing records from a007_marketplace_product");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "DELETE FROM a007_marketplace_product;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // a008_marketplace_sales table

@@ -7,6 +7,7 @@ use contracts::usecases::u505_match_nomenclature::{
     request::MatchRequest,
     response::{MatchResponse, MatchStartStatus},
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -76,18 +77,75 @@ impl MatchExecutor {
         self.progress_tracker.get_progress(session_id)
     }
 
+    /// Построить индекс артикул -> номенклатура для быстрого поиска
+    /// Возвращает HashMap где ключ - нормализованный артикул, значение - список номенклатур
+    /// Если ignore_case=true, ключи будут в нижнем регистре
+    async fn build_article_index(
+        ignore_case: bool,
+    ) -> Result<HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>> {
+        let start_time = std::time::Instant::now();
+        
+        // Загрузить все элементы номенклатуры (не папки, не удаленные)
+        let all_items = a004_nomenclature::repository::list_all().await?;
+        
+        let items: Vec<_> = all_items
+            .into_iter()
+            .filter(|n| !n.is_folder && !n.base.metadata.is_deleted)
+            .collect();
+
+        tracing::info!("Loaded {} nomenclature items for indexing", items.len());
+
+        let mut index: HashMap<String, Vec<_>> = HashMap::new();
+
+        for item in items {
+            let article = item.article.trim();
+            if article.is_empty() {
+                continue;
+            }
+
+            let key = if ignore_case {
+                article.to_lowercase()
+            } else {
+                article.to_string()
+            };
+
+            index.entry(key).or_insert_with(Vec::new).push(item);
+        }
+
+        let duration = start_time.elapsed();
+        tracing::info!(
+            "Built article index in {:?}ms: {} unique articles (ignore_case: {})",
+            duration.as_millis(),
+            index.len(),
+            ignore_case
+        );
+
+        Ok(index)
+    }
+
     /// Выполнить сопоставление
     async fn run_matching(&self, session_id: &str, request: &MatchRequest) -> Result<()> {
+        let overall_start = std::time::Instant::now();
         tracing::info!("Running matching for session: {}", session_id);
 
-        // Получить все товары маркетплейса
+        // Загрузить товары маркетплейса
+        let load_products_start = std::time::Instant::now();
         let products = if let Some(marketplace_id) = &request.marketplace_id {
             a007_marketplace_product::repository::list_by_marketplace_id(marketplace_id).await?
         } else {
             a007_marketplace_product::service::list_all().await?
         };
+        let load_products_duration = load_products_start.elapsed();
+        tracing::info!(
+            "Loaded {} products in {:?}ms",
+            products.len(),
+            load_products_duration.as_millis()
+        );
 
-        tracing::info!("Found {} products to process", products.len());
+        // Построить индекс артикул -> номенклатура
+        let build_index_start = std::time::Instant::now();
+        let article_index = Self::build_article_index(request.ignore_case).await?;
+        let build_index_duration = build_index_start.elapsed();
 
         let mut processed = 0;
         let mut matched = 0;
@@ -96,6 +154,7 @@ impl MatchExecutor {
         let mut ambiguous = 0;
 
         // Обработать каждый товар
+        let process_start = std::time::Instant::now();
         for product in products {
             // Установить текущий товар
             self.progress_tracker.set_current_item(
@@ -103,7 +162,7 @@ impl MatchExecutor {
                 Some(format!("{} - {}", product.art, product.product_name)),
             );
 
-            match self.process_product(&product, request).await {
+            match self.process_product(&product, request, &article_index).await {
                 Ok(result) => {
                     processed += 1;
                     match result {
@@ -138,11 +197,13 @@ impl MatchExecutor {
                 ambiguous,
             );
         }
+        let process_duration = process_start.elapsed();
 
         // Очистить текущий элемент
         self.progress_tracker.set_current_item(session_id, None);
 
         // Обновить счетчики mp_ref_count для всей номенклатуры
+        let update_counts_start = std::time::Instant::now();
         tracing::info!("Updating mp_ref_count for all nomenclature...");
         if let Err(e) = self.update_mp_ref_counts().await {
             tracing::error!("Failed to update mp_ref_count: {}", e);
@@ -153,6 +214,7 @@ impl MatchExecutor {
                 None,
             );
         }
+        let update_counts_duration = update_counts_start.elapsed();
 
         // Завершить сессию
         let final_status = if self
@@ -168,6 +230,34 @@ impl MatchExecutor {
 
         self.progress_tracker
             .complete_session(session_id, final_status);
+
+        let overall_duration = overall_start.elapsed();
+        let avg_time_per_product = if processed > 0 {
+            process_duration.as_millis() as f64 / processed as f64
+        } else {
+            0.0
+        };
+
+        // Аудит производительности
+        tracing::info!(
+            "=== Performance Audit for session {} ===",
+            session_id
+        );
+        tracing::info!("Total time: {:?}ms ({:.2}s)", overall_duration.as_millis(), overall_duration.as_secs_f64());
+        tracing::info!("Load products: {:?}ms", load_products_duration.as_millis());
+        tracing::info!("Build index: {:?}ms", build_index_duration.as_millis());
+        tracing::info!("Process products: {:?}ms ({:.2}s)", process_duration.as_millis(), process_duration.as_secs_f64());
+        tracing::info!("Average time per product: {:.2}ms", avg_time_per_product);
+        tracing::info!("Update mp_ref_count: {:?}ms", update_counts_duration.as_millis());
+        tracing::info!(
+            "Results: Processed: {}, Matched: {}, Cleared: {}, Skipped: {}, Ambiguous: {}",
+            processed,
+            matched,
+            cleared,
+            skipped,
+            ambiguous
+        );
+        tracing::info!("=== End Performance Audit ===");
 
         tracing::info!(
             "Matching completed for session: {}. Processed: {}, Matched: {}, Cleared: {}, Skipped: {}, Ambiguous: {}",
@@ -226,6 +316,7 @@ impl MatchExecutor {
         &self,
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
         request: &MatchRequest,
+        article_index: &HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
     ) -> Result<MatchResult> {
         // Проверить, нужно ли обрабатывать товар
         if !request.overwrite_existing && product.nomenclature_id.is_some() {
@@ -249,11 +340,15 @@ impl MatchExecutor {
             request.ignore_case
         );
 
-        let found_items = if request.ignore_case {
-            a004_nomenclature::repository::find_by_article_ignore_case(article).await?
+        // Нормализовать артикул для поиска в индексе
+        let search_key = if request.ignore_case {
+            article.to_lowercase()
         } else {
-            a004_nomenclature::repository::find_by_article(article).await?
+            article.to_string()
         };
+
+        // Получить список номенклатур из индекса
+        let found_items = article_index.get(&search_key).cloned().unwrap_or_default();
 
         tracing::debug!(
             "Found {} nomenclature items for article '{}'",

@@ -1,5 +1,7 @@
 use super::api;
 use chrono::Utc;
+use contracts::domain::common::AggregateId;
+use contracts::enums::marketplace_type::MarketplaceType;
 use contracts::usecases::u502_import_from_ozon::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
@@ -7,6 +9,7 @@ use contracts::usecases::u502_import_from_ozon::{
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
+use std::collections::HashMap;
 
 #[component]
 pub fn ImportWidget() -> impl IntoView {
@@ -60,18 +63,50 @@ pub fn ImportWidget() -> impl IntoView {
             .and_then(|j| serde_json::from_str::<ImportProgress>(&j).ok())
     }
 
-    // Загрузить список подключений при монтировании
+    // Загрузить список подключений и маркетплейсов при монтировании
     Effect::new(move || {
         spawn_local(async move {
-            match api::get_connections().await {
-                Ok(conns) => {
-                    if let Some(first) = conns.first() {
-                        set_selected_connection.set(first.to_string_id());
+            // Загружаем маркетплейсы сначала
+            match api::get_marketplaces().await {
+                Ok(marketplaces) => {
+                    // Создаем маппинг marketplace_id -> marketplace_type
+                    let marketplace_type_map: HashMap<String, Option<MarketplaceType>> =
+                        marketplaces
+                            .into_iter()
+                            .map(|mp| {
+                                let id = mp.base.id.as_string();
+                                let mp_type = mp.marketplace_type;
+                                (id, mp_type)
+                            })
+                            .collect();
+
+                    // Затем загружаем подключения
+                    match api::get_connections().await {
+                        Ok(conns) => {
+                            // Фильтруем подключения по marketplace_type == Ozon
+                            let filtered_conns: Vec<_> = conns
+                                .into_iter()
+                                .filter(|conn| {
+                                    marketplace_type_map
+                                        .get(&conn.marketplace_id)
+                                        .and_then(|mp_type| mp_type.as_ref())
+                                        .map(|mp_type| *mp_type == MarketplaceType::Ozon)
+                                        .unwrap_or(false)
+                                })
+                                .collect();
+
+                            if let Some(first) = filtered_conns.first() {
+                                set_selected_connection.set(first.to_string_id());
+                            }
+                            set_connections.set(filtered_conns);
+                        }
+                        Err(e) => {
+                            set_error_msg.set(format!("Ошибка загрузки подключений: {}", e));
+                        }
                     }
-                    set_connections.set(conns);
                 }
                 Err(e) => {
-                    set_error_msg.set(format!("Ошибка загрузки подключений: {}", e));
+                    set_error_msg.set(format!("Ошибка загрузки маркетплейсов: {}", e));
                 }
             }
         });
