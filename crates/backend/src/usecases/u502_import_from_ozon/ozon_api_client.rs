@@ -278,10 +278,7 @@ impl OzonApiClient {
 
         let request_body = OzonReturnsListRequest {
             filter: OzonReturnsFilter {
-                logistic_return_date: Some(OzonReturnsDateFilter {
-                    time_from,
-                    time_to,
-                }),
+                logistic_return_date: Some(OzonReturnsDateFilter { time_from, time_to }),
             },
             limit,
             last_id,
@@ -322,11 +319,7 @@ impl OzonApiClient {
             }
             Err(e) => {
                 let preview: String = body.chars().take(500).collect();
-                anyhow::bail!(
-                    "Failed to parse returns JSON: {}. Body: {}",
-                    e,
-                    preview
-                )
+                anyhow::bail!("Failed to parse returns JSON: {}. Body: {}", e, preview)
             }
         }
     }
@@ -748,7 +741,13 @@ pub struct OzonPostingFilter {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonPostingListResponse {
-    pub result: Vec<OzonPosting>,
+    pub result: OzonPostingListResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPostingListResult {
+    #[serde(default)]
+    pub postings: Vec<OzonPosting>,
     #[serde(default)]
     pub has_next: bool,
 }
@@ -772,13 +771,39 @@ pub struct OzonPosting {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonPostingProduct {
-    pub product_id: i64,
+    #[serde(default)]
+    pub product_id: Option<i64>,
     pub offer_id: String,
     pub name: String,
     #[serde(default)]
     pub quantity: i32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_price_option")]
     pub price: Option<f64>,
     #[serde(default)]
     pub currency_code: Option<String>,
+}
+
+/// Десериализует цену из строки или числа в Option<f64>
+fn deserialize_price_option<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Deserialize};
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrFloat {
+        String(String),
+        Float(f64),
+    }
+    
+    match Option::<StringOrFloat>::deserialize(deserializer)? {
+        Some(StringOrFloat::String(s)) => {
+            s.parse::<f64>()
+                .map(Some)
+                .map_err(de::Error::custom)
+        }
+        Some(StringOrFloat::Float(f)) => Ok(Some(f)),
+        None => Ok(None),
+    }
 }

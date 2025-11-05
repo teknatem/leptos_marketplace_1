@@ -4,6 +4,7 @@ pub mod layout;
 pub mod routes;
 pub mod shared;
 pub mod usecases;
+pub mod projections;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 

@@ -22,7 +22,9 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a007, set_import_a007) = signal(true);
     let (import_a008, set_import_a008) = signal(false);
     let (import_a009, set_import_a009) = signal(false);
-    // Даты периода (по умолчанию вчера)
+    let (import_a010, set_import_a010) = signal(false); // OZON FBS Posting
+    let (import_a011, set_import_a011) = signal(false); // OZON FBO Posting
+                                                        // Даты периода (по умолчанию вчера)
     let now = Utc::now().date_naive();
     let yesterday = now - chrono::Duration::days(1);
     let (date_from, set_date_from) = signal(yesterday);
@@ -188,6 +190,12 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a009.get() {
                 targets.push("a009_ozon_returns".to_string());
             }
+            if import_a010.get() {
+                targets.push("a010_ozon_fbs_posting".to_string());
+            }
+            if import_a011.get() {
+                targets.push("a011_ozon_fbo_posting".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -280,9 +288,30 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a009_ozon_returns - Возвраты OZON"
                     </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a010.get()
+                            on:change=move |ev| { set_import_a010.set(event_target_checked(&ev)); }
+                        />
+                        " a010_ozon_fbs_posting - OZON FBS Документы продаж (→ P900)"
+                    </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a011.get()
+                            on:change=move |ev| { set_import_a011.set(event_target_checked(&ev)); }
+                        />
+                        " a011_ozon_fbo_posting - OZON FBO Документы продаж (→ P900)"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list"
+                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list, POST /v3/posting/fbs/list, POST /v3/posting/fbo/list"
+                </div>
+                <div style="margin-top: 5px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 12px;">
+                    "💡 a010/a011 автоматически создают записи в P900 Sales Register при импорте"
                 </div>
             </div>
 

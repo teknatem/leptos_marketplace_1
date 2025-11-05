@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -230,4 +230,156 @@ pub async fn get_by_marketplace(marketplace: &str, limit: Option<u64>) -> Result
 
     let items = query.all(conn()).await?;
     Ok(items)
+}
+
+/// Получить одну запись по Natural Key (marketplace, document_no, line_id)
+pub async fn get_by_id(
+    marketplace: &str,
+    document_no: &str,
+    line_id: &str,
+) -> Result<Option<Model>> {
+    let item = Entity::find()
+        .filter(Column::Marketplace.eq(marketplace))
+        .filter(Column::DocumentNo.eq(document_no))
+        .filter(Column::LineId.eq(line_id))
+        .one(conn())
+        .await?;
+    Ok(item)
+}
+
+/// Получить список продаж с фильтрами
+pub async fn list_with_filters(
+    date_from: &str,
+    date_to: &str,
+    marketplace: Option<String>,
+    organization_ref: Option<String>,
+    connection_mp_ref: Option<String>,
+    status_norm: Option<String>,
+    seller_sku: Option<String>,
+    limit: i32,
+    offset: i32,
+) -> Result<(Vec<Model>, i32)> {
+    let mut query = Entity::find()
+        .filter(Column::SaleDate.gte(date_from.to_string()))
+        .filter(Column::SaleDate.lte(date_to.to_string()));
+
+    if let Some(mp) = marketplace {
+        query = query.filter(Column::Marketplace.eq(mp));
+    }
+    if let Some(org) = organization_ref {
+        query = query.filter(Column::OrganizationRef.eq(org));
+    }
+    if let Some(conn_ref) = connection_mp_ref {
+        query = query.filter(Column::ConnectionMpRef.eq(conn_ref));
+    }
+    if let Some(status) = status_norm {
+        query = query.filter(Column::StatusNorm.eq(status));
+    }
+    if let Some(sku) = seller_sku {
+        query = query.filter(Column::SellerSku.eq(sku));
+    }
+
+    // Count total
+    let total = query.clone().count(conn()).await? as i32;
+
+    // Get page
+    let items = query
+        .order_by_desc(Column::SaleDate)
+        .limit(limit as u64)
+        .offset(offset as u64)
+        .all(conn())
+        .await?;
+
+    Ok((items, total))
+}
+
+/// Структура для статистики по дате
+#[derive(Debug, Clone)]
+pub struct DailyStat {
+    pub date: String,
+    pub sales_count: i32,
+    pub total_qty: f64,
+    pub total_revenue: f64,
+}
+
+/// Получить статистику по датам
+pub async fn get_stats_by_date(
+    date_from: &str,
+    date_to: &str,
+    marketplace: Option<String>,
+) -> Result<Vec<DailyStat>> {
+    let mut query = Entity::find()
+        .filter(Column::SaleDate.gte(date_from.to_string()))
+        .filter(Column::SaleDate.lte(date_to.to_string()));
+
+    if let Some(mp) = marketplace {
+        query = query.filter(Column::Marketplace.eq(mp));
+    }
+
+    let items = query.all(conn()).await?;
+
+    // Группировка по датам в памяти
+    use std::collections::HashMap;
+    let mut stats_map: HashMap<String, DailyStat> = HashMap::new();
+
+    for item in items {
+        let stat = stats_map.entry(item.sale_date.clone()).or_insert(DailyStat {
+            date: item.sale_date.clone(),
+            sales_count: 0,
+            total_qty: 0.0,
+            total_revenue: 0.0,
+        });
+        stat.sales_count += 1;
+        stat.total_qty += item.qty;
+        stat.total_revenue += item.amount_line.unwrap_or(0.0);
+    }
+
+    let mut result: Vec<DailyStat> = stats_map.into_values().collect();
+    result.sort_by(|a, b| a.date.cmp(&b.date));
+
+    Ok(result)
+}
+
+/// Структура для статистики по маркетплейсу
+#[derive(Debug, Clone)]
+pub struct MarketplaceStat {
+    pub marketplace: String,
+    pub sales_count: i32,
+    pub total_qty: f64,
+    pub total_revenue: f64,
+}
+
+/// Получить статистику по маркетплейсам
+pub async fn get_stats_by_marketplace(
+    date_from: &str,
+    date_to: &str,
+) -> Result<Vec<MarketplaceStat>> {
+    let items = Entity::find()
+        .filter(Column::SaleDate.gte(date_from.to_string()))
+        .filter(Column::SaleDate.lte(date_to.to_string()))
+        .all(conn())
+        .await?;
+
+    // Группировка по маркетплейсам в памяти
+    use std::collections::HashMap;
+    let mut stats_map: HashMap<String, MarketplaceStat> = HashMap::new();
+
+    for item in items {
+        let stat = stats_map
+            .entry(item.marketplace.clone())
+            .or_insert(MarketplaceStat {
+                marketplace: item.marketplace.clone(),
+                sales_count: 0,
+                total_qty: 0.0,
+                total_revenue: 0.0,
+            });
+        stat.sales_count += 1;
+        stat.total_qty += item.qty;
+        stat.total_revenue += item.amount_line.unwrap_or(0.0);
+    }
+
+    let mut result: Vec<MarketplaceStat> = stats_map.into_values().collect();
+    result.sort_by(|a, b| a.marketplace.cmp(&b.marketplace));
+
+    Ok(result)
 }

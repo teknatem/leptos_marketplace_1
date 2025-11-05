@@ -1,6 +1,7 @@
 use super::repository;
 use anyhow::Result;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
+use contracts::domain::common::AggregateId;
 use uuid::Uuid;
 
 /// Сохранить документ с сырым JSON
@@ -29,8 +30,18 @@ pub async fn store_document_with_raw(
 
     document.before_write();
 
+    tracing::info!(
+        "Saving OZON FBS document: {} (id: {}, is_deleted: {}, lines: {})",
+        document.header.document_no,
+        document.base.id.as_string(),
+        document.base.metadata.is_deleted,
+        document.lines.len()
+    );
+
     // Сохраняем документ (upsert)
     let id = repository::upsert_document(&document).await?;
+    
+    tracing::info!("Successfully saved OZON FBS document with id: {}", id);
     
     // Проецируем в Sales Register
     if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ozon_fbs(&document).await {

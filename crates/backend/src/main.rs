@@ -2,6 +2,7 @@ pub mod domain;
 pub mod projections;
 pub mod shared;
 pub mod usecases;
+pub mod handlers;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -933,6 +934,63 @@ async fn main() -> anyhow::Result<()> {
                     Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 }
             }),
+        )
+        // P900 Sales Register handlers
+        .route(
+            "/api/p900/sales-register",
+            get(handlers::p900_sales_register::list_sales),
+        )
+        .route(
+            "/api/p900/sales-register/:marketplace/:document_no/:line_id",
+            get(handlers::p900_sales_register::get_sale_detail),
+        )
+        .route(
+            "/api/p900/stats/by-date",
+            get(handlers::p900_sales_register::get_stats_by_date),
+        )
+        .route(
+            "/api/p900/stats/by-marketplace",
+            get(handlers::p900_sales_register::get_stats_by_marketplace),
+        )
+        // A010 OZON FBS Posting handlers
+        .route(
+            "/api/a010/ozon-fbs-posting",
+            get(handlers::a010_ozon_fbs_posting::list_postings),
+        )
+        .route(
+            "/api/a010/ozon-fbs-posting/:id",
+            get(handlers::a010_ozon_fbs_posting::get_posting_detail),
+        )
+        .route(
+            "/api/a010/raw/:ref_id",
+            get(handlers::a010_ozon_fbs_posting::get_raw_json),
+        )
+        // A011 OZON FBO Posting handlers
+        .route(
+            "/api/a011/ozon-fbo-posting",
+            get(handlers::a011_ozon_fbo_posting::list_postings),
+        )
+        .route(
+            "/api/a011/ozon-fbo-posting/:id",
+            get(handlers::a011_ozon_fbo_posting::get_posting_detail),
+        )
+        // A012 WB Sales handlers
+        .route(
+            "/api/a012/wb-sales",
+            get(handlers::a012_wb_sales::list_sales),
+        )
+        .route(
+            "/api/a012/wb-sales/:id",
+            get(handlers::a012_wb_sales::get_sale_detail),
+        )
+        // A013 YM Order handlers
+        .route(
+            "/api/a013/ym-order",
+            get(handlers::a013_ym_order::list_orders),
+        )
+        .route(
+            "/api/a013/ym-order/:id",
+            get(handlers::a013_ym_order::get_order_detail),
         )
         .fallback_service(ServeDir::new("dist"))
         .layer(cors);

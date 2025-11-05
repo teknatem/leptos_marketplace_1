@@ -86,6 +86,19 @@ fn conn() -> &'static DatabaseConnection {
 }
 
 pub async fn list_all() -> Result<Vec<OzonFbsPosting>> {
+    let all_count = Entity::find().count(conn()).await?;
+    let deleted_count = Entity::find()
+        .filter(Column::IsDeleted.eq(true))
+        .count(conn())
+        .await?;
+    
+    tracing::info!(
+        "A010 list_all: total records={}, deleted={}, active={}",
+        all_count,
+        deleted_count,
+        all_count - deleted_count
+    );
+    
     let items: Vec<OzonFbsPosting> = Entity::find()
         .filter(Column::IsDeleted.eq(false))
         .all(conn())
@@ -93,6 +106,8 @@ pub async fn list_all() -> Result<Vec<OzonFbsPosting>> {
         .into_iter()
         .map(Into::into)
         .collect();
+    
+    tracing::info!("A010 list_all: returning {} items", items.len());
     Ok(items)
 }
 

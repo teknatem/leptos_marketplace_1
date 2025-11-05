@@ -22,6 +22,14 @@ pub fn Navbar() -> impl IntoView {
         ("a009_ozon_returns", "Возвраты OZON", "package-x"),
     ];
 
+    // Документы (Aggregates)
+    let documents = vec![
+        ("a010_ozon_fbs_posting", "OZON FBS Posting", "file-text"),
+        ("a011_ozon_fbo_posting", "OZON FBO Posting", "file-text"),
+        ("a012_wb_sales", "WB Sales", "file-text"),
+        ("a013_ym_order", "YM Orders", "file-text"),
+    ];
+
     // Интеграции: подключения + импорты
     let integrations = vec![
         // Подключения
@@ -46,6 +54,9 @@ pub fn Navbar() -> impl IntoView {
     // Операции
     let operations = vec![("u505_match_nomenclature", "Сопоставление", "layers")];
 
+    // Регистры (Projections)
+    let registers = vec![("p900_sales_register", "Регистр продаж", "database")];
+
     view! {
         <nav class="main-nav-bar">
             <>
@@ -55,6 +66,21 @@ pub fn Navbar() -> impl IntoView {
                 </div>
                 <ul>
                     {directories.into_iter().map(|(key, title, icon_name)| {
+                        view! {
+                            <li on:click=move |_| tabs_store.open_tab(key, title)>
+                                {icon_for(icon_name)}
+                                <span>{title}</span>
+                            </li>
+                        }
+                    }).collect_view()}
+                </ul>
+
+                // Документы
+                <div class="main-nav-bar-header">
+                    "Документы"
+                </div>
+                <ul>
+                    {documents.into_iter().map(|(key, title, icon_name)| {
                         view! {
                             <li on:click=move |_| tabs_store.open_tab(key, title)>
                                 {icon_for(icon_name)}
@@ -85,6 +111,21 @@ pub fn Navbar() -> impl IntoView {
                 </div>
                 <ul>
                     {operations.into_iter().map(|(key, title, icon_name)| {
+                        view! {
+                            <li on:click=move |_| tabs_store.open_tab(key, title)>
+                                {icon_for(icon_name)}
+                                <span>{title}</span>
+                            </li>
+                        }
+                    }).collect_view()}
+                </ul>
+
+                // Регистры
+                <div class="main-nav-bar-header">
+                    "Регистры"
+                </div>
+                <ul>
+                    {registers.into_iter().map(|(key, title, icon_name)| {
                         view! {
                             <li on:click=move |_| tabs_store.open_tab(key, title)>
                                 {icon_for(icon_name)}

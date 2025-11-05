@@ -9,6 +9,11 @@ use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
 use crate::domain::a009_ozon_returns::ui::list::OzonReturnsList;
+use crate::domain::a010_ozon_fbs_posting::ui::list::OzonFbsPostingList;
+use crate::domain::a011_ozon_fbo_posting::ui::list::OzonFboPostingList;
+use crate::domain::a012_wb_sales::ui::list::WbSalesList;
+use crate::domain::a013_ym_order::ui::list::YmOrderList;
+use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
@@ -47,6 +52,18 @@ pub fn Tabs() -> impl IntoView {
         Some(key) if key == "a009_ozon_returns" => {
             view! { <OzonReturnsList /> }.into_any()
         }
+        Some(key) if key == "a010_ozon_fbs_posting" => {
+            view! { <OzonFbsPostingList /> }.into_any()
+        }
+        Some(key) if key == "a011_ozon_fbo_posting" => {
+            view! { <OzonFboPostingList /> }.into_any()
+        }
+        Some(key) if key == "a012_wb_sales" => {
+            view! { <WbSalesList /> }.into_any()
+        }
+        Some(key) if key == "a013_ym_order" => {
+            view! { <YmOrderList /> }.into_any()
+        }
         Some(key) if key == "u501_import_from_ut" => {
             view! { <u501_import_from_ut::ImportWidget /> }.into_any()
         }
@@ -64,6 +81,9 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "u506_import_from_lemanapro" => {
             view! { <u506_import_from_lemanapro::ImportWidget /> }.into_any()
+        }
+        Some(key) if key == "p900_sales_register" => {
+            view! { <SalesRegisterList /> }.into_any()
         }
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }

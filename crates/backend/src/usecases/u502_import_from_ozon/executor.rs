@@ -45,6 +45,8 @@ impl ImportExecutor {
                 "a007_marketplace_product" => "Товары маркетплейса",
                 "a008_marketplace_sales" => "Продажи (фин. транзакции)",
                 "a009_ozon_returns" => "Возвраты OZON",
+                "a010_ozon_fbs_posting" => "OZON FBS Документы продаж",
+                "a011_ozon_fbo_posting" => "OZON FBO Документы продаж",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -119,6 +121,24 @@ impl ImportExecutor {
                 }
                 "a009_ozon_returns" => {
                     self.import_ozon_returns(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a010_ozon_fbs_posting" => {
+                    self.import_ozon_fbs_postings(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a011_ozon_fbo_posting" => {
+                    self.import_ozon_fbo_postings(
                         session_id,
                         connection,
                         request.date_from,
@@ -655,23 +675,35 @@ impl ImportExecutor {
             }
 
             let returns_count = resp.returns.len();
-            tracing::info!("Received {} returns from API (last_id={})", returns_count, last_id);
+            tracing::info!(
+                "Received {} returns from API (last_id={})",
+                returns_count,
+                last_id
+            );
 
             // Сохраняем last_id для следующего запроса перед перемещением вектора
             let new_last_id = resp.returns.last().map(|r| r.id).unwrap_or(last_id);
 
             for return_item in resp.returns {
                 let return_id_str = return_item.id.to_string();
-                let return_reason = return_item.return_reason_name.as_deref().unwrap_or("Unknown");
+                let return_reason = return_item
+                    .return_reason_name
+                    .as_deref()
+                    .unwrap_or("Unknown");
                 let return_type = return_item.return_type.as_deref().unwrap_or("Unknown");
-                let order_id_str = return_item.order_id.map(|id| id.to_string()).unwrap_or_default();
+                let order_id_str = return_item
+                    .order_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_default();
                 let order_number = return_item.order_number.as_deref().unwrap_or("");
                 let posting_number = return_item.posting_number.as_deref().unwrap_or("");
                 let clearing_id_str = return_item.clearing_id.map(|id| id.to_string());
-                let return_clearing_id_str = return_item.return_clearing_id.map(|id| id.to_string());
+                let return_clearing_id_str =
+                    return_item.return_clearing_id.map(|id| id.to_string());
 
                 // Парсим дату возврата из logistic.return_date (ISO 8601 формат: "2022-01-19T19:55:35.433Z")
-                let return_date = return_item.logistic
+                let return_date = return_item
+                    .logistic
                     .as_ref()
                     .and_then(|l| l.return_date.as_ref())
                     .and_then(|moment_str| {
@@ -687,7 +719,9 @@ impl ImportExecutor {
                     .unwrap_or(date_from); // Если не удалось распарсить, используем дату из периода запроса
 
                 // Проверяем наличие товара: если product == None или все поля внутри пустые
-                let has_product = return_item.product.as_ref()
+                let has_product = return_item
+                    .product
+                    .as_ref()
                     .and_then(|p| {
                         // Если хотя бы одно поле заполнено, считаем что товар есть
                         if p.sku.is_some() || p.name.is_some() || p.offer_id.is_some() {
@@ -700,7 +734,9 @@ impl ImportExecutor {
 
                 tracing::debug!(
                     "Return {} has_product={}, product: {:?}",
-                    return_id_str, has_product, return_item.product
+                    return_id_str,
+                    has_product,
+                    return_item.product
                 );
 
                 // Если нет товара в возврате, создаем одну запись без товара
@@ -780,10 +816,15 @@ impl ImportExecutor {
 
                     tracing::debug!(
                         "Return {} product: sku={}, name={}, price={}, qty={}",
-                        return_id_str, sku_str, product_name, price, quantity
+                        return_id_str,
+                        sku_str,
+                        product_name,
+                        price,
+                        quantity
                     );
 
-                    let display_name = format!("{} - {} - {}", return_id_str, sku_str, product_name);
+                    let display_name =
+                        format!("{} - {} - {}", return_id_str, sku_str, product_name);
                     self.progress_tracker.set_current_item(
                         session_id,
                         aggregate_index,
@@ -873,6 +914,432 @@ impl ImportExecutor {
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
             "OZON returns import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+        Ok(())
+    }
+
+    /// Импорт OZON FBS Posting в a010
+    async fn import_ozon_fbs_postings(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a010_ozon_fbs_posting;
+        use contracts::domain::a010_ozon_fbs_posting::aggregate::{
+            OzonFbsPosting, OzonFbsPostingHeader, OzonFbsPostingLine, OzonFbsPostingSourceMeta,
+            OzonFbsPostingState,
+        };
+
+        let aggregate_index = "a010_ozon_fbs_posting";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Пагинация
+        let limit = 100;
+        let mut offset = 0;
+
+        loop {
+            let resp = self
+                .api_client
+                .fetch_fbs_postings(connection, date_from, date_to, limit, offset)
+                .await?;
+
+            if resp.result.postings.is_empty() {
+                break;
+            }
+
+            let postings_count = resp.result.postings.len();
+            tracing::info!(
+                "Received {} FBS postings from API (offset={})",
+                postings_count,
+                offset
+            );
+
+            for posting in resp.result.postings {
+                let posting_number = posting.posting_number.clone();
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("FBS Posting {}", posting_number)),
+                );
+
+                // Проверяем, существует ли документ
+                let existing =
+                    a010_ozon_fbs_posting::service::get_by_document_no(&posting_number).await?;
+                let is_new = existing.is_none();
+
+                // Конвертируем продукты в строки документа
+                let lines: Vec<OzonFbsPostingLine> = posting
+                    .products
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, product)| OzonFbsPostingLine {
+                        line_id: format!("{}_{}", posting_number, idx + 1),
+                        product_id: product
+                            .product_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| product.offer_id.clone()),
+                        offer_id: product.offer_id.clone(),
+                        name: product.name.clone(),
+                        barcode: None,
+                        qty: product.quantity as f64,
+                        price_list: product.price,
+                        discount_total: None,
+                        price_effective: product.price,
+                        amount_line: product.price.map(|p| p * product.quantity as f64),
+                        currency_code: product.currency_code.clone(),
+                    })
+                    .collect();
+
+                // Парсим delivered_at (используем delivering_date как основное поле, delivered_at как fallback)
+                let date_source = if posting.delivering_date.is_some() {
+                    "delivering_date"
+                } else if posting.delivered_at.is_some() {
+                    "delivered_at"
+                } else {
+                    "none"
+                };
+                
+                let delivered_at = posting
+                    .delivering_date
+                    .as_ref()
+                    .or(posting.delivered_at.as_ref())
+                    .and_then(|s| {
+                        chrono::DateTime::parse_from_rfc3339(s)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                            .ok()
+                    });
+                
+                tracing::debug!(
+                    "FBS Posting {}: date_source={}, delivering_date={:?}, delivered_at={:?}, parsed_date={:?}",
+                    posting_number,
+                    date_source,
+                    posting.delivering_date,
+                    posting.delivered_at,
+                    delivered_at
+                );
+
+                // Создаем документ
+                let header = OzonFbsPostingHeader {
+                    document_no: posting_number.clone(),
+                    scheme: "FBS".to_string(),
+                    connection_id: connection.base.id.as_string(),
+                    organization_id: organization_id.clone(),
+                    marketplace_id: connection.marketplace_id.clone(),
+                };
+
+                let state = OzonFbsPostingState {
+                    status_raw: posting.status.clone(),
+                    status_norm: posting.status.clone(),
+                    delivered_at,
+                    updated_at_source: None,
+                };
+
+                let source_meta = OzonFbsPostingSourceMeta {
+                    raw_payload_ref: String::new(), // Будет заполнен в service
+                    fetched_at: chrono::Utc::now(),
+                    document_version: 1,
+                };
+
+                let document = OzonFbsPosting::new_for_insert(
+                    posting_number.clone(),
+                    format!("FBS Posting {}", posting_number),
+                    header,
+                    lines,
+                    state,
+                    source_meta,
+                );
+
+                // Сохраняем с сырым JSON (автоматически проецируется в P900)
+                let raw_json = serde_json::to_string(&posting)?;
+                match a010_ozon_fbs_posting::service::store_document_with_raw(document, &raw_json)
+                    .await
+                {
+                    Ok(_) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process FBS posting {}: {}", posting_number, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process FBS posting {}", posting_number),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            // Проверяем, есть ли еще данные
+            if !resp.result.has_next {
+                break;
+            }
+
+            offset += limit;
+            self.progress_tracker
+                .set_current_item(session_id, aggregate_index, None);
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "OZON FBS postings import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+        Ok(())
+    }
+
+    /// Импорт OZON FBO Posting в a011
+    async fn import_ozon_fbo_postings(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a011_ozon_fbo_posting;
+        use contracts::domain::a011_ozon_fbo_posting::aggregate::{
+            OzonFboPosting, OzonFboPostingHeader, OzonFboPostingLine, OzonFboPostingSourceMeta,
+            OzonFboPostingState,
+        };
+
+        let aggregate_index = "a011_ozon_fbo_posting";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Пагинация
+        let limit = 100;
+        let mut offset = 0;
+
+        loop {
+            let resp = self
+                .api_client
+                .fetch_fbo_postings(connection, date_from, date_to, limit, offset)
+                .await?;
+
+            if resp.result.postings.is_empty() {
+                break;
+            }
+
+            let postings_count = resp.result.postings.len();
+            tracing::info!(
+                "Received {} FBO postings from API (offset={})",
+                postings_count,
+                offset
+            );
+
+            for posting in resp.result.postings {
+                let posting_number = posting.posting_number.clone();
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("FBO Posting {}", posting_number)),
+                );
+
+                // Проверяем, существует ли документ
+                let existing =
+                    a011_ozon_fbo_posting::service::get_by_document_no(&posting_number).await?;
+                let is_new = existing.is_none();
+
+                // Конвертируем продукты в строки документа
+                let lines: Vec<OzonFboPostingLine> = posting
+                    .products
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, product)| OzonFboPostingLine {
+                        line_id: format!("{}_{}", posting_number, idx + 1),
+                        product_id: product
+                            .product_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| product.offer_id.clone()),
+                        offer_id: product.offer_id.clone(),
+                        name: product.name.clone(),
+                        barcode: None,
+                        qty: product.quantity as f64,
+                        price_list: product.price,
+                        discount_total: None,
+                        price_effective: product.price,
+                        amount_line: product.price.map(|p| p * product.quantity as f64),
+                        currency_code: product.currency_code.clone(),
+                    })
+                    .collect();
+
+                // Парсим delivered_at (используем delivering_date как основное поле, delivered_at как fallback)
+                let date_source = if posting.delivering_date.is_some() {
+                    "delivering_date"
+                } else if posting.delivered_at.is_some() {
+                    "delivered_at"
+                } else {
+                    "none"
+                };
+                
+                let delivered_at = posting
+                    .delivering_date
+                    .as_ref()
+                    .or(posting.delivered_at.as_ref())
+                    .and_then(|s| {
+                        chrono::DateTime::parse_from_rfc3339(s)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                            .ok()
+                    });
+                
+                tracing::debug!(
+                    "FBO Posting {}: date_source={}, delivering_date={:?}, delivered_at={:?}, parsed_date={:?}",
+                    posting_number,
+                    date_source,
+                    posting.delivering_date,
+                    posting.delivered_at,
+                    delivered_at
+                );
+
+                // Создаем документ
+                let header = OzonFboPostingHeader {
+                    document_no: posting_number.clone(),
+                    scheme: "FBO".to_string(),
+                    connection_id: connection.base.id.as_string(),
+                    organization_id: organization_id.clone(),
+                    marketplace_id: connection.marketplace_id.clone(),
+                };
+
+                let state = OzonFboPostingState {
+                    status_raw: posting.status.clone(),
+                    status_norm: posting.status.clone(),
+                    delivered_at,
+                    updated_at_source: None,
+                };
+
+                let source_meta = OzonFboPostingSourceMeta {
+                    raw_payload_ref: String::new(), // Будет заполнен в service
+                    fetched_at: chrono::Utc::now(),
+                    document_version: 1,
+                };
+
+                let document = OzonFboPosting::new_for_insert(
+                    posting_number.clone(),
+                    format!("FBO Posting {}", posting_number),
+                    header,
+                    lines,
+                    state,
+                    source_meta,
+                );
+
+                // Сохраняем с сырым JSON (автоматически проецируется в P900)
+                let raw_json = serde_json::to_string(&posting)?;
+                match a011_ozon_fbo_posting::service::store_document_with_raw(document, &raw_json)
+                    .await
+                {
+                    Ok(_) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process FBO posting {}: {}", posting_number, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process FBO posting {}", posting_number),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            // Проверяем, есть ли еще данные
+            if !resp.result.has_next {
+                break;
+            }
+
+            offset += limit;
+            self.progress_tracker
+                .set_current_item(session_id, aggregate_index, None);
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "OZON FBO postings import completed: processed={}, inserted={}, updated={}",
             total_processed,
             total_inserted,
             total_updated
