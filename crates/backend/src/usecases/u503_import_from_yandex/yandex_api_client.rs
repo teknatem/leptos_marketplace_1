@@ -350,3 +350,223 @@ pub struct YandexPrice {
     pub value: f64,
     pub currency: String,
 }
+
+impl YandexApiClient {
+    /// Получить список заказов через Yandex Market API
+    /// GET /campaigns/{campaignId}/orders
+    pub async fn fetch_orders(
+        &self,
+        connection: &ConnectionMP,
+        status: Option<String>,
+        updated_from: Option<chrono::NaiveDate>,
+    ) -> Result<Vec<YmOrderItem>> {
+        let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Campaign ID (Идентификатор магазина) is required for Yandex Market API")
+        })?;
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+        }
+
+        let url = format!(
+            "https://api.partner.market.yandex.ru/campaigns/{}/orders",
+            campaign_id
+        );
+
+        #[derive(Debug, Serialize)]
+        struct QueryParams {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub status: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none", rename = "updatedFrom")]
+            pub updated_from: Option<String>,
+        }
+
+        let query = QueryParams {
+            status,
+            updated_from: updated_from.map(|d| d.format("%Y-%m-%d").to_string()),
+        };
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
+            url, query
+        ));
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .query(&query)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Yandex Market Orders API request failed: {}", body);
+            anyhow::bail!("Yandex Market Orders API failed with status {}: {}", status, body);
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+
+        match serde_json::from_str::<YmOrdersResponse>(&body) {
+            Ok(data) => {
+                let orders_count = data.result.orders.len();
+                self.log_to_file(&format!("Successfully parsed {} orders", orders_count));
+                Ok(data.result.orders)
+            }
+            Err(e) => {
+                self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                tracing::error!("Failed to parse Yandex Market orders response: {}", e);
+                anyhow::bail!("Failed to parse orders response: {}", e)
+            }
+        }
+    }
+
+    /// Получить детали конкретного заказа
+    /// GET /campaigns/{campaignId}/orders/{orderId}
+    pub async fn fetch_order_details(
+        &self,
+        connection: &ConnectionMP,
+        order_id: i64,
+    ) -> Result<YmOrderItem> {
+        let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Campaign ID (Идентификатор магазина) is required for Yandex Market API")
+        })?;
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+        }
+
+        let url = format!(
+            "https://api.partner.market.yandex.ru/campaigns/{}/orders/{}",
+            campaign_id, order_id
+        );
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: Bearer ****",
+            url
+        ));
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Yandex Market Order Details API request failed: {}", body);
+            anyhow::bail!("Yandex Market Order Details API failed with status {}: {}", status, body);
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+
+        match serde_json::from_str::<YmOrderDetailsResponse>(&body) {
+            Ok(data) => {
+                self.log_to_file("Successfully parsed order details");
+                Ok(data.result.order)
+            }
+            Err(e) => {
+                self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                tracing::error!("Failed to parse Yandex Market order details response: {}", e);
+                anyhow::bail!("Failed to parse order details response: {}", e)
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Orders structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrdersResponse {
+    pub result: YmOrdersResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrdersResult {
+    pub orders: Vec<YmOrderItem>,
+    #[serde(default)]
+    pub paging: Option<YmOrdersPaging>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrdersPaging {
+    #[serde(rename = "nextPageToken")]
+    pub next_page_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderDetailsResponse {
+    pub result: YmOrderDetailsResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderDetailsResult {
+    pub order: YmOrderItem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderItem {
+    pub id: i64,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(rename = "substatus", default)]
+    pub substatus: Option<String>,
+    #[serde(rename = "creationDate", default)]
+    pub creation_date: Option<String>,
+    #[serde(rename = "statusUpdateDate", default)]
+    pub status_update_date: Option<String>,
+    #[serde(rename = "deliveryDate", default)]
+    pub delivery_date: Option<String>,
+    #[serde(default)]
+    pub items: Vec<YmOrderLineItem>,
+    #[serde(default)]
+    pub delivery: Option<YmOrderDelivery>,
+    #[serde(default)]
+    pub total: Option<f64>,
+    #[serde(default)]
+    pub currency: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderLineItem {
+    pub id: i64,
+    #[serde(rename = "offerId", default)]
+    pub offer_id: Option<String>,
+    #[serde(rename = "shopSku", default)]
+    pub shop_sku: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub count: i32,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub subsidy: Option<f64>,
+    #[serde(default)]
+    pub total: Option<f64>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderDelivery {
+    #[serde(rename = "type", default)]
+    pub delivery_type: Option<String>,
+    #[serde(rename = "serviceName", default)]
+    pub service_name: Option<String>,
+    #[serde(default)]
+    pub price: Option<f64>,
+}

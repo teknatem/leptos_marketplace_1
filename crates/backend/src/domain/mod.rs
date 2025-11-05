@@ -7,3 +7,7 @@ pub mod a006_connection_mp;
 pub mod a007_marketplace_product;
 pub mod a008_marketplace_sales;
 pub mod a009_ozon_returns;
+pub mod a010_ozon_fbs_posting;
+pub mod a011_ozon_fbo_posting;
+pub mod a012_wb_sales;
+pub mod a013_ym_order;

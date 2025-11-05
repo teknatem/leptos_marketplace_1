@@ -1445,6 +1445,60 @@ impl WildberriesApiClient {
             }
         }
     }
+
+    /// Получить данные по продажам через Statistics API
+    /// GET /api/v1/supplier/sales
+    pub async fn fetch_sales(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+    ) -> Result<Vec<WbSaleRow>> {
+        let url = "https://statistics-api.wildberries.ru/api/v1/supplier/sales";
+        
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries API");
+        }
+
+        let date_from_str = date_from.format("%Y-%m-%d").to_string();
+        
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}?dateFrom={}\nAuthorization: ****",
+            url, date_from_str
+        ));
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .query(&[("dateFrom", date_from_str)])
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Wildberries Sales API request failed: {}", body);
+            anyhow::bail!("Wildberries Sales API failed with status {}: {}", status, body);
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+
+        match serde_json::from_str::<Vec<WbSaleRow>>(&body) {
+            Ok(data) => {
+                self.log_to_file(&format!("Successfully parsed {} sale rows", data.len()));
+                Ok(data)
+            }
+            Err(e) => {
+                self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                tracing::error!("Failed to parse Wildberries sales response: {}", e);
+                anyhow::bail!("Failed to parse sales response: {}", e)
+            }
+        }
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -1585,6 +1639,74 @@ pub struct WildberriesTag {
     pub name: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+}
+
+// ============================================================================
+// Sales structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSaleRow {
+    /// Уникальный идентификатор строки продажи
+    #[serde(default)]
+    pub srid: Option<String>,
+    /// Номенклатурный номер товара
+    #[serde(rename = "nmId", default)]
+    pub nm_id: Option<i64>,
+    /// Артикул продавца
+    #[serde(rename = "supplierArticle", default)]
+    pub supplier_article: Option<String>,
+    /// Штрихкод
+    #[serde(default)]
+    pub barcode: Option<String>,
+    /// Название товара
+    #[serde(default)]
+    pub brand: Option<String>,
+    /// Предмет
+    #[serde(default)]
+    pub subject: Option<String>,
+    /// Категория
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Дата продажи
+    #[serde(rename = "date", default)]
+    pub sale_dt: Option<String>,
+    /// Дата последнего изменения записи
+    #[serde(rename = "lastChangeDate", default)]
+    pub last_change_date: Option<String>,
+    /// Склад
+    #[serde(rename = "warehouseName", default)]
+    pub warehouse_name: Option<String>,
+    /// Страна
+    #[serde(rename = "countryName", default)]
+    pub country_name: Option<String>,
+    /// Регион
+    #[serde(rename = "oblastOkrugName", default)]
+    pub region_name: Option<String>,
+    /// Цена без скидки
+    #[serde(rename = "priceWithDisc", default)]
+    pub price_with_disc: Option<f64>,
+    /// Скидка продавца
+    #[serde(rename = "discount", default)]
+    pub discount: Option<f64>,
+    /// Количество
+    #[serde(rename = "quantity", default)]
+    pub quantity: Option<i32>,
+    /// Тип документа: sale или return
+    #[serde(rename = "saleID", default)]
+    pub sale_id: Option<String>,
+    /// Номер заказа
+    #[serde(rename = "odid", default)]
+    pub order_id: Option<i64>,
+    /// SPP (Согласованная скидка продавца)
+    #[serde(rename = "spp", default)]
+    pub spp: Option<f64>,
+    /// Вознаграждение
+    #[serde(rename = "forPay", default)]
+    pub for_pay: Option<f64>,
+    /// Итоговая стоимость
+    #[serde(rename = "finishedPrice", default)]
+    pub finished_price: Option<f64>,
 }
 
 // ============================================================================

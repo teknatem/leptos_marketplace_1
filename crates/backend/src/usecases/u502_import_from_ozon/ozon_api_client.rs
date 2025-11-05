@@ -330,6 +330,136 @@ impl OzonApiClient {
             }
         }
     }
+
+    /// Получить список FBS отправлений (продаж) через POST /v3/posting/fbs/list
+    pub async fn fetch_fbs_postings(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+        limit: i32,
+        offset: i32,
+    ) -> Result<OzonPostingListResponse> {
+        let url = "https://api-seller.ozon.ru/v3/posting/fbs/list";
+
+        let client_id = connection
+            .application_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Client-Id required for OZON API"))?;
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Api-Key required for OZON API");
+        }
+
+        let time_from = format!("{}T00:00:00Z", date_from.format("%Y-%m-%d"));
+        let time_to = format!("{}T23:59:59Z", date_to.format("%Y-%m-%d"));
+
+        let request_body = OzonPostingListRequest {
+            filter: OzonPostingFilter {
+                since: Some(time_from),
+                to: Some(time_to),
+                status: Some("delivered".to_string()),
+            },
+            limit: Some(limit),
+            offset: Some(offset),
+        };
+
+        let body = serde_json::to_string(&request_body)?;
+        self.log_to_file(&format!(
+            "=== FBS POSTINGS REQUEST ===\nPOST {}\nBody: {}",
+            url, body
+        ));
+
+        let response = self
+            .client
+            .post(url)
+            .header("Client-Id", client_id)
+            .header("Api-Key", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            anyhow::bail!("OZON FBS postings request failed: {}", status);
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== FBS POSTINGS RESPONSE ===\n{}\n", body));
+
+        match serde_json::from_str::<OzonPostingListResponse>(&body) {
+            Ok(data) => Ok(data),
+            Err(e) => anyhow::bail!("Failed to parse FBS postings JSON: {}", e),
+        }
+    }
+
+    /// Получить список FBO отправлений (продаж) через POST /v2/posting/fbo/list
+    pub async fn fetch_fbo_postings(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+        limit: i32,
+        offset: i32,
+    ) -> Result<OzonPostingListResponse> {
+        let url = "https://api-seller.ozon.ru/v2/posting/fbo/list";
+
+        let client_id = connection
+            .application_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Client-Id required for OZON API"))?;
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Api-Key required for OZON API");
+        }
+
+        let time_from = format!("{}T00:00:00Z", date_from.format("%Y-%m-%d"));
+        let time_to = format!("{}T23:59:59Z", date_to.format("%Y-%m-%d"));
+
+        let request_body = OzonPostingListRequest {
+            filter: OzonPostingFilter {
+                since: Some(time_from),
+                to: Some(time_to),
+                status: Some("delivered".to_string()),
+            },
+            limit: Some(limit),
+            offset: Some(offset),
+        };
+
+        let body = serde_json::to_string(&request_body)?;
+        self.log_to_file(&format!(
+            "=== FBO POSTINGS REQUEST ===\nPOST {}\nBody: {}",
+            url, body
+        ));
+
+        let response = self
+            .client
+            .post(url)
+            .header("Client-Id", client_id)
+            .header("Api-Key", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            anyhow::bail!("OZON FBO postings request failed: {}", status);
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== FBO POSTINGS RESPONSE ===\n{}\n", body));
+
+        match serde_json::from_str::<OzonPostingListResponse>(&body) {
+            Ok(data) => Ok(data),
+            Err(e) => anyhow::bail!("Failed to parse FBO postings JSON: {}", e),
+        }
+    }
 }
 
 impl Default for OzonApiClient {
@@ -499,12 +629,6 @@ pub struct OzonFinanceOperation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OzonPosting {
-    #[serde(default)]
-    pub posting_number: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFinanceItem {
     #[serde(default)]
     pub sku: Option<i64>,
@@ -597,4 +721,64 @@ pub struct OzonReturnLogistic {
     pub return_date: Option<String>, // ISO datetime
     #[serde(default)]
     pub final_moment: Option<String>,
+}
+
+// ============================================================================
+// Structures for FBS/FBO Postings (Sales Documents)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPostingListRequest {
+    pub filter: OzonPostingFilter,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPostingFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<String>, // ISO datetime
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>, // ISO datetime
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPostingListResponse {
+    pub result: Vec<OzonPosting>,
+    #[serde(default)]
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPosting {
+    pub posting_number: String,
+    pub status: String,
+    #[serde(default)]
+    pub substatus: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub in_process_at: Option<String>,
+    #[serde(default)]
+    pub delivering_date: Option<String>,
+    #[serde(default)]
+    pub delivered_at: Option<String>,
+    pub products: Vec<OzonPostingProduct>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonPostingProduct {
+    pub product_id: i64,
+    pub offer_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub quantity: i32,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub currency_code: Option<String>,
 }

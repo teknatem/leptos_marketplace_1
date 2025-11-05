@@ -1,4 +1,5 @@
 pub mod domain;
+pub mod projections;
 pub mod shared;
 pub mod usecases;
 

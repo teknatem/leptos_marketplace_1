@@ -673,6 +673,354 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // document_raw_storage table - для хранения сырых JSON от маркетплейсов
+    let check_raw_storage = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='document_raw_storage';
+    "#;
+    let raw_storage_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_raw_storage.to_string(),
+        ))
+        .await?;
+
+    if raw_storage_exists.is_empty() {
+        tracing::info!("Creating document_raw_storage table");
+        let create_raw_storage_table_sql = r#"
+            CREATE TABLE document_raw_storage (
+                id TEXT PRIMARY KEY NOT NULL,
+                marketplace TEXT NOT NULL,
+                document_type TEXT NOT NULL,
+                document_no TEXT NOT NULL,
+                raw_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_raw_storage_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Создать индекс для быстрого поиска по marketplace + document_type + document_no
+        let create_raw_storage_idx = r#"
+            CREATE INDEX IF NOT EXISTS idx_raw_storage_lookup
+            ON document_raw_storage (marketplace, document_type, document_no);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_raw_storage_idx.to_string(),
+        ))
+        .await?;
+    }
+
+    // p900_sales_register table - унифицированный регистр продаж
+    let check_sales_register = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p900_sales_register';
+    "#;
+    let sales_register_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_sales_register.to_string(),
+        ))
+        .await?;
+
+    if sales_register_exists.is_empty() {
+        tracing::info!("Creating p900_sales_register table");
+        let create_sales_register_table_sql = r#"
+            CREATE TABLE p900_sales_register (
+                -- NK (Natural Key)
+                marketplace TEXT NOT NULL,
+                document_no TEXT NOT NULL,
+                line_id TEXT NOT NULL,
+                
+                -- Metadata
+                scheme TEXT,
+                document_type TEXT NOT NULL,
+                document_version INTEGER NOT NULL DEFAULT 1,
+                
+                -- References to aggregates (UUID)
+                connection_mp_ref TEXT NOT NULL,
+                organization_ref TEXT NOT NULL,
+                marketplace_product_ref TEXT,
+                registrator_ref TEXT NOT NULL,
+                
+                -- Timestamps and status
+                event_time_source TEXT NOT NULL,
+                sale_date TEXT NOT NULL,
+                source_updated_at TEXT,
+                status_source TEXT NOT NULL,
+                status_norm TEXT NOT NULL,
+                
+                -- Product identification
+                seller_sku TEXT,
+                mp_item_id TEXT NOT NULL,
+                barcode TEXT,
+                title TEXT,
+                
+                -- Quantities and money
+                qty REAL NOT NULL,
+                price_list REAL,
+                discount_total REAL,
+                price_effective REAL,
+                amount_line REAL,
+                currency_code TEXT,
+                
+                -- Technical fields
+                loaded_at_utc TEXT NOT NULL,
+                payload_version INTEGER NOT NULL DEFAULT 1,
+                extra TEXT,
+                
+                PRIMARY KEY (marketplace, document_no, line_id)
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_sales_register_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Создать индексы для быстрого поиска
+        let create_register_idx1 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_sale_date
+            ON p900_sales_register (sale_date);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx1.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx2 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_event_time
+            ON p900_sales_register (event_time_source);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx2.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx3 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_connection_mp
+            ON p900_sales_register (connection_mp_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx3.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx4 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_organization
+            ON p900_sales_register (organization_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx4.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx5 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_product
+            ON p900_sales_register (marketplace_product_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx5.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx6 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_seller_sku
+            ON p900_sales_register (seller_sku);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx6.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx7 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_mp_item_id
+            ON p900_sales_register (mp_item_id);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx7.to_string(),
+        ))
+        .await?;
+
+        let create_register_idx8 = r#"
+            CREATE INDEX IF NOT EXISTS idx_sales_register_status_norm
+            ON p900_sales_register (status_norm);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_register_idx8.to_string(),
+        ))
+        .await?;
+    }
+
+    // a010_ozon_fbs_posting table - документы OZON FBS
+    let check_ozon_fbs = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a010_ozon_fbs_posting';
+    "#;
+    let ozon_fbs_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ozon_fbs.to_string(),
+        ))
+        .await?;
+
+    if ozon_fbs_exists.is_empty() {
+        tracing::info!("Creating a010_ozon_fbs_posting table");
+        let create_table_sql = r#"
+            CREATE TABLE a010_ozon_fbs_posting (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                document_no TEXT NOT NULL UNIQUE,
+                header_json TEXT NOT NULL,
+                lines_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a011_ozon_fbo_posting table - документы OZON FBO
+    let check_ozon_fbo = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a011_ozon_fbo_posting';
+    "#;
+    let ozon_fbo_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ozon_fbo.to_string(),
+        ))
+        .await?;
+
+    if ozon_fbo_exists.is_empty() {
+        tracing::info!("Creating a011_ozon_fbo_posting table");
+        let create_table_sql = r#"
+            CREATE TABLE a011_ozon_fbo_posting (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                document_no TEXT NOT NULL UNIQUE,
+                header_json TEXT NOT NULL,
+                lines_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a012_wb_sales table - документы Wildberries Sales
+    let check_wb_sales = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a012_wb_sales';
+    "#;
+    let wb_sales_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_wb_sales.to_string(),
+        ))
+        .await?;
+
+    if wb_sales_exists.is_empty() {
+        tracing::info!("Creating a012_wb_sales table");
+        let create_table_sql = r#"
+            CREATE TABLE a012_wb_sales (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                document_no TEXT NOT NULL UNIQUE,
+                header_json TEXT NOT NULL,
+                line_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a013_ym_order table - документы Yandex Market Orders
+    let check_ym_order = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a013_ym_order';
+    "#;
+    let ym_order_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ym_order.to_string(),
+        ))
+        .await?;
+
+    if ym_order_exists.is_empty() {
+        tracing::info!("Creating a013_ym_order table");
+        let create_table_sql = r#"
+            CREATE TABLE a013_ym_order (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                document_no TEXT NOT NULL UNIQUE,
+                header_json TEXT NOT NULL,
+                lines_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
     DB_CONN
         .set(conn)
         .map_err(|_| anyhow::anyhow!("Failed to set DB_CONN"))?;
