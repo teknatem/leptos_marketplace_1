@@ -1,9 +1,13 @@
+use chrono::{Datelike, Utc};
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
+
+// Импорты компонентов деталей документов
+use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SalesRegisterDto {
@@ -44,15 +48,38 @@ pub struct SalesRegisterListResponse {
     pub has_more: bool,
 }
 
+#[derive(Debug, Clone)]
+struct SelectedDocument {
+    document_type: String,
+    document_id: String,
+}
+
 #[component]
 pub fn SalesRegisterList() -> impl IntoView {
     let (sales, set_sales) = signal(Vec::<SalesRegisterDto>::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
+    let (selected_document, set_selected_document) = signal::<Option<SelectedDocument>>(None);
 
-    // Фильтры
-    let (date_from, set_date_from) = signal("2024-01-01".to_string());
-    let (date_to, set_date_to) = signal("2024-12-31".to_string());
+    // Фильтры - период по умолчанию: текущий месяц
+    let now = Utc::now().date_naive();
+    let year = now.year();
+    let month = now.month();
+    let month_start =
+        chrono::NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
+    // Вычисляем последний день месяца: первый день следующего месяца минус 1 день
+    let month_end = if month == 12 {
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            .map(|d| d - chrono::Duration::days(1))
+            .expect("Invalid month end date")
+    } else {
+        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+            .map(|d| d - chrono::Duration::days(1))
+            .expect("Invalid month end date")
+    };
+
+    let (date_from, set_date_from) = signal(month_start.format("%Y-%m-%d").to_string());
+    let (date_to, set_date_to) = signal(month_end.format("%Y-%m-%d").to_string());
     let (marketplace_filter, set_marketplace_filter) = signal("".to_string());
 
     let load_sales = move || {
@@ -89,60 +116,61 @@ pub fn SalesRegisterList() -> impl IntoView {
 
     view! {
         <div class="sales-register-list">
-            <h2>"Sales Register (P900)"</h2>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <h2 style="margin: 0; font-size: var(--font-size-h3); line-height: 1.2;">"Sales Register (P900)"</h2>
 
-            // Фильтры
-            <div class="filters" style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
-                <div style="display: flex; gap: 15px; align-items: flex-end;">
-                    <div>
-                        <label>"Date From:"</label>
-                        <input
-                            type="date"
-                            prop:value=date_from
-                            on:input=move |ev| {
-                                set_date_from.set(event_target_value(&ev));
-                            }
-                            style="margin-left: 10px; padding: 5px;"
-                        />
-                    </div>
+                <label style="margin: 0; font-size: var(--font-size-sm); white-space: nowrap;">"From:"</label>
+                <input
+                    type="date"
+                    prop:value=date_from
+                    on:input=move |ev| {
+                        set_date_from.set(event_target_value(&ev));
+                    }
+                    style="padding: 4px 8px; border: 1px solid var(--color-border-light); border-radius: 4px; font-size: var(--font-size-sm);"
+                />
 
-                    <div>
-                        <label>"Date To:"</label>
-                        <input
-                            type="date"
-                            prop:value=date_to
-                            on:input=move |ev| {
-                                set_date_to.set(event_target_value(&ev));
-                            }
-                            style="margin-left: 10px; padding: 5px;"
-                        />
-                    </div>
+                <label style="margin: 0; font-size: var(--font-size-sm); white-space: nowrap;">"To:"</label>
+                <input
+                    type="date"
+                    prop:value=date_to
+                    on:input=move |ev| {
+                        set_date_to.set(event_target_value(&ev));
+                    }
+                    style="padding: 4px 8px; border: 1px solid var(--color-border-light); border-radius: 4px; font-size: var(--font-size-sm);"
+                />
 
-                    <div>
-                        <label>"Marketplace:"</label>
-                        <select
-                            prop:value=marketplace_filter
-                            on:change=move |ev| {
-                                set_marketplace_filter.set(event_target_value(&ev));
-                            }
-                            style="margin-left: 10px; padding: 5px;"
-                        >
-                            <option value="">"All"</option>
-                            <option value="OZON">"OZON"</option>
-                            <option value="WILDBERRIES">"Wildberries"</option>
-                            <option value="YANDEX_MARKET">"Yandex Market"</option>
-                        </select>
-                    </div>
+                <label style="margin: 0; font-size: var(--font-size-sm); white-space: nowrap;">"MP:"</label>
+                <select
+                    prop:value=marketplace_filter
+                    on:change=move |ev| {
+                        set_marketplace_filter.set(event_target_value(&ev));
+                    }
+                    style="padding: 4px 8px; border: 1px solid var(--color-border-light); border-radius: 4px; font-size: var(--font-size-sm);"
+                >
+                    <option value="">"All"</option>
+                    <option value="OZON">"OZON"</option>
+                    <option value="WB">"Wildberries"</option>
+                    <option value="YM">"Yandex Market"</option>
+                </select>
 
-                    <button
-                        on:click=move |_| {
-                            load_sales();
-                        }
-                        style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                    >
-                        "Load Sales"
-                    </button>
-                </div>
+                <button
+                    on:click=move |_| {
+                        load_sales();
+                    }
+                    style="padding: 4px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm);"
+                >
+                    "Обновить"
+                </button>
+
+                {move || if !loading.get() {
+                    view! {
+                        <span style="margin-left: 8px; font-size: var(--font-size-sm); color: var(--color-text-muted);">
+                            "Total: " {sales.get().len()} " records"
+                        </span>
+                    }.into_any()
+                } else {
+                    view! { <></> }.into_any()
+                }}
             </div>
 
             {move || {
@@ -153,8 +181,115 @@ pub fn SalesRegisterList() -> impl IntoView {
                 } else {
                     view! {
                         <div>
-                            <p>"Total: " {sales.get().len()} " records"</p>
-                            <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                            // Модальное окно для деталей документа
+                            {move || {
+                                if let Some(selected) = selected_document.get() {
+                                    view! {
+                                        <div class="modal-overlay" style="align-items: flex-start; padding-top: 40px;">
+                                            <div class="modal-content" style="max-width: 1200px; height: calc(100vh - 80px); overflow: hidden; margin: 0;">
+                                                {match selected.document_type.as_str() {
+                                                    "OZON_FBS_Posting" => {
+                                                        view! {
+                                                            <OzonFbsPostingDetail
+                                                                id=selected.document_id.clone()
+                                                                on_close=move || set_selected_document.set(None)
+                                                            />
+                                                        }.into_any()
+                                                    }
+                                                    "OZON_FBO_Posting" => {
+                                                        view! {
+                                                            <div style="padding: 20px;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                                                    <h2 style="margin: 0;">"OZON FBO Posting Details"</h2>
+                                                                    <button
+                                                                        on:click=move |_| set_selected_document.set(None)
+                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                                                                    >
+                                                                        "✕ Close"
+                                                                    </button>
+                                                                </div>
+                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                                                                    <p>"OZON FBO Posting details component not yet implemented."</p>
+                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
+                                                                        "Document ID: " {selected.document_id.clone()}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        }.into_any()
+                                                    }
+                                                    "WB_Sales" => {
+                                                        view! {
+                                                            <div style="padding: 20px;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                                                    <h2 style="margin: 0;">"Wildberries Sales Details"</h2>
+                                                                    <button
+                                                                        on:click=move |_| set_selected_document.set(None)
+                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                                                                    >
+                                                                        "✕ Close"
+                                                                    </button>
+                                                                </div>
+                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                                                                    <p>"Wildberries Sales details component not yet implemented."</p>
+                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
+                                                                        "Document ID: " {selected.document_id.clone()}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        }.into_any()
+                                                    }
+                                                    "YM_Order" => {
+                                                        view! {
+                                                            <div style="padding: 20px;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                                                    <h2 style="margin: 0;">"Yandex Market Order Details"</h2>
+                                                                    <button
+                                                                        on:click=move |_| set_selected_document.set(None)
+                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                                                                    >
+                                                                        "✕ Close"
+                                                                    </button>
+                                                                </div>
+                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                                                                    <p>"Yandex Market Order details component not yet implemented."</p>
+                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
+                                                                        "Document ID: " {selected.document_id.clone()}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        }.into_any()
+                                                    }
+                                                    _ => {
+                                                        view! {
+                                                            <div style="padding: 20px;">
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                                                    <h2 style="margin: 0;">"Unknown Document Type"</h2>
+                                                                    <button
+                                                                        on:click=move |_| set_selected_document.set(None)
+                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                                                                    >
+                                                                        "✕ Close"
+                                                                    </button>
+                                                                </div>
+                                                                <div style="padding: 20px; background: #ffebee; border: 1px solid #ef5350; border-radius: 4px; color: #c62828;">
+                                                                    <p>"Unknown document type: " {selected.document_type.clone()}</p>
+                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
+                                                                        "Document ID: " {selected.document_id.clone()}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        }.into_any()
+                                                    }
+                                                }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }
+                            }}
+
+                            <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 0;">
                                 <thead>
                                     <tr style="background: #f5f5f5;">
                                         <th style="border: 1px solid #ddd; padding: 8px;">"Date"</th>
@@ -173,7 +308,6 @@ pub fn SalesRegisterList() -> impl IntoView {
                                         let sale_date = sale.sale_date.clone();
                                         let marketplace = sale.marketplace.clone();
                                         let document_no = sale.document_no.clone();
-                                        let line_id = sale.line_id.clone();
                                         let title = sale.title.clone().unwrap_or_default();
                                         let seller_sku = sale.seller_sku.clone().unwrap_or_default();
                                         let qty = sale.qty;
@@ -181,17 +315,29 @@ pub fn SalesRegisterList() -> impl IntoView {
                                         let status_norm = sale.status_norm.clone();
                                         let org_ref = sale.organization_ref.clone();
                                         let org_ref_short = org_ref[..8.min(org_ref.len())].to_string();
-                                        let marketplace_c = marketplace.clone();
-                                        let document_no_c = document_no.clone();
-                                        let line_id_c = line_id.clone();
+
+                                        // Данные для открытия документа
+                                        let document_type = sale.document_type.clone();
+                                        let registrator_ref = sale.registrator_ref.clone();
+                                        let document_no_for_display = document_no.clone();
 
                                         view! {
                                             <tr>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">{sale_date}</td>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">{marketplace}</td>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">
-                                                    <a href=format!("/p900/details/{}/{}/{}", marketplace_c, document_no_c, line_id_c)>
-                                                        {document_no}
+                                                    <a
+                                                        href="#"
+                                                        style="color: #2196F3; text-decoration: underline; cursor: pointer;"
+                                                        on:click=move |ev| {
+                                                            ev.prevent_default();
+                                                            set_selected_document.set(Some(SelectedDocument {
+                                                                document_type: document_type.clone(),
+                                                                document_id: registrator_ref.clone(),
+                                                            }));
+                                                        }
+                                                    >
+                                                        {document_no_for_display}
                                                     </a>
                                                 </td>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">{title}</td>

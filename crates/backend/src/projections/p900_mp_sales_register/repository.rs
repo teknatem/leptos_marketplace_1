@@ -323,12 +323,14 @@ pub async fn get_stats_by_date(
     let mut stats_map: HashMap<String, DailyStat> = HashMap::new();
 
     for item in items {
-        let stat = stats_map.entry(item.sale_date.clone()).or_insert(DailyStat {
-            date: item.sale_date.clone(),
-            sales_count: 0,
-            total_qty: 0.0,
-            total_revenue: 0.0,
-        });
+        let stat = stats_map
+            .entry(item.sale_date.clone())
+            .or_insert(DailyStat {
+                date: item.sale_date.clone(),
+                sales_count: 0,
+                total_qty: 0.0,
+                total_revenue: 0.0,
+            });
         stat.sales_count += 1;
         stat.total_qty += item.qty;
         stat.total_revenue += item.amount_line.unwrap_or(0.0);

@@ -43,6 +43,7 @@ impl ImportExecutor {
         for aggregate_index in &request.target_aggregates {
             let aggregate_name = match aggregate_index.as_str() {
                 "a007_marketplace_product" => "Товары маркетплейса",
+                "a013_ym_order" => "Заказы Yandex Market",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -105,6 +106,16 @@ impl ImportExecutor {
                 "a007_marketplace_product" => {
                     self.import_marketplace_products(session_id, connection)
                         .await?;
+                }
+                "a013_ym_order" => {
+                    // Import YM orders with date period
+                    self.import_ym_orders(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -394,6 +405,286 @@ impl ImportExecutor {
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)
         }
+    }
+
+    /// Импорт заказов Yandex Market
+    async fn import_ym_orders(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a013_ym_order;
+        use contracts::domain::a013_ym_order::aggregate::{
+            YmOrder, YmOrderHeader, YmOrderLine, YmOrderSourceMeta, YmOrderState,
+        };
+
+        tracing::info!("Importing Yandex Market orders for session: {}", session_id);
+
+        let aggregate_index = "a013_ym_order";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // 1. Resolve organization
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!("Organization '{}' not found", connection.organization);
+                    tracing::error!("{}", msg);
+                    anyhow::bail!("{}", msg);
+                }
+            };
+
+        // 2. Fetch orders from API with date period
+        tracing::info!(
+            "Fetching YM orders for period {} to {}",
+            date_from.format("%Y-%m-%d"),
+            date_to.format("%Y-%m-%d")
+        );
+
+        let orders = self
+            .api_client
+            .fetch_orders(connection, date_from, date_to)
+            .await?;
+
+        tracing::info!("Received {} orders from YM API", orders.len());
+
+        // 3. Process each order
+        for order in orders {
+            let order_id_str = order.id.to_string();
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("YM Order {}", order_id_str)),
+            );
+
+            // Check if exists
+            let existing = a013_ym_order::service::get_by_document_no(&order_id_str).await?;
+            let is_new = existing.is_none();
+
+            // Fetch detailed order info to get realDeliveryDate
+            let order_details = match self.api_client.fetch_order_details(connection, order.id).await {
+                Ok(details) => {
+                    // Log full delivery structure for debugging
+                    if let Some(delivery) = &details.delivery {
+                        let delivery_json = serde_json::to_string_pretty(delivery).unwrap_or_default();
+                        tracing::info!("Order {} delivery structure:\n{}", order_id_str, delivery_json);
+
+                        if let Some(dates) = &delivery.dates {
+                            tracing::info!("Order {} has dates.realDeliveryDate: {:?}", order_id_str, dates.real_delivery_date);
+                            tracing::info!("Order {} has dates.fromDate: {:?}", order_id_str, dates.from_date);
+                            tracing::info!("Order {} has dates.toDate: {:?}", order_id_str, dates.to_date);
+                        } else {
+                            tracing::warn!("Order {} delivery has NO dates field", order_id_str);
+                        }
+                    } else {
+                        tracing::warn!("Order {} has NO delivery field", order_id_str);
+                    }
+                    details
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to fetch details for order {}: {}, using basic data", order_id_str, e);
+                    order.clone() // Use original order if details fetch fails
+                }
+            };
+
+            // Map lines (use order_details for accurate data)
+            let lines: Vec<YmOrderLine> = order_details
+                .items
+                .iter()
+                .map(|item| {
+                    let price_list = item.price;
+                    let discount = item.subsidy.unwrap_or(0.0);
+                    let price_effective = price_list.map(|p| p - discount);
+
+                    // Calculate amount_line as price * count
+                    let amount_line = price_list.map(|p| p * item.count as f64);
+
+                    YmOrderLine {
+                        line_id: item.id.to_string(),
+                        shop_sku: item.shop_sku.clone().unwrap_or_default(),
+                        offer_id: item.offer_id.clone().unwrap_or_default(),
+                        name: item.name.clone().unwrap_or_default(),
+                        qty: item.count as f64,
+                        price_list,
+                        discount_total: item.subsidy,
+                        price_effective,
+                        amount_line,
+                        currency_code: order_details.currency.clone(),
+                    }
+                })
+                .collect();
+
+            // Skip orders with no items
+            if lines.is_empty() {
+                tracing::warn!("Order {} has no items, skipping", order_id_str);
+                continue;
+            }
+
+            // Parse dates with multiple formats
+            let status_changed_at = order_details
+                .status_update_date
+                .as_ref()
+                .and_then(|s| parse_ym_date(s));
+
+            // Extract realDeliveryDate from detailed order info
+            let delivery_date = order_details
+                .delivery
+                .as_ref()
+                .and_then(|d| d.dates.as_ref())
+                .and_then(|dates| dates.real_delivery_date.as_ref())
+                .and_then(|s| parse_ym_date(s));
+
+            let creation_date = order_details.creation_date.as_ref().and_then(|s| parse_ym_date(s));
+
+            // Clone status before consuming it
+            let status_raw = order_details.status.clone().unwrap_or_else(|| "UNKNOWN".to_string());
+            let status_norm = normalize_ym_status(&status_raw);
+
+            // Create aggregate
+            let header = YmOrderHeader {
+                document_no: order_id_str.clone(),
+                connection_id: connection.base.id.as_string(),
+                organization_id: organization_id.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                campaign_id: connection
+                    .supplier_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                total_amount: order_details.total,
+                currency: order_details.currency.clone(),
+            };
+
+            let state = YmOrderState {
+                status_raw,
+                substatus_raw: order_details.substatus.clone(),
+                status_norm,
+                status_changed_at,
+                updated_at_source: status_changed_at,
+                creation_date,
+                delivery_date,
+            };
+
+            let source_meta = YmOrderSourceMeta {
+                raw_payload_ref: String::new(), // Will be filled by service
+                fetched_at: chrono::Utc::now(),
+                document_version: 1,
+            };
+
+            let document = YmOrder::new_for_insert(
+                order_id_str.clone(),
+                format!("YM Order {}", order_id_str),
+                header,
+                lines,
+                state,
+                source_meta,
+            );
+
+            // Save with raw JSON (use detailed order data for raw storage)
+            let raw_json = serde_json::to_string(&order_details)?;
+            match a013_ym_order::service::store_document_with_raw(document, &raw_json).await {
+                Ok(_) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process YM order {}: {}", order_id_str, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process order {}", order_id_str),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "YM orders import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+}
+
+/// Parse Yandex Market date (supports multiple formats)
+fn parse_ym_date(date_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    // Try RFC3339 first (e.g., "2024-01-15T10:30:00Z")
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+
+    // Try format "DD-MM-YYYY HH:MM:SS" (Yandex Market format with time)
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%d-%m-%Y %H:%M:%S") {
+        return Some(chrono::DateTime::from_naive_utc_and_offset(
+            naive,
+            chrono::Utc,
+        ));
+    }
+
+    // Try format "DD-MM-YYYY" (Yandex Market format without time)
+    if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%d-%m-%Y") {
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
+        return Some(chrono::DateTime::from_naive_utc_and_offset(
+            naive_datetime,
+            chrono::Utc,
+        ));
+    }
+
+    // Try format "YYYY-MM-DD HH:MM:SS"
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+        return Some(chrono::DateTime::from_naive_utc_and_offset(
+            naive,
+            chrono::Utc,
+        ));
+    }
+
+    // Try format "YYYY-MM-DD"
+    if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
+        return Some(chrono::DateTime::from_naive_utc_and_offset(
+            naive_datetime,
+            chrono::Utc,
+        ));
+    }
+
+    tracing::warn!("Failed to parse YM date: {}", date_str);
+    None
+}
+
+/// Normalize Yandex Market order status
+fn normalize_ym_status(status: &str) -> String {
+    match status.to_uppercase().as_str() {
+        "DELIVERED" | "PICKUP" => "DELIVERED".to_string(),
+        "CANCELLED" | "CANCELLED_IN_DELIVERY" | "CANCELLED_BEFORE_PROCESSING" => {
+            "CANCELLED".to_string()
+        }
+        "PROCESSING" | "PENDING" | "RESERVATION" => "PROCESSING".to_string(),
+        "DELIVERY" => "IN_DELIVERY".to_string(),
+        "" => "UNKNOWN".to_string(),
+        other => other.to_uppercase(),
     }
 }
 

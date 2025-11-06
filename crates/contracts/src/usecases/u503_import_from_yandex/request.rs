@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 /// Запрос на импорт данных из Yandex Market
@@ -12,6 +13,40 @@ pub struct ImportRequest {
     /// Режим импорта (опционально, для будущего расширения)
     #[serde(default)]
     pub mode: ImportMode,
+
+    /// Начало периода (включительно)
+    #[serde(with = "serde_date")]
+    #[serde(rename = "dateFrom")]
+    pub date_from: NaiveDate,
+
+    /// Конец периода (включительно)
+    #[serde(with = "serde_date")]
+    #[serde(rename = "dateTo")]
+    pub date_to: NaiveDate,
+}
+
+/// Сериализация/десериализация дат в формате YYYY-MM-DD
+mod serde_date {
+    use chrono::NaiveDate;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    const FORMAT: &str = "%Y-%m-%d";
+
+    pub fn serialize<S>(date: &NaiveDate, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = date.format(FORMAT).to_string();
+        serializer.serialize_str(&s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        NaiveDate::parse_from_str(&s, FORMAT).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

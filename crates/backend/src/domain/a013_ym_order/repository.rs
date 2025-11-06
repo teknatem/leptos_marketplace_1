@@ -5,7 +5,7 @@ use contracts::domain::a013_ym_order::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -84,6 +84,8 @@ fn conn() -> &'static DatabaseConnection {
 pub async fn list_all() -> Result<Vec<YmOrder>> {
     let items: Vec<YmOrder> = Entity::find()
         .filter(Column::IsDeleted.eq(false))
+        .order_by_desc(Column::UpdatedAt)
+        .limit(1000)
         .all(conn())
         .await?
         .into_iter()

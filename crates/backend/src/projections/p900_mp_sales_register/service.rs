@@ -4,10 +4,11 @@ use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
+use uuid::Uuid;
 
 /// Проецировать OZON FBS Posting в Sales Register
-pub async fn project_ozon_fbs(document: &OzonFbsPosting) -> Result<()> {
-    let entries = projection_builder::from_ozon_fbs(document);
+pub async fn project_ozon_fbs(document: &OzonFbsPosting, document_id: Uuid) -> Result<()> {
+    let entries = projection_builder::from_ozon_fbs(document, &document_id.to_string());
     
     for entry in entries {
         repository::upsert_entry(&entry).await?;
@@ -23,8 +24,8 @@ pub async fn project_ozon_fbs(document: &OzonFbsPosting) -> Result<()> {
 }
 
 /// Проецировать OZON FBO Posting в Sales Register
-pub async fn project_ozon_fbo(document: &OzonFboPosting) -> Result<()> {
-    let entries = projection_builder::from_ozon_fbo(document);
+pub async fn project_ozon_fbo(document: &OzonFboPosting, document_id: Uuid) -> Result<()> {
+    let entries = projection_builder::from_ozon_fbo(document, &document_id.to_string());
     
     for entry in entries {
         repository::upsert_entry(&entry).await?;
@@ -40,8 +41,8 @@ pub async fn project_ozon_fbo(document: &OzonFboPosting) -> Result<()> {
 }
 
 /// Проецировать WB Sales в Sales Register
-pub async fn project_wb_sales(document: &WbSales) -> Result<()> {
-    let entry = projection_builder::from_wb_sales(document);
+pub async fn project_wb_sales(document: &WbSales, document_id: Uuid) -> Result<()> {
+    let entry = projection_builder::from_wb_sales(document, &document_id.to_string());
     repository::upsert_entry(&entry).await?;
     
     tracing::info!(
@@ -53,8 +54,8 @@ pub async fn project_wb_sales(document: &WbSales) -> Result<()> {
 }
 
 /// Проецировать YM Order в Sales Register
-pub async fn project_ym_order(document: &YmOrder) -> Result<()> {
-    let entries = projection_builder::from_ym_order(document);
+pub async fn project_ym_order(document: &YmOrder, document_id: Uuid) -> Result<()> {
+    let entries = projection_builder::from_ym_order(document, &document_id.to_string());
     
     for entry in entries {
         repository::upsert_entry(&entry).await?;

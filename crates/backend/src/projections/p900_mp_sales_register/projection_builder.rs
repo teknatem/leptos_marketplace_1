@@ -5,7 +5,7 @@ use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 
 /// Конвертировать OZON FBS Posting в записи Sales Register
-pub fn from_ozon_fbs(document: &OzonFbsPosting) -> Vec<SalesRegisterEntry> {
+pub fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Vec<SalesRegisterEntry> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -29,7 +29,7 @@ pub fn from_ozon_fbs(document: &OzonFbsPosting) -> Vec<SalesRegisterEntry> {
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
             marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
-            registrator_ref: document.source_meta.raw_payload_ref.clone(),
+            registrator_ref: document_id.to_string(),
 
             // Timestamps and status
             event_time_source: event_time,
@@ -63,7 +63,7 @@ pub fn from_ozon_fbs(document: &OzonFbsPosting) -> Vec<SalesRegisterEntry> {
 }
 
 /// Конвертировать OZON FBO Posting в записи Sales Register
-pub fn from_ozon_fbo(document: &OzonFboPosting) -> Vec<SalesRegisterEntry> {
+pub fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Vec<SalesRegisterEntry> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -87,7 +87,7 @@ pub fn from_ozon_fbo(document: &OzonFboPosting) -> Vec<SalesRegisterEntry> {
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
             marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
-            registrator_ref: document.source_meta.raw_payload_ref.clone(),
+            registrator_ref: document_id.to_string(),
 
             // Timestamps and status
             event_time_source: event_time,
@@ -121,7 +121,7 @@ pub fn from_ozon_fbo(document: &OzonFboPosting) -> Vec<SalesRegisterEntry> {
 }
 
 /// Конвертировать WB Sales в запись Sales Register
-pub fn from_wb_sales(document: &WbSales) -> SalesRegisterEntry {
+pub fn from_wb_sales(document: &WbSales, document_id: &str) -> SalesRegisterEntry {
     let event_time = document.state.sale_dt;
 
     SalesRegisterEntry {
@@ -139,7 +139,7 @@ pub fn from_wb_sales(document: &WbSales) -> SalesRegisterEntry {
         connection_mp_ref: document.header.connection_id.clone(),
         organization_ref: document.header.organization_id.clone(),
         marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
-        registrator_ref: document.source_meta.raw_payload_ref.clone(),
+        registrator_ref: document_id.to_string(),
 
         // Timestamps and status
         event_time_source: event_time,
@@ -169,14 +169,22 @@ pub fn from_wb_sales(document: &WbSales) -> SalesRegisterEntry {
 }
 
 /// Конвертировать YM Order в записи Sales Register
-pub fn from_ym_order(document: &YmOrder) -> Vec<SalesRegisterEntry> {
+/// ВАЖНО: Записи создаются только если заполнена delivery_date!
+pub fn from_ym_order(document: &YmOrder, document_id: &str) -> Vec<SalesRegisterEntry> {
     let mut entries = Vec::new();
 
+    // Проверяем наличие delivery_date - без нее не проецируем
+    let delivery_date = match document.state.delivery_date {
+        Some(date) => date,
+        None => {
+            // Нет даты доставки - не является продажей, пропускаем
+            return entries;
+        }
+    };
+
     for line in document.lines.iter() {
-        let event_time = document
-            .state
-            .status_changed_at
-            .unwrap_or_else(|| document.source_meta.fetched_at);
+        // Используем delivery_date как дату события
+        let event_time = delivery_date;
 
         let entry = SalesRegisterEntry {
             // NK
@@ -193,7 +201,7 @@ pub fn from_ym_order(document: &YmOrder) -> Vec<SalesRegisterEntry> {
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
             marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
-            registrator_ref: document.source_meta.raw_payload_ref.clone(),
+            registrator_ref: document_id.to_string(),
 
             // Timestamps and status
             event_time_source: event_time,

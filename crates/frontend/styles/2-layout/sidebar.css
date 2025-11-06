@@ -6,26 +6,49 @@
     background: var(--gradient-navbar);
     width: var(--sidebar-width);
     color: var(--color-text-light);
-    min-height: 100vh;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 0;
     margin: 0;
     font-family: var(--font-family-base);
-    /* Stable row height for nav items */
-    --nav-item-height: 40px;
+    /* Stable row height for nav items - reduced by 15% */
+    --nav-item-height: 34px;
+    /* Custom scrollbar styles */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* WebKit scrollbar customization */
+.main-nav-bar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.main-nav-bar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.main-nav-bar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+.main-nav-bar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
 }
 
 .main-nav-bar ul {
     list-style: none;
-    /* ~10% tighter from 20px top padding */
-    padding: calc(var(--space-4xl) - 2px) 0 0;
+    /* Reduced by 15%: ~10% tighter from 20px top padding */
+    padding: calc(var(--space-4xl) * 0.85 - 2px) 0 0;
     margin: 0;
 }
 
 .main-nav-bar li {
     display: flex;
     align-items: center;
-    /* 12px -> 10px vertical padding */
-    padding: var(--space-lg) var(--space-4xl);
+    /* Reduced by 15%: 12px -> 10px vertical padding */
+    padding: calc(var(--space-lg) * 0.85) var(--space-4xl);
     color: var(--color-text-light);
     font-size: var(--font-size-base);
     cursor: pointer;
@@ -53,12 +76,12 @@
 .main-nav-bar .main-nav-bar-header {
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
-    /* was var(--space-3xl)/var(--space-5xl); tighten ~10% */
+    /* Reduced by 15% */
     padding: 5px 5px;
-    margin-top: var(--space-2xl);
+    margin-top: calc(var(--space-2xl) * 0.85);
     color: #87c48b;
 }
 
 .main-nav-bar li:last-child {
-    margin-bottom: var(--space-xl);
+    margin-bottom: calc(var(--space-xl) * 0.85);
 }

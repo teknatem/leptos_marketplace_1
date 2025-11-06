@@ -1,5 +1,5 @@
 use super::api;
-use chrono::Utc;
+use chrono::{NaiveDate, Utc, Duration};
 use contracts::usecases::u504_import_from_wildberries::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
@@ -20,6 +20,13 @@ pub fn ImportWidget() -> impl IntoView {
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
+    let (import_a012, set_import_a012) = signal(false);
+
+    // Даты для импорта (по умолчанию: последние 30 дней)
+    let default_date_from = Utc::now().naive_utc().date() - Duration::days(30);
+    let default_date_to = Utc::now().naive_utc().date();
+    let (date_from, set_date_from) = signal(default_date_from.format("%Y-%m-%d").to_string());
+    let (date_to, set_date_to) = signal(default_date_to.format("%Y-%m-%d").to_string());
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u504_session_id";
@@ -173,6 +180,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a007.get() {
                 targets.push("a007_marketplace_product".to_string());
             }
+            if import_a012.get() {
+                targets.push("a012_wb_sales".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -180,9 +190,30 @@ pub fn ImportWidget() -> impl IntoView {
                 return;
             }
 
+            // Парсим даты
+            let parsed_date_from = match NaiveDate::parse_from_str(&date_from.get(), "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(_) => {
+                    set_error_msg.set("Неверный формат даты начала".to_string());
+                    set_is_loading.set(false);
+                    return;
+                }
+            };
+
+            let parsed_date_to = match NaiveDate::parse_from_str(&date_to.get(), "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(_) => {
+                    set_error_msg.set("Неверный формат даты окончания".to_string());
+                    set_is_loading.set(false);
+                    return;
+                }
+            };
+
             let request = ImportRequest {
                 connection_id: conn_id,
                 target_aggregates: targets,
+                date_from: parsed_date_from,
+                date_to: parsed_date_to,
                 mode: ImportMode::Interactive,
             };
 
@@ -231,13 +262,53 @@ pub fn ImportWidget() -> impl IntoView {
                 </select>
             </div>
 
+            // Период импорта
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
+                    "Период импорта:"
+                </label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="flex: 1;">
+                        <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #666;">
+                            "Дата начала:"
+                        </label>
+                        <input
+                            type="date"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                            prop:value=move || date_from.get()
+                            on:change=move |ev| {
+                                set_date_from.set(event_target_value(&ev));
+                            }
+                            prop:disabled=move || is_loading.get()
+                        />
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #666;">
+                            "Дата окончания:"
+                        </label>
+                        <input
+                            type="date"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                            prop:value=move || date_to.get()
+                            on:change=move |ev| {
+                                set_date_to.set(event_target_value(&ev));
+                            }
+                            prop:disabled=move || is_loading.get()
+                        />
+                    </div>
+                </div>
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    "Период используется для импорта продаж (a012_wb_sales)"
+                </div>
+            </div>
+
             // Список агрегатов
             <div style="margin: 20px 0;">
                 <label style="display: block; margin-bottom: 8px; font-weight: bold;">
                     "Агрегаты для импорта:"
                 </label>
-                <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
-                    <label>
+                <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; display: flex; flex-direction: column; gap: 8px;">
+                    <label style="display: block;">
                         <input
                             type="checkbox"
                             prop:checked=move || import_a007.get()
@@ -245,9 +316,17 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a007_marketplace_product - Товары маркетплейса"
                     </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a012.get()
+                            on:change=move |ev| { set_import_a012.set(event_target_checked(&ev)); }
+                        />
+                        " a012_wb_sales - Продажи Wildberries"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /content/v2/get/cards/list"
+                    "API: POST /content/v2/get/cards/list (товары), GET /api/v1/supplier/sales (продажи)"
                 </div>
             </div>
 

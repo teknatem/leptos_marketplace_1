@@ -983,6 +983,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/a012/wb-sales/:id",
             get(handlers::a012_wb_sales::get_sale_detail),
         )
+        .route(
+            "/api/a012/raw/:ref_id",
+            get(handlers::a012_wb_sales::get_raw_json),
+        )
         // A013 YM Order handlers
         .route(
             "/api/a013/ym-order",
@@ -991,6 +995,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a013/ym-order/:id",
             get(handlers::a013_ym_order::get_order_detail),
+        )
+        .route(
+            "/api/a013/raw/:ref_id",
+            get(handlers::a013_ym_order::get_raw_json),
         )
         .fallback_service(ServeDir::new("dist"))
         .layer(cors);

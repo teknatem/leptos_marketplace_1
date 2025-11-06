@@ -43,8 +43,8 @@ pub async fn store_document_with_raw(
     
     tracing::info!("Successfully saved OZON FBS document with id: {}", id);
     
-    // Проецируем в Sales Register
-    if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ozon_fbs(&document).await {
+    // Проецируем в Sales Register с реальным UUID из БД
+    if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ozon_fbs(&document, id).await {
         tracing::error!("Failed to project OZON FBS document to Sales Register: {}", e);
         // Не останавливаем выполнение, т.к. документ уже сохранен
     }

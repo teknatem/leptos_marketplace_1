@@ -45,6 +45,10 @@ pub struct YmOrderHeader {
     pub marketplace_id: String,
     /// ID кампании в Yandex Market
     pub campaign_id: String,
+    /// Общая сумма заказа из API (total)
+    pub total_amount: Option<f64>,
+    /// Валюта заказа
+    pub currency: Option<String>,
 }
 
 /// Строка документа (позиция)
@@ -85,6 +89,10 @@ pub struct YmOrderState {
     pub status_changed_at: Option<DateTime<Utc>>,
     /// Дата/время обновления заказа в источнике
     pub updated_at_source: Option<DateTime<Utc>>,
+    /// Дата создания заказа (creationDate из API)
+    pub creation_date: Option<DateTime<Utc>>,
+    /// Дата доставки (deliveryDate из API)
+    pub delivery_date: Option<DateTime<Utc>>,
 }
 
 /// Служебные метаданные

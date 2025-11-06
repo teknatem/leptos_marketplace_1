@@ -15,7 +15,9 @@
     flex-shrink: 0;
     transition: width var(--transition-base);
     border-right: 1px solid var(--color-border-dark);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: 100%;
     opacity: var(--opacity-sidebar);
 }
 

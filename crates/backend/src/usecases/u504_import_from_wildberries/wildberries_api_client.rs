@@ -1452,25 +1452,27 @@ impl WildberriesApiClient {
         &self,
         connection: &ConnectionMP,
         date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
     ) -> Result<Vec<WbSaleRow>> {
         let url = "https://statistics-api.wildberries.ru/api/v1/supplier/sales";
-        
+
         if connection.api_key.trim().is_empty() {
             anyhow::bail!("API Key is required for Wildberries API");
         }
 
         let date_from_str = date_from.format("%Y-%m-%d").to_string();
-        
+        let date_to_str = date_to.format("%Y-%m-%d").to_string();
+
         self.log_to_file(&format!(
-            "=== REQUEST ===\nGET {}?dateFrom={}\nAuthorization: ****",
-            url, date_from_str
+            "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}\nAuthorization: ****",
+            url, date_from_str, date_to_str
         ));
 
         let response = self
             .client
             .get(url)
             .header("Authorization", &connection.api_key)
-            .query(&[("dateFrom", date_from_str)])
+            .query(&[("dateFrom", date_from_str), ("dateTo", date_to_str)])
             .send()
             .await?;
 

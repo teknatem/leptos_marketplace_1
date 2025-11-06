@@ -21,8 +21,8 @@ pub async fn store_document_with_raw(mut document: YmOrder, raw_json: &str) -> R
 
     let id = repository::upsert_document(&document).await?;
     
-    // Проецируем в Sales Register
-    if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ym_order(&document).await {
+    // Проецируем в Sales Register с реальным UUID из БД
+    if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ym_order(&document, id).await {
         tracing::error!("Failed to project YM Order document to Sales Register: {}", e);
     }
     

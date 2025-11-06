@@ -20,6 +20,13 @@ pub fn ImportWidget() -> impl IntoView {
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
+    let (import_a013, set_import_a013) = signal(true);
+
+    // Даты периода (по умолчанию вчера)
+    let now = Utc::now().date_naive();
+    let yesterday = now - chrono::Duration::days(1);
+    let (date_from, set_date_from) = signal(yesterday);
+    let (date_to, set_date_to) = signal(yesterday);
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u503_session_id";
@@ -173,6 +180,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a007.get() {
                 targets.push("a007_marketplace_product".to_string());
             }
+            if import_a013.get() {
+                targets.push("a013_ym_order".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -184,6 +194,8 @@ pub fn ImportWidget() -> impl IntoView {
                 connection_id: conn_id,
                 target_aggregates: targets,
                 mode: ImportMode::Interactive,
+                date_from: date_from.get(),
+                date_to: date_to.get(),
             };
 
             match api::start_import(request).await {
@@ -237,7 +249,7 @@ pub fn ImportWidget() -> impl IntoView {
                     "Агрегаты для импорта:"
                 </label>
                 <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
-                    <label>
+                    <label style="display: block; margin-bottom: 8px;">
                         <input
                             type="checkbox"
                             prop:checked=move || import_a007.get()
@@ -245,9 +257,65 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a007_marketplace_product - Товары маркетплейса"
                     </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a013.get()
+                            on:change=move |ev| { set_import_a013.set(event_target_checked(&ev)); }
+                        />
+                        " a013_ym_order - Заказы Yandex Market (→ P900)"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API v2: POST /businesses/{businessId}/offer-mappings, POST /offer-cards"
+                    "API: GET /campaigns/{campaignId}/orders"
+                </div>
+            </div>
+
+            // Период дат
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
+                    "Период:"
+                </label>
+                <div style="display: flex; gap: 15px;">
+                    <div style="flex: 1;">
+                        <label for="date_from" style="display: block; margin-bottom: 4px; font-size: 14px;">
+                            "С даты"
+                        </label>
+                        <input
+                            type="date"
+                            id="date_from"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                            prop:value=move || date_from.get().format("%Y-%m-%d").to_string()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                    set_date_from.set(d);
+                                }
+                            }
+                            prop:disabled=move || is_loading.get()
+                        />
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="date_to" style="display: block; margin-bottom: 4px; font-size: 14px;">
+                            "По дату"
+                        </label>
+                        <input
+                            type="date"
+                            id="date_to"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                            prop:value=move || date_to.get().format("%Y-%m-%d").to_string()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                    set_date_to.set(d);
+                                }
+                            }
+                            prop:disabled=move || is_loading.get()
+                        />
+                    </div>
+                </div>
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    "По умолчанию выбран вчерашний день."
                 </div>
             </div>
 

@@ -352,14 +352,74 @@ pub struct YandexPrice {
 }
 
 impl YandexApiClient {
-    /// Получить список заказов через Yandex Market API
+    /// Получить список заказов через Yandex Market API с пагинацией
     /// GET /campaigns/{campaignId}/orders
+    /// Parameters:
+    /// - date_from: начало периода (фильтр по statusUpdateDate)
+    /// - date_to: конец периода (фильтр по statusUpdateDate)
     pub async fn fetch_orders(
         &self,
         connection: &ConnectionMP,
-        status: Option<String>,
-        updated_from: Option<chrono::NaiveDate>,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
     ) -> Result<Vec<YmOrderItem>> {
+        let mut all_orders = Vec::new();
+        let mut page = 1;
+        let page_size = 50;
+
+        loop {
+            let response = self.fetch_orders_page(
+                connection,
+                date_from,
+                date_to,
+                page,
+                page_size,
+            ).await?;
+
+            let orders_count = response.orders.len();
+            all_orders.extend(response.orders);
+
+            self.log_to_file(&format!(
+                "Fetched page {} with {} orders (total so far: {})",
+                page, orders_count, all_orders.len()
+            ));
+
+            // Check if there are more pages
+            if let Some(pager) = response.pager {
+                if let Some(pages_count) = pager.pages_count {
+                    if page >= pages_count {
+                        break;
+                    }
+                }
+            }
+
+            // Stop if we got less than page_size orders (last page)
+            if orders_count < page_size as usize {
+                break;
+            }
+
+            page += 1;
+
+            // Safety limit to prevent infinite loops
+            if page > 100 {
+                tracing::warn!("Reached maximum page limit (100), stopping pagination");
+                break;
+            }
+        }
+
+        self.log_to_file(&format!("Total orders fetched: {}", all_orders.len()));
+        Ok(all_orders)
+    }
+
+    /// Получить одну страницу заказов
+    async fn fetch_orders_page(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+        page: i32,
+        page_size: i32,
+    ) -> Result<YmOrdersResponse> {
         let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Campaign ID (Идентификатор магазина) is required for Yandex Market API")
         })?;
@@ -375,20 +435,25 @@ impl YandexApiClient {
 
         #[derive(Debug, Serialize)]
         struct QueryParams {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            pub status: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none", rename = "updatedFrom")]
-            pub updated_from: Option<String>,
+            #[serde(rename = "fromDate")]
+            pub from_date: String,
+            #[serde(rename = "toDate")]
+            pub to_date: String,
+            pub page: i32,
+            #[serde(rename = "pageSize")]
+            pub page_size: i32,
         }
 
         let query = QueryParams {
-            status,
-            updated_from: updated_from.map(|d| d.format("%Y-%m-%d").to_string()),
+            from_date: date_from.format("%d-%m-%Y").to_string(),
+            to_date: date_to.format("%d-%m-%Y").to_string(),
+            page,
+            page_size,
         };
 
         self.log_to_file(&format!(
-            "=== REQUEST ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
-            url, query
+            "=== REQUEST PAGE {} ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
+            page, url, query
         ));
 
         let response = self
@@ -414,9 +479,9 @@ impl YandexApiClient {
 
         match serde_json::from_str::<YmOrdersResponse>(&body) {
             Ok(data) => {
-                let orders_count = data.result.orders.len();
+                let orders_count = data.orders.len();
                 self.log_to_file(&format!("Successfully parsed {} orders", orders_count));
-                Ok(data.result.orders)
+                Ok(data)
             }
             Err(e) => {
                 self.log_to_file(&format!("Failed to parse JSON: {}", e));
@@ -474,7 +539,7 @@ impl YandexApiClient {
         match serde_json::from_str::<YmOrderDetailsResponse>(&body) {
             Ok(data) => {
                 self.log_to_file("Successfully parsed order details");
-                Ok(data.result.order)
+                Ok(data.order)
             }
             Err(e) => {
                 self.log_to_file(&format!("Failed to parse JSON: {}", e));
@@ -491,14 +556,22 @@ impl YandexApiClient {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmOrdersResponse {
-    pub result: YmOrdersResult,
+    pub orders: Vec<YmOrderItem>,
+    #[serde(default)]
+    pub pager: Option<YmOrdersPager>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmOrdersResult {
-    pub orders: Vec<YmOrderItem>,
-    #[serde(default)]
-    pub paging: Option<YmOrdersPaging>,
+pub struct YmOrdersPager {
+    pub total: Option<i32>,
+    pub from: Option<i32>,
+    pub to: Option<i32>,
+    #[serde(rename = "currentPage")]
+    pub current_page: Option<i32>,
+    #[serde(rename = "pagesCount")]
+    pub pages_count: Option<i32>,
+    #[serde(rename = "pageSize")]
+    pub page_size: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -509,11 +582,6 @@ pub struct YmOrdersPaging {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmOrderDetailsResponse {
-    pub result: YmOrderDetailsResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmOrderDetailsResult {
     pub order: YmOrderItem,
 }
 
@@ -569,4 +637,16 @@ pub struct YmOrderDelivery {
     pub service_name: Option<String>,
     #[serde(default)]
     pub price: Option<f64>,
+    #[serde(default)]
+    pub dates: Option<YmOrderDeliveryDates>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderDeliveryDates {
+    #[serde(rename = "realDeliveryDate", default)]
+    pub real_delivery_date: Option<String>,
+    #[serde(rename = "fromDate", default)]
+    pub from_date: Option<String>,
+    #[serde(rename = "toDate", default)]
+    pub to_date: Option<String>,
 }

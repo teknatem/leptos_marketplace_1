@@ -43,6 +43,7 @@ impl ImportExecutor {
         for aggregate_index in &request.target_aggregates {
             let aggregate_name = match aggregate_index.as_str() {
                 "a007_marketplace_product" => "Товары маркетплейса",
+                "a012_wb_sales" => "Продажи Wildberries",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -106,6 +107,10 @@ impl ImportExecutor {
                     self.import_marketplace_products(session_id, connection)
                         .await?;
                 }
+                "a012_wb_sales" => {
+                    self.import_wb_sales(session_id, connection, request.date_from, request.date_to)
+                        .await?;
+                }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
                     tracing::warn!("{}", msg);
@@ -154,20 +159,14 @@ impl ImportExecutor {
         let mut cursor: Option<super::wildberries_api_client::WildberriesCursor> = None;
         let mut expected_total: Option<i32> = None;
 
-        tracing::info!(
-            "╔═══════════════════════════════════════════════════════════"
-        );
-        tracing::info!(
-            "║ WILDBERRIES IMPORT DIAGNOSTICS"
-        );
+        tracing::info!("╔═══════════════════════════════════════════════════════════");
+        tracing::info!("║ WILDBERRIES IMPORT DIAGNOSTICS");
         tracing::info!(
             "║ Connection: {} ({})",
             connection.base.description,
             connection.marketplace_id
         );
-        tracing::info!(
-            "╚═══════════════════════════════════════════════════════════"
-        );
+        tracing::info!("╚═══════════════════════════════════════════════════════════");
 
         // ═══════════════════════════════════════════════════════════════
         // ДИАГНОСТИЧЕСКИЙ РЕЖИМ: Тестируем различные варианты запросов
@@ -177,7 +176,11 @@ impl ImportExecutor {
         tracing::info!("│ Testing different API request variations...");
         tracing::info!("└─────────────────────────────────────────────────────────");
 
-        match self.api_client.diagnostic_fetch_all_variations(connection).await {
+        match self
+            .api_client
+            .diagnostic_fetch_all_variations(connection)
+            .await
+        {
             Ok(results) => {
                 tracing::info!("┌─────────────────────────────────────────────────────────");
                 tracing::info!("│ 📊 DIAGNOSTIC RESULTS:");
@@ -205,30 +208,48 @@ impl ImportExecutor {
                 tracing::info!("└─────────────────────────────────────────────────────────");
 
                 // Анализ результатов
-                let best_result = results.iter()
+                let best_result = results
+                    .iter()
                     .filter(|r| r.success)
                     .max_by_key(|r| r.cursor_total);
 
                 if let Some(best) = best_result {
                     if best.cursor_total > 100 {
-                        tracing::warn!("┌─────────────────────────────────────────────────────────");
+                        tracing::warn!(
+                            "┌─────────────────────────────────────────────────────────"
+                        );
                         tracing::warn!("│ 🔍 IMPORTANT FINDING:");
-                        tracing::warn!("│ Test '{}' returned cursor.total={}", best.test_name, best.cursor_total);
+                        tracing::warn!(
+                            "│ Test '{}' returned cursor.total={}",
+                            best.test_name,
+                            best.cursor_total
+                        );
                         tracing::warn!("│ This suggests there ARE more products available!");
                         tracing::warn!("│ Current implementation might be using wrong parameters.");
-                        tracing::warn!("└─────────────────────────────────────────────────────────");
+                        tracing::warn!(
+                            "└─────────────────────────────────────────────────────────"
+                        );
                     } else if best.cursor_total <= 20 {
-                        tracing::info!("┌─────────────────────────────────────────────────────────");
+                        tracing::info!(
+                            "┌─────────────────────────────────────────────────────────"
+                        );
                         tracing::info!("│ 📌 CONCLUSION:");
-                        tracing::info!("│ All tests return similar low counts ({})", best.cursor_total);
+                        tracing::info!(
+                            "│ All tests return similar low counts ({})",
+                            best.cursor_total
+                        );
                         tracing::info!("│ This suggests:");
                         tracing::info!("│   1. These might be ALL products in this account, OR");
-                        tracing::info!("│   2. Products have different status (archived, etc.), OR");
+                        tracing::info!(
+                            "│   2. Products have different status (archived, etc.), OR"
+                        );
                         tracing::info!("│   3. API key has limited scope/permissions");
                         tracing::info!("│");
                         tracing::info!("│ ⚠️  RECOMMENDATION: Check Wildberries personal account");
                         tracing::info!("│ to verify actual product count and their statuses.");
-                        tracing::info!("└─────────────────────────────────────────────────────────");
+                        tracing::info!(
+                            "└─────────────────────────────────────────────────────────"
+                        );
                     }
                 }
             }
@@ -243,18 +264,19 @@ impl ImportExecutor {
 
         // Получаем товары страницами через Wildberries API
         loop {
-            let cursor_info = cursor.as_ref().map(|c| {
-                format!(
-                    "nmID={:?}, updatedAt={}, total={}",
-                    c.nm_id,
-                    c.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none"),
-                    c.total
-                )
-            }).unwrap_or_else(|| "INITIAL REQUEST (no cursor)".to_string());
+            let cursor_info = cursor
+                .as_ref()
+                .map(|c| {
+                    format!(
+                        "nmID={:?}, updatedAt={}, total={}",
+                        c.nm_id,
+                        c.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none"),
+                        c.total
+                    )
+                })
+                .unwrap_or_else(|| "INITIAL REQUEST (no cursor)".to_string());
 
-            tracing::info!(
-                "┌─────────────────────────────────────────────────────────"
-            );
+            tracing::info!("┌─────────────────────────────────────────────────────────");
             tracing::info!(
                 "│ Page Request #{} | Cursor: {}",
                 (total_processed / page_size) + 1,
@@ -270,7 +292,12 @@ impl ImportExecutor {
             tracing::info!(
                 "│ Cursor in response: nmID={:?}, updatedAt={}, total={}",
                 list_response.cursor.nm_id,
-                list_response.cursor.updated_at.as_ref().map(|s| s.as_str()).unwrap_or("none"),
+                list_response
+                    .cursor
+                    .updated_at
+                    .as_ref()
+                    .map(|s| s.as_str())
+                    .unwrap_or("none"),
                 list_response.cursor.total
             );
 
@@ -285,27 +312,28 @@ impl ImportExecutor {
 
             let cards = list_response.cards;
             let batch_size = cards.len();
-            
+
             tracing::info!(
                 "│ Response: {} items received | Total so far: {}/{}",
                 batch_size,
                 total_processed,
-                expected_total.map(|t| t.to_string()).unwrap_or_else(|| "?".to_string())
+                expected_total
+                    .map(|t| t.to_string())
+                    .unwrap_or_else(|| "?".to_string())
             );
 
             if cards.is_empty() {
-                tracing::info!(
-                    "│ ⚠ Empty batch received - stopping pagination"
-                );
-                tracing::info!(
-                    "└─────────────────────────────────────────────────────────"
-                );
+                tracing::info!("│ ⚠ Empty batch received - stopping pagination");
+                tracing::info!("└─────────────────────────────────────────────────────────");
                 break;
             }
 
             // Обрабатываем каждый товар
             for card in cards {
-                let product_name = card.title.clone().unwrap_or_else(|| "Без названия".to_string());
+                let product_name = card
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "Без названия".to_string());
                 let display_name = format!("{} - {}", card.nm_id, product_name);
 
                 self.progress_tracker.set_current_item(
@@ -375,54 +403,40 @@ impl ImportExecutor {
                 None
             } else {
                 // Есть еще страницы, используем курсор из ответа
-                tracing::info!(
-                    "│ → More pages available, using cursor from response"
-                );
+                tracing::info!("│ → More pages available, using cursor from response");
                 Some(list_response.cursor.clone())
             };
 
-            tracing::info!(
-                "└─────────────────────────────────────────────────────────"
-            );
+            tracing::info!("└─────────────────────────────────────────────────────────");
 
             // Обновляем курсор для следующей страницы
             cursor = next_cursor.clone();
 
             // Если нет next_cursor, значит это последняя страница
             if cursor.is_none() {
-                tracing::info!(
-                    "┌─────────────────────────────────────────────────────────"
-                );
-                tracing::info!(
-                    "│ ✓ PAGINATION COMPLETE: No more cursor"
-                );
+                tracing::info!("┌─────────────────────────────────────────────────────────");
+                tracing::info!("│ ✓ PAGINATION COMPLETE: No more cursor");
                 tracing::info!(
                     "│   Total products: {}/{}",
                     total_processed,
-                    expected_total.map(|t| t.to_string()).unwrap_or_else(|| "?".to_string())
+                    expected_total
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "?".to_string())
                 );
-                tracing::info!(
-                    "└─────────────────────────────────────────────────────────"
-                );
+                tracing::info!("└─────────────────────────────────────────────────────────");
                 break;
             }
 
             // Защита от зацикливания
             if total_processed >= expected_total.unwrap_or(i32::MAX) {
-                tracing::info!(
-                    "┌─────────────────────────────────────────────────────────"
-                );
-                tracing::info!(
-                    "│ ✓ PAGINATION COMPLETE: Reached expected total"
-                );
+                tracing::info!("┌─────────────────────────────────────────────────────────");
+                tracing::info!("│ ✓ PAGINATION COMPLETE: Reached expected total");
                 tracing::info!(
                     "│   Processed: {} | Expected: {}",
                     total_processed,
                     expected_total.unwrap_or(0)
                 );
-                tracing::info!(
-                    "└─────────────────────────────────────────────────────────"
-                );
+                tracing::info!("└─────────────────────────────────────────────────────────");
                 break;
             }
 
@@ -465,19 +479,16 @@ impl ImportExecutor {
         .await?;
 
         // Парсим цену из первого size (если есть)
-        let price = card
-            .sizes
-            .first()
-            .and_then(|s| s.price.map(|p| p as f64));
+        let price = card.sizes.first().and_then(|s| s.price.map(|p| p as f64));
 
         // Берем первый barcode из списка sizes
-        let barcode = card
-            .sizes
-            .first()
-            .and_then(|s| s.barcode.clone());
+        let barcode = card.sizes.first().and_then(|s| s.barcode.clone());
 
         // Получаем название товара
-        let product_name = card.title.clone().unwrap_or_else(|| "Без названия".to_string());
+        let product_name = card
+            .title
+            .clone()
+            .unwrap_or_else(|| "Без названия".to_string());
 
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
@@ -525,6 +536,248 @@ impl ImportExecutor {
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)
         }
+    }
+
+    /// Импорт продаж из Wildberries API в a012_wb_sales
+    async fn import_wb_sales(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a012_wb_sales;
+        use contracts::domain::a012_wb_sales::aggregate::{
+            WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState,
+        };
+
+        let aggregate_index = "a012_wb_sales";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        tracing::info!(
+            "Importing WB sales for session: {} from date: {} to date: {}",
+            session_id,
+            date_from,
+            date_to
+        );
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Получаем продажи из API WB
+        let sales_rows = self.api_client.fetch_sales(connection, date_from, date_to).await?;
+
+        tracing::info!("Received {} sale rows from WB API", sales_rows.len());
+
+        // Логируем первую запись для диагностики
+        if let Some(first) = sales_rows.first() {
+            tracing::info!("Sample sale row - srid: {:?}, date (sale_dt): {:?}, lastChangeDate: {:?}",
+                first.srid, first.sale_dt, first.last_change_date);
+        }
+
+        // Обрабатываем каждую продажу
+        for sale_row in sales_rows {
+            // SRID - уникальный идентификатор строки продажи (используем как document_no)
+            let document_no = sale_row
+                .srid
+                .clone()
+                .unwrap_or_else(|| format!("WB_{}", chrono::Utc::now().timestamp()));
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("WB Sale {}", document_no)),
+            );
+
+            // Проверяем, существует ли документ
+            let existing = a012_wb_sales::service::get_by_document_no(&document_no).await?;
+            let is_new = existing.is_none();
+
+            // Создаем header
+            let header = WbSalesHeader {
+                document_no: document_no.clone(),
+                connection_id: connection.base.id.as_string(),
+                organization_id: organization_id.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+            };
+
+            // Клонируем значения, которые будут нужны позже
+            let supplier_article = sale_row.supplier_article.clone().unwrap_or_default();
+            let sale_dt_str = sale_row.sale_dt.clone();
+            let last_change_date_str = sale_row.last_change_date.clone();
+
+            // Создаем line (в WB одна продажа = одна строка)
+            let line = WbSalesLine {
+                line_id: sale_row.srid.clone().unwrap_or_else(|| document_no.clone()),
+                supplier_article: supplier_article.clone(),
+                nm_id: sale_row.nm_id.unwrap_or(0),
+                barcode: sale_row.barcode.clone().unwrap_or_default(),
+                name: sale_row
+                    .brand
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                qty: sale_row.quantity.unwrap_or(1) as f64,
+                price_list: sale_row.finished_price, // цена до скидки
+                discount_total: sale_row.discount,
+                price_effective: sale_row.price_with_disc,
+                amount_line: sale_row.for_pay, // итоговая сумма к оплате
+                currency_code: Some("RUB".to_string()),
+            };
+
+            // Парсим дату продажи
+            let sale_dt = if let Some(date_str) = sale_dt_str.as_ref() {
+                tracing::debug!("Parsing sale_dt from API: '{}'", date_str);
+
+                // Пробуем несколько форматов
+                let parsed = chrono::DateTime::parse_from_rfc3339(date_str)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|_| {
+                        // Формат с T и без timezone: 2025-01-15T10:30:00
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+                    .or_else(|_| {
+                        // Формат с пробелом: 2025-01-15 10:30:00
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+                    .or_else(|_| {
+                        // Только дата: 2025-01-15
+                        chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                            .map(|nd| nd.and_hms_opt(0, 0, 0).unwrap())
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    });
+
+                match parsed {
+                    Ok(dt) => {
+                        tracing::debug!("Successfully parsed sale_dt: {}", dt);
+                        dt
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse sale_dt '{}': {}. Using current time as fallback.", date_str, e);
+                        chrono::Utc::now()
+                    }
+                }
+            } else {
+                tracing::warn!("sale_dt is None, using current time");
+                chrono::Utc::now()
+            };
+
+            // Парсим дату последнего изменения
+            let last_change_dt = last_change_date_str.and_then(|date_str| {
+                chrono::DateTime::parse_from_rfc3339(&date_str)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|_| {
+                        chrono::NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S").map(
+                            |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
+                        )
+                    })
+                    .ok()
+            });
+
+            // Определяем тип события (sale/return)
+            let event_type = if sale_row.quantity.unwrap_or(0) < 0 {
+                "return".to_string()
+            } else {
+                "sale".to_string()
+            };
+
+            // Создаем state
+            let state = WbSalesState {
+                event_type: event_type.clone(),
+                status_norm: if event_type == "sale" {
+                    "DELIVERED".to_string()
+                } else {
+                    "RETURNED".to_string()
+                },
+                sale_dt,
+                last_change_dt,
+            };
+
+            // Создаем source_meta
+            let source_meta = WbSalesSourceMeta {
+                raw_payload_ref: String::new(), // будет заполнен в service
+                fetched_at: chrono::Utc::now(),
+                document_version: 1,
+            };
+
+            // Создаем документ
+            let document = WbSales::new_for_insert(
+                document_no.clone(),
+                format!("WB {} {}", event_type, supplier_article),
+                header,
+                line,
+                state,
+                source_meta,
+            );
+
+            // Сохраняем документ с raw JSON
+            let raw_json = serde_json::to_string(&sale_row)?;
+            match a012_wb_sales::service::store_document_with_raw(document, &raw_json).await {
+                Ok(_) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process WB sale {}: {}", document_no, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process WB sale {}", document_no),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "WB sales import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
     }
 }
 

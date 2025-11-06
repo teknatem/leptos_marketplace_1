@@ -152,7 +152,6 @@ impl ImportExecutor {
         let mut total_inserted = 0;
         let mut total_updated = 0;
         let mut page = 1;
-        let mut total_count: Option<i32> = None;
 
         // Получаем товары страницами через /b2bintegration-products/v1/products
         loop {
@@ -163,7 +162,7 @@ impl ImportExecutor {
 
             // На первой странице получаем общее количество
             if page == 1 {
-                total_count = response.paging.as_ref().map(|p| p.total_count);
+                let total_count = response.paging.as_ref().map(|p| p.total_count);
                 tracing::info!("Total products available: {:?}", total_count);
             }
 
@@ -231,7 +230,8 @@ impl ImportExecutor {
 
             // Проверяем, есть ли еще страницы
             if let Some(paging) = &response.paging {
-                let total_pages = (paging.total_count as f64 / paging.per_page as f64).ceil() as i32;
+                let total_pages =
+                    (paging.total_count as f64 / paging.per_page as f64).ceil() as i32;
                 if page >= total_pages {
                     break;
                 }
@@ -280,12 +280,7 @@ impl ImportExecutor {
         let (category_id, category_name) = product
             .categories
             .as_ref()
-            .map(|cat| {
-                (
-                    cat.category_id.clone(),
-                    cat.category_name.clone(),
-                )
-            })
+            .map(|cat| (cat.category_id.clone(), cat.category_name.clone()))
             .unwrap_or((None, None));
 
         // Получаем бренд
@@ -356,4 +351,3 @@ impl Clone for ImportExecutor {
         }
     }
 }
-
