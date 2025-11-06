@@ -8,6 +8,8 @@ use wasm_bindgen_futures::JsFuture;
 
 // Импорты компонентов деталей документов
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
+use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
+use crate::domain::a013_ym_order::ui::details::YmOrderDetail;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SalesRegisterDto {
@@ -54,12 +56,34 @@ struct SelectedDocument {
     document_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum SortColumn {
+    Date,
+    Marketplace,
+    DocumentNo,
+    Product,
+    Sku,
+    Qty,
+    Amount,
+    Status,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum SortDirection {
+    Asc,
+    Desc,
+}
+
 #[component]
 pub fn SalesRegisterList() -> impl IntoView {
     let (sales, set_sales) = signal(Vec::<SalesRegisterDto>::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
     let (selected_document, set_selected_document) = signal::<Option<SelectedDocument>>(None);
+
+    // Состояние сортировки
+    let (sort_column, set_sort_column) = signal::<Option<SortColumn>>(None);
+    let (sort_direction, set_sort_direction) = signal(SortDirection::Asc);
 
     // Фильтры - период по умолчанию: текущий месяц
     let now = Utc::now().date_naive();
@@ -81,6 +105,58 @@ pub fn SalesRegisterList() -> impl IntoView {
     let (date_from, set_date_from) = signal(month_start.format("%Y-%m-%d").to_string());
     let (date_to, set_date_to) = signal(month_end.format("%Y-%m-%d").to_string());
     let (marketplace_filter, set_marketplace_filter) = signal("".to_string());
+
+    // Функция для обработки клика по заголовку колонки
+    let handle_column_click = move |column: SortColumn| {
+        if sort_column.get() == Some(column.clone()) {
+            // Переключаем направление
+            set_sort_direction.set(match sort_direction.get() {
+                SortDirection::Asc => SortDirection::Desc,
+                SortDirection::Desc => SortDirection::Asc,
+            });
+        } else {
+            // Новая колонка - сортируем по возрастанию
+            set_sort_column.set(Some(column));
+            set_sort_direction.set(SortDirection::Asc);
+        }
+    };
+
+    // Отсортированные данные
+    let sorted_sales = move || {
+        let mut data = sales.get();
+        if let Some(col) = sort_column.get() {
+            let direction = sort_direction.get();
+            data.sort_by(|a, b| {
+                let cmp = match col {
+                    SortColumn::Date => a.sale_date.cmp(&b.sale_date),
+                    SortColumn::Marketplace => a.marketplace.cmp(&b.marketplace),
+                    SortColumn::DocumentNo => a.document_no.cmp(&b.document_no),
+                    SortColumn::Product => {
+                        let a_title = a.title.as_deref().unwrap_or("");
+                        let b_title = b.title.as_deref().unwrap_or("");
+                        a_title.cmp(b_title)
+                    }
+                    SortColumn::Sku => {
+                        let a_sku = a.seller_sku.as_deref().unwrap_or("");
+                        let b_sku = b.seller_sku.as_deref().unwrap_or("");
+                        a_sku.cmp(b_sku)
+                    }
+                    SortColumn::Qty => a.qty.partial_cmp(&b.qty).unwrap_or(std::cmp::Ordering::Equal),
+                    SortColumn::Amount => {
+                        let a_amt = a.amount_line.unwrap_or(0.0);
+                        let b_amt = b.amount_line.unwrap_or(0.0);
+                        a_amt.partial_cmp(&b_amt).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    SortColumn::Status => a.status_norm.cmp(&b.status_norm),
+                };
+                match direction {
+                    SortDirection::Asc => cmp,
+                    SortDirection::Desc => cmp.reverse(),
+                }
+            });
+        }
+        data
+    };
 
     let load_sales = move || {
         set_loading.set(true);
@@ -219,44 +295,18 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                     }
                                                     "WB_Sales" => {
                                                         view! {
-                                                            <div style="padding: 20px;">
-                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                                                    <h2 style="margin: 0;">"Wildberries Sales Details"</h2>
-                                                                    <button
-                                                                        on:click=move |_| set_selected_document.set(None)
-                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                                                                    >
-                                                                        "✕ Close"
-                                                                    </button>
-                                                                </div>
-                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-                                                                    <p>"Wildberries Sales details component not yet implemented."</p>
-                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
-                                                                        "Document ID: " {selected.document_id.clone()}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
+                                                            <WbSalesDetail
+                                                                id=selected.document_id.clone()
+                                                                on_close=move || set_selected_document.set(None)
+                                                            />
                                                         }.into_any()
                                                     }
                                                     "YM_Order" => {
                                                         view! {
-                                                            <div style="padding: 20px;">
-                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                                                    <h2 style="margin: 0;">"Yandex Market Order Details"</h2>
-                                                                    <button
-                                                                        on:click=move |_| set_selected_document.set(None)
-                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                                                                    >
-                                                                        "✕ Close"
-                                                                    </button>
-                                                                </div>
-                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-                                                                    <p>"Yandex Market Order details component not yet implemented."</p>
-                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
-                                                                        "Document ID: " {selected.document_id.clone()}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
+                                                            <YmOrderDetail
+                                                                id=selected.document_id.clone()
+                                                                on_close=move || set_selected_document.set(None)
+                                                            />
                                                         }.into_any()
                                                     }
                                                     _ => {
@@ -289,22 +339,143 @@ pub fn SalesRegisterList() -> impl IntoView {
                                 }
                             }}
 
-                            <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 0;">
-                                <thead>
-                                    <tr style="background: #f5f5f5;">
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Date"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Marketplace"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Document №"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Product"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"SKU"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Qty"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Amount"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Status"</th>
-                                        <th style="border: 1px solid #ddd; padding: 8px;">"Organization"</th>
-                                    </tr>
-                                </thead>
+                            <div style="overflow-y: auto; max-height: calc(100vh - 200px); border: 1px solid #ddd;">
+                                <table class="data-table" style="width: 100%; border-collapse: collapse; margin: 0;">
+                                    <thead style="position: sticky; top: 0; z-index: 10; background: #f5f5f5;">
+                                        <tr style="background: #f5f5f5;">
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Date)
+                                            >
+                                                "Date "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Date) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Marketplace)
+                                            >
+                                                "Marketplace "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Marketplace) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::DocumentNo)
+                                            >
+                                                "Document № "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::DocumentNo) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Product)
+                                            >
+                                                "Product "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Product) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Sku)
+                                            >
+                                                "SKU "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Sku) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Qty)
+                                            >
+                                                "Qty "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Qty) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Amount)
+                                            >
+                                                "Amount "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Amount) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Status)
+                                            >
+                                                "Status "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Status) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Organization"</th>
+                                        </tr>
+                                    </thead>
                                 <tbody>
-                                    {sales.get().into_iter().map(|sale| {
+                                    {sorted_sales().into_iter().map(|sale| {
                                         let sale_date = sale.sale_date.clone();
                                         let marketplace = sale.marketplace.clone();
                                         let document_no = sale.document_no.clone();
@@ -357,6 +528,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                                     }).collect_view()}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     }.into_any()
                 }
