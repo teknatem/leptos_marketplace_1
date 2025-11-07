@@ -865,6 +865,71 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // p901_nomenclature_barcodes table - штрихкоды номенклатуры
+    let check_barcodes_table = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p901_nomenclature_barcodes';
+    "#;
+    let barcodes_table_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_barcodes_table.to_string(),
+        ))
+        .await?;
+
+    if barcodes_table_exists.is_empty() {
+        tracing::info!("Creating p901_nomenclature_barcodes table");
+        let create_barcodes_table_sql = r#"
+            CREATE TABLE p901_nomenclature_barcodes (
+                barcode TEXT PRIMARY KEY NOT NULL,
+                nomenclature_ref TEXT NOT NULL,
+                article TEXT,
+                source TEXT NOT NULL DEFAULT '1C',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_barcodes_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Создать индекс для быстрого поиска по nomenclature_ref
+        let create_barcodes_idx1 = r#"
+            CREATE INDEX IF NOT EXISTS idx_barcodes_nomenclature_ref
+            ON p901_nomenclature_barcodes (nomenclature_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_barcodes_idx1.to_string(),
+        ))
+        .await?;
+
+        // Создать индекс для поиска по артикулу
+        let create_barcodes_idx2 = r#"
+            CREATE INDEX IF NOT EXISTS idx_barcodes_article
+            ON p901_nomenclature_barcodes (article);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_barcodes_idx2.to_string(),
+        ))
+        .await?;
+
+        // Создать индекс для фильтрации по is_active
+        let create_barcodes_idx3 = r#"
+            CREATE INDEX IF NOT EXISTS idx_barcodes_is_active
+            ON p901_nomenclature_barcodes (is_active);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_barcodes_idx3.to_string(),
+        ))
+        .await?;
+    }
+
     // a010_ozon_fbs_posting table - документы OZON FBS
     let check_ozon_fbs = r#"
         SELECT name FROM sqlite_master

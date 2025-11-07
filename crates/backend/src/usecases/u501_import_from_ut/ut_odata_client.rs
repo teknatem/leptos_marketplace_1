@@ -51,6 +51,21 @@ impl UtODataClient {
         skip: Option<i32>,
         filter: Option<&str>,
     ) -> Result<T> {
+        self.fetch_collection_with_options(connection, collection_name, top, skip, filter, None, None)
+            .await
+    }
+
+    /// Получить данные из OData коллекции с фильтром, expand и select
+    pub async fn fetch_collection_with_options<T: serde::de::DeserializeOwned>(
+        &self,
+        connection: &Connection1CDatabase,
+        collection_name: &str,
+        top: Option<i32>,
+        skip: Option<i32>,
+        filter: Option<&str>,
+        expand: Option<&str>,
+        select: Option<&str>,
+    ) -> Result<T> {
         // Формируем полный OData URL: base_url + /odata/standard.odata/ + collection_name
         let base_url = connection.url.trim_end_matches('/');
         let odata_path = if base_url.contains("/odata/") {
@@ -73,17 +88,38 @@ impl UtODataClient {
         if let Some(filter) = filter {
             params.push(format!("$filter={}", filter));
         }
+        if let Some(expand) = expand {
+            params.push(format!("$expand={}", expand));
+        }
+        if let Some(select) = select {
+            params.push(format!("$select={}", select));
+        }
 
         // ВАЖНО: При использовании пагинации ($skip/$top) ОБЯЗАТЕЛЬНО нужен $orderby для стабильного порядка
         if skip.is_some() || top.is_some() {
-            // Определяем поле для сортировки в зависимости от коллекции
-            // Используем Ref_Key для всех типов, так как это поле гарантированно есть во всех коллекциях 1С
+            // Определяем поле для сортировки в зависимости от типа коллекции
             let order_by = match collection_name {
-                name if name.starts_with("Catalog_") => "Ref_Key",
-                name if name.starts_with("Document_") => "Ref_Key",
-                _ => "Ref_Key",
+                // Справочники и документы имеют Ref_Key
+                name if name.starts_with("Catalog_") => Some("Ref_Key"),
+                name if name.starts_with("Document_") => Some("Ref_Key"),
+                // Регистры сведений (InformationRegister) не имеют Ref_Key
+                // Для них будем сортировать по первому измерению (обычно это и есть ключевое поле)
+                name if name.starts_with("InformationRegister_") => {
+                    // Для регистра штрихкодов это будет "Штрихкод"
+                    if name.contains("Штрихкод") || name.contains("Barcode") {
+                        Some("Штрихкод")
+                    } else {
+                        // Для других регистров можно не использовать сортировку
+                        // или использовать LineNumber если есть
+                        None
+                    }
+                },
+                _ => None,
             };
-            params.push(format!("$orderby={} asc", order_by));
+
+            if let Some(field) = order_by {
+                params.push(format!("$orderby={} asc", field));
+            }
         }
 
         if !params.is_empty() {

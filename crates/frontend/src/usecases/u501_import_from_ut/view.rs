@@ -19,6 +19,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a002, set_import_a002) = signal(true);
     let (import_a003, set_import_a003) = signal(true);
     let (import_a004, set_import_a004) = signal(true);
+    let (import_p901, set_import_p901) = signal(true);
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u501_session_id";
@@ -140,6 +141,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a004.get() {
                 targets.push("a004_nomenclature".to_string());
             }
+            if import_p901.get() {
+                targets.push("p901_barcodes".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -232,9 +236,18 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a004_nomenclature - Номенклатура"
                     </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_p901.get()
+                            on:change=move |ev| { set_import_p901.set(event_target_checked(&ev)); }
+                        />
+                        " p901_barcodes - Штрихкоды номенклатуры"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура"
+                    "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
                 </div>
             </div>
 

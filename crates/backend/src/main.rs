@@ -952,6 +952,19 @@ async fn main() -> anyhow::Result<()> {
             "/api/p900/stats/by-marketplace",
             get(handlers::p900_sales_register::get_stats_by_marketplace),
         )
+        // P901 Nomenclature Barcodes handlers
+        .route(
+            "/api/p901/barcode/:barcode",
+            get(handlers::p901_barcodes::get_by_barcode),
+        )
+        .route(
+            "/api/p901/nomenclature/:nomenclature_ref/barcodes",
+            get(handlers::p901_barcodes::get_barcodes_by_nomenclature),
+        )
+        .route(
+            "/api/p901/barcodes",
+            get(handlers::p901_barcodes::list_barcodes),
+        )
         // A010 OZON FBS Posting handlers
         .route(
             "/api/a010/ozon-fbs-posting",

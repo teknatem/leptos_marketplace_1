@@ -44,6 +44,7 @@ impl ImportExecutor {
                 "a002_organization" => "Организации",
                 "a003_counterparty" => "Контрагенты",
                 "a004_nomenclature" => "Номенклатура",
+                "p901_barcodes" => "Штрихкоды номенклатуры",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -111,6 +112,9 @@ impl ImportExecutor {
                 }
                 "a004_nomenclature" => {
                     self.import_nomenclature(session_id, connection).await?;
+                }
+                "p901_barcodes" => {
+                    self.import_barcodes(session_id, connection).await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -772,6 +776,158 @@ impl ImportExecutor {
                     Err(e)
                 }
             }
+        }
+    }
+
+    /// Импорт штрихкодов номенклатуры из УТ
+    async fn import_barcodes(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+    ) -> Result<()> {
+        use crate::projections::p901_nomenclature_barcodes::u501_import::UtNomenclatureBarcodeListResponse;
+
+        tracing::info!("Importing barcodes for session: {}", session_id);
+
+        let aggregate_index = "p901_barcodes";
+
+        // Получаем общее количество элементов
+        let total = self
+            .odata_client
+            .get_collection_count(connection, "InformationRegister_ШтрихкодыНоменклатуры")
+            .await
+            .ok()
+            .flatten();
+
+        tracing::info!("Total barcodes to import: {:?}", total);
+
+        let page_size = 100;
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+        let mut skip = 0;
+
+        // Загружаем элементы последовательно блоками по 100
+        // Используем $expand для получения артикула из справочника номенклатуры
+        loop {
+            let response: UtNomenclatureBarcodeListResponse = self
+                .odata_client
+                .fetch_collection_with_options(
+                    connection,
+                    "InformationRegister_ШтрихкодыНоменклатуры",
+                    Some(page_size),
+                    Some(skip),
+                    None, // filter
+                    Some("Номенклатура"), // expand - 1С OData не поддерживает вложенный $select
+                    None, // select
+                )
+                .await?;
+
+            if response.value.is_empty() {
+                break;
+            }
+
+            let batch_size = response.value.len();
+            tracing::info!(
+                "Processing barcodes batch: skip={}, size={}",
+                skip,
+                batch_size
+            );
+
+            // Обрабатываем все элементы из пакета
+            for odata_item in response.value {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("Barcode: {} -> {}", odata_item.barcode, odata_item.owner_key)),
+                );
+
+                match self.process_barcode(&odata_item).await {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process barcode {}: {}", odata_item.barcode, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process barcode {}", odata_item.barcode),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                // Обновляем прогресс после каждого элемента
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    total,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            skip += page_size;
+
+            // Если получили меньше элементов чем запрашивали - это последний батч
+            if batch_size < page_size as usize {
+                break;
+            }
+
+            // Небольшая пауза между батчами
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        // Очистить текущий элемент после завершения
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Barcodes import completed: total_processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Обработка одного штрихкода из OData
+    async fn process_barcode(
+        &self,
+        odata: &crate::projections::p901_nomenclature_barcodes::u501_import::UtNomenclatureBarcodeOData,
+    ) -> Result<bool> {
+        use crate::projections::p901_nomenclature_barcodes::repository;
+
+        // Проверяем существование записи
+        let existing = repository::get_by_barcode(&odata.barcode).await?;
+
+        if let Some(existing_model) = existing {
+            // Проверяем, нужно ли обновление
+            if odata.should_update(&existing_model) {
+                let entry = odata.to_entry().map_err(|e| anyhow::anyhow!(e))?;
+                repository::upsert_entry(&entry).await?;
+                tracing::debug!("Updated barcode: {}", odata.barcode);
+                Ok(false) // Обновление
+            } else {
+                // Данные не изменились, пропускаем
+                Ok(false)
+            }
+        } else {
+            // Новая запись
+            let entry = odata.to_entry().map_err(|e| anyhow::anyhow!(e))?;
+            repository::upsert_entry(&entry).await?;
+            tracing::debug!("Inserted new barcode: {}", odata.barcode);
+            Ok(true) // Вставка
         }
     }
 }

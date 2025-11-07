@@ -55,7 +55,10 @@ pub fn Navbar() -> impl IntoView {
     let operations = vec![("u505_match_nomenclature", "Сопоставление", "layers")];
 
     // Регистры (Projections)
-    let registers = vec![("p900_sales_register", "Регистр продаж", "database")];
+    let registers = vec![
+        ("p900_sales_register", "Регистр продаж", "database"),
+        ("p901_barcodes", "Штрихкоды номенклатуры", "barcode"),
+    ];
 
     view! {
         <nav class="main-nav-bar">
