@@ -24,6 +24,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a009, set_import_a009) = signal(false);
     let (import_a010, set_import_a010) = signal(false); // OZON FBS Posting
     let (import_a011, set_import_a011) = signal(false); // OZON FBO Posting
+    let (import_a014, set_import_a014) = signal(false); // OZON Transactions
     let (import_p902, set_import_p902) = signal(false); // OZON Finance Realization
                                                         // Даты периода (по умолчанию вчера)
     let now = Utc::now().date_naive();
@@ -197,6 +198,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a011.get() {
                 targets.push("a011_ozon_fbo_posting".to_string());
             }
+            if import_a014.get() {
+                targets.push("a014_ozon_transactions".to_string());
+            }
             if import_p902.get() {
                 targets.push("p902_ozon_finance_realization".to_string());
             }
@@ -309,6 +313,15 @@ pub fn ImportWidget() -> impl IntoView {
                             on:change=move |ev| { set_import_a011.set(event_target_checked(&ev)); }
                         />
                         " a011_ozon_fbo_posting - OZON FBO Документы продаж (→ P900)"
+                    </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a014.get()
+                            on:change=move |ev| { set_import_a014.set(event_target_checked(&ev)); }
+                        />
+                        " a014_ozon_transactions - Транзакции OZON"
                     </label>
                     <br/>
                     <label>

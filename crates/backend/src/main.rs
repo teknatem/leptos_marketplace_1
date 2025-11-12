@@ -808,7 +808,13 @@ async fn main() -> anyhow::Result<()> {
             "/api/ozon_returns",
             get(|| async {
                 match domain::a009_ozon_returns::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
+                    Ok(aggregates) => {
+                        let list_dtos: Vec<_> = aggregates
+                            .into_iter()
+                            .map(|agg| agg.to_list_dto())
+                            .collect();
+                        Ok(Json(list_dtos))
+                    }
                     Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
                 }
             })
@@ -862,6 +868,16 @@ async fn main() -> anyhow::Result<()> {
                     Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
                 }
             }),
+        )
+        // OZON Transactions handlers
+        .route(
+            "/api/ozon_transactions",
+            get(handlers::a014_ozon_transactions::list_all),
+        )
+        .route(
+            "/api/ozon_transactions/:id",
+            get(handlers::a014_ozon_transactions::get_by_id)
+                .delete(handlers::a014_ozon_transactions::delete),
         )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
@@ -984,6 +1000,15 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/p902/stats",
             get(handlers::p902_ozon_finance_realization::get_stats),
+        )
+        // A009 OZON Returns handlers
+        .route(
+            "/api/a009/ozon-returns/:id/post",
+            post(handlers::a009_ozon_returns::post_ozon_return),
+        )
+        .route(
+            "/api/a009/ozon-returns/:id/unpost",
+            post(handlers::a009_ozon_returns::unpost_ozon_return),
         )
         // A010 OZON FBS Posting handlers
         .route(

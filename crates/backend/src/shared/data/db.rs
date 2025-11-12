@@ -1223,6 +1223,47 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // a014_ozon_transactions table - транзакции OZON
+    let check_ozon_transactions = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a014_ozon_transactions';
+    "#;
+    let ozon_transactions_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ozon_transactions.to_string(),
+        ))
+        .await?;
+
+    if ozon_transactions_exists.is_empty() {
+        tracing::info!("Creating a014_ozon_transactions table");
+        let create_table_sql = r#"
+            CREATE TABLE a014_ozon_transactions (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                operation_id INTEGER NOT NULL UNIQUE,
+                posting_number TEXT NOT NULL,
+                header_json TEXT NOT NULL,
+                posting_json TEXT NOT NULL,
+                items_json TEXT NOT NULL,
+                services_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
     // p902_ozon_finance_realization table - финансовые данные реализации OZON
     let check_p902 = r#"
         SELECT name FROM sqlite_master

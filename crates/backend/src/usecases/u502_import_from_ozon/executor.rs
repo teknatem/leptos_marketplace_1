@@ -47,6 +47,7 @@ impl ImportExecutor {
                 "a009_ozon_returns" => "Возвраты OZON",
                 "a010_ozon_fbs_posting" => "OZON FBS Документы продаж",
                 "a011_ozon_fbo_posting" => "OZON FBO Документы продаж",
+                "a014_ozon_transactions" => "Транзакции OZON",
                 "p902_ozon_finance_realization" => "Финансовые данные реализации OZON",
                 _ => "Unknown",
             };
@@ -140,6 +141,15 @@ impl ImportExecutor {
                 }
                 "a011_ozon_fbo_posting" => {
                     self.import_ozon_fbo_postings(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a014_ozon_transactions" => {
+                    self.import_ozon_transactions(
                         session_id,
                         connection,
                         request.date_from,
@@ -1587,6 +1597,195 @@ impl ImportExecutor {
             total_inserted,
             total_updated
         );
+        Ok(())
+    }
+
+    /// Импорт транзакций OZON через /v3/finance/transaction/list
+    async fn import_ozon_transactions(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a014_ozon_transactions;
+        use contracts::domain::a014_ozon_transactions::aggregate::{
+            OzonTransactions, OzonTransactionsHeader, OzonTransactionsPosting,
+            OzonTransactionsItem, OzonTransactionsService, OzonTransactionsSourceMeta,
+        };
+
+        let aggregate_index = "a014_ozon_transactions";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // Получаем ID организации
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Пагинация по страницам
+        let page_size = 1000; // Максимум для OZON API
+        let mut current_page = 1;
+
+        loop {
+            let resp = self
+                .api_client
+                .fetch_transactions_list(connection, date_from, date_to, current_page, page_size)
+                .await?;
+
+            let operations_count = resp.result.operations.len();
+            if operations_count == 0 {
+                break;
+            }
+
+            tracing::info!(
+                "Received {} transactions from API (page {}/{})",
+                operations_count,
+                current_page,
+                resp.result.page_count
+            );
+
+            for operation in resp.result.operations {
+                let code = format!("OZON-TXN-{}", operation.operation_id);
+                let description = format!(
+                    "{} - {}",
+                    operation.operation_type_name, operation.posting.posting_number
+                );
+
+                // Собираем header
+                let header = OzonTransactionsHeader {
+                    operation_id: operation.operation_id,
+                    operation_type: operation.operation_type.clone(),
+                    operation_date: operation.operation_date.clone(),
+                    operation_type_name: operation.operation_type_name.clone(),
+                    delivery_charge: operation.delivery_charge,
+                    return_delivery_charge: operation.return_delivery_charge,
+                    accruals_for_sale: operation.accruals_for_sale,
+                    sale_commission: operation.sale_commission,
+                    amount: operation.amount,
+                    transaction_type: operation.transaction_type.clone(),
+                    connection_id: connection.base.id.as_string(),
+                    organization_id: organization_id.clone(),
+                    marketplace_id: connection.marketplace_id.clone(),
+                };
+
+                // Собираем posting
+                let posting = OzonTransactionsPosting {
+                    delivery_schema: operation.posting.delivery_schema.clone(),
+                    order_date: operation.posting.order_date.clone(),
+                    posting_number: operation.posting.posting_number.clone(),
+                    warehouse_id: operation.posting.warehouse_id,
+                };
+
+                // Собираем items
+                let items: Vec<OzonTransactionsItem> = operation
+                    .items
+                    .into_iter()
+                    .map(|item| OzonTransactionsItem {
+                        name: item.name,
+                        sku: item.sku,
+                    })
+                    .collect();
+
+                // Собираем services
+                let services: Vec<OzonTransactionsService> = operation
+                    .services
+                    .into_iter()
+                    .map(|service| OzonTransactionsService {
+                        name: service.name,
+                        price: service.price,
+                    })
+                    .collect();
+
+                // Source meta
+                let source_meta = OzonTransactionsSourceMeta {
+                    raw_payload_ref: format!("ozon_txn_{}", operation.operation_id),
+                    fetched_at: chrono::Utc::now(),
+                    document_version: 1,
+                };
+
+                // Создаем агрегат
+                let aggregate = OzonTransactions::new_for_insert(
+                    code,
+                    description,
+                    header,
+                    posting,
+                    items,
+                    services,
+                    source_meta,
+                    false, // is_posted = false по умолчанию
+                );
+
+                // Upsert по operation_id
+                match a014_ozon_transactions::repository::get_by_operation_id(
+                    aggregate.header.operation_id,
+                )
+                .await?
+                {
+                    Some(_existing) => {
+                        // Обновляем существующую транзакцию
+                        a014_ozon_transactions::repository::upsert_by_operation_id(&aggregate)
+                            .await?;
+                        total_updated += 1;
+                    }
+                    None => {
+                        // Вставляем новую транзакцию
+                        a014_ozon_transactions::repository::upsert_by_operation_id(&aggregate)
+                            .await?;
+                        total_inserted += 1;
+                    }
+                }
+
+                total_processed += 1;
+
+                // Обновляем прогресс
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    Some(resp.result.row_count),
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            // Проверяем, есть ли еще страницы
+            if current_page >= resp.result.page_count {
+                break;
+            }
+
+            current_page += 1;
+        }
+
+        tracing::info!(
+            "OZON Transactions import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
         Ok(())
     }
 }

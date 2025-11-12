@@ -255,6 +255,14 @@ pub fn OzonFbsPostingList() -> impl IntoView {
         result
     };
 
+    // Вычисление итогов по сумме и количеству позиций
+    let get_totals = move || -> (f64, usize) {
+        let items = get_filtered_sorted_items();
+        let total_sum: f64 = items.iter().map(|p| p.total_amount).sum();
+        let total_qty: usize = items.iter().map(|p| p.line_count).sum();
+        (total_sum, total_qty)
+    };
+
     // Обработчик переключения сортировки
     let toggle_sort = move |field: &'static str| {
         move |_| {
@@ -658,6 +666,21 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                                         }}
                                     </Show>
                                 </div>
+
+                                // Строка с итогами
+                                {move || if !loading.get() && error.get().is_none() {
+                                    let filtered = get_filtered_sorted_items();
+                                    let (total_sum, total_qty) = get_totals();
+                                    view! {
+                                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 13px; color: #666;">
+                                            "Показано: " {filtered.len()} " записей | "
+                                            "Сумма: " {format!("{:.2}", total_sum)} " | "
+                                            "Количество позиций: " {total_qty}
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
                             </div>
 
                             // Модальное окно результатов
@@ -716,20 +739,10 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                             </Show>
 
             {move || {
-                let msg = if loading.get() {
-                    "Loading...".to_string()
-                } else if let Some(err) = error.get() {
-                    err.clone()
-                } else {
-                    let filtered = get_filtered_sorted_items();
-                    format!("Показано: {} записей", filtered.len())
-                };
-
                 // Render summary and table; render filled rows only when not loading and no error
                 if !loading.get() && error.get().is_none() {
                     view! {
                         <div>
-                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
                             <div class="table-container">
                                 <table class="data-table" style="width: 100%; border-collapse: collapse;">
                                     <thead>
@@ -911,9 +924,23 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                         </div>
                     }.into_any()
                 } else {
+                    let msg = if loading.get() {
+                        "Loading...".to_string()
+                    } else if let Some(err) = error.get() {
+                        err.clone()
+                    } else {
+                        String::new()
+                    };
+
                     view! {
                         <div>
-                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
+                            {move || if !msg.is_empty() {
+                                view! {
+                                    <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg.clone()}</p>
+                                }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
                             <div class="table-container">
                                 <table class="data-table" style="width: 100%; border-collapse: collapse;">
                                     <thead>

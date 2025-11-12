@@ -28,6 +28,7 @@ pub fn Navbar() -> impl IntoView {
         ("a011_ozon_fbo_posting", "OZON FBO Posting", "file-text"),
         ("a012_wb_sales", "WB Sales", "file-text"),
         ("a013_ym_order", "YM Orders", "file-text"),
+        ("a014_ozon_transactions", "Транзакции OZON", "credit-card"),
     ];
 
     // Интеграции: подключения + импорты

@@ -7,6 +7,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 // Импорты компонентов деталей документов
+use crate::domain::a009_ozon_returns::ui::details::OzonReturnsDetail;
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::domain::a013_ym_order::ui::details::YmOrderDetail;
@@ -159,6 +160,14 @@ pub fn SalesRegisterList() -> impl IntoView {
         data
     };
 
+    // Вычисление итогов по Qty и Amount
+    let totals = move || {
+        let data = sorted_sales();
+        let total_qty: f64 = data.iter().map(|s| s.qty).sum();
+        let total_amount: f64 = data.iter().map(|s| s.amount_line.unwrap_or(0.0)).sum();
+        (total_qty, total_amount)
+    };
+
     let load_sales = move || {
         set_loading.set(true);
         set_error.set(None);
@@ -239,10 +248,26 @@ pub fn SalesRegisterList() -> impl IntoView {
                     "Обновить"
                 </button>
 
+                <button
+                    on:click=move |_| {
+                        let data = sorted_sales();
+                        if let Err(e) = export_to_csv(&data) {
+                            log!("Failed to export: {}", e);
+                        }
+                    }
+                    style="padding: 4px 12px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm);"
+                    disabled=move || loading.get() || sales.get().is_empty()
+                >
+                    "Экспорт в Excel"
+                </button>
+
                 {move || if !loading.get() {
+                    let (total_qty, total_amount) = totals();
                     view! {
                         <span style="margin-left: 8px; font-size: var(--font-size-sm); color: var(--color-text-muted);">
-                            "Total: " {sales.get().len()} " records"
+                            "Total: " {sales.get().len()} " records | "
+                            "Qty: " {format!("{:.2}", total_qty)} " | "
+                            "Amount: " {format!("{:.2}", total_amount)}
                         </span>
                     }.into_any()
                 } else {
@@ -305,6 +330,14 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                     "YM_Order" => {
                                                         view! {
                                                             <YmOrderDetail
+                                                                id=selected.document_id.clone()
+                                                                on_close=move || set_selected_document.set(None)
+                                                            />
+                                                        }.into_any()
+                                                    }
+                                                    "OZON_Returns" => {
+                                                        view! {
+                                                            <OzonReturnsDetail
                                                                 id=selected.document_id.clone()
                                                                 on_close=move || set_selected_document.set(None)
                                                             />
@@ -536,6 +569,74 @@ pub fn SalesRegisterList() -> impl IntoView {
             }}
         </div>
     }
+}
+
+fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
+    use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+
+    // UTF-8 BOM для правильного отображения кириллицы в Excel
+    let mut csv = String::from("\u{FEFF}");
+
+    // Заголовок с точкой с запятой как разделитель
+    csv.push_str("Date;Marketplace;Document №;Product;SKU;Qty;Amount;Status;Organization\n");
+
+    for sale in data {
+        let title = sale.title.as_deref().unwrap_or("").replace("\"", "\"\"");
+        let seller_sku = sale.seller_sku.as_deref().unwrap_or("").replace("\"", "\"\"");
+        let amount_line = sale.amount_line.unwrap_or(0.0);
+        let org_ref_short = &sale.organization_ref[..8.min(sale.organization_ref.len())];
+
+        // Форматируем числа с запятой как десятичный разделитель
+        let qty_str = format!("{:.2}", sale.qty).replace(".", ",");
+        let amount_str = format!("{:.2}", amount_line).replace(".", ",");
+
+        csv.push_str(&format!(
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};\"{}\";\"{}\"\n",
+            sale.sale_date,
+            sale.marketplace,
+            sale.document_no,
+            title,
+            seller_sku,
+            qty_str,
+            amount_str,
+            sale.status_norm,
+            org_ref_short
+        ));
+    }
+
+    // Создаем Blob с CSV данными
+    let blob_parts = js_sys::Array::new();
+    blob_parts.push(&wasm_bindgen::JsValue::from_str(&csv));
+
+    let blob_props = BlobPropertyBag::new();
+    blob_props.set_type("text/csv;charset=utf-8;");
+
+    let blob = Blob::new_with_str_sequence_and_options(&blob_parts, &blob_props)
+        .map_err(|e| format!("Failed to create blob: {:?}", e))?;
+
+    // Создаем URL для blob
+    let url = Url::create_object_url_with_blob(&blob)
+        .map_err(|e| format!("Failed to create URL: {:?}", e))?;
+
+    // Создаем временную ссылку для скачивания
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let document = window.document().ok_or_else(|| "no document".to_string())?;
+
+    let a = document
+        .create_element("a")
+        .map_err(|e| format!("Failed to create element: {:?}", e))?
+        .dyn_into::<HtmlAnchorElement>()
+        .map_err(|e| format!("Failed to cast to anchor: {:?}", e))?;
+
+    a.set_href(&url);
+    let filename = format!("sales_register_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    a.set_download(&filename);
+    a.click();
+
+    // Освобождаем URL
+    Url::revoke_object_url(&url).map_err(|e| format!("Failed to revoke URL: {:?}", e))?;
+
+    Ok(())
 }
 
 async fn fetch_sales(query_params: &str) -> Result<SalesRegisterListResponse, String> {

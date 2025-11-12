@@ -339,6 +339,34 @@ pub struct OzonReturnsDto {
 }
 
 // =============================================================================
+// List DTO for frontend (flat structure for list views)
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonReturnsListDto {
+    pub id: String,
+    #[serde(rename = "returnId")]
+    pub return_id: String,
+    #[serde(rename = "returnDate")]
+    pub return_date: String,
+    #[serde(rename = "returnType")]
+    pub return_type: String,
+    #[serde(rename = "returnReasonName")]
+    pub return_reason_name: String,
+    #[serde(rename = "orderNumber")]
+    pub order_number: String,
+    #[serde(rename = "postingNumber")]
+    pub posting_number: String,
+    pub sku: String,
+    #[serde(rename = "productName")]
+    pub product_name: String,
+    pub quantity: i32,
+    pub price: f64,
+    #[serde(rename = "isPosted")]
+    pub is_posted: bool,
+}
+
+// =============================================================================
 // Detail DTO for frontend
 // =============================================================================
 
@@ -424,6 +452,24 @@ impl OzonReturns {
                 is_posted: self.base.metadata.is_posted,
                 version: self.base.metadata.version,
             },
+        }
+    }
+
+    /// Преобразовать агрегат в ListDTO для frontend (плоская структура для списков)
+    pub fn to_list_dto(&self) -> OzonReturnsListDto {
+        OzonReturnsListDto {
+            id: self.base.id.as_string(),
+            return_id: self.return_id.clone(),
+            return_date: self.return_date.format("%Y-%m-%d").to_string(),
+            return_type: self.return_type.clone(),
+            return_reason_name: self.return_reason_name.clone(),
+            order_number: self.order_number.clone(),
+            posting_number: self.posting_number.clone(),
+            sku: self.sku.clone(),
+            product_name: self.product_name.clone(),
+            quantity: self.quantity,
+            price: self.price,
+            is_posted: self.base.metadata.is_posted,
         }
     }
 }

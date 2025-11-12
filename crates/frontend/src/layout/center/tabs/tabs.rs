@@ -14,6 +14,7 @@ use crate::domain::a010_ozon_fbs_posting::ui::list::OzonFbsPostingList;
 use crate::domain::a011_ozon_fbo_posting::ui::list::OzonFboPostingList;
 use crate::domain::a012_wb_sales::ui::list::WbSalesList;
 use crate::domain::a013_ym_order::ui::list::YmOrderList;
+use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
@@ -79,6 +80,9 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "a013_ym_order" => {
             view! { <YmOrderList /> }.into_any()
+        }
+        Some(key) if key == "a014_ozon_transactions" => {
+            view! { <OzonTransactionsList /> }.into_any()
         }
         Some(key) if key == "u501_import_from_ut" => {
             view! { <u501_import_from_ut::ImportWidget /> }.into_any()

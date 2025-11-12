@@ -1040,3 +1040,167 @@ pub struct OzonFinanceRealizationItem {
     #[serde(default)]
     pub barcode: String,          // Штрихкод
 }
+
+// ============================================================================
+// Structures for Transactions API (/v3/finance/transaction/list)
+// ============================================================================
+
+impl OzonApiClient {
+    /// Получить список транзакций через POST /v3/finance/transaction/list
+    pub async fn fetch_transactions_list(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+        page: i32,
+        page_size: i32,
+    ) -> Result<OzonTransactionsListResponse> {
+        let url = "https://api-seller.ozon.ru/v3/finance/transaction/list";
+
+        let client_id = connection
+            .application_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Client-Id required for OZON API"))?;
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Api-Key required for OZON API");
+        }
+
+        let request_body = OzonTransactionsListRequest {
+            filter: OzonTransactionsFilter {
+                date: OzonTransactionsDateFilter {
+                    from: format!("{}T00:00:00.000Z", date_from),
+                    to: format!("{}T23:59:59.999Z", date_to),
+                },
+                operation_type: vec![],
+                posting_number: String::new(),
+                transaction_type: "all".to_string(),
+            },
+            page,
+            page_size,
+        };
+
+        let body = serde_json::to_string(&request_body)?;
+        self.log_to_file(&format!(
+            "=== TRANSACTIONS LIST REQUEST ===\nPOST {}\nBody: {}",
+            url, body
+        ));
+
+        let response = self
+            .client
+            .post(url)
+            .header("Client-Id", client_id)
+            .header("Api-Key", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("OZON Transactions API request failed: {}", body);
+            anyhow::bail!(
+                "OZON Transactions API request failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+
+        match serde_json::from_str::<OzonTransactionsListResponse>(&body) {
+            Ok(data) => {
+                self.log_to_file("Successfully parsed transactions JSON");
+                Ok(data)
+            }
+            Err(e) => {
+                let preview: String = body.chars().take(500).collect();
+                anyhow::bail!(
+                    "Failed to parse transactions JSON: {}. Body: {}",
+                    e,
+                    preview
+                )
+            }
+        }
+    }
+}
+
+/// Запрос на получение списка транзакций
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionsListRequest {
+    pub filter: OzonTransactionsFilter,
+    pub page: i32,
+    pub page_size: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionsFilter {
+    pub date: OzonTransactionsDateFilter,
+    pub operation_type: Vec<String>,
+    pub posting_number: String,
+    pub transaction_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionsDateFilter {
+    pub from: String,
+    pub to: String,
+}
+
+/// Ответ API списка транзакций
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionsListResponse {
+    pub result: OzonTransactionsListResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionsListResult {
+    pub operations: Vec<OzonTransactionOperation>,
+    pub page_count: i32,
+    pub row_count: i32,
+}
+
+/// Одна операция (транзакция)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionOperation {
+    pub operation_id: i64,
+    pub operation_type: String,
+    pub operation_date: String,
+    pub operation_type_name: String,
+    pub delivery_charge: f64,
+    pub return_delivery_charge: f64,
+    pub accruals_for_sale: f64,
+    pub sale_commission: f64,
+    pub amount: f64,
+    #[serde(rename = "type")]
+    pub transaction_type: String,
+    pub posting: OzonTransactionPosting,
+    #[serde(default)]
+    pub items: Vec<OzonTransactionItem>,
+    #[serde(default)]
+    pub services: Vec<OzonTransactionService>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionPosting {
+    pub delivery_schema: String,
+    pub order_date: String,
+    pub posting_number: String,
+    pub warehouse_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionItem {
+    pub name: String,
+    pub sku: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonTransactionService {
+    pub name: String,
+    pub price: f64,
+}

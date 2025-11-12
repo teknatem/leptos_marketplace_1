@@ -1,5 +1,6 @@
 use super::{projection_builder, repository};
 use anyhow::Result;
+use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
@@ -65,6 +66,21 @@ pub async fn project_ym_order(document: &YmOrder, document_id: Uuid) -> Result<(
         "Projected YM Order {} into Sales Register ({} lines)",
         document.header.document_no,
         document.lines.len()
+    );
+
+    Ok(())
+}
+
+/// Проецировать OZON Returns (возвраты) в Sales Register
+/// ВАЖНО: Создает запись с отрицательными значениями qty и amount
+pub async fn project_ozon_returns(document: &OzonReturns, document_id: Uuid) -> Result<()> {
+    let entry = projection_builder::from_ozon_returns(document, &document_id.to_string()).await?;
+    repository::upsert_entry(&entry).await?;
+
+    tracing::info!(
+        "Projected OZON Return {} into Sales Register (negative qty: {})",
+        document.return_id,
+        document.quantity
     );
 
     Ok(())

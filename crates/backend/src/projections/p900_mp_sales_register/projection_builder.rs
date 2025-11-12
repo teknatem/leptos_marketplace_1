@@ -1,5 +1,6 @@
 use super::repository::SalesRegisterEntry;
 use crate::domain::a007_marketplace_product::service::{find_or_create_for_sale, get_by_id, FindOrCreateParams};
+use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
@@ -299,4 +300,76 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Res
     }
 
     Ok(entries)
+}
+
+/// Конвертировать OZON Returns (возвраты) в запись Sales Register
+/// ВАЖНО: Количество и сумма будут ОТРИЦАТЕЛЬНЫМИ (возврат = минус продажи)
+pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> anyhow::Result<SalesRegisterEntry> {
+    // Используем return_date как дату события (конвертируем NaiveDate в DateTime)
+    let event_time = document
+        .return_date
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+
+    // Поиск или создание a007
+    let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
+        marketplace_id: document.marketplace_id.clone(),
+        connection_mp_id: document.connection_id.clone(),
+        marketplace_sku: document.sku.clone(),
+        barcode: None, // A009 не имеет barcode
+        title: document.product_name.clone(),
+    })
+    .await?;
+
+    // Получить nomenclature_ref из a007
+    let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
+
+    // Вычисляем отрицательные значения для возврата
+    let qty_negative = -(document.quantity as f64);
+    let amount_negative = -(document.price * document.quantity as f64);
+
+    Ok(SalesRegisterEntry {
+        // NK - используем return_id в качестве document_no и line_id
+        marketplace: "OZON".to_string(),
+        document_no: document.return_id.clone(),
+        line_id: document.return_id.clone(),
+
+        // Metadata
+        scheme: Some("RETURN".to_string()),
+        document_type: "OZON_Returns".to_string(),
+        document_version: 1,
+
+        // References to aggregates
+        connection_mp_ref: document.connection_id.clone(),
+        organization_ref: document.organization_id.clone(),
+        marketplace_product_ref: Some(marketplace_product_ref.to_string()),
+        nomenclature_ref,
+        registrator_ref: document_id.to_string(),
+
+        // Timestamps and status
+        event_time_source: event_time,
+        sale_date: document.return_date,
+        source_updated_at: None,
+        status_source: document.return_type.clone(),
+        status_norm: "RETURNED".to_string(),
+
+        // Product identification
+        seller_sku: Some(document.sku.clone()),
+        mp_item_id: document.sku.clone(),
+        barcode: None,
+        title: Some(document.product_name.clone()),
+
+        // Quantities and money - ОТРИЦАТЕЛЬНЫЕ!
+        qty: qty_negative,
+        price_list: None,
+        discount_total: None,
+        price_effective: Some(document.price),
+        amount_line: Some(amount_negative),
+        currency_code: Some("RUB".to_string()),
+
+        // Technical
+        payload_version: 1,
+        extra: None,
+    })
 }

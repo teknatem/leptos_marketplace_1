@@ -1,264 +1,177 @@
-use crate::shared::icons::icon;
-use crate::shared::list_utils::{
-    get_sort_indicator, highlight_matches, SearchInput, Searchable, Sortable,
-};
-use contracts::domain::a002_organization::aggregate::Organization;
-use contracts::domain::a005_marketplace::aggregate::Marketplace;
-use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use leptos::prelude::*;
+use leptos::logging::log;
+use serde::{Deserialize, Serialize};
+use gloo_net::http::Request;
+use super::details::OzonReturnsDetail;
+use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use std::cmp::Ordering;
 
-#[derive(Clone, Debug)]
-pub struct OzonReturnsRow {
+/// Форматирует ISO 8601 дату в dd.mm.yyyy
+fn format_date(iso_date: &str) -> String {
+    // Парсим ISO 8601: "2025-11-05"
+    if let Some((year, rest)) = iso_date.split_once('-') {
+        if let Some((month, day)) = rest.split_once('-') {
+            return format!("{}.{}.{}", day, month, year);
+        }
+    }
+    iso_date.to_string() // fallback
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonReturnsDto {
     pub id: String,
-    pub connection_name: String,
-    pub organization_name: String,
-    pub marketplace_name: String,
+    #[serde(rename = "returnId")]
     pub return_id: String,
+    #[serde(rename = "returnDate")]
     pub return_date: String,
-    pub return_reason_name: String,
+    #[serde(rename = "returnType")]
     pub return_type: String,
+    #[serde(rename = "returnReasonName")]
+    pub return_reason_name: String,
+    #[serde(rename = "orderNumber")]
     pub order_number: String,
+    #[serde(rename = "postingNumber")]
+    pub posting_number: String,
     pub sku: String,
+    #[serde(rename = "productName")]
     pub product_name: String,
     pub quantity: i32,
-    pub price: String,
+    pub price: f64,
+    #[serde(rename = "isPosted")]
+    pub is_posted: bool, // Флаг проведения
 }
 
-impl OzonReturnsRow {
-    fn from_return(
-        r: OzonReturns,
-        conn_map: &std::collections::HashMap<String, String>,
-        org_map: &std::collections::HashMap<String, String>,
-        mp_map: &std::collections::HashMap<String, String>,
-    ) -> Self {
-        use contracts::domain::common::AggregateId;
-        let connection_name = conn_map
-            .get(&r.connection_id)
-            .cloned()
-            .unwrap_or_else(|| "?".to_string());
-        let organization_name = org_map
-            .get(&r.organization_id)
-            .cloned()
-            .unwrap_or_else(|| "?".to_string());
-        let marketplace_name = mp_map
-            .get(&r.marketplace_id)
-            .cloned()
-            .unwrap_or_else(|| "?".to_string());
-        Self {
-            id: r.base.id.as_string(),
-            connection_name,
-            organization_name,
-            marketplace_name,
-            return_id: r.return_id,
-            return_date: r.return_date.format("%Y-%m-%d").to_string(),
-            return_reason_name: r.return_reason_name,
-            return_type: r.return_type,
-            order_number: r.order_number,
-            sku: r.sku,
-            product_name: r.product_name,
-            quantity: r.quantity,
-            price: format!("{:.2}", r.price),
-        }
-    }
-}
-
-impl Searchable for OzonReturnsRow {
-    fn matches_filter(&self, filter: &str) -> bool {
-        let f = filter.to_lowercase();
-        self.connection_name.to_lowercase().contains(&f)
-            || self.organization_name.to_lowercase().contains(&f)
-            || self.marketplace_name.to_lowercase().contains(&f)
-            || self.return_id.to_lowercase().contains(&f)
-            || self.return_reason_name.to_lowercase().contains(&f)
-            || self.order_number.to_lowercase().contains(&f)
-            || self.sku.to_lowercase().contains(&f)
-            || self.product_name.to_lowercase().contains(&f)
-    }
-
-    fn get_field_value(&self, field: &str) -> Option<String> {
-        match field {
-            "connection" => Some(self.connection_name.clone()),
-            "organization" => Some(self.organization_name.clone()),
-            "marketplace" => Some(self.marketplace_name.clone()),
-            "return_id" => Some(self.return_id.clone()),
-            "return_date" => Some(self.return_date.clone()),
-            "return_reason" => Some(self.return_reason_name.clone()),
-            "return_type" => Some(self.return_type.clone()),
-            "order_number" => Some(self.order_number.clone()),
-            "sku" => Some(self.sku.clone()),
-            "product_name" => Some(self.product_name.clone()),
-            "quantity" => Some(self.quantity.to_string()),
-            "price" => Some(self.price.clone()),
-            _ => None,
-        }
-    }
-}
-
-impl Sortable for OzonReturnsRow {
+impl Sortable for OzonReturnsDto {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
-            "connection" => self
-                .connection_name
-                .to_lowercase()
-                .cmp(&other.connection_name.to_lowercase()),
-            "organization" => self
-                .organization_name
-                .to_lowercase()
-                .cmp(&other.organization_name.to_lowercase()),
-            "marketplace" => self
-                .marketplace_name
-                .to_lowercase()
-                .cmp(&other.marketplace_name.to_lowercase()),
-            "return_id" => self.return_id.cmp(&other.return_id),
+            "return_id" => self.return_id.to_lowercase().cmp(&other.return_id.to_lowercase()),
             "return_date" => self.return_date.cmp(&other.return_date),
-            "return_reason" => self
-                .return_reason_name
-                .to_lowercase()
-                .cmp(&other.return_reason_name.to_lowercase()),
-            "return_type" => self
-                .return_type
-                .to_lowercase()
-                .cmp(&other.return_type.to_lowercase()),
-            "order_number" => self.order_number.cmp(&other.order_number),
-            "sku" => self.sku.cmp(&other.sku),
-            "product_name" => self
-                .product_name
-                .to_lowercase()
-                .cmp(&other.product_name.to_lowercase()),
+            "return_type" => self.return_type.to_lowercase().cmp(&other.return_type.to_lowercase()),
+            "return_reason" => self.return_reason_name.to_lowercase().cmp(&other.return_reason_name.to_lowercase()),
+            "order_number" => self.order_number.to_lowercase().cmp(&other.order_number.to_lowercase()),
+            "posting_number" => self.posting_number.to_lowercase().cmp(&other.posting_number.to_lowercase()),
+            "sku" => self.sku.to_lowercase().cmp(&other.sku.to_lowercase()),
+            "product_name" => self.product_name.to_lowercase().cmp(&other.product_name.to_lowercase()),
             "quantity" => self.quantity.cmp(&other.quantity),
-            "price" => {
-                let a = self.price.parse::<f64>().unwrap_or(0.0);
-                let b = other.price.parse::<f64>().unwrap_or(0.0);
-                a.partial_cmp(&b).unwrap_or(Ordering::Equal)
-            }
+            "price" => self.price.partial_cmp(&other.price).unwrap_or(Ordering::Equal),
+            "is_posted" => self.is_posted.cmp(&other.is_posted),
             _ => Ordering::Equal,
         }
     }
 }
 
 #[component]
-#[allow(non_snake_case)]
 pub fn OzonReturnsList() -> impl IntoView {
-    use std::collections::HashMap;
-    use crate::layout::global_context::AppGlobalContext;
-
-    let ctx = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext not found");
-
-    let (items, set_items) = signal::<Vec<OzonReturnsRow>>(Vec::new());
-    let (returns, set_returns) = signal::<Vec<OzonReturns>>(Vec::new());
+    let (returns, set_returns) = signal::<Vec<OzonReturnsDto>>(Vec::new());
+    let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (filter_text, set_filter_text) = signal(String::new());
+    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (detail_reload_trigger, set_detail_reload_trigger) = signal::<u32>(0);
+
+    // Сортировка
     let (sort_field, set_sort_field) = signal::<String>("return_date".to_string());
-    let (sort_ascending, set_sort_ascending) = signal(false);
+    let (sort_ascending, set_sort_ascending) = signal(false); // По умолчанию - новые сначала
 
-    let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
-    let (organizations, set_organizations) = signal::<Vec<Organization>>(Vec::new());
-    let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
+    // Множественный выбор
+    let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
 
-    let conn_map = move || -> HashMap<String, String> {
-        connections
-            .get()
-            .into_iter()
-            .map(|x| {
-                use contracts::domain::common::AggregateId;
-                (x.base.id.as_string(), x.base.description)
-            })
-            .collect()
-    };
-    let org_map = move || -> HashMap<String, String> {
-        organizations
-            .get()
-            .into_iter()
-            .map(|x| {
-                use contracts::domain::common::AggregateId;
-                (x.base.id.as_string(), x.base.description)
-            })
-            .collect()
-    };
-    let mp_map = move || -> HashMap<String, String> {
-        marketplaces
-            .get()
-            .into_iter()
-            .map(|x| {
-                use contracts::domain::common::AggregateId;
-                (x.base.id.as_string(), x.base.description)
-            })
-            .collect()
-    };
+    // Фильтр по периоду
+    let (date_from, set_date_from) = signal::<Option<String>>(None);
+    let (date_to, set_date_to) = signal::<Option<String>>(None);
 
-    let compose_rows = move |source: &Vec<OzonReturns>| -> Vec<OzonReturnsRow> {
-        source
-            .iter()
-            .cloned()
-            .map(|r| OzonReturnsRow::from_return(r, &conn_map(), &org_map(), &mp_map()))
-            .collect()
-    };
+    // Статус массовых операций
+    let (posting_in_progress, set_posting_in_progress) = signal(false);
+    let (operation_results, set_operation_results) = signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
+    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
 
-    let fetch = move || {
+    let load_returns = move || {
+        let set_returns = set_returns.clone();
+        let set_loading = set_loading.clone();
+        let set_error = set_error.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            match fetch_returns().await {
-                Ok(v) => {
-                    let rows = compose_rows(&v);
-                    set_returns.set(v);
-                    set_items.set(rows);
-                    set_error.set(None);
+            set_loading.set(true);
+            set_error.set(None);
+
+            let url = "http://localhost:3000/api/ozon_returns";
+
+            match Request::get(url).send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    if status == 200 {
+                        match response.text().await {
+                            Ok(text) => {
+                                log!("Received response text (first 500 chars): {}",
+                                    text.chars().take(500).collect::<String>());
+
+                                match serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
+                                    Ok(items) => {
+                                        log!("Successfully parsed {} OZON returns", items.len());
+                                        set_returns.set(items);
+                                        set_loading.set(false);
+                                    }
+                                    Err(e) => {
+                                        log!("Failed to parse response: {:?}", e);
+                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                        set_loading.set(false);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log!("Failed to read response text: {:?}", e);
+                                set_error.set(Some(format!("Failed to read response: {}", e)));
+                                set_loading.set(false);
+                            }
+                        }
+                    } else {
+                        set_error.set(Some(format!("Server error: {}", status)));
+                        set_loading.set(false);
+                    }
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => {
+                    log!("Failed to fetch returns: {:?}", e);
+                    set_error.set(Some(format!("Failed to fetch returns: {}", e)));
+                    set_loading.set(false);
+                }
             }
         });
     };
 
-    let fetch_refs = move || {
-        wasm_bindgen_futures::spawn_local(async move {
-            let c = fetch_connections().await;
-            let o = fetch_organizations().await;
-            let m = fetch_marketplaces().await;
-            if let Ok(v) = c {
-                set_connections.set(v);
-            }
-            if let Ok(v) = o {
-                set_organizations.set(v);
-            }
-            if let Ok(v) = m {
-                set_marketplaces.set(v);
-            }
-            // Пересобрать строки с учетом загруженных справочников
-            let current = returns.get();
-            if !current.is_empty() {
-                set_items.set(compose_rows(&current));
-            }
-        });
-    };
+    // Функция для получения отфильтрованных и отсортированных данных
+    let get_filtered_sorted_items = move || -> Vec<OzonReturnsDto> {
+        let mut result = returns.get();
 
-    let get_filtered_sorted = move || -> Vec<OzonReturnsRow> {
-        let mut result: Vec<OzonReturnsRow> = items
-            .get()
-            .into_iter()
-            .filter(|row| {
-                let filter = filter_text.get();
-                if filter.trim().is_empty() || filter.trim().len() < 3 {
-                    true
-                } else {
-                    row.matches_filter(&filter)
+        // Фильтр по периоду
+        let from = date_from.get();
+        let to = date_to.get();
+        if from.is_some() || to.is_some() {
+            result.retain(|item| {
+                let item_date = &item.return_date;
+                if let Some(ref from_date) = from {
+                    if item_date < from_date {
+                        return false;
+                    }
                 }
-            })
-            .collect();
+                if let Some(ref to_date) = to {
+                    if item_date > to_date {
+                        return false;
+                    }
+                }
+                true
+            });
+        }
+
+        // Сортировка
         let field = sort_field.get();
         let ascending = sort_ascending.get();
         result.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending {
-                cmp
-            } else {
-                cmp.reverse()
-            }
+            if ascending { cmp } else { cmp.reverse() }
         });
+
         result
     };
 
+    // Обработчик переключения сортировки
     let toggle_sort = move |field: &'static str| {
         move |_| {
             if sort_field.get() == field {
@@ -270,230 +183,593 @@ pub fn OzonReturnsList() -> impl IntoView {
         }
     };
 
-    // Обработчик клика по строке - открывает детальную форму
-    let on_row_click = move |id: String, return_id: String| {
-        let tab_key = format!("a009_ozon_returns_detail_{}", id);
-        let tab_title = format!("Возврат {}", return_id);
-        ctx.open_tab(&tab_key, &tab_title);
-        ctx.activate_tab(&tab_key);
+    // Переключение выбора одного документа
+    let toggle_selection = move |id: String| {
+        set_selected_ids.update(|ids| {
+            if ids.contains(&id) {
+                ids.retain(|x| x != &id);
+            } else {
+                ids.push(id);
+            }
+        });
     };
 
-    fetch_refs();
-    fetch();
+    // Выбрать все / снять все
+    let toggle_all = move |_| {
+        let items = get_filtered_sorted_items();
+        let selected = selected_ids.get();
+        if selected.len() == items.len() && !items.is_empty() {
+            set_selected_ids.set(Vec::new()); // Снять все
+        } else {
+            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect()); // Выбрать все
+        }
+    };
+
+    // Проверка, выбраны ли все
+    let all_selected = move || {
+        let items = get_filtered_sorted_items();
+        let selected = selected_ids.get();
+        !items.is_empty() && selected.len() == items.len()
+    };
+
+    // Проверка, выбран ли конкретный документ
+    let is_selected = move |id: &str| {
+        selected_ids.get().contains(&id.to_string())
+    };
+
+    // Массовое проведение
+    let post_selected = move |_| {
+        let ids = selected_ids.get();
+        if ids.is_empty() {
+            return;
+        }
+
+        set_posting_in_progress.set(true);
+        set_operation_results.set(Vec::new());
+        set_current_operation.set(Some((0, ids.len())));
+
+        let set_returns = set_returns.clone();
+        let set_loading = set_loading.clone();
+        let set_error = set_error.clone();
+        let set_posting_in_progress = set_posting_in_progress.clone();
+        let set_operation_results = set_operation_results.clone();
+        let set_selected_ids = set_selected_ids.clone();
+        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
+        let set_current_operation = set_current_operation.clone();
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let mut results = Vec::new();
+            let total = ids.len();
+
+            for (index, id) in ids.iter().enumerate() {
+                set_current_operation.set(Some((index + 1, total)));
+                let url = format!("http://localhost:3000/api/a009/ozon-returns/{}/post", id);
+                match Request::post(&url).send().await {
+                    Ok(response) => {
+                        if response.status() == 200 {
+                            results.push((id.clone(), true, None));
+                        } else {
+                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                        }
+                    }
+                    Err(e) => {
+                        results.push((id.clone(), false, Some(format!("{:?}", e))));
+                    }
+                }
+            }
+
+            set_operation_results.set(results);
+            set_posting_in_progress.set(false);
+            set_current_operation.set(None);
+            set_selected_ids.set(Vec::new());
+
+            // Перезагрузить список
+            set_loading.set(true);
+            set_error.set(None);
+
+            let url = "http://localhost:3000/api/ozon_returns";
+            match Request::get(url).send().await {
+                Ok(response) => {
+                    if response.status() == 200 {
+                        if let Ok(text) = response.text().await {
+                            if let Ok(items) = serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
+                                set_returns.set(items);
+                            }
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+            set_loading.set(false);
+
+            // Инкрементируем триггер для перезагрузки детальной формы
+            set_detail_reload_trigger.update(|v| *v += 1);
+        });
+    };
+
+    // Массовая отмена проведения
+    let unpost_selected = move |_| {
+        let ids = selected_ids.get();
+        if ids.is_empty() {
+            return;
+        }
+
+        set_posting_in_progress.set(true);
+        set_operation_results.set(Vec::new());
+        set_current_operation.set(Some((0, ids.len())));
+
+        let set_returns = set_returns.clone();
+        let set_loading = set_loading.clone();
+        let set_error = set_error.clone();
+        let set_posting_in_progress = set_posting_in_progress.clone();
+        let set_operation_results = set_operation_results.clone();
+        let set_selected_ids = set_selected_ids.clone();
+        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
+        let set_current_operation = set_current_operation.clone();
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let mut results = Vec::new();
+            let total = ids.len();
+
+            for (index, id) in ids.iter().enumerate() {
+                set_current_operation.set(Some((index + 1, total)));
+                let url = format!("http://localhost:3000/api/a009/ozon-returns/{}/unpost", id);
+                match Request::post(&url).send().await {
+                    Ok(response) => {
+                        if response.status() == 200 {
+                            results.push((id.clone(), true, None));
+                        } else {
+                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                        }
+                    }
+                    Err(e) => {
+                        results.push((id.clone(), false, Some(format!("{:?}", e))));
+                    }
+                }
+            }
+
+            set_operation_results.set(results);
+            set_posting_in_progress.set(false);
+            set_current_operation.set(None);
+            set_selected_ids.set(Vec::new());
+
+            // Перезагрузить список
+            set_loading.set(true);
+            set_error.set(None);
+
+            let url = "http://localhost:3000/api/ozon_returns";
+            match Request::get(url).send().await {
+                Ok(response) => {
+                    if response.status() == 200 {
+                        if let Ok(text) = response.text().await {
+                            if let Ok(items) = serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
+                                set_returns.set(items);
+                            }
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+            set_loading.set(false);
+
+            // Инкрементируем триггер для перезагрузки детальной формы
+            set_detail_reload_trigger.update(|v| *v += 1);
+        });
+    };
+
+    // Автоматическая загрузка при открытии
+    load_returns();
 
     view! {
-        <div class="content">
-            <div class="header">
-                <h2>{"Возвраты OZON"}</h2>
-                <div class="header-actions">
-                    <SearchInput
-                        value=filter_text
-                        on_change=Callback::new(move |val: String| set_filter_text.set(val))
-                        placeholder="Поиск по возвратам...".to_string()
-                    />
-                    <button class="btn btn-secondary" on:click=move |_| fetch()>
-                        {icon("refresh")}
-                        {"Обновить"}
-                    </button>
-                </div>
-            </div>
+        <div class="ozon-returns-list">
+            {move || {
+                if let Some(id) = selected_id.get() {
+                    view! {
+                        <div class="modal-overlay" style="align-items: flex-start; padding-top: 40px;">
+                            <div class="modal-content" style="max-width: 1200px; height: calc(100vh - 80px); overflow: hidden; margin: 0;">
+                                <OzonReturnsDetail
+                                    id=id
+                                    on_close=move || set_selected_id.set(None)
+                                    reload_trigger=detail_reload_trigger
+                                />
+                            </div>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <h2 style="margin: 0;">"OZON Returns (A009)"</h2>
+                                <button
+                                    on:click=move |_| {
+                                        load_returns();
+                                    }
+                                    style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
+                                >
+                                    "Обновить"
+                                </button>
+                            </div>
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
+                            // Панель фильтров и массовых операций
+                            <div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px;">
+                                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                                    // Фильтр периода
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <label style="font-weight: 500;">"Период:"</label>
+                                        <input
+                                            type="date"
+                                            on:input=move |e| {
+                                                let value = event_target_value(&e);
+                                                set_date_from.set(if value.is_empty() { None } else { Some(value) });
+                                            }
+                                            style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                        />
+                                        <span>"—"</span>
+                                        <input
+                                            type="date"
+                                            on:input=move |e| {
+                                                let value = event_target_value(&e);
+                                                set_date_to.set(if value.is_empty() { None } else { Some(value) });
+                                            }
+                                            style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                        />
+                                    </div>
 
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("return_date") title="Сортировать">
-                                {move || format!("Дата{}", get_sort_indicator(&sort_field.get(), "return_date", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("connection") title="Сортировать">
-                                {move || format!("Подключение{}", get_sort_indicator(&sort_field.get(), "connection", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("return_id") title="Сортировать">
-                                {move || format!("ID возврата{}", get_sort_indicator(&sort_field.get(), "return_id", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("return_reason") title="Сортировать">
-                                {move || format!("Причина{}", get_sort_indicator(&sort_field.get(), "return_reason", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("order_number") title="Сортировать">
-                                {move || format!("Заказ{}", get_sort_indicator(&sort_field.get(), "order_number", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("sku") title="Сортировать">
-                                {move || format!("SKU{}", get_sort_indicator(&sort_field.get(), "sku", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("product_name") title="Сортировать">
-                                {move || format!("Товар{}", get_sort_indicator(&sort_field.get(), "product_name", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("quantity") title="Сортировать">
-                                {move || format!("Кол-во{}", get_sort_indicator(&sort_field.get(), "quantity", sort_ascending.get()))}
-                            </th>
-                            <th class="cursor-pointer user-select-none" on:click=toggle_sort("price") title="Сортировать">
-                                {move || format!("Цена{}", get_sort_indicator(&sort_field.get(), "price", sort_ascending.get()))}
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {move || {
-                            let filtered = get_filtered_sorted();
-                            let current_filter = filter_text.get();
-                            filtered.into_iter().map(|row| {
-                                let conn_view = if current_filter.len() >= 3 { highlight_matches(&row.connection_name, &current_filter) } else { view!{ <span>{row.connection_name.clone()}</span> }.into_any() };
-                                let return_id_view = if current_filter.len() >= 3 { highlight_matches(&row.return_id, &current_filter) } else { view!{ <span>{row.return_id.clone()}</span> }.into_any() };
-                                let reason_view = if current_filter.len() >= 3 { highlight_matches(&row.return_reason_name, &current_filter) } else { view!{ <span>{row.return_reason_name.clone()}</span> }.into_any() };
-                                let order_view = if current_filter.len() >= 3 { highlight_matches(&row.order_number, &current_filter) } else { view!{ <span>{row.order_number.clone()}</span> }.into_any() };
-                                let sku_view = if current_filter.len() >= 3 { highlight_matches(&row.sku, &current_filter) } else { view!{ <span>{row.sku.clone()}</span> }.into_any() };
-                                let product_view = if current_filter.len() >= 3 { highlight_matches(&row.product_name, &current_filter) } else { view!{ <span>{row.product_name.clone()}</span> }.into_any() };
-                                let row_id = row.id.clone();
-                                let row_return_id = row.return_id.clone();
-                                view! {
-                                    <tr
-                                        class="cursor-pointer hover-highlight"
-                                        on:click=move |_| {
-                                            on_row_click(row_id.clone(), row_return_id.clone())
-                                        }
-                                    >
-                                        <td>{row.return_date.clone()}</td>
-                                        <td>{conn_view}</td>
-                                        <td>{return_id_view}</td>
-                                        <td>{reason_view}</td>
-                                        <td>{order_view}</td>
-                                        <td>{sku_view}</td>
-                                        <td>{product_view}</td>
-                                        <td>{row.quantity}</td>
-                                        <td>{row.price.clone()}</td>
-                                    </tr>
-                                }
-                            }).collect_view()
-                        }}
-                    </tbody>
-                </table>
-            </div>
+                                    // Кнопки массовых операций
+                                    <div style="display: flex; gap: 10px;">
+                                        <button
+                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
+                                            on:click=post_selected
+                                            style="padding: 6px 12px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
+                                            style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
+                                            style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                                        >
+                                            {move || format!("Провести ({})", selected_ids.get().len())}
+                                        </button>
+                                        <button
+                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
+                                            on:click=unpost_selected
+                                            style="padding: 6px 12px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
+                                            style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
+                                            style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                                        >
+                                            {move || format!("Отменить ({})", selected_ids.get().len())}
+                                        </button>
+                                    </div>
+
+                                    // Индикатор прогресса
+                                    <Show when=move || posting_in_progress.get()>
+                                        {move || {
+                                            if let Some((current, total)) = current_operation.get() {
+                                                view! {
+                                                    <span style="color: #666; font-style: italic;">
+                                                        {format!("Обработка {}/{} документов...", current, total)}
+                                                    </span>
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <span style="color: #666; font-style: italic;">"Обработка..."</span>
+                                                }.into_any()
+                                            }
+                                        }}
+                                    </Show>
+                                </div>
+                            </div>
+
+                            // Модальное окно результатов
+                            <Show when=move || !operation_results.get().is_empty()>
+                                <div class="modal-overlay" style="z-index: 1001;">
+                                    <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                                        <h3>"Результаты операции"</h3>
+                                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                                            <thead>
+                                                <tr style="background: #f5f5f5;">
+                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"ID"</th>
+                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Статус"</th>
+                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Ошибка"</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <For
+                                                    each=move || operation_results.get()
+                                                    key=|r| r.0.clone()
+                                                    let:result
+                                                >
+                                                    {
+                                                        let short_id = result.0.chars().take(8).collect::<String>();
+                                                        let success = result.1;
+                                                        let error_msg = result.2.clone().unwrap_or_default();
+
+                                                        view! {
+                                                            <tr>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                    <code style="font-size: 0.85em;">{short_id}"..."</code>
+                                                                </td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                    {if success {
+                                                                        view! { <span style="color: green;">"✓ Успешно"</span> }
+                                                                    } else {
+                                                                        view! { <span style="color: red;">"✗ Ошибка"</span> }
+                                                                    }}
+                                                                </td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; color: #666;">
+                                                                    {error_msg}
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </For>
+                                            </tbody>
+                                        </table>
+                                        <button
+                                            on:click=move |_| set_operation_results.set(Vec::new())
+                                            style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
+                                        >
+                                            "Закрыть"
+                                        </button>
+                                    </div>
+                                </div>
+                            </Show>
+
+            {move || {
+                let msg = if loading.get() {
+                    "Loading...".to_string()
+                } else if let Some(err) = error.get() {
+                    err.clone()
+                } else {
+                    let filtered = get_filtered_sorted_items();
+                    format!("Показано: {} записей", filtered.len())
+                };
+
+                // Render summary and table
+                if !loading.get() && error.get().is_none() {
+                    view! {
+                        <div>
+                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
+                            <div class="table-container">
+                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #f5f5f5;">
+                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px; text-align: center;">
+                                                <input
+                                                    type="checkbox"
+                                                    on:change=toggle_all
+                                                    prop:checked=all_selected
+                                                />
+                                            </th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("return_id")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Return ID{}", get_sort_indicator(&sort_field.get(), "return_id", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("return_date")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Дата возврата{}", get_sort_indicator(&sort_field.get(), "return_date", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("posting_number")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Номер постинга{}", get_sort_indicator(&sort_field.get(), "posting_number", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("return_type")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Тип возврата{}", get_sort_indicator(&sort_field.get(), "return_type", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("product_name")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Товар{}", get_sort_indicator(&sort_field.get(), "product_name", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none; text-align: center;"
+                                                on:click=toggle_sort("is_posted")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Статус{}", get_sort_indicator(&sort_field.get(), "is_posted", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("quantity")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Кол-во{}", get_sort_indicator(&sort_field.get(), "quantity", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("price")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Цена{}", get_sort_indicator(&sort_field.get(), "price", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("return_reason")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Причина{}", get_sort_indicator(&sort_field.get(), "return_reason", sort_ascending.get()))}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {move || get_filtered_sorted_items().into_iter().map(|ret| {
+                                            let short_id = ret.id.chars().take(8).collect::<String>();
+                                            let formatted_date = format_date(&ret.return_date);
+                                            let formatted_price = format!("{:.2} ₽", ret.price);
+                                            let is_posted_flag = ret.is_posted;
+                                            let posting_number_display = ret.posting_number.clone();
+                                            let return_type_display = ret.return_type.clone();
+
+                                            // Создаем отдельные клоны для каждого обработчика
+                                            let id_for_checkbox_change = ret.id.clone();
+                                            let id_for_checkbox_check = ret.id.clone();
+                                            let id1 = ret.id.clone();
+                                            let id2 = ret.id.clone();
+                                            let id3 = ret.id.clone();
+                                            let id4 = ret.id.clone();
+                                            let id5 = ret.id.clone();
+                                            let id6 = ret.id.clone();
+                                            let id7 = ret.id.clone();
+                                            let id8 = ret.id.clone();
+                                            let id9 = ret.id.clone();
+                                            let id10 = ret.id.clone();
+
+                                            view! {
+                                                <tr
+                                                    style="transition: background 0.2s;"
+                                                    onmouseenter="this.style.background='#f5f5f5'"
+                                                    onmouseleave="this.style.background='white'"
+                                                >
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center;"
+                                                        on:click=move |e| {
+                                                            e.stop_propagation();
+                                                        }
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            on:change=move |_| toggle_selection(id_for_checkbox_change.clone())
+                                                            prop:checked=move || is_selected(&id_for_checkbox_check)
+                                                        />
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id1.clone()));
+                                                        }
+                                                    >
+                                                        <code style="font-size: 0.85em;">{format!("{}...", short_id)}</code>
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id2.clone()));
+                                                        }
+                                                    >
+                                                        {ret.return_id}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id3.clone()));
+                                                        }
+                                                    >
+                                                        {formatted_date}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id4.clone()));
+                                                        }
+                                                    >
+                                                        {posting_number_display}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id9.clone()));
+                                                        }
+                                                    >
+                                                        {return_type_display}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id10.clone()));
+                                                        }
+                                                    >
+                                                        {ret.product_name}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id5.clone()));
+                                                        }
+                                                    >
+                                                        {if is_posted_flag {
+                                                            view! { <span style="color: green; font-weight: 500;">"✓ Проведен"</span> }
+                                                        } else {
+                                                            view! { <span style="color: #999;">"○ Не проведен"</span> }
+                                                        }}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id6.clone()));
+                                                        }
+                                                    >
+                                                        {ret.quantity}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id7.clone()));
+                                                        }
+                                                    >
+                                                        {formatted_price}
+                                                    </td>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                                                        on:click=move |_| {
+                                                            set_selected_id.set(Some(id8.clone()));
+                                                        }
+                                                    >
+                                                        {ret.return_reason_name}
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }).collect_view()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div>
+                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
+                            <div class="table-container">
+                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #f5f5f5;">
+                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px;"></th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Return ID"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Дата"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Номер постинга"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Тип возврата"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Товар"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Статус"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Кол-во"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Цена"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Причина"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="11"></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }.into_any()
+                }
+            }}
+                        </div>
+                    }.into_any()
+                }
+            }}
         </div>
     }
-}
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
-
-async fn fetch_returns() -> Result<Vec<OzonReturns>, String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-    let url = format!("{}/api/ozon_returns", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<OzonReturns> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
-}
-
-async fn fetch_connections() -> Result<Vec<ConnectionMP>, String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-    let url = format!("{}/api/connection_mp", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<ConnectionMP> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
-}
-
-async fn fetch_organizations() -> Result<Vec<Organization>, String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-    let url = format!("{}/api/organization", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<Organization> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
-}
-
-async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-    let url = format!("{}/api/marketplace", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<Marketplace> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
 }
