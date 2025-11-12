@@ -111,18 +111,21 @@ pub struct YmOrderSourceMeta {
 pub struct YmOrder {
     #[serde(flatten)]
     pub base: BaseAggregate<YmOrderId>,
-    
+
     /// Заголовок документа
     pub header: YmOrderHeader,
-    
+
     /// Строки документа
     pub lines: Vec<YmOrderLine>,
-    
+
     /// Статусы и временные метки
     pub state: YmOrderState,
-    
+
     /// Служебные метаданные
     pub source_meta: YmOrderSourceMeta,
+
+    /// Флаг проведения документа (для формирования проекций)
+    pub is_posted: bool,
 }
 
 impl YmOrder {
@@ -133,6 +136,7 @@ impl YmOrder {
         lines: Vec<YmOrderLine>,
         state: YmOrderState,
         source_meta: YmOrderSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(YmOrderId::new_v4(), code, description);
         Self {
@@ -141,6 +145,7 @@ impl YmOrder {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 
@@ -152,6 +157,7 @@ impl YmOrder {
         lines: Vec<YmOrderLine>,
         state: YmOrderState,
         source_meta: YmOrderSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -160,6 +166,7 @@ impl YmOrder {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 

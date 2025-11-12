@@ -257,6 +257,10 @@ pub struct YandexOffer {
     pub category: Option<String>,
     #[serde(default)]
     pub pictures: Vec<String>,
+    #[serde(default)]
+    pub barcodes: Vec<String>,
+    #[serde(default)]
+    pub vendor: Option<String>,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -265,6 +269,8 @@ pub struct YandexOffer {
 pub struct YandexMapping {
     #[serde(rename = "marketSku")]
     pub market_sku: Option<i64>,
+    #[serde(rename = "marketSkuName", default)]
+    pub market_sku_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -289,16 +295,21 @@ pub struct YandexProductInfoResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YandexProductInfoResult {
-    #[serde(rename = "offerCards")]
-    pub offer_cards: Vec<YandexOfferCard>,
+    #[serde(rename = "offerMappings")]
+    pub offer_mappings: Vec<YandexOfferMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YandexOfferMapping {
+    pub offer: YandexOfferCard,
+    #[serde(default)]
+    pub mapping: Option<YandexOfferCardMapping>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YandexOfferCard {
     #[serde(rename = "offerId")]
     pub offer_id: String,
-    #[serde(default)]
-    pub mapping: Option<YandexOfferCardMapping>,
     #[serde(default, rename = "parameterValues")]
     pub parameter_values: Vec<YandexParameterValue>,
     #[serde(default)]

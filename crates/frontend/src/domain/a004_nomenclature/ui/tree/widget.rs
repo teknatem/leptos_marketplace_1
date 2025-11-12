@@ -644,8 +644,8 @@ pub fn NomenclatureTree() -> impl IntoView {
                         <div class="modal-content">
                             <NomenclatureDetails
                                 id=editing_id.get()
-                                on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); load(); })
-                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
+                                on_saved=move || { set_show_modal.set(false); set_editing_id.set(None); load(); }
+                                on_cancel=move || { set_show_modal.set(false); set_editing_id.set(None); }
                             />
                         </div>
                     </div>

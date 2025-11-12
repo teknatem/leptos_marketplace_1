@@ -1,5 +1,8 @@
-use axum::Json;
+use axum::{extract::Query, Json};
+use chrono::NaiveDate;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
+use contracts::domain::common::AggregateId;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::domain::a010_ozon_fbs_posting;
@@ -53,5 +56,91 @@ pub async fn get_raw_json(
         })?;
 
     Ok(Json(json_value))
+}
+
+/// Handler для проведения документа
+pub async fn post_document(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a010_ozon_fbs_posting::posting::post_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to post document: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({"success": true})))
+}
+
+/// Handler для отмены проведения документа
+pub async fn unpost_document(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a010_ozon_fbs_posting::posting::unpost_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to unpost document: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({"success": true})))
+}
+
+#[derive(Deserialize)]
+pub struct PostPeriodRequest {
+    pub from: String,
+    pub to: String,
+}
+
+/// Handler для проведения документов за период
+pub async fn post_period(
+    Query(req): Query<PostPeriodRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let from = NaiveDate::parse_from_str(&req.from, "%Y-%m-%d")
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let to = NaiveDate::parse_from_str(&req.to, "%Y-%m-%d")
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    // Получаем все документы
+    let documents = a010_ozon_fbs_posting::service::list_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list documents: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Фильтруем по дате и проводим каждый
+    let mut posted_count = 0;
+    let mut failed_count = 0;
+
+    for doc in documents {
+        let doc_date = doc.source_meta.fetched_at.date_naive();
+        if doc_date >= from && doc_date <= to {
+            match a010_ozon_fbs_posting::posting::post_document(doc.base.id.value()).await {
+                Ok(_) => {
+                    posted_count += 1;
+                    tracing::info!("Posted document: {}", doc.base.id.as_string());
+                }
+                Err(e) => {
+                    failed_count += 1;
+                    tracing::error!(
+                        "Failed to post document {}: {}",
+                        doc.base.id.as_string(),
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "posted_count": posted_count,
+        "failed_count": failed_count
+    })))
 }
 

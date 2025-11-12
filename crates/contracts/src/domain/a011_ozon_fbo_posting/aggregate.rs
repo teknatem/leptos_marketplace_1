@@ -103,18 +103,21 @@ pub struct OzonFboPostingSourceMeta {
 pub struct OzonFboPosting {
     #[serde(flatten)]
     pub base: BaseAggregate<OzonFboPostingId>,
-    
+
     /// Заголовок документа
     pub header: OzonFboPostingHeader,
-    
+
     /// Строки документа
     pub lines: Vec<OzonFboPostingLine>,
-    
+
     /// Статусы и временные метки
     pub state: OzonFboPostingState,
-    
+
     /// Служебные метаданные
     pub source_meta: OzonFboPostingSourceMeta,
+
+    /// Флаг проведения документа (для формирования проекций)
+    pub is_posted: bool,
 }
 
 impl OzonFboPosting {
@@ -125,6 +128,7 @@ impl OzonFboPosting {
         lines: Vec<OzonFboPostingLine>,
         state: OzonFboPostingState,
         source_meta: OzonFboPostingSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(OzonFboPostingId::new_v4(), code, description);
         Self {
@@ -133,6 +137,7 @@ impl OzonFboPosting {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 
@@ -144,6 +149,7 @@ impl OzonFboPosting {
         lines: Vec<OzonFboPostingLine>,
         state: OzonFboPostingState,
         source_meta: OzonFboPostingSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -152,6 +158,7 @@ impl OzonFboPosting {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 

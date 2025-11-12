@@ -81,6 +81,8 @@ pub struct OzonFbsPostingState {
     pub status_raw: String,
     /// Нормализованный статус (DELIVERED и т.д.)
     pub status_norm: String,
+    /// Подстатус из API (детальный статус)
+    pub substatus_raw: Option<String>,
     /// Дата/время доставки (момент продажи)
     pub delivered_at: Option<DateTime<Utc>>,
     /// Дата/время обновления в источнике
@@ -103,18 +105,21 @@ pub struct OzonFbsPostingSourceMeta {
 pub struct OzonFbsPosting {
     #[serde(flatten)]
     pub base: BaseAggregate<OzonFbsPostingId>,
-    
+
     /// Заголовок документа
     pub header: OzonFbsPostingHeader,
-    
+
     /// Строки документа
     pub lines: Vec<OzonFbsPostingLine>,
-    
+
     /// Статусы и временные метки
     pub state: OzonFbsPostingState,
-    
+
     /// Служебные метаданные
     pub source_meta: OzonFbsPostingSourceMeta,
+
+    /// Флаг проведения документа (для формирования проекций)
+    pub is_posted: bool,
 }
 
 impl OzonFbsPosting {
@@ -125,6 +130,7 @@ impl OzonFbsPosting {
         lines: Vec<OzonFbsPostingLine>,
         state: OzonFbsPostingState,
         source_meta: OzonFbsPostingSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(OzonFbsPostingId::new_v4(), code, description);
         Self {
@@ -133,6 +139,7 @@ impl OzonFbsPosting {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 
@@ -144,6 +151,7 @@ impl OzonFbsPosting {
         lines: Vec<OzonFbsPostingLine>,
         state: OzonFbsPostingState,
         source_meta: OzonFbsPostingSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -152,6 +160,7 @@ impl OzonFbsPosting {
             lines,
             state,
             source_meta,
+            is_posted,
         }
     }
 

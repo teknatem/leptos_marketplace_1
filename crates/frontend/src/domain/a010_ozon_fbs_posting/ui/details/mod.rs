@@ -43,6 +43,7 @@ pub struct LineDto {
 pub struct StateDto {
     pub status_raw: String,
     pub status_norm: String,
+    pub substatus_raw: Option<String>,
     pub delivered_at: Option<String>,
     pub updated_at_source: Option<String>,
 }
@@ -63,19 +64,60 @@ pub struct MetadataDto {
     pub version: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SalesRegisterDto {
+    pub marketplace: String,
+    pub document_no: String,
+    pub line_id: String,
+    pub scheme: Option<String>,
+    pub document_type: String,
+    pub document_version: i32,
+    pub connection_mp_ref: String,
+    pub organization_ref: String,
+    pub marketplace_product_ref: Option<String>,
+    pub nomenclature_ref: Option<String>,
+    pub registrator_ref: String,
+    pub event_time_source: String,
+    pub sale_date: String,
+    pub source_updated_at: Option<String>,
+    pub status_source: String,
+    pub status_norm: String,
+    pub seller_sku: Option<String>,
+    pub mp_item_id: String,
+    pub barcode: Option<String>,
+    pub title: Option<String>,
+    pub qty: f64,
+    pub price_list: Option<f64>,
+    pub discount_total: Option<f64>,
+    pub price_effective: Option<f64>,
+    pub amount_line: Option<f64>,
+    pub currency_code: Option<String>,
+    pub loaded_at_utc: String,
+    pub payload_version: i32,
+    pub extra: Option<String>,
+}
+
 #[component]
 pub fn OzonFbsPostingDetail(
     id: String,
     #[prop(into)] on_close: Callback<()>,
+    #[prop(optional)] reload_trigger: Option<ReadSignal<u32>>,
 ) -> impl IntoView {
     let (posting, set_posting) = signal::<Option<OzonFbsPostingDetailDto>>(None);
     let (raw_json_from_ozon, set_raw_json_from_ozon) = signal::<Option<String>>(None);
+    let (projections, set_projections) = signal::<Vec<SalesRegisterDto>>(Vec::new());
+    let (projections_loading, set_projections_loading) = signal(false);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
 
     // Загрузить детальные данные
     Effect::new(move || {
+        // Отслеживаем reload_trigger если передан
+        if let Some(trigger) = reload_trigger {
+            let _ = trigger.get(); // Подписываемся на изменения
+        }
+
         let id = id.clone();
         wasm_bindgen_futures::spawn_local(async move {
             set_loading.set(true);
@@ -94,9 +136,10 @@ pub fn OzonFbsPostingDetail(
                                     Ok(data) => {
                                         // Загружаем raw JSON от OZON
                                         let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
+                                        let posting_id = data.id.clone();
                                         set_posting.set(Some(data));
                                         set_loading.set(false);
-                                        
+
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!("http://localhost:3000/api/a010/raw/{}", raw_payload_ref);
@@ -117,6 +160,29 @@ pub fn OzonFbsPostingDetail(
                                                     log!("Failed to load raw JSON from OZON: {:?}", e);
                                                 }
                                             }
+                                        });
+
+                                        // Асинхронная загрузка проекций p900
+                                        let set_projections = set_projections.clone();
+                                        let set_projections_loading = set_projections_loading.clone();
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            set_projections_loading.set(true);
+                                            let projections_url = format!("http://localhost:3000/api/projections/p900/{}", posting_id);
+                                            match Request::get(&projections_url).send().await {
+                                                Ok(resp) => {
+                                                    if resp.status() == 200 {
+                                                        if let Ok(text) = resp.text().await {
+                                                            if let Ok(items) = serde_json::from_str::<Vec<SalesRegisterDto>>(&text) {
+                                                                set_projections.set(items);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to load projections: {:?}", e);
+                                                }
+                                            }
+                                            set_projections_loading.set(false);
                                         });
                                     }
                                     Err(e) => {
@@ -204,13 +270,26 @@ pub fn OzonFbsPostingDetail(
                                         {format!("📦 Lines ({})", post.lines.len())}
                                     </button>
                                     <button
+                                        on:click=move |_| set_active_tab.set("projections")
+                                        style=move || format!(
+                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            if active_tab.get() == "projections" {
+                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                            } else {
+                                                "background: #f5f5f5; color: #666;"
+                                            }
+                                        )
+                                    >
+                                        {move || format!("📊 Проекции ({})", projections.get().len())}
+                                    </button>
+                                    <button
                                         on:click=move |_| set_active_tab.set("json")
                                         style=move || format!(
                                             "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                                            if active_tab.get() == "json" { 
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;" 
-                                            } else { 
-                                                "background: #f5f5f5; color: #666;" 
+                                            if active_tab.get() == "json" {
+                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                            } else {
+                                                "background: #f5f5f5; color: #666;"
                                             }
                                         )
                                     >
@@ -254,8 +333,32 @@ pub fn OzonFbsPostingDetail(
                                                             {post.state.status_norm.clone()}
                                                         </span>
                                                     </div>
+
+                                                    <div style="font-weight: 600; color: #555;">"Substatus:"</div>
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                        <span style="padding: 2px 8px; background: #fff3e0; color: #f57c00; border-radius: 3px; font-weight: 500;">
+                                                            {post.state.substatus_raw.clone().unwrap_or("—".to_string())}
+                                                        </span>
+                                                    </div>
+
+                                                    <div style="font-weight: 600; color: #555;">"Проведен:"</div>
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                        {if post.metadata.is_posted {
+                                                            view! {
+                                                                <span style="padding: 2px 8px; background: #c8e6c9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
+                                                                    "✓ Да"
+                                                                </span>
+                                                            }
+                                                        } else {
+                                                            view! {
+                                                                <span style="padding: 2px 8px; background: #f5f5f5; color: #999; border-radius: 3px; font-weight: 500;">
+                                                                    "○ Нет"
+                                                                </span>
+                                                            }
+                                                        }}
+                                                    </div>
                                                     
-                                                    <div style="font-weight: 600; color: #555;">"Delivered At:"</div>
+                                                    <div style="font-weight: 600; color: #555;">"Дата доставки:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.state.delivered_at.clone().unwrap_or("—".to_string())}</div>
                                                     
                                                     <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
@@ -364,6 +467,97 @@ pub fn OzonFbsPostingDetail(
                                                     }).collect_view()}
                                                 </tbody>
                                             </table>
+                                        </div>
+                                    }.into_any(),
+                                    "projections" => view! {
+                                        <div class="projections-info">
+                                            {move || {
+                                                if projections_loading.get() {
+                                                    view! {
+                                                        <div style="padding: 20px; text-align: center; color: #999;">
+                                                            "Загрузка проекций..."
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    let items = projections.get();
+                                                    if items.is_empty() {
+                                                        view! {
+                                                            <div style="padding: 20px; text-align: center; color: #999;">
+                                                                "Нет записей в проекции p900"
+                                                            </div>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! {
+                                                            <div>
+                                                                <div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px;">
+                                                                    <strong>"Записи Sales Register (p900)"</strong>
+                                                                    <span style="margin-left: 10px; color: #666;">{format!("Всего: {}", items.len())}</span>
+                                                                </div>
+                                                                <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                                                                    <thead>
+                                                                        <tr style="background: #f5f5f5;">
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"#"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Marketplace"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"SKU"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Barcode"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Title"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Qty"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Price"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Amount"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Sale Date"</th>
+                                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Status"</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {items.iter().enumerate().map(|(idx, item)| {
+                                                                            view! {
+                                                                                <tr>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">{idx + 1}</td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        <span style="padding: 2px 6px; background: #e3f2fd; border-radius: 3px; font-weight: 500;">
+                                                                                            {item.marketplace.clone()}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        <code style="font-size: 0.85em;">
+                                                                                            {item.seller_sku.clone().unwrap_or("—".to_string())}
+                                                                                        </code>
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        {item.barcode.clone().unwrap_or("—".to_string())}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        {item.title.clone().unwrap_or("—".to_string())}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                                        {item.qty}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                                        {item.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
+                                                                                        {item.currency_code.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">
+                                                                                        {item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
+                                                                                        {item.currency_code.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        {item.sale_date.clone()}
+                                                                                    </td>
+                                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                                                        <span style="padding: 2px 6px; background: #e8f5e9; color: #2e7d32; border-radius: 3px;">
+                                                                                            {item.status_norm.clone()}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        }).collect_view()}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        }.into_any()
+                                                    }
+                                                }
+                                            }}
                                         </div>
                                     }.into_any(),
                                     "json" => view! {

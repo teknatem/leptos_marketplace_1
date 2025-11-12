@@ -22,6 +22,7 @@ pub struct SalesRegisterDto {
     pub connection_mp_ref: String,
     pub organization_ref: String,
     pub marketplace_product_ref: Option<String>,
+    pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,
     pub event_time_source: String,
     pub sale_date: String,
@@ -167,7 +168,7 @@ pub fn SalesRegisterList() -> impl IntoView {
         let marketplace_val = marketplace_filter.get();
 
         let mut query_params = format!(
-            "?date_from={}&date_to={}&limit=100&offset=0",
+            "?date_from={}&date_to={}&limit=10000&offset=0",
             date_from_val, date_to_val
         );
 

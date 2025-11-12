@@ -24,9 +24,9 @@ pub fn validate_barcode(barcode: &str) -> Result<()> {
 /// Создать entry для upsert
 pub fn create_entry(
     barcode: String,
-    nomenclature_ref: String,
-    article: Option<String>,
     source: String,
+    nomenclature_ref: Option<String>,
+    article: Option<String>,
 ) -> Result<NomenclatureBarcodeEntry> {
     validate_barcode(&barcode)?;
 
@@ -34,9 +34,9 @@ pub fn create_entry(
 
     Ok(NomenclatureBarcodeEntry {
         barcode,
+        source,
         nomenclature_ref,
         article,
-        source,
         created_at: now,
         updated_at: now,
         is_active: true,
@@ -51,9 +51,9 @@ pub fn update_entry(
 ) -> NomenclatureBarcodeEntry {
     NomenclatureBarcodeEntry {
         barcode: existing.barcode.clone(),
-        nomenclature_ref: nomenclature_ref.unwrap_or_else(|| existing.nomenclature_ref.clone()),
-        article: article.or_else(|| existing.article.clone()),
         source: existing.source.clone(),
+        nomenclature_ref: nomenclature_ref.or_else(|| existing.nomenclature_ref.clone()),
+        article: article.or_else(|| existing.article.clone()),
         created_at: existing.created_at.parse().unwrap_or_else(|_| Utc::now()),
         updated_at: Utc::now(),
         is_active: existing.is_active,
@@ -96,4 +96,34 @@ pub fn barcode_with_nomenclature_to_dto(model: &BarcodeWithNomenclature) -> cont
 /// Конвертировать список BarcodeWithNomenclature в DTOs
 pub fn barcodes_with_nomenclature_to_dtos(models: Vec<BarcodeWithNomenclature>) -> Vec<contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto> {
     models.iter().map(barcode_with_nomenclature_to_dto).collect()
+}
+
+/// Найти nomenclature_ref по штрихкоду из источника 1C
+/// Используется при импорте из маркетплейсов для автоматической привязки к номенклатуре
+pub async fn find_nomenclature_ref_by_barcode_from_1c(barcode: &str) -> Result<Option<String>> {
+    use super::repository;
+
+    // Ищем запись с source='1C' для данного штрихкода
+    let result = repository::get_by_barcode_and_source(barcode, "1C").await?;
+
+    Ok(result.and_then(|model| model.nomenclature_ref))
+}
+
+/// Найти nomenclature_ref по штрихкоду из конкретного маркетплейса
+/// Сначала ищет по указанному источнику, потом по '1C' в качестве fallback
+pub async fn find_nomenclature_ref_by_barcode_from_marketplace(
+    barcode: &str,
+    marketplace_source: &str,
+) -> Result<Option<String>> {
+    use super::repository;
+
+    // Сначала пробуем найти по источнику маркетплейса
+    if let Some(model) = repository::get_by_barcode_and_source(barcode, marketplace_source).await? {
+        if let Some(ref nomenclature_ref) = model.nomenclature_ref {
+            return Ok(Some(nomenclature_ref.clone()));
+        }
+    }
+
+    // Если не нашли или nomenclature_ref=NULL, пробуем 1C
+    find_nomenclature_ref_by_barcode_from_1c(barcode).await
 }

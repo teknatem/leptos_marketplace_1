@@ -162,6 +162,7 @@ impl ImportExecutor {
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
+        let mut total_barcodes_imported = 0;
         let mut page_token: Option<String> = None;
         let mut expected_total: Option<i32> = None;
 
@@ -213,24 +214,27 @@ impl ImportExecutor {
                 total_processed
             );
 
-            // Группируем offer_id для batch запроса к offer-cards
-            let offer_ids: Vec<String> = entries.iter().map(|e| e.offer.offer_id.clone()).collect();
+            // Обрабатываем каждый товар напрямую из offer-mappings
+            // (они уже содержат все данные, включая barcodes)
+            for offer_mapping_entry in entries {
+                let offer = &offer_mapping_entry.offer;
+                let mapping = &offer_mapping_entry.mapping;
 
-            // Получаем детальную информацию
-            let info_response = self
-                .api_client
-                .fetch_product_info(connection, offer_ids)
-                .await?;
+                // Логируем информацию о штрихкодах для отладки
+                tracing::debug!(
+                    "Product {} has {} barcode(s): {:?}",
+                    offer.offer_id,
+                    offer.barcodes.len(),
+                    offer.barcodes
+                );
 
-            // Обрабатываем каждый товар
-            for offer_card in info_response.result.offer_cards {
-                let product_name = offer_card
-                    .mapping
+                let product_name = mapping
                     .as_ref()
                     .and_then(|m| m.market_sku_name.clone())
+                    .or_else(|| offer.name.clone())
                     .unwrap_or_else(|| "Без названия".to_string());
 
-                let display_name = format!("{} - {}", offer_card.offer_id, product_name);
+                let display_name = format!("{} - {}", offer.offer_id, product_name);
 
                 self.progress_tracker.set_current_item(
                     session_id,
@@ -238,9 +242,10 @@ impl ImportExecutor {
                     Some(display_name),
                 );
 
-                match self.process_product(connection, &offer_card).await {
-                    Ok(is_new) => {
+                match self.process_product_from_offer(connection, offer, mapping).await {
+                    Ok((is_new, barcodes_count)) => {
                         total_processed += 1;
+                        total_barcodes_imported += barcodes_count as i32;
                         if is_new {
                             total_inserted += 1;
                         } else {
@@ -248,11 +253,11 @@ impl ImportExecutor {
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to process product {}: {}", offer_card.offer_id, e);
+                        tracing::error!("Failed to process product {}: {}", offer.offer_id, e);
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
-                            format!("Failed to process product {}", offer_card.offer_id),
+                            format!("Failed to process product {}", offer.offer_id),
                             Some(e.to_string()),
                         );
                     }
@@ -266,6 +271,13 @@ impl ImportExecutor {
                     expected_total,
                     total_inserted,
                     total_updated,
+                );
+
+                // Обновить счетчик штрихкодов
+                self.progress_tracker.update_barcodes_count(
+                    session_id,
+                    aggregate_index,
+                    total_barcodes_imported,
                 );
             }
 
@@ -320,56 +332,48 @@ impl ImportExecutor {
         Ok(())
     }
 
-    /// Обработать один товар (upsert)
-    async fn process_product(
+    /// Обработать один товар из YandexOffer (offer-mappings endpoint)
+    /// Возвращает (is_new, barcodes_count)
+    async fn process_product_from_offer(
         &self,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
-        product: &super::yandex_api_client::YandexOfferCard,
-    ) -> Result<bool> {
+        offer: &super::yandex_api_client::YandexOffer,
+        mapping: &Option<super::yandex_api_client::YandexMapping>,
+    ) -> Result<(bool, usize)> {
         use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 
         // Используем offer_id как marketplace_sku
-        let marketplace_sku = product.offer_id.clone();
+        let marketplace_sku = offer.offer_id.clone();
         let existing = a007_marketplace_product::repository::get_by_marketplace_sku(
             &connection.marketplace_id,
             &marketplace_sku,
         )
         .await?;
 
-        // Парсим цену
-        let price = product.price.as_ref().map(|p| p.value);
+        // YandexOffer из offer-mappings не имеет price, устанавливаем None
+        let price = None;
 
         // Берем первый barcode из списка
-        let barcode = product.barcodes.first().cloned();
+        let barcode = offer.barcodes.first().cloned();
 
-        // Получаем category_id и category_name из mapping
-        let (category_id, category_name) = product
-            .mapping
-            .as_ref()
-            .and_then(|m| {
-                m.market_category_id
-                    .map(|id| (Some(id.to_string()), m.market_category_name.clone()))
-            })
-            .unwrap_or((None, None));
+        // Получаем category_id и category_name - YandexMapping не содержит категории
+        // Используем данные из offer.category если есть
+        let (category_id, category_name) = (None, offer.category.clone());
 
-        // Получаем название товара из mapping.marketSkuName
-        let product_name = product
-            .mapping
-            .as_ref()
-            .and_then(|m| m.market_sku_name.clone())
-            .unwrap_or_else(|| "Без названия".to_string());
+        // Получаем название товара из offer.name
+        let product_name = offer.name.clone().unwrap_or_else(|| "Без названия".to_string());
 
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
             tracing::debug!("Updating existing product: {}", marketplace_sku);
 
-            existing_product.base.code = product.offer_id.clone();
+            existing_product.base.code = offer.offer_id.clone();
             existing_product.base.description = product_name.clone();
             existing_product.marketplace_sku = marketplace_sku;
             existing_product.barcode = barcode.clone();
-            existing_product.art = product.offer_id.clone();
+            existing_product.art = offer.offer_id.clone();
             existing_product.product_name = product_name.clone();
-            existing_product.brand = product.vendor.clone();
+            existing_product.brand = offer.vendor.clone();
             existing_product.category_id = category_id;
             existing_product.category_name = category_name;
             existing_product.price = price;
@@ -377,21 +381,25 @@ impl ImportExecutor {
             existing_product.before_write();
 
             a007_marketplace_product::repository::update(&existing_product).await?;
-            Ok(false)
+
+            // Импорт всех штрихкодов в проекцию p901
+            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &existing_product.nomenclature_id).await?;
+
+            Ok((false, barcodes_count))
         } else {
             // Создаем новый товар
             tracing::debug!("Inserting new product: {}", marketplace_sku);
 
             let new_product = MarketplaceProduct::new_for_insert(
-                product.offer_id.clone(),
+                offer.offer_id.clone(),
                 product_name.clone(),
                 connection.marketplace_id.clone(),
                 connection.base.id.as_string(),
                 marketplace_sku,
                 barcode,
-                product.offer_id.clone(),
+                offer.offer_id.clone(),
                 product_name,
-                product.vendor.clone(),
+                offer.vendor.clone(),
                 category_id,
                 category_name,
                 price,
@@ -403,8 +411,98 @@ impl ImportExecutor {
             );
 
             a007_marketplace_product::repository::insert(&new_product).await?;
-            Ok(true)
+
+            // Импорт всех штрихкодов в проекцию p901
+            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &new_product.nomenclature_id).await?;
+
+            Ok((true, barcodes_count))
         }
+    }
+
+    /// Импортировать все штрихкоды из Yandex в проекцию p901_nomenclature_barcodes
+    /// Автоматически ищет соответствие nomenclature_ref из 1C по штрихкоду
+    async fn import_barcodes_to_p901(
+        &self,
+        barcodes: &[String],
+        article: &str,
+        product_nomenclature_id: &Option<String>,
+    ) -> Result<usize> {
+        use crate::projections::p901_nomenclature_barcodes::{repository, service};
+
+        if barcodes.is_empty() {
+            tracing::info!("Product {} has no barcodes, skipping barcode import", article);
+            return Ok(0);
+        }
+
+        tracing::info!("Importing {} barcode(s) for product {} (source: YM)", barcodes.len(), article);
+
+        let mut imported_count = 0;
+
+        for barcode in barcodes {
+            // Пропускаем пустые штрихкоды
+            if barcode.trim().is_empty() {
+                tracing::warn!("Empty barcode found for product {}, skipping", article);
+                continue;
+            }
+
+            // Определяем nomenclature_ref:
+            // 1. Если товар уже связан с номенклатурой - использовать её
+            // 2. Если нет - попытаться найти по штрихкоду в базе 1C
+            let nomenclature_ref = if let Some(ref nom_id) = product_nomenclature_id {
+                Some(nom_id.clone())
+            } else {
+                // Ищем nomenclature_ref по штрихкоду из источника 1C
+                match service::find_nomenclature_ref_by_barcode_from_1c(barcode).await {
+                    Ok(found_ref) => {
+                        if found_ref.is_some() {
+                            tracing::debug!(
+                                "Found nomenclature_ref for barcode {} from 1C: {:?}",
+                                barcode,
+                                found_ref
+                            );
+                        }
+                        found_ref
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to lookup barcode {} in 1C: {}", barcode, e);
+                        None
+                    }
+                }
+            };
+
+            // Создаем entry для штрихкода
+            let entry = match service::create_entry(
+                barcode.clone(),
+                "YM".to_string(),
+                nomenclature_ref.clone(),
+                Some(article.to_string()),
+            ) {
+                Ok(e) => e,
+                Err(e) => {
+                    tracing::error!("Failed to create entry for barcode {}: {}", barcode, e);
+                    continue;
+                }
+            };
+
+            // Upsert в базу
+            match repository::upsert_entry(&entry).await {
+                Ok(_) => {
+                    imported_count += 1;
+                    tracing::info!(
+                        "✓ Imported barcode {} (source: YM, article: {}, nomenclature_ref: {:?})",
+                        barcode,
+                        article,
+                        nomenclature_ref
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Failed to upsert barcode {} to database: {}", barcode, e);
+                }
+            }
+        }
+
+        tracing::info!("Finished importing barcodes for product {}: {} barcode(s) imported", article, imported_count);
+        Ok(imported_count)
     }
 
     /// Импорт заказов Yandex Market
@@ -582,6 +680,7 @@ impl ImportExecutor {
                 lines,
                 state,
                 source_meta,
+                true, // is_posted = true при загрузке через API
             );
 
             // Save with raw JSON (use detailed order data for raw storage)

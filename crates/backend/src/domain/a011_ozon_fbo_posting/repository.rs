@@ -77,6 +77,7 @@ impl From<Model> for OzonFboPosting {
             lines,
             state,
             source_meta,
+            is_posted: m.is_posted,
         }
     }
 }

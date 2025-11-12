@@ -731,6 +731,7 @@ impl ImportExecutor {
                 line,
                 state,
                 source_meta,
+                true, // is_posted = true при загрузке через API
             );
 
             // Сохраняем документ с raw JSON

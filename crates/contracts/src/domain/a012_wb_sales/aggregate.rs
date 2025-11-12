@@ -101,18 +101,21 @@ pub struct WbSalesSourceMeta {
 pub struct WbSales {
     #[serde(flatten)]
     pub base: BaseAggregate<WbSalesId>,
-    
+
     /// Заголовок документа
     pub header: WbSalesHeader,
-    
+
     /// Строка документа (в WB всегда одна строка)
     pub line: WbSalesLine,
-    
+
     /// Статусы и временные метки
     pub state: WbSalesState,
-    
+
     /// Служебные метаданные
     pub source_meta: WbSalesSourceMeta,
+
+    /// Флаг проведения документа (для формирования проекций)
+    pub is_posted: bool,
 }
 
 impl WbSales {
@@ -123,6 +126,7 @@ impl WbSales {
         line: WbSalesLine,
         state: WbSalesState,
         source_meta: WbSalesSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(WbSalesId::new_v4(), code, description);
         Self {
@@ -131,6 +135,7 @@ impl WbSales {
             line,
             state,
             source_meta,
+            is_posted,
         }
     }
 
@@ -142,6 +147,7 @@ impl WbSales {
         line: WbSalesLine,
         state: WbSalesState,
         source_meta: WbSalesSourceMeta,
+        is_posted: bool,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -150,6 +156,7 @@ impl WbSales {
             line,
             state,
             source_meta,
+            is_posted,
         }
     }
 

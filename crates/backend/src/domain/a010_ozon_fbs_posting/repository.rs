@@ -77,6 +77,7 @@ impl From<Model> for OzonFbsPosting {
             lines,
             state,
             source_meta,
+            is_posted: m.is_posted,
         }
     }
 }
@@ -150,7 +151,7 @@ pub async fn upsert_document(aggregate: &OzonFbsPosting) -> Result<Uuid> {
             state_json: Set(state_json),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
-            is_posted: Set(aggregate.base.metadata.is_posted),
+            is_posted: Set(aggregate.is_posted),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version + 1),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -170,7 +171,7 @@ pub async fn upsert_document(aggregate: &OzonFbsPosting) -> Result<Uuid> {
             state_json: Set(state_json),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
-            is_posted: Set(aggregate.base.metadata.is_posted),
+            is_posted: Set(aggregate.is_posted),
             created_at: Set(Some(aggregate.base.metadata.created_at)),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),

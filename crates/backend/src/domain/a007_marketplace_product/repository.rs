@@ -219,3 +219,17 @@ pub async fn list_by_marketplace_id(
         .collect();
     Ok(items)
 }
+
+pub async fn get_by_nomenclature_id(
+    nomenclature_id: &str,
+) -> anyhow::Result<Vec<MarketplaceProduct>> {
+    let items: Vec<MarketplaceProduct> = Entity::find()
+        .filter(Column::NomenclatureId.eq(nomenclature_id))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    Ok(items)
+}

@@ -1,4 +1,24 @@
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NomenclatureBarcodeDto {
+    pub barcode: String,
+    pub source: String,
+    pub nomenclature_ref: Option<String>,
+    pub nomenclature_name: Option<String>,
+    pub article: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BarcodesByNomenclatureResponse {
+    pub nomenclature_ref: String,
+    pub barcodes: Vec<NomenclatureBarcodeDto>,
+    pub total_count: usize,
+}
 
 fn api_base() -> String {
     let window = match web_sys::window() {
@@ -117,4 +137,51 @@ pub async fn delete_by_id(id: String) -> Result<(), String> {
         return Err(format!("HTTP {}", resp.status()));
     }
     Ok(())
+}
+
+pub async fn fetch_barcodes_by_nomenclature(
+    nomenclature_ref: String,
+) -> Result<BarcodesByNomenclatureResponse, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!(
+        "{}/api/p901/nomenclature/{}/barcodes?include_inactive=false",
+        api_base(),
+        nomenclature_ref
+    );
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if resp.status() == 404 {
+        return Ok(BarcodesByNomenclatureResponse {
+            nomenclature_ref,
+            barcodes: vec![],
+            total_count: 0,
+        });
+    }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: BarcodesByNomenclatureResponse =
+        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
 }

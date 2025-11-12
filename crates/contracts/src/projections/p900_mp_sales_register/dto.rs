@@ -17,6 +17,7 @@ pub struct SalesRegisterDto {
     pub connection_mp_ref: String,
     pub organization_ref: String,
     pub marketplace_product_ref: Option<String>,
+    pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,
 
     // Timestamps and status

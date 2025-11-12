@@ -104,6 +104,97 @@ pub async fn list_by_marketplace_id(
     repository::list_by_marketplace_id(marketplace_id).await
 }
 
+/// Параметры для поиска/создания товара при импорте продаж
+pub struct FindOrCreateParams {
+    pub marketplace_id: String,
+    pub connection_mp_id: String,
+    pub marketplace_sku: String,
+    pub barcode: Option<String>,
+    pub title: String,
+}
+
+/// Найти или создать a007_marketplace_product для регистра продаж
+///
+/// Алгоритм поиска:
+/// 1. Поиск по (marketplace_id, marketplace_sku)
+/// 2. Если не найден и есть barcode - поиск через p901 по штрихкоду маркетплейса
+/// 3. Если не найден - создание нового a007 с комментарием
+///
+/// Возвращает UUID найденного или созданного товара
+pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Result<Uuid> {
+    // Шаг 1: Поиск по (marketplace_id, marketplace_sku)
+    if let Some(existing) = repository::get_by_marketplace_sku(
+        &params.marketplace_id,
+        &params.marketplace_sku,
+    )
+    .await?
+    {
+        return Ok(existing.base.id.value());
+    }
+
+    // Шаг 2: Если есть barcode - поиск через p901
+    if let Some(ref barcode) = params.barcode {
+        // Определяем источник для p901 по marketplace_id
+        let source = match params.marketplace_id.as_str() {
+            id if id.contains("ozon") => "OZON",
+            id if id.contains("wb") => "WB",
+            id if id.contains("ym") => "YM",
+            _ => "UNKNOWN",
+        };
+
+        // Ищем nomenclature_ref через p901
+        let nomenclature_ref =
+            crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_ref_by_barcode_from_marketplace(
+                barcode,
+                source,
+            )
+            .await?;
+
+        // Если нашли nomenclature_ref - ищем a007 с этим nomenclature_id
+        if let Some(ref nom_ref) = nomenclature_ref {
+            let products = repository::get_by_nomenclature_id(nom_ref).await?;
+
+            // Фильтруем по marketplace_id, берем первый подходящий
+            if let Some(existing) = products
+                .into_iter()
+                .find(|p| p.marketplace_id == params.marketplace_id)
+            {
+                return Ok(existing.base.id.value());
+            }
+        }
+    }
+
+    // Шаг 3: Не найден - создаем новый
+    let now = chrono::Utc::now();
+    let comment = format!(
+        "Автоматически создано при импорте продаж [{}]",
+        now.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    let dto = MarketplaceProductDto {
+        id: None,
+        code: Some(format!("MP-AUTO-{}", Uuid::new_v4())),
+        description: params.title.clone(),
+        marketplace_id: params.marketplace_id.clone(),
+        connection_mp_id: params.connection_mp_id,
+        marketplace_sku: params.marketplace_sku.clone(),
+        barcode: params.barcode,
+        art: params.marketplace_sku, // Используем marketplace_sku как артикул
+        product_name: params.title,
+        brand: None,
+        category_id: None,
+        category_name: None,
+        price: None,
+        stock: None,
+        last_update: Some(now),
+        marketplace_url: None,
+        nomenclature_id: None, // Сопоставление через u505
+        comment: Some(comment),
+    };
+
+    create(dto).await
+}
+
 /// Вставка тестовых данных
 pub async fn insert_test_data() -> anyhow::Result<()> {
     // Получаем ID маркетплейсов (предполагаем, что они уже созданы)

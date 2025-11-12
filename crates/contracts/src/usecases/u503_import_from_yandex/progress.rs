@@ -55,6 +55,9 @@ pub struct AggregateProgress {
     pub updated: i32,
     pub errors: i32,
     pub current_item: Option<String>,
+    /// Количество импортированных штрихкодов (для маркетплейсов)
+    #[serde(default)]
+    pub barcodes_imported: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -142,6 +142,11 @@ impl Sortable for OzonReturnsRow {
 #[allow(non_snake_case)]
 pub fn OzonReturnsList() -> impl IntoView {
     use std::collections::HashMap;
+    use crate::layout::global_context::AppGlobalContext;
+
+    let ctx = leptos::context::use_context::<AppGlobalContext>()
+        .expect("AppGlobalContext not found");
+
     let (items, set_items) = signal::<Vec<OzonReturnsRow>>(Vec::new());
     let (returns, set_returns) = signal::<Vec<OzonReturns>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
@@ -265,6 +270,14 @@ pub fn OzonReturnsList() -> impl IntoView {
         }
     };
 
+    // Обработчик клика по строке - открывает детальную форму
+    let on_row_click = move |id: String, return_id: String| {
+        let tab_key = format!("a009_ozon_returns_detail_{}", id);
+        let tab_title = format!("Возврат {}", return_id);
+        ctx.open_tab(&tab_key, &tab_title);
+        ctx.activate_tab(&tab_key);
+    };
+
     fetch_refs();
     fetch();
 
@@ -331,8 +344,15 @@ pub fn OzonReturnsList() -> impl IntoView {
                                 let order_view = if current_filter.len() >= 3 { highlight_matches(&row.order_number, &current_filter) } else { view!{ <span>{row.order_number.clone()}</span> }.into_any() };
                                 let sku_view = if current_filter.len() >= 3 { highlight_matches(&row.sku, &current_filter) } else { view!{ <span>{row.sku.clone()}</span> }.into_any() };
                                 let product_view = if current_filter.len() >= 3 { highlight_matches(&row.product_name, &current_filter) } else { view!{ <span>{row.product_name.clone()}</span> }.into_any() };
+                                let row_id = row.id.clone();
+                                let row_return_id = row.return_id.clone();
                                 view! {
-                                    <tr>
+                                    <tr
+                                        class="cursor-pointer hover-highlight"
+                                        on:click=move |_| {
+                                            on_row_click(row_id.clone(), row_return_id.clone())
+                                        }
+                                    >
                                         <td>{row.return_date.clone()}</td>
                                         <td>{conn_view}</td>
                                         <td>{return_id_view}</td>

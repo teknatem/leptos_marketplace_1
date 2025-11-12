@@ -1,11 +1,22 @@
 use super::repository::SalesRegisterEntry;
+use crate::domain::a007_marketplace_product::service::{find_or_create_for_sale, get_by_id, FindOrCreateParams};
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
+use uuid::Uuid;
+
+/// Helper функция для получения nomenclature_ref из marketplace_product
+async fn get_nomenclature_ref(marketplace_product_id: Uuid) -> anyhow::Result<Option<String>> {
+    if let Some(mp_product) = get_by_id(marketplace_product_id).await? {
+        Ok(mp_product.nomenclature_id)
+    } else {
+        Ok(None)
+    }
+}
 
 /// Конвертировать OZON FBS Posting в записи Sales Register
-pub fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Vec<SalesRegisterEntry> {
+pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -13,6 +24,19 @@ pub fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Vec<SalesR
             .state
             .delivered_at
             .unwrap_or_else(|| document.source_meta.fetched_at);
+
+        // Поиск или создание a007
+        let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
+            marketplace_id: document.header.marketplace_id.clone(),
+            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_sku: line.offer_id.clone(),
+            barcode: line.barcode.clone(),
+            title: line.name.clone(),
+        })
+        .await?;
+
+        // Получить nomenclature_ref из a007
+        let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
 
         let entry = SalesRegisterEntry {
             // NK
@@ -28,7 +52,8 @@ pub fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Vec<SalesR
             // References to aggregates
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
-            marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
+            marketplace_product_ref: Some(marketplace_product_ref.to_string()),
+            nomenclature_ref,
             registrator_ref: document_id.to_string(),
 
             // Timestamps and status
@@ -59,11 +84,11 @@ pub fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Vec<SalesR
         entries.push(entry);
     }
 
-    entries
+    Ok(entries)
 }
 
 /// Конвертировать OZON FBO Posting в записи Sales Register
-pub fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Vec<SalesRegisterEntry> {
+pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -71,6 +96,19 @@ pub fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Vec<SalesR
             .state
             .delivered_at
             .unwrap_or_else(|| document.source_meta.fetched_at);
+
+        // Поиск или создание a007
+        let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
+            marketplace_id: document.header.marketplace_id.clone(),
+            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_sku: line.offer_id.clone(),
+            barcode: line.barcode.clone(),
+            title: line.name.clone(),
+        })
+        .await?;
+
+        // Получить nomenclature_ref из a007
+        let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
 
         let entry = SalesRegisterEntry {
             // NK
@@ -86,7 +124,8 @@ pub fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Vec<SalesR
             // References to aggregates
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
-            marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
+            marketplace_product_ref: Some(marketplace_product_ref.to_string()),
+            nomenclature_ref,
             registrator_ref: document_id.to_string(),
 
             // Timestamps and status
@@ -117,14 +156,27 @@ pub fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Vec<SalesR
         entries.push(entry);
     }
 
-    entries
+    Ok(entries)
 }
 
 /// Конвертировать WB Sales в запись Sales Register
-pub fn from_wb_sales(document: &WbSales, document_id: &str) -> SalesRegisterEntry {
+pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Result<SalesRegisterEntry> {
     let event_time = document.state.sale_dt;
 
-    SalesRegisterEntry {
+    // Поиск или создание a007
+    let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
+        marketplace_id: document.header.marketplace_id.clone(),
+        connection_mp_id: document.header.connection_id.clone(),
+        marketplace_sku: document.line.supplier_article.clone(),
+        barcode: Some(document.line.barcode.clone()),
+        title: document.line.name.clone(),
+    })
+    .await?;
+
+    // Получить nomenclature_ref из a007
+    let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
+
+    Ok(SalesRegisterEntry {
         // NK
         marketplace: "WB".to_string(),
         document_no: document.header.document_no.clone(),
@@ -138,7 +190,8 @@ pub fn from_wb_sales(document: &WbSales, document_id: &str) -> SalesRegisterEntr
         // References to aggregates
         connection_mp_ref: document.header.connection_id.clone(),
         organization_ref: document.header.organization_id.clone(),
-        marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
+        marketplace_product_ref: Some(marketplace_product_ref.to_string()),
+        nomenclature_ref,
         registrator_ref: document_id.to_string(),
 
         // Timestamps and status
@@ -165,12 +218,12 @@ pub fn from_wb_sales(document: &WbSales, document_id: &str) -> SalesRegisterEntr
         // Technical
         payload_version: 1,
         extra: None,
-    }
+    })
 }
 
 /// Конвертировать YM Order в записи Sales Register
 /// ВАЖНО: Записи создаются только если заполнена delivery_date!
-pub fn from_ym_order(document: &YmOrder, document_id: &str) -> Vec<SalesRegisterEntry> {
+pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     // Проверяем наличие delivery_date - без нее не проецируем
@@ -178,13 +231,26 @@ pub fn from_ym_order(document: &YmOrder, document_id: &str) -> Vec<SalesRegister
         Some(date) => date,
         None => {
             // Нет даты доставки - не является продажей, пропускаем
-            return entries;
+            return Ok(entries);
         }
     };
 
     for line in document.lines.iter() {
         // Используем delivery_date как дату события
         let event_time = delivery_date;
+
+        // Поиск или создание a007
+        let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
+            marketplace_id: document.header.marketplace_id.clone(),
+            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_sku: line.shop_sku.clone(),
+            barcode: None, // YM не предоставляет barcode в заказах
+            title: line.name.clone(),
+        })
+        .await?;
+
+        // Получить nomenclature_ref из a007
+        let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
 
         let entry = SalesRegisterEntry {
             // NK
@@ -200,7 +266,8 @@ pub fn from_ym_order(document: &YmOrder, document_id: &str) -> Vec<SalesRegister
             // References to aggregates
             connection_mp_ref: document.header.connection_id.clone(),
             organization_ref: document.header.organization_id.clone(),
-            marketplace_product_ref: None, // TODO: должно заполняться при сопоставлении с a007
+            marketplace_product_ref: Some(marketplace_product_ref.to_string()),
+            nomenclature_ref,
             registrator_ref: document_id.to_string(),
 
             // Timestamps and status
@@ -231,5 +298,5 @@ pub fn from_ym_order(document: &YmOrder, document_id: &str) -> Vec<SalesRegister
         entries.push(entry);
     }
 
-    entries
+    Ok(entries)
 }

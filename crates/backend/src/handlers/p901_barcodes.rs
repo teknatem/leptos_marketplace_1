@@ -7,14 +7,22 @@ use contracts::projections::p901_nomenclature_barcodes::{
 
 use crate::projections::p901_nomenclature_barcodes::{repository, service};
 
-/// Handler для получения номенклатуры по штрихкоду
+/// Handler для получения номенклатуры по штрихкоду и источнику
+/// Требует обязательный query параметр source (1C, OZON, WB, YM)
 pub async fn get_by_barcode(
     Path(barcode): Path<String>,
+    Query(req): Query<contracts::projections::p901_nomenclature_barcodes::BarcodeByIdRequest>,
 ) -> Result<Json<BarcodeByIdResponse>, StatusCode> {
-    let model = repository::get_by_barcode(&barcode)
+    // source - обязательный параметр
+    if req.source.is_empty() {
+        tracing::error!("Source parameter is required for barcode lookup");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let model = repository::get_by_barcode_and_source(&barcode, &req.source)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get barcode {}: {}", barcode, e);
+            tracing::error!("Failed to get barcode {} with source {}: {}", barcode, req.source, e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;

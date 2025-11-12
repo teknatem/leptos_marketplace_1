@@ -9,12 +9,14 @@ use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
 use crate::domain::a009_ozon_returns::ui::list::OzonReturnsList;
+use crate::domain::a009_ozon_returns::ui::details::OzonReturnsDetail;
 use crate::domain::a010_ozon_fbs_posting::ui::list::OzonFbsPostingList;
 use crate::domain::a011_ozon_fbo_posting::ui::list::OzonFboPostingList;
 use crate::domain::a012_wb_sales::ui::list::WbSalesList;
 use crate::domain::a013_ym_order::ui::list::YmOrderList;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
+use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
@@ -53,6 +55,19 @@ pub fn Tabs() -> impl IntoView {
         Some(key) if key == "a009_ozon_returns" => {
             view! { <OzonReturnsList /> }.into_any()
         }
+        Some(key) if key.starts_with("a009_ozon_returns_detail_") => {
+            let id = key.strip_prefix("a009_ozon_returns_detail_").unwrap().to_string();
+            let tabs_store_clone = tabs_store.clone();
+            let key_clone = key.clone();
+            view! {
+                <OzonReturnsDetail
+                    id=id
+                    on_close=Callback::new(move |_| {
+                        tabs_store_clone.close_tab(&key_clone);
+                    })
+                />
+            }.into_any()
+        }
         Some(key) if key == "a010_ozon_fbs_posting" => {
             view! { <OzonFbsPostingList /> }.into_any()
         }
@@ -88,6 +103,9 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "p901_barcodes" => {
             view! { <BarcodesList /> }.into_any()
+        }
+        Some(key) if key == "p902_ozon_finance_realization" => {
+            view! { <OzonFinanceRealizationList /> }.into_any()
         }
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }

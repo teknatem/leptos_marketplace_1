@@ -40,15 +40,22 @@ pub async fn store_document_with_raw(
 
     // Сохраняем документ (upsert)
     let id = repository::upsert_document(&document).await?;
-    
+
     tracing::info!("Successfully saved OZON FBS document with id: {}", id);
-    
-    // Проецируем в Sales Register с реальным UUID из БД
-    if let Err(e) = crate::projections::p900_mp_sales_register::service::project_ozon_fbs(&document, id).await {
-        tracing::error!("Failed to project OZON FBS document to Sales Register: {}", e);
-        // Не останавливаем выполнение, т.к. документ уже сохранен
+
+    // Проводим документ если is_posted = true
+    if document.is_posted {
+        if let Err(e) = super::posting::post_document(id).await {
+            tracing::error!("Failed to post OZON FBS document: {}", e);
+            // Не останавливаем выполнение, т.к. документ уже сохранен
+        }
+    } else {
+        // Если is_posted = false, удаляем проекции (если были)
+        if let Err(e) = crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string()).await {
+            tracing::error!("Failed to delete projections for OZON FBS document: {}", e);
+        }
     }
-    
+
     Ok(id)
 }
 

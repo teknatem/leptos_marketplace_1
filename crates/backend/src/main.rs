@@ -843,7 +843,10 @@ async fn main() -> anyhow::Result<()> {
                     Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
                 };
                 match domain::a009_ozon_returns::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
+                    Ok(Some(v)) => {
+                        let detail_dto = v.to_detail_dto();
+                        Ok(Json(detail_dto))
+                    }
                     Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
                     Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
                 }
@@ -952,6 +955,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/p900/stats/by-marketplace",
             get(handlers::p900_sales_register::get_stats_by_marketplace),
         )
+        .route(
+            "/api/p900/backfill-product-refs",
+            post(handlers::p900_sales_register::backfill_product_refs),
+        )
         // P901 Nomenclature Barcodes handlers
         .route(
             "/api/p901/barcode/:barcode",
@@ -964,6 +971,19 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/p901/barcodes",
             get(handlers::p901_barcodes::list_barcodes),
+        )
+        // P902 OZON Finance Realization handlers
+        .route(
+            "/api/p902/finance-realization",
+            get(handlers::p902_ozon_finance_realization::list_finance_realization),
+        )
+        .route(
+            "/api/p902/finance-realization/:posting_number/:sku/:operation_type",
+            get(handlers::p902_ozon_finance_realization::get_finance_realization_detail),
+        )
+        .route(
+            "/api/p902/stats",
+            get(handlers::p902_ozon_finance_realization::get_stats),
         )
         // A010 OZON FBS Posting handlers
         .route(
@@ -978,6 +998,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/a010/raw/:ref_id",
             get(handlers::a010_ozon_fbs_posting::get_raw_json),
         )
+        .route(
+            "/api/a010/ozon-fbs-posting/:id/post",
+            post(handlers::a010_ozon_fbs_posting::post_document),
+        )
+        .route(
+            "/api/a010/ozon-fbs-posting/:id/unpost",
+            post(handlers::a010_ozon_fbs_posting::unpost_document),
+        )
+        .route(
+            "/api/a010/ozon-fbs-posting/post-period",
+            post(handlers::a010_ozon_fbs_posting::post_period),
+        )
         // A011 OZON FBO Posting handlers
         .route(
             "/api/a011/ozon-fbo-posting",
@@ -986,6 +1018,18 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a011/ozon-fbo-posting/:id",
             get(handlers::a011_ozon_fbo_posting::get_posting_detail),
+        )
+        .route(
+            "/api/a011/ozon-fbo-posting/:id/post",
+            post(handlers::a011_ozon_fbo_posting::post_document),
+        )
+        .route(
+            "/api/a011/ozon-fbo-posting/:id/unpost",
+            post(handlers::a011_ozon_fbo_posting::unpost_document),
+        )
+        .route(
+            "/api/a011/ozon-fbo-posting/post-period",
+            post(handlers::a011_ozon_fbo_posting::post_period),
         )
         // A012 WB Sales handlers
         .route(
@@ -1000,6 +1044,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/a012/raw/:ref_id",
             get(handlers::a012_wb_sales::get_raw_json),
         )
+        .route(
+            "/api/a012/wb-sales/:id/post",
+            post(handlers::a012_wb_sales::post_document),
+        )
+        .route(
+            "/api/a012/wb-sales/:id/unpost",
+            post(handlers::a012_wb_sales::unpost_document),
+        )
+        .route(
+            "/api/a012/wb-sales/post-period",
+            post(handlers::a012_wb_sales::post_period),
+        )
         // A013 YM Order handlers
         .route(
             "/api/a013/ym-order",
@@ -1012,6 +1068,23 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a013/raw/:ref_id",
             get(handlers::a013_ym_order::get_raw_json),
+        )
+        .route(
+            "/api/a013/ym-order/:id/post",
+            post(handlers::a013_ym_order::post_document),
+        )
+        .route(
+            "/api/a013/ym-order/:id/unpost",
+            post(handlers::a013_ym_order::unpost_document),
+        )
+        .route(
+            "/api/a013/ym-order/post-period",
+            post(handlers::a013_ym_order::post_period),
+        )
+        // P900 Sales Register - get projections by registrator
+        .route(
+            "/api/projections/p900/:registrator_ref",
+            get(handlers::p900_sales_register::get_by_registrator),
         )
         .fallback_service(ServeDir::new("dist"))
         .layer(cors);

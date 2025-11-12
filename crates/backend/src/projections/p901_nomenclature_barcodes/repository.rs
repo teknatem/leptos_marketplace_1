@@ -13,12 +13,14 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub barcode: String,
 
-    pub nomenclature_ref: String,  // UUID на a004_nomenclature
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub source: String,  // "1C" | "OZON" | "WB" | "YM"
+
+    #[sea_orm(nullable)]
+    pub nomenclature_ref: Option<String>,  // UUID на a004_nomenclature (nullable)
 
     #[sea_orm(nullable)]
     pub article: Option<String>,
-
-    pub source: String,  // "1C" | "OZON" | "WB" | "YM"
 
     pub created_at: String,  // DateTime<Utc> as ISO8601
     pub updated_at: String,  // DateTime<Utc> as ISO8601
@@ -35,9 +37,9 @@ impl ActiveModelBehavior for ActiveModel {}
 #[derive(Debug, Clone, FromQueryResult)]
 pub struct BarcodeWithNomenclature {
     pub barcode: String,
-    pub nomenclature_ref: String,
-    pub article: Option<String>,
     pub source: String,
+    pub nomenclature_ref: Option<String>,
+    pub article: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub is_active: bool,
@@ -52,9 +54,9 @@ fn conn() -> &'static DatabaseConnection {
 #[derive(Debug, Clone)]
 pub struct NomenclatureBarcodeEntry {
     pub barcode: String,
-    pub nomenclature_ref: String,
-    pub article: Option<String>,
     pub source: String,
+    pub nomenclature_ref: Option<String>,
+    pub article: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_active: bool,
@@ -79,9 +81,10 @@ impl NomenclatureBarcodeEntry {
 pub async fn upsert_entry(entry: &NomenclatureBarcodeEntry) -> Result<()> {
     let db = conn();
 
-    // Проверяем существование записи
+    // Проверяем существование записи по композитному ключу (barcode + source)
     let existing = Entity::find()
         .filter(Column::Barcode.eq(&entry.barcode))
+        .filter(Column::Source.eq(&entry.source))
         .one(db)
         .await?;
 
@@ -91,6 +94,7 @@ pub async fn upsert_entry(entry: &NomenclatureBarcodeEntry) -> Result<()> {
         // Update существующей записи
         Entity::update(active_model)
             .filter(Column::Barcode.eq(&entry.barcode))
+            .filter(Column::Source.eq(&entry.source))
             .exec(db)
             .await?;
     } else {
@@ -103,17 +107,32 @@ pub async fn upsert_entry(entry: &NomenclatureBarcodeEntry) -> Result<()> {
     Ok(())
 }
 
-/// Получить запись по штрихкоду
-pub async fn get_by_barcode(barcode: &str) -> Result<Option<Model>> {
+/// Получить запись по штрихкоду и источнику (composite key)
+pub async fn get_by_barcode_and_source(barcode: &str, source: &str) -> Result<Option<Model>> {
     let db = conn();
 
     let result = Entity::find()
         .filter(Column::Barcode.eq(barcode))
+        .filter(Column::Source.eq(source))
         .filter(Column::IsActive.eq(true))
         .one(db)
         .await?;
 
     Ok(result)
+}
+
+/// Получить все записи для штрихкода (всех источников)
+pub async fn get_all_by_barcode(barcode: &str) -> Result<Vec<Model>> {
+    let db = conn();
+
+    let results = Entity::find()
+        .filter(Column::Barcode.eq(barcode))
+        .filter(Column::IsActive.eq(true))
+        .order_by_asc(Column::Source)
+        .all(db)
+        .await?;
+
+    Ok(results)
 }
 
 /// Получить все штрихкоды по nomenclature_ref
@@ -242,12 +261,13 @@ pub async fn list_with_filters(
     Ok((results, total_count))
 }
 
-/// Деактивировать штрихкод (мягкое удаление)
-pub async fn deactivate_by_barcode(barcode: &str) -> Result<bool> {
+/// Деактивировать штрихкод по композитному ключу (мягкое удаление)
+pub async fn deactivate_by_barcode_and_source(barcode: &str, source: &str) -> Result<bool> {
     let db = conn();
 
     let existing = Entity::find()
         .filter(Column::Barcode.eq(barcode))
+        .filter(Column::Source.eq(source))
         .one(db)
         .await?;
 

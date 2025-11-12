@@ -73,6 +73,7 @@ impl From<Model> for WbSales {
             line,
             state,
             source_meta,
+            is_posted: m.is_posted,
         }
     }
 }

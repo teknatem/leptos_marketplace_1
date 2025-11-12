@@ -47,6 +47,7 @@ impl ImportExecutor {
                 "a009_ozon_returns" => "Возвраты OZON",
                 "a010_ozon_fbs_posting" => "OZON FBS Документы продаж",
                 "a011_ozon_fbo_posting" => "OZON FBO Документы продаж",
+                "p902_ozon_finance_realization" => "Финансовые данные реализации OZON",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -139,6 +140,15 @@ impl ImportExecutor {
                 }
                 "a011_ozon_fbo_posting" => {
                     self.import_ozon_fbo_postings(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "p902_ozon_finance_realization" => {
+                    self.import_ozon_finance_realization(
                         session_id,
                         connection,
                         request.date_from,
@@ -1057,9 +1067,15 @@ impl ImportExecutor {
                     marketplace_id: connection.marketplace_id.clone(),
                 };
 
+                // Нормализуем статус
+                let status_norm = normalize_ozon_status(&posting.status);
+                // Все постинги проводятся, но проекции создаются только для DELIVERED
+                let is_posted = true;
+
                 let state = OzonFbsPostingState {
                     status_raw: posting.status.clone(),
-                    status_norm: posting.status.clone(),
+                    status_norm,
+                    substatus_raw: posting.substatus.clone(),
                     delivered_at,
                     updated_at_source: None,
                 };
@@ -1077,6 +1093,7 @@ impl ImportExecutor {
                     lines,
                     state,
                     source_meta,
+                    is_posted, // Все постинги проводятся, проекции только для DELIVERED
                 );
 
                 // Сохраняем с сырым JSON (автоматически проецируется в P900)
@@ -1270,9 +1287,14 @@ impl ImportExecutor {
                     marketplace_id: connection.marketplace_id.clone(),
                 };
 
+                // Нормализуем статус
+                let status_norm = normalize_ozon_status(&posting.status);
+                // Все постинги (включая CANCELLED) проводятся в P900 согласно логике OZON
+                let is_posted = true;
+
                 let state = OzonFboPostingState {
                     status_raw: posting.status.clone(),
-                    status_norm: posting.status.clone(),
+                    status_norm,
                     delivered_at,
                     updated_at_source: None,
                 };
@@ -1290,6 +1312,7 @@ impl ImportExecutor {
                     lines,
                     state,
                     source_meta,
+                    is_posted, // Все постинги проводятся (DELIVERED и CANCELLED)
                 );
 
                 // Сохраняем с сырым JSON (автоматически проецируется в P900)
@@ -1345,6 +1368,236 @@ impl ImportExecutor {
             total_updated
         );
         Ok(())
+    }
+
+    /// Импорт финансовых данных реализации OZON в p902
+    pub async fn import_ozon_finance_realization(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::projections::p902_ozon_finance_realization::{repository, service};
+
+        let aggregate_index = "p902_ozon_finance_realization";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Finance Realization API НЕ ПОДДЕРЖИВАЕТ ПАГИНАЦИЮ - возвращает все данные за месяц сразу
+        // Генерируем уникальный registrator_ref для всей сессии импорта
+        let registrator_ref = Uuid::new_v4().to_string();
+
+        let resp = self
+            .api_client
+            .fetch_finance_realization(connection, date_from, date_to, 10000, 0)
+            .await?;
+
+        if !resp.rows.is_empty() {
+            use chrono::Datelike;
+            let rows_count = resp.rows.len();
+            tracing::info!(
+                "Received {} finance realization rows from API for month {}-{}",
+                rows_count,
+                date_from.year(),
+                date_from.month()
+            );
+
+            let currency_code = resp.header.currency_sys_name.clone();
+            let report_number = resp.header.number.clone();
+            let doc_date = resp.header.doc_date.clone();
+
+            for row in resp.rows {
+                let row_for_json = row.clone(); // Клонируем для сериализации в JSON
+                let item = row.item;
+                // Используем order.posting_number если есть, иначе offer_id
+                let posting_number = if let Some(ref order) = row.order {
+                    order.posting_number.clone()
+                } else if !item.offer_id.is_empty() {
+                    item.offer_id.clone()
+                } else {
+                    format!("REPORT-{}-{}", report_number, row.row_number)
+                };
+                let sku = item.sku.clone();
+
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("Finance {} - {}", posting_number, sku)),
+                );
+
+                // Парсим дату документа как accrual_date
+                let accrual_date = chrono::NaiveDate::parse_from_str(&doc_date, "%Y-%m-%d")
+                    .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date());
+
+                // Нет posting_ref, так как это финансовый отчет, не привязанный к конкретным отправлениям
+                let posting_ref: Option<String> = None;
+
+                // Обрабатываем delivery_commission (продажа)
+                if let Some(ref dc) = row.delivery_commission {
+                    let existing = repository::get_by_id(&posting_number, &sku, "delivery").await?;
+                    let is_new = existing.is_none();
+
+                    let quantity = dc.quantity;
+                    let amount = dc.amount;
+                    let commission_amount = Some(dc.commission);
+                    let commission_percent = if dc.amount > 0.0 {
+                        Some((dc.commission / dc.amount) * 100.0)
+                    } else {
+                        None
+                    };
+
+                    // Создаем запись проекции для продажи
+                    let entry = repository::OzonFinanceRealizationEntry {
+                        posting_number: posting_number.clone(),
+                        sku: sku.clone(),
+                        document_type: "OZON_Finance_Realization".to_string(),
+                        registrator_ref: registrator_ref.clone(),
+                        connection_mp_ref: connection.base.id.as_string(),
+                        organization_ref: organization_id.clone(),
+                        posting_ref: posting_ref.clone(),
+                        accrual_date,
+                        operation_date: None,
+                        delivery_date: None,
+                        delivery_schema: None,
+                        delivery_region: None,
+                        delivery_city: None,
+                        quantity,
+                        price: row.seller_price_per_instance,
+                        amount,
+                        commission_amount,
+                        commission_percent,
+                        services_amount: Some(dc.standard_fee),
+                        payout_amount: Some(dc.total),
+                        operation_type: "delivery".to_string(),
+                        operation_type_name: Some("Доставка".to_string()),
+                        is_return: false,
+                        currency_code: Some(currency_code.clone()),
+                        payload_version: 1,
+                        extra: Some(serde_json::to_string(&row_for_json).unwrap_or_default()),
+                    };
+
+                    // Сохраняем запись
+                    service::upsert_realization_row(entry).await?;
+
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                    total_processed += 1;
+                }
+
+                // Обрабатываем return_commission (возврат)
+                if let Some(ref rc) = row.return_commission {
+                    let existing = repository::get_by_id(&posting_number, &sku, "return").await?;
+                    let is_new = existing.is_none();
+
+                    // Для возвратов делаем суммы отрицательными
+                    let quantity = -rc.quantity;
+                    let amount = -rc.amount;
+                    let commission_amount = Some(-rc.commission);
+                    let commission_percent = if rc.amount > 0.0 {
+                        Some((rc.commission / rc.amount) * 100.0)
+                    } else {
+                        None
+                    };
+
+                    // Создаем запись проекции для возврата
+                    let entry = repository::OzonFinanceRealizationEntry {
+                        posting_number: posting_number.clone(),
+                        sku: sku.clone(),
+                        document_type: "OZON_Finance_Realization".to_string(),
+                        registrator_ref: registrator_ref.clone(),
+                        connection_mp_ref: connection.base.id.as_string(),
+                        organization_ref: organization_id.clone(),
+                        posting_ref: posting_ref.clone(),
+                        accrual_date,
+                        operation_date: None,
+                        delivery_date: None,
+                        delivery_schema: None,
+                        delivery_region: None,
+                        delivery_city: None,
+                        quantity,
+                        price: row.seller_price_per_instance.map(|p| -p), // Отрицательная цена для возврата
+                        amount,
+                        commission_amount,
+                        commission_percent,
+                        services_amount: Some(-rc.standard_fee),
+                        payout_amount: Some(-rc.total),
+                        operation_type: "return".to_string(),
+                        operation_type_name: Some("Возврат".to_string()),
+                        is_return: true,
+                        currency_code: Some(currency_code.clone()),
+                        payload_version: 1,
+                        extra: Some(serde_json::to_string(&row_for_json).unwrap_or_default()),
+                    };
+
+                    // Сохраняем запись
+                    service::upsert_realization_row(entry).await?;
+
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                    total_processed += 1;
+                }
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "OZON finance realization import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+        Ok(())
+    }
+}
+
+/// Normalize OZON posting status
+fn normalize_ozon_status(status: &str) -> String {
+    match status.to_uppercase().as_str() {
+        "DELIVERED" => "DELIVERED".to_string(),
+        "CANCELLED" | "CANCELED" => "CANCELLED".to_string(),
+        "" => "UNKNOWN".to_string(),
+        other => other.to_uppercase(),
     }
 }
 

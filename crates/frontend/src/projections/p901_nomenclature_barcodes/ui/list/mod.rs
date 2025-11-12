@@ -2,14 +2,15 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
+use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NomenclatureBarcodeDto {
     pub barcode: String,
-    pub nomenclature_ref: String,
+    pub source: String,
+    pub nomenclature_ref: Option<String>,
     pub nomenclature_name: Option<String>,
     pub article: Option<String>,
-    pub source: String,
     pub created_at: String,
     pub updated_at: String,
     pub is_active: bool,
@@ -55,6 +56,9 @@ pub fn BarcodesList() -> impl IntoView {
     let (barcodes, set_barcodes) = signal(Vec::<NomenclatureBarcodeDto>::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
+
+    // Состояние модального окна для номенклатуры
+    let (selected_nomenclature_id, set_selected_nomenclature_id) = signal::<Option<String>>(None);
 
     // Состояние сортировки
     let (sort_column, set_sort_column) = signal::<Option<SortColumn>>(Some(SortColumn::Barcode));
@@ -202,7 +206,7 @@ pub fn BarcodesList() -> impl IntoView {
             let line = format!(
                 "{};{};{};{};{};{};{}\n",
                 item.barcode,
-                item.nomenclature_ref,
+                item.nomenclature_ref.unwrap_or_default(),
                 item.article.unwrap_or_default(),
                 item.source,
                 item.created_at,
@@ -259,6 +263,30 @@ pub fn BarcodesList() -> impl IntoView {
     view! {
         <div style="padding: 20px;">
             <h2>"p901: Штрихкоды номенклатуры"</h2>
+
+            // Модальное окно для деталей номенклатуры
+            {move || {
+                if let Some(nomenclature_id) = selected_nomenclature_id.get() {
+                    view! {
+                        <div class="modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding-top: 40px;">
+                            <div class="modal-content" style="background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 800px; width: 90%; max-height: calc(100vh - 80px); overflow-y: auto; margin: 0;">
+                                <NomenclatureDetails
+                                    id=Some(nomenclature_id.clone())
+                                    on_saved=move || {
+                                        set_selected_nomenclature_id.set(None);
+                                        load_barcodes();
+                                    }
+                                    on_cancel=move || {
+                                        set_selected_nomenclature_id.set(None);
+                                    }
+                                />
+                            </div>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <></> }.into_any()
+                }
+            }}
 
             // Фильтры и управление
             <div style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
@@ -419,17 +447,17 @@ pub fn BarcodesList() -> impl IntoView {
                             >
                                 "Штрихкод" {sort_indicator(SortColumn::Barcode)}
                             </th>
-                            <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
-                                on:click=move |_| handle_column_click(SortColumn::NomenclatureRef)
-                            >
-                                "ID Номенклатуры" {sort_indicator(SortColumn::NomenclatureRef)}
-                            </th>
+                            //<th
+                            //    style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                            //    on:click=move |_| handle_column_click(SortColumn::NomenclatureRef)
+                            //>
+                            //    "ID Номенклатуры" {sort_indicator(SortColumn::NomenclatureRef)}
+                            //</th>
                             <th
                                 style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
                                 on:click=move |_| handle_column_click(SortColumn::NomenclatureName)
                             >
-                                "Название" {sort_indicator(SortColumn::NomenclatureName)}
+                                "Наименование" {sort_indicator(SortColumn::NomenclatureName)}
                             </th>
                             <th
                                 style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
@@ -455,34 +483,61 @@ pub fn BarcodesList() -> impl IntoView {
                     <tbody>
                         {move || {
                             sorted_barcodes().into_iter().enumerate().map(|(idx, item)| {
-                                let bg_color = if idx % 2 == 0 { "#fff" } else { "#f9f9f9" };
-                                let nomenclature_ref_for_click = item.nomenclature_ref.clone();
-                                let nomenclature_name_for_click = item.nomenclature_name.clone();
+                                // Базовый цвет фона
+                                let base_bg_color = if idx % 2 == 0 { "#fff" } else { "#f9f9f9" };
+
+                                // Если nomenclature_ref отсутствует - подсвечиваем строку желтым
+                                let bg_color = if item.nomenclature_ref.is_none() {
+                                    "#fff3cd"  // Светло-желтый фон для строк без номенклатуры
+                                } else {
+                                    base_bg_color
+                                };
+
+                                let has_no_nomenclature = item.nomenclature_ref.is_none();
+                                let nomenclature_ref_for_link = item.nomenclature_ref.clone();
 
                                 view! {
                                     <tr style={format!("background: {}; border-bottom: 1px solid #eee;", bg_color)}>
-                                        <td style="padding: 10px; font-family: monospace;">{item.barcode.clone()}</td>
-                                        <td style="padding: 10px; font-family: monospace; font-size: 11px;">{item.nomenclature_ref.clone()}</td>
-                                        <td style="padding: 10px;">
-                                            {if let Some(name) = item.nomenclature_name.clone() {
+                                        <td style="padding: 10px; font-family: monospace;">
+                                            {item.barcode.clone()}
+                                            {if has_no_nomenclature {
                                                 view! {
-                                                    <a
-                                                        href="#"
-                                                        style="color: #007bff; text-decoration: none; cursor: pointer;"
-                                                        on:click=move |ev| {
-                                                            ev.prevent_default();
-                                                            if let Some(ctx) = use_context::<crate::layout::global_context::AppGlobalContext>() {
-                                                                let tab_key = format!("nomenclature_{}", nomenclature_ref_for_click);
-                                                                let tab_title = format!("Номенклатура: {}", nomenclature_name_for_click.clone().unwrap_or_else(|| "".to_string()));
-                                                                ctx.open_tab(&tab_key, &tab_title);
-                                                            }
-                                                        }
+                                                    <span
+                                                        style="margin-left: 6px; padding: 2px 5px; background: #f0ad4e; color: white; font-size: 10px; border-radius: 3px;"
+                                                        title="Не привязан к номенклатуре"
                                                     >
-                                                        {name}
-                                                    </a>
+                                                        "!"
+                                                    </span>
                                                 }.into_any()
                                             } else {
-                                                view! { <span style="color: #999;">"-"</span> }.into_any()
+                                                view! { <span></span> }.into_any()
+                                            }}
+                                        </td>
+                                        //<td style="padding: 10px; font-family: monospace; font-size: 11px;">{item.nomenclature_ref.clone()}</td>
+                                        <td style="padding: 10px;">
+                                            {if let Some(nom_ref) = nomenclature_ref_for_link {
+                                                if let Some(name) = item.nomenclature_name.clone() {
+                                                    view! {
+                                                        <a
+                                                            href="#"
+                                                            style="color: #007bff; text-decoration: none; cursor: pointer;"
+                                                            on:click=move |ev| {
+                                                                ev.prevent_default();
+                                                                set_selected_nomenclature_id.set(Some(nom_ref.clone()));
+                                                            }
+                                                        >
+                                                            {name}
+                                                        </a>
+                                                    }.into_any()
+                                                } else {
+                                                    view! { <span style="color: #999;">"-"</span> }.into_any()
+                                                }
+                                            } else {
+                                                view! {
+                                                    <span style="color: #f0ad4e; font-weight: 500;">
+                                                        "Не привязан"
+                                                    </span>
+                                                }.into_any()
                                             }}
                                         </td>
                                         <td style="padding: 10px;">{item.article.clone().unwrap_or_else(|| "-".to_string())}</td>

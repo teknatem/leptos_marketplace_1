@@ -29,6 +29,8 @@ pub struct Model {
     pub organization_ref: String,
     #[sea_orm(nullable)]
     pub marketplace_product_ref: Option<String>,
+    #[sea_orm(nullable)]
+    pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,
 
     // Timestamps and status
@@ -94,6 +96,7 @@ pub struct SalesRegisterEntry {
     pub connection_mp_ref: String,
     pub organization_ref: String,
     pub marketplace_product_ref: Option<String>,
+    pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,
 
     // Timestamps and status
@@ -149,6 +152,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             connection_mp_ref: Set(entry.connection_mp_ref.clone()),
             organization_ref: Set(entry.organization_ref.clone()),
             marketplace_product_ref: Set(entry.marketplace_product_ref.clone()),
+            nomenclature_ref: Set(entry.nomenclature_ref.clone()),
             registrator_ref: Set(entry.registrator_ref.clone()),
             event_time_source: Set(event_time_str),
             sale_date: Set(sale_date_str),
@@ -182,6 +186,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             connection_mp_ref: Set(entry.connection_mp_ref.clone()),
             organization_ref: Set(entry.organization_ref.clone()),
             marketplace_product_ref: Set(entry.marketplace_product_ref.clone()),
+            nomenclature_ref: Set(entry.nomenclature_ref.clone()),
             registrator_ref: Set(entry.registrator_ref.clone()),
             event_time_source: Set(event_time_str.clone()),
             sale_date: Set(sale_date_str.clone()),
@@ -384,4 +389,32 @@ pub async fn get_stats_by_marketplace(
     result.sort_by(|a, b| a.marketplace.cmp(&b.marketplace));
 
     Ok(result)
+}
+
+/// Получить все записи с NULL marketplace_product_ref (для backfill)
+pub async fn get_records_with_null_product_ref() -> Result<Vec<Model>> {
+    let items = Entity::find()
+        .filter(Column::MarketplaceProductRef.is_null())
+        .order_by_asc(Column::SaleDate)
+        .all(conn())
+        .await?;
+    Ok(items)
+}
+
+/// Получить все записи проекции для документа-регистратора
+pub async fn get_by_registrator(registrator_ref: &str) -> Result<Vec<Model>> {
+    let items = Entity::find()
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .all(conn())
+        .await?;
+    Ok(items)
+}
+
+/// Удалить все записи проекции для документа-регистратора
+pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
+    let result = Entity::delete_many()
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .exec(conn())
+        .await?;
+    Ok(result.rows_affected)
 }

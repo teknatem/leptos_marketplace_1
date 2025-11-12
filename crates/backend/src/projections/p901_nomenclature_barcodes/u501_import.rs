@@ -50,13 +50,15 @@ impl UtNomenclatureBarcodeOData {
             return Err("Barcode cannot be empty".to_string());
         }
 
-        // Парсинг UUID номенклатуры (владельца)
+        // Парсинг UUID номенклатуры (владельца) - теперь может быть None
         let nomenclature_ref = if !self.owner_key.is_empty() {
-            Uuid::parse_str(&self.owner_key)
-                .map_err(|e| format!("Invalid nomenclature UUID: {}", e))?
-                .to_string()
+            Some(
+                Uuid::parse_str(&self.owner_key)
+                    .map_err(|e| format!("Invalid nomenclature UUID: {}", e))?
+                    .to_string()
+            )
         } else {
-            return Err("Owner/Nomenclature key cannot be empty".to_string());
+            None
         };
 
         // Получить артикул: сначала из развернутой номенклатуры, потом из прямого поля
@@ -69,9 +71,9 @@ impl UtNomenclatureBarcodeOData {
 
         Ok(NomenclatureBarcodeEntry {
             barcode: self.barcode.clone(),
+            source: "1C".to_string(),
             nomenclature_ref,
             article,
-            source: "1C".to_string(),
             created_at: now,
             updated_at: now,
             is_active: true,
@@ -80,9 +82,13 @@ impl UtNomenclatureBarcodeOData {
 
     /// Проверка, нужно ли обновлять существующую запись
     pub fn should_update(&self, existing: &crate::projections::p901_nomenclature_barcodes::repository::Model) -> bool {
-        let nomenclature_ref = Uuid::parse_str(&self.owner_key)
-            .ok()
-            .map(|u| u.to_string());
+        let nomenclature_ref = if !self.owner_key.is_empty() {
+            Uuid::parse_str(&self.owner_key)
+                .ok()
+                .map(|u| u.to_string())
+        } else {
+            None
+        };
 
         // Получить артикул: сначала из развернутой номенклатуры, потом из прямого поля
         let article = self.nomenclature
@@ -90,13 +96,10 @@ impl UtNomenclatureBarcodeOData {
             .and_then(|n| n.article.clone())
             .or_else(|| self.article.clone());
 
-        if let Some(ref_str) = nomenclature_ref {
-            existing.nomenclature_ref != ref_str
-                || existing.article != article
-                || !existing.is_active
-        } else {
-            false
-        }
+        // Обновляем если изменилась номенклатура, артикул или запись неактивна
+        existing.nomenclature_ref != nomenclature_ref
+            || existing.article != article
+            || !existing.is_active
     }
 }
 

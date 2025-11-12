@@ -5,7 +5,7 @@ use contracts::projections::p900_mp_sales_register::{
     SalesRegisterStatsByDateResponse, SalesRegisterStatsByMarketplaceResponse,
 };
 
-use crate::projections::p900_mp_sales_register::repository;
+use crate::projections::p900_mp_sales_register::{backfill, repository};
 
 /// Handler для получения списка продаж с фильтрами
 pub async fn list_sales(
@@ -114,6 +114,34 @@ pub async fn get_stats_by_marketplace(
     Ok(Json(SalesRegisterStatsByMarketplaceResponse { data: dtos }))
 }
 
+/// Handler для запуска backfill marketplace_product_ref
+pub async fn backfill_product_refs() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    tracing::info!("Starting backfill of marketplace_product_ref");
+
+    let stats = backfill::backfill_marketplace_product_refs()
+        .await
+        .map_err(|e| {
+            tracing::error!("Backfill failed: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    tracing::info!(
+        "Backfill completed: total={}, updated={}, skipped={}, failed={}",
+        stats.total_records,
+        stats.records_updated,
+        stats.records_skipped,
+        stats.records_failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "total_records": stats.total_records,
+        "records_updated": stats.records_updated,
+        "records_skipped": stats.records_skipped,
+        "records_failed": stats.records_failed,
+    })))
+}
+
 /// Преобразование Model в DTO
 fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
     SalesRegisterDto {
@@ -126,6 +154,7 @@ fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
         connection_mp_ref: model.connection_mp_ref,
         organization_ref: model.organization_ref,
         marketplace_product_ref: model.marketplace_product_ref,
+        nomenclature_ref: model.nomenclature_ref,
         registrator_ref: model.registrator_ref,
         event_time_source: model.event_time_source,
         sale_date: model.sale_date,
@@ -146,5 +175,21 @@ fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
         payload_version: model.payload_version,
         extra: model.extra,
     }
+}
+
+/// Handler для получения проекций по registrator_ref
+pub async fn get_by_registrator(
+    axum::extract::Path(registrator_ref): axum::extract::Path<String>,
+) -> Result<Json<Vec<SalesRegisterDto>>, axum::http::StatusCode> {
+    let items = repository::get_by_registrator(&registrator_ref)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get projections by registrator: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(model_to_dto).collect();
+
+    Ok(Json(dtos))
 }
 

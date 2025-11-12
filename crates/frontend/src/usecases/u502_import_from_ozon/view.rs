@@ -24,6 +24,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a009, set_import_a009) = signal(false);
     let (import_a010, set_import_a010) = signal(false); // OZON FBS Posting
     let (import_a011, set_import_a011) = signal(false); // OZON FBO Posting
+    let (import_p902, set_import_p902) = signal(false); // OZON Finance Realization
                                                         // Даты периода (по умолчанию вчера)
     let now = Utc::now().date_naive();
     let yesterday = now - chrono::Duration::days(1);
@@ -196,6 +197,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a011.get() {
                 targets.push("a011_ozon_fbo_posting".to_string());
             }
+            if import_p902.get() {
+                targets.push("p902_ozon_finance_realization".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -306,12 +310,23 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a011_ozon_fbo_posting - OZON FBO Документы продаж (→ P900)"
                     </label>
+                    <br/>
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_p902.get()
+                            on:change=move |ev| { set_import_p902.set(event_target_checked(&ev)); }
+                        />
+                        " p902_ozon_finance_realization - Финансовые данные реализации OZON (P902)"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list, POST /v3/posting/fbs/list, POST /v3/posting/fbo/list"
+                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list, POST /v3/posting/fbs/list, POST /v3/posting/fbo/list, POST /v1/finance/realization/posting"
                 </div>
                 <div style="margin-top: 5px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 12px;">
                     "💡 a010/a011 автоматически создают записи в P900 Sales Register при импорте"
+                    <br/>
+                    "💡 p902 загружает данные ПО МЕСЯЦАМ (берется месяц из 'С даты', игнорируя 'По дату')"
                 </div>
             </div>
 

@@ -736,16 +736,17 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 marketplace TEXT NOT NULL,
                 document_no TEXT NOT NULL,
                 line_id TEXT NOT NULL,
-                
+
                 -- Metadata
                 scheme TEXT,
                 document_type TEXT NOT NULL,
                 document_version INTEGER NOT NULL DEFAULT 1,
-                
+
                 -- References to aggregates (UUID)
                 connection_mp_ref TEXT NOT NULL,
                 organization_ref TEXT NOT NULL,
                 marketplace_product_ref TEXT,
+                nomenclature_ref TEXT,
                 registrator_ref TEXT NOT NULL,
                 
                 -- Timestamps and status
@@ -863,6 +864,35 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_register_idx8.to_string(),
         ))
         .await?;
+    } else {
+        // Таблица существует, проверяем наличие поля nomenclature_ref
+        let check_nomenclature_ref = r#"
+            PRAGMA table_info(p900_sales_register);
+        "#;
+        let cols = conn
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                check_nomenclature_ref.to_string(),
+            ))
+            .await?;
+
+        let mut has_nomenclature_ref = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "nomenclature_ref" {
+                has_nomenclature_ref = true;
+                break;
+            }
+        }
+
+        if !has_nomenclature_ref {
+            tracing::info!("Adding nomenclature_ref column to p900_sales_register");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE p900_sales_register ADD COLUMN nomenclature_ref TEXT;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // p901_nomenclature_barcodes table - штрихкоды номенклатуры
@@ -878,16 +908,17 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
 
     if barcodes_table_exists.is_empty() {
-        tracing::info!("Creating p901_nomenclature_barcodes table");
+        tracing::info!("Creating p901_nomenclature_barcodes table with composite key");
         let create_barcodes_table_sql = r#"
             CREATE TABLE p901_nomenclature_barcodes (
-                barcode TEXT PRIMARY KEY NOT NULL,
-                nomenclature_ref TEXT NOT NULL,
+                barcode TEXT NOT NULL,
+                source TEXT NOT NULL,
+                nomenclature_ref TEXT,
                 article TEXT,
-                source TEXT NOT NULL DEFAULT '1C',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1
+                is_active INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (barcode, source)
             );
         "#;
         conn.execute(Statement::from_string(
@@ -928,6 +959,112 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_barcodes_idx3.to_string(),
         ))
         .await?;
+
+        // Создать индекс по source для быстрой фильтрации
+        let create_barcodes_idx4 = r#"
+            CREATE INDEX IF NOT EXISTS idx_barcodes_source
+            ON p901_nomenclature_barcodes (source);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_barcodes_idx4.to_string(),
+        ))
+        .await?;
+    } else {
+        // Миграция: проверить, использует ли таблица старую схему (single primary key)
+        tracing::info!("Checking p901_nomenclature_barcodes schema for migration");
+
+        let check_old_schema = r#"
+            SELECT sql FROM sqlite_master
+            WHERE type='table' AND name='p901_nomenclature_barcodes'
+            AND sql LIKE '%barcode TEXT PRIMARY KEY%';
+        "#;
+        let old_schema_exists = conn
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                check_old_schema.to_string(),
+            ))
+            .await?;
+
+        if !old_schema_exists.is_empty() {
+            tracing::warn!("Old p901_nomenclature_barcodes schema detected. Performing migration...");
+
+            // 1. Переименовать старую таблицу
+            let rename_old_table = r#"
+                ALTER TABLE p901_nomenclature_barcodes
+                RENAME TO p901_nomenclature_barcodes_backup;
+            "#;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                rename_old_table.to_string(),
+            ))
+            .await?;
+
+            // 2. Создать новую таблицу с composite key
+            let create_new_table = r#"
+                CREATE TABLE p901_nomenclature_barcodes (
+                    barcode TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    nomenclature_ref TEXT,
+                    article TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (barcode, source)
+                );
+            "#;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                create_new_table.to_string(),
+            ))
+            .await?;
+
+            // 3. Скопировать данные из backup (все старые записи считаются source='1C')
+            let migrate_data = r#"
+                INSERT INTO p901_nomenclature_barcodes
+                    (barcode, source, nomenclature_ref, article, created_at, updated_at, is_active)
+                SELECT
+                    barcode,
+                    COALESCE(source, '1C') as source,
+                    nomenclature_ref,
+                    article,
+                    created_at,
+                    updated_at,
+                    is_active
+                FROM p901_nomenclature_barcodes_backup;
+            "#;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                migrate_data.to_string(),
+            ))
+            .await?;
+
+            // 4. Создать индексы для новой таблицы
+            let create_indexes = vec![
+                r#"CREATE INDEX IF NOT EXISTS idx_barcodes_nomenclature_ref ON p901_nomenclature_barcodes (nomenclature_ref);"#,
+                r#"CREATE INDEX IF NOT EXISTS idx_barcodes_article ON p901_nomenclature_barcodes (article);"#,
+                r#"CREATE INDEX IF NOT EXISTS idx_barcodes_is_active ON p901_nomenclature_barcodes (is_active);"#,
+                r#"CREATE INDEX IF NOT EXISTS idx_barcodes_source ON p901_nomenclature_barcodes (source);"#,
+            ];
+
+            for idx_sql in create_indexes {
+                conn.execute(Statement::from_string(
+                    DatabaseBackend::Sqlite,
+                    idx_sql.to_string(),
+                ))
+                .await?;
+            }
+
+            // 5. Удалить backup таблицу
+            let drop_backup = r#"DROP TABLE p901_nomenclature_barcodes_backup;"#;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                drop_backup.to_string(),
+            ))
+            .await?;
+
+            tracing::info!("Migration of p901_nomenclature_barcodes completed successfully");
+        }
     }
 
     // a010_ozon_fbs_posting table - документы OZON FBS
@@ -1084,6 +1221,234 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_table_sql.to_string(),
         ))
         .await?;
+    }
+
+    // p902_ozon_finance_realization table - финансовые данные реализации OZON
+    let check_p902 = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p902_ozon_finance_realization';
+    "#;
+    let p902_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_p902.to_string(),
+        ))
+        .await?;
+
+    if p902_exists.is_empty() {
+        tracing::info!("Creating p902_ozon_finance_realization table");
+    } else {
+        // Проверяем, нужна ли миграция (есть ли колонка is_return)
+        let check_is_return_column = Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "PRAGMA table_info(p902_ozon_finance_realization);".to_string(),
+        );
+
+        let columns = conn.query_all(check_is_return_column).await?;
+        let has_is_return = columns.iter().any(|row| {
+            row.try_get::<String>("", "name")
+                .map(|name| name == "is_return")
+                .unwrap_or(false)
+        });
+
+        if !has_is_return {
+            tracing::warn!("Migrating p902_ozon_finance_realization table - adding is_return column and updating PRIMARY KEY");
+
+            // Выполняем миграцию
+            let migration_sql = r#"
+                -- Создаем временную таблицу с новой структурой
+                CREATE TABLE p902_ozon_finance_realization_new (
+                    posting_number TEXT NOT NULL,
+                    sku TEXT NOT NULL,
+                    document_type TEXT NOT NULL,
+                    registrator_ref TEXT NOT NULL,
+                    connection_mp_ref TEXT NOT NULL,
+                    organization_ref TEXT NOT NULL,
+                    posting_ref TEXT,
+                    accrual_date TEXT NOT NULL,
+                    operation_date TEXT,
+                    delivery_date TEXT,
+                    delivery_schema TEXT,
+                    delivery_region TEXT,
+                    delivery_city TEXT,
+                    quantity REAL NOT NULL,
+                    price REAL,
+                    amount REAL NOT NULL,
+                    commission_amount REAL,
+                    commission_percent REAL,
+                    services_amount REAL,
+                    payout_amount REAL,
+                    operation_type TEXT NOT NULL,
+                    operation_type_name TEXT,
+                    is_return INTEGER NOT NULL DEFAULT 0,
+                    currency_code TEXT,
+                    loaded_at_utc TEXT NOT NULL,
+                    payload_version INTEGER NOT NULL DEFAULT 1,
+                    extra TEXT,
+                    PRIMARY KEY (posting_number, sku, operation_type)
+                );
+            "#;
+
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                migration_sql.to_string(),
+            )).await?;
+
+            // Копируем данные из старой таблицы
+            let copy_data_sql = r#"
+                INSERT INTO p902_ozon_finance_realization_new (
+                    posting_number, sku, document_type, registrator_ref,
+                    connection_mp_ref, organization_ref, posting_ref,
+                    accrual_date, operation_date, delivery_date,
+                    delivery_schema, delivery_region, delivery_city,
+                    quantity, price, amount, commission_amount, commission_percent,
+                    services_amount, payout_amount,
+                    operation_type, operation_type_name, is_return,
+                    currency_code, loaded_at_utc, payload_version, extra
+                )
+                SELECT
+                    posting_number, sku, document_type, registrator_ref,
+                    connection_mp_ref, organization_ref, posting_ref,
+                    accrual_date, operation_date, delivery_date,
+                    delivery_schema, delivery_region, delivery_city,
+                    quantity, price, amount, commission_amount, commission_percent,
+                    services_amount, payout_amount,
+                    operation_type, operation_type_name, 0 as is_return,
+                    currency_code, loaded_at_utc, payload_version, extra
+                FROM p902_ozon_finance_realization;
+            "#;
+
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                copy_data_sql.to_string(),
+            )).await?;
+
+            // Удаляем старую таблицу
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "DROP TABLE p902_ozon_finance_realization;".to_string(),
+            )).await?;
+
+            // Переименовываем новую таблицу
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE p902_ozon_finance_realization_new RENAME TO p902_ozon_finance_realization;".to_string(),
+            )).await?;
+
+            // Создаем индексы заново
+            let create_idx1 = "CREATE INDEX IF NOT EXISTS idx_p902_accrual_date ON p902_ozon_finance_realization (accrual_date);";
+            let create_idx2 = "CREATE INDEX IF NOT EXISTS idx_p902_posting_number ON p902_ozon_finance_realization (posting_number);";
+            let create_idx3 = "CREATE INDEX IF NOT EXISTS idx_p902_connection_mp_ref ON p902_ozon_finance_realization (connection_mp_ref);";
+            let create_idx4 = "CREATE INDEX IF NOT EXISTS idx_p902_posting_ref ON p902_ozon_finance_realization (posting_ref);";
+
+            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx1.to_string())).await?;
+            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx2.to_string())).await?;
+            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx3.to_string())).await?;
+            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx4.to_string())).await?;
+
+            tracing::info!("Migration of p902_ozon_finance_realization completed successfully");
+        }
+    }
+
+    if p902_exists.is_empty() {
+        let create_p902_table_sql = r#"
+            CREATE TABLE p902_ozon_finance_realization (
+                -- Composite Key (posting_number + sku + operation_type)
+                posting_number TEXT NOT NULL,
+                sku TEXT NOT NULL,
+
+                -- Metadata
+                document_type TEXT NOT NULL,
+                registrator_ref TEXT NOT NULL,
+
+                -- References
+                connection_mp_ref TEXT NOT NULL,
+                organization_ref TEXT NOT NULL,
+                posting_ref TEXT,
+
+                -- Даты
+                accrual_date TEXT NOT NULL,
+                operation_date TEXT,
+                delivery_date TEXT,
+
+                -- Информация о доставке
+                delivery_schema TEXT,
+                delivery_region TEXT,
+                delivery_city TEXT,
+
+                -- Количество и суммы
+                quantity REAL NOT NULL,
+                price REAL,
+                amount REAL NOT NULL,
+                commission_amount REAL,
+                commission_percent REAL,
+                services_amount REAL,
+                payout_amount REAL,
+
+                -- Тип операции
+                operation_type TEXT NOT NULL,
+                operation_type_name TEXT,
+                is_return INTEGER NOT NULL DEFAULT 0,
+
+                -- Валюта
+                currency_code TEXT,
+
+                -- Технические поля
+                loaded_at_utc TEXT NOT NULL,
+                payload_version INTEGER NOT NULL DEFAULT 1,
+                extra TEXT,
+
+                PRIMARY KEY (posting_number, sku, operation_type)
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p902_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Создать индексы для быстрого поиска
+        let create_p902_idx1 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p902_accrual_date
+            ON p902_ozon_finance_realization (accrual_date);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p902_idx1.to_string(),
+        ))
+        .await?;
+
+        let create_p902_idx2 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p902_posting_number
+            ON p902_ozon_finance_realization (posting_number);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p902_idx2.to_string(),
+        ))
+        .await?;
+
+        let create_p902_idx3 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p902_connection_mp_ref
+            ON p902_ozon_finance_realization (connection_mp_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p902_idx3.to_string(),
+        ))
+        .await?;
+
+        let create_p902_idx4 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p902_posting_ref
+            ON p902_ozon_finance_realization (posting_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p902_idx4.to_string(),
+        ))
+        .await?;
+
+        tracing::info!("Created p902_ozon_finance_realization table with indexes");
     }
 
     DB_CONN

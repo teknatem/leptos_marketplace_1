@@ -43,6 +43,7 @@ impl ProgressTracker {
                 updated: 0,
                 errors: 0,
                 current_item: None,
+                barcodes_imported: 0,
             });
             progress.updated_at = chrono::Utc::now();
         }
@@ -75,6 +76,26 @@ impl ProgressTracker {
                 progress.total_processed = progress.aggregates.iter().map(|a| a.processed).sum();
                 progress.total_inserted = progress.aggregates.iter().map(|a| a.inserted).sum();
                 progress.total_updated = progress.aggregates.iter().map(|a| a.updated).sum();
+                progress.updated_at = chrono::Utc::now();
+            }
+        }
+    }
+
+    /// Обновить количество импортированных штрихкодов для агрегата
+    pub fn update_barcodes_count(
+        &self,
+        session_id: &str,
+        aggregate_index: &str,
+        barcodes_imported: i32,
+    ) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            if let Some(agg) = progress
+                .aggregates
+                .iter_mut()
+                .find(|a| a.aggregate_index == aggregate_index)
+            {
+                agg.barcodes_imported = barcodes_imported;
                 progress.updated_at = chrono::Utc::now();
             }
         }

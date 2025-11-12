@@ -338,6 +338,96 @@ pub struct OzonReturnsDto {
     pub comment: Option<String>,
 }
 
+// =============================================================================
+// Detail DTO for frontend
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonReturnsDetailDto {
+    pub id: String,
+    pub code: String,
+    pub description: String,
+    #[serde(rename = "connectionId")]
+    pub connection_id: String,
+    #[serde(rename = "organizationId")]
+    pub organization_id: String,
+    #[serde(rename = "marketplaceId")]
+    pub marketplace_id: String,
+    #[serde(rename = "returnId")]
+    pub return_id: String,
+    #[serde(rename = "returnDate")]
+    pub return_date: String, // Formatted as YYYY-MM-DD
+    #[serde(rename = "returnReasonName")]
+    pub return_reason_name: String,
+    #[serde(rename = "returnType")]
+    pub return_type: String,
+    #[serde(rename = "orderId")]
+    pub order_id: String,
+    #[serde(rename = "orderNumber")]
+    pub order_number: String,
+    pub sku: String,
+    #[serde(rename = "productName")]
+    pub product_name: String,
+    pub price: f64,
+    pub quantity: i32,
+    #[serde(rename = "postingNumber")]
+    pub posting_number: String,
+    #[serde(rename = "clearingId")]
+    pub clearing_id: Option<String>,
+    #[serde(rename = "returnClearingId")]
+    pub return_clearing_id: Option<String>,
+    pub comment: Option<String>,
+    pub metadata: OzonReturnsMetadataDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonReturnsMetadataDto {
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "isDeleted")]
+    pub is_deleted: bool,
+    #[serde(rename = "isPosted")]
+    pub is_posted: bool,
+    pub version: i32,
+}
+
+impl OzonReturns {
+    /// Преобразовать агрегат в DetailDTO для frontend
+    pub fn to_detail_dto(&self) -> OzonReturnsDetailDto {
+        OzonReturnsDetailDto {
+            id: self.base.id.as_string(),
+            code: self.base.code.clone(),
+            description: self.base.description.clone(),
+            connection_id: self.connection_id.clone(),
+            organization_id: self.organization_id.clone(),
+            marketplace_id: self.marketplace_id.clone(),
+            return_id: self.return_id.clone(),
+            return_date: self.return_date.format("%Y-%m-%d").to_string(),
+            return_reason_name: self.return_reason_name.clone(),
+            return_type: self.return_type.clone(),
+            order_id: self.order_id.clone(),
+            order_number: self.order_number.clone(),
+            sku: self.sku.clone(),
+            product_name: self.product_name.clone(),
+            price: self.price,
+            quantity: self.quantity,
+            posting_number: self.posting_number.clone(),
+            clearing_id: self.clearing_id.clone(),
+            return_clearing_id: self.return_clearing_id.clone(),
+            comment: self.base.comment.clone(),
+            metadata: OzonReturnsMetadataDto {
+                created_at: self.base.metadata.created_at.to_rfc3339(),
+                updated_at: self.base.metadata.updated_at.to_rfc3339(),
+                is_deleted: self.base.metadata.is_deleted,
+                is_posted: self.base.metadata.is_posted,
+                version: self.base.metadata.version,
+            },
+        }
+    }
+}
+
 // Local serde helper for NaiveDate as YYYY-MM-DD
 mod serde_date {
     use chrono::NaiveDate;

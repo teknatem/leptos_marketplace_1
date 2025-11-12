@@ -5,19 +5,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NomenclatureBarcodeDto {
     pub barcode: String,
-    pub nomenclature_ref: String,  // UUID на a004_nomenclature
+    pub source: String,  // "1C" | "OZON" | "WB" | "YM"
+    pub nomenclature_ref: Option<String>,  // UUID на a004_nomenclature (nullable)
     pub nomenclature_name: Option<String>,  // Название номенклатуры
     pub article: Option<String>,
-    pub source: String,  // "1C" | "OZON" | "WB" | "YM"
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_active: bool,
 }
 
-/// Запрос на получение штрихкода по ID
+/// Запрос на получение штрихкода по композитному ключу (barcode + source)
 #[derive(Debug, Deserialize)]
 pub struct BarcodeByIdRequest {
-    pub barcode: String,
+    #[serde(default)]
+    pub source: String,  // Обязательный параметр: "1C" | "OZON" | "WB" | "YM"
 }
 
 /// Ответ на получение штрихкода по ID

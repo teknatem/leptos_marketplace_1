@@ -908,15 +908,15 @@ impl ImportExecutor {
     ) -> Result<bool> {
         use crate::projections::p901_nomenclature_barcodes::repository;
 
-        // Проверяем существование записи
-        let existing = repository::get_by_barcode(&odata.barcode).await?;
+        // Проверяем существование записи по композитному ключу (barcode + source='1C')
+        let existing = repository::get_by_barcode_and_source(&odata.barcode, "1C").await?;
 
         if let Some(existing_model) = existing {
             // Проверяем, нужно ли обновление
             if odata.should_update(&existing_model) {
                 let entry = odata.to_entry().map_err(|e| anyhow::anyhow!(e))?;
                 repository::upsert_entry(&entry).await?;
-                tracing::debug!("Updated barcode: {}", odata.barcode);
+                tracing::debug!("Updated barcode: {} (source: 1C)", odata.barcode);
                 Ok(false) // Обновление
             } else {
                 // Данные не изменились, пропускаем
@@ -926,7 +926,7 @@ impl ImportExecutor {
             // Новая запись
             let entry = odata.to_entry().map_err(|e| anyhow::anyhow!(e))?;
             repository::upsert_entry(&entry).await?;
-            tracing::debug!("Inserted new barcode: {}", odata.barcode);
+            tracing::debug!("Inserted new barcode: {} (source: 1C)", odata.barcode);
             Ok(true) // Вставка
         }
     }
