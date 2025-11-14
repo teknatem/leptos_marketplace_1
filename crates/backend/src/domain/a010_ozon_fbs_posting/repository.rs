@@ -125,6 +125,24 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<OzonFbsPosti
     Ok(result.map(Into::into))
 }
 
+/// Получить несколько постингов по списку document_no (batch lookup)
+pub async fn get_by_document_nos(document_nos: &[String]) -> Result<Vec<OzonFbsPosting>> {
+    if document_nos.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let items: Vec<OzonFbsPosting> = Entity::find()
+        .filter(Column::DocumentNo.is_in(document_nos.iter().map(|s| s.as_str())))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    
+    Ok(items)
+}
+
 /// Идемпотентная вставка/обновление по document_no
 pub async fn upsert_document(aggregate: &OzonFbsPosting) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();

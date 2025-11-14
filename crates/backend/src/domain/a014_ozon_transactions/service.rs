@@ -62,7 +62,7 @@ pub async fn list_all() -> anyhow::Result<Vec<OzonTransactions>> {
 }
 
 /// Конвертация агрегата в DTO для списка
-pub fn to_list_dto(aggregate: &OzonTransactions) -> OzonTransactionsListDto {
+pub fn to_list_dto(aggregate: &OzonTransactions, delivering_date: Option<String>) -> OzonTransactionsListDto {
     OzonTransactionsListDto {
         id: aggregate.to_string_id(),
         operation_id: aggregate.header.operation_id,
@@ -71,7 +71,12 @@ pub fn to_list_dto(aggregate: &OzonTransactions) -> OzonTransactionsListDto {
         operation_date: aggregate.header.operation_date.clone(),
         posting_number: aggregate.posting.posting_number.clone(),
         transaction_type: aggregate.header.transaction_type.clone(),
+        delivery_schema: aggregate.posting.delivery_schema.clone(),
         amount: aggregate.header.amount,
+        accruals_for_sale: aggregate.header.accruals_for_sale,
+        sale_commission: aggregate.header.sale_commission,
+        delivery_charge: aggregate.header.delivery_charge,
+        delivering_date,
         is_posted: aggregate.is_posted,
         created_at: aggregate.base.metadata.created_at,
         updated_at: aggregate.base.metadata.updated_at,
@@ -100,11 +105,107 @@ pub fn to_detail_dto(aggregate: &OzonTransactions) -> OzonTransactionsDetailDto 
 /// Получить все транзакции в виде списка DTO
 pub async fn list_all_as_dto() -> anyhow::Result<Vec<OzonTransactionsListDto>> {
     let aggregates = list_all().await?;
-    Ok(aggregates.iter().map(to_list_dto).collect())
+    
+    // Собираем уникальные posting_numbers
+    let posting_numbers: Vec<String> = aggregates
+        .iter()
+        .map(|a| a.posting.posting_number.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    
+    // Получаем все соответствующие постинги
+    let postings = crate::domain::a010_ozon_fbs_posting::repository::get_by_document_nos(&posting_numbers).await?;
+    
+    // Создаем lookup map: posting_number -> delivering_date
+    let delivery_dates: std::collections::HashMap<String, Option<String>> = postings
+        .into_iter()
+        .map(|p| {
+            let date_str = p.state.delivered_at.map(|dt| {
+                dt.format("%Y-%m-%d").to_string()
+            });
+            (p.header.document_no.clone(), date_str)
+        })
+        .collect();
+    
+    Ok(aggregates
+        .iter()
+        .map(|a| {
+            let delivering_date = delivery_dates
+                .get(&a.posting.posting_number)
+                .and_then(|opt| opt.clone());
+            to_list_dto(a, delivering_date)
+        })
+        .collect())
 }
 
 /// Получить транзакцию по ID в виде детального DTO
 pub async fn get_by_id_as_dto(id: Uuid) -> anyhow::Result<Option<OzonTransactionsDetailDto>> {
     let aggregate = get_by_id(id).await?;
     Ok(aggregate.map(|a| to_detail_dto(&a)))
+}
+
+/// Получить транзакции по posting_number в виде списка DTO
+pub async fn get_by_posting_number_as_dto(posting_number: &str) -> anyhow::Result<Vec<OzonTransactionsListDto>> {
+    let aggregates = repository::get_by_posting_number(posting_number).await?;
+    
+    // Получаем posting для этого posting_number
+    let posting = crate::domain::a010_ozon_fbs_posting::repository::get_by_document_no(posting_number).await?;
+    let delivering_date = posting.and_then(|p| {
+        p.state.delivered_at.map(|dt| dt.format("%Y-%m-%d").to_string())
+    });
+    
+    Ok(aggregates
+        .iter()
+        .map(|a| to_list_dto(a, delivering_date.clone()))
+        .collect())
+}
+
+/// Получить все транзакции с фильтрами в виде списка DTO
+pub async fn list_with_filters_as_dto(
+    date_from: Option<String>,
+    date_to: Option<String>,
+    transaction_type: Option<String>,
+    operation_type_name: Option<String>,
+    posting_number: Option<String>,
+) -> anyhow::Result<Vec<OzonTransactionsListDto>> {
+    let aggregates = repository::list_with_filters(
+        date_from,
+        date_to,
+        transaction_type,
+        operation_type_name,
+        posting_number,
+    ).await?;
+    
+    // Собираем уникальные posting_numbers
+    let posting_numbers: Vec<String> = aggregates
+        .iter()
+        .map(|a| a.posting.posting_number.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    
+    // Получаем все соответствующие постинги
+    let postings = crate::domain::a010_ozon_fbs_posting::repository::get_by_document_nos(&posting_numbers).await?;
+    
+    // Создаем lookup map: posting_number -> delivering_date
+    let delivery_dates: std::collections::HashMap<String, Option<String>> = postings
+        .into_iter()
+        .map(|p| {
+            let date_str = p.state.delivered_at.map(|dt| {
+                dt.format("%Y-%m-%d").to_string()
+            });
+            (p.header.document_no.clone(), date_str)
+        })
+        .collect();
+    
+    Ok(aggregates
+        .iter()
+        .map(|a| {
+            let delivering_date = delivery_dates
+                .get(&a.posting.posting_number)
+                .and_then(|opt| opt.clone());
+            to_list_dto(a, delivering_date)
+        })
+        .collect())
 }

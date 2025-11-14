@@ -391,6 +391,7 @@ impl OzonApiClient {
     }
 
     /// Получить список FBO отправлений (продаж) через POST /v2/posting/fbo/list
+    /// FBO API возвращает массив напрямую в result (без has_next и postings)
     pub async fn fetch_fbo_postings(
         &self,
         connection: &ConnectionMP,
@@ -398,7 +399,7 @@ impl OzonApiClient {
         date_to: chrono::NaiveDate,
         limit: i32,
         offset: i32,
-    ) -> Result<OzonPostingListResponse> {
+    ) -> Result<OzonFboPostingListResponse> {
         let url = "https://api-seller.ozon.ru/v2/posting/fbo/list";
 
         let client_id = connection
@@ -449,7 +450,7 @@ impl OzonApiClient {
         let body = response.text().await?;
         self.log_to_file(&format!("=== FBO POSTINGS RESPONSE ===\n{}\n", body));
 
-        match serde_json::from_str::<OzonPostingListResponse>(&body) {
+        match serde_json::from_str::<OzonFboPostingListResponse>(&body) {
             Ok(data) => Ok(data),
             Err(e) => anyhow::bail!("Failed to parse FBO postings JSON: {}", e),
         }
@@ -740,6 +741,7 @@ pub struct OzonPostingFilter {
     pub status: Option<String>,
 }
 
+// FBS Postings (v3/posting/fbs/list) - returns array
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonPostingListResponse {
     pub result: OzonPostingListResult,
@@ -784,6 +786,12 @@ pub struct OzonPostingProduct {
     pub currency_code: Option<String>,
 }
 
+// FBO Postings (v2/posting/fbo/list) - result is array directly
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OzonFboPostingListResponse {
+    pub result: Vec<OzonPosting>,
+}
+
 /// Десериализует цену из строки или числа в Option<f64>
 fn deserialize_price_option<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
@@ -799,11 +807,7 @@ where
     }
 
     match Option::<StringOrFloat>::deserialize(deserializer)? {
-        Some(StringOrFloat::String(s)) => {
-            s.parse::<f64>()
-                .map(Some)
-                .map_err(de::Error::custom)
-        }
+        Some(StringOrFloat::String(s)) => s.parse::<f64>().map(Some).map_err(de::Error::custom),
         Some(StringOrFloat::Float(f)) => Ok(Some(f)),
         None => Ok(None),
     }
@@ -846,7 +850,7 @@ impl OzonApiClient {
         let request_body = OzonFinanceRealizationRequest {
             year,
             month,
-            page: offset / limit + 1,  // Convert offset to page number
+            page: offset / limit + 1, // Convert offset to page number
             page_size: limit,
         };
 
@@ -919,21 +923,21 @@ pub struct OzonFinanceRealizationResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFinanceRealizationHeader {
-    pub number: String,           // Номер отчета
-    pub doc_date: String,         // Дата документа
-    pub start_date: String,       // Начало периода
-    pub stop_date: String,        // Конец периода
-    pub contract_date: String,    // Дата договора
-    pub contract_number: String,  // Номер договора
-    pub payer_name: String,       // Плательщик
+    pub number: String,          // Номер отчета
+    pub doc_date: String,        // Дата документа
+    pub start_date: String,      // Начало периода
+    pub stop_date: String,       // Конец периода
+    pub contract_date: String,   // Дата договора
+    pub contract_number: String, // Номер договора
+    pub payer_name: String,      // Плательщик
     pub payer_inn: String,
     pub payer_kpp: String,
-    pub receiver_name: String,    // Получатель
+    pub receiver_name: String, // Получатель
     pub receiver_inn: String,
     pub receiver_kpp: String,
-    pub doc_amount: f64,          // Сумма документа
-    pub vat_amount: f64,          // Сумма НДС
-    pub currency_sys_name: String,// Валюта
+    pub doc_amount: f64,           // Сумма документа
+    pub vat_amount: f64,           // Сумма НДС
+    pub currency_sys_name: String, // Валюта
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1032,13 +1036,13 @@ where
 /// Данные товара в строке финансового отчета
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFinanceRealizationItem {
-    pub name: String,             // Название товара
+    pub name: String, // Название товара
     #[serde(deserialize_with = "deserialize_sku")]
-    pub sku: String,              // SKU товара (может быть строкой или числом)
+    pub sku: String, // SKU товара (может быть строкой или числом)
     #[serde(default)]
-    pub offer_id: String,         // Артикул продавца
+    pub offer_id: String, // Артикул продавца
     #[serde(default)]
-    pub barcode: String,          // Штрихкод
+    pub barcode: String, // Штрихкод
 }
 
 // ============================================================================

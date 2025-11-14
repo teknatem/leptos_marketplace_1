@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OzonFbsPostingDetailDto {
+pub struct OzonFboPostingDetailDto {
     pub id: String,
     pub code: String,
     pub description: String,
@@ -46,7 +46,7 @@ pub struct StateDto {
     pub status_raw: String,
     pub status_norm: String,
     pub substatus_raw: Option<String>,
-    pub delivered_at: Option<String>,
+    pub created_at: Option<String>,
     pub updated_at_source: Option<String>,
 }
 
@@ -124,12 +124,12 @@ fn format_transaction_date(date_str: &str) -> String {
 }
 
 #[component]
-pub fn OzonFbsPostingDetail(
+pub fn OzonFboPostingDetail(
     id: String,
     #[prop(into)] on_close: Callback<()>,
     #[prop(optional)] reload_trigger: Option<ReadSignal<u32>>,
 ) -> impl IntoView {
-    let (posting, set_posting) = signal::<Option<OzonFbsPostingDetailDto>>(None);
+    let (posting, set_posting) = signal::<Option<OzonFboPostingDetailDto>>(None);
     let (raw_json_from_ozon, set_raw_json_from_ozon) = signal::<Option<String>>(None);
     let (projections, set_projections) = signal::<Vec<SalesRegisterDto>>(Vec::new());
     let (projections_loading, set_projections_loading) = signal(false);
@@ -152,7 +152,7 @@ pub fn OzonFbsPostingDetail(
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a010/ozon-fbs-posting/{}", id);
+            let url = format!("http://localhost:3000/api/a011/ozon-fbo-posting/{}", id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -161,7 +161,7 @@ pub fn OzonFbsPostingDetail(
                         match response.text().await {
                             Ok(text) => {
                                 // Парсим структуру
-                                match serde_json::from_str::<OzonFbsPostingDetailDto>(&text) {
+                                match serde_json::from_str::<OzonFboPostingDetailDto>(&text) {
                                     Ok(data) => {
                                         // Загружаем raw JSON от OZON
                                         let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
@@ -172,7 +172,7 @@ pub fn OzonFbsPostingDetail(
 
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
-                                            let raw_url = format!("http://localhost:3000/api/a010/raw/{}", raw_payload_ref);
+                                            let raw_url = format!("http://localhost:3000/api/a011/raw/{}", raw_payload_ref);
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
@@ -281,7 +281,7 @@ pub fn OzonFbsPostingDetail(
     view! {
         <div class="posting-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                <h2 style="margin: 0;">"OZON FBS Posting Details"</h2>
+                <h2 style="margin: 0;">"OZON FBO Posting Details"</h2>
                 <button
                     on:click=move |_| on_close.run(())
                     style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
@@ -420,6 +420,11 @@ pub fn OzonFbsPostingDetail(
                                                         </span>
                                                     </div>
 
+                                                    <div style="font-weight: 600; color: #555;">"Дата создания заказа:"</div>
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                        {post.state.created_at.clone().unwrap_or("—".to_string())}
+                                                    </div>
+
                                                     <div style="font-weight: 600; color: #555;">"Проведен:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
                                                         {if post.metadata.is_posted {
@@ -436,9 +441,6 @@ pub fn OzonFbsPostingDetail(
                                                             }
                                                         }}
                                                     </div>
-                                                    
-                                                    <div style="font-weight: 600; color: #555;">"Дата доставки:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.state.delivered_at.clone().unwrap_or("—".to_string())}</div>
                                                     
                                                     <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
                                                     <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
@@ -795,3 +797,4 @@ pub fn OzonFbsPostingDetail(
         </div>
     }
 }
+

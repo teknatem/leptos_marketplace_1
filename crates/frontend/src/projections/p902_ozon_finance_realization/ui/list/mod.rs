@@ -72,6 +72,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
     let (date_to, set_date_to) = signal(default_end.format("%Y-%m-%d").to_string());
     let (posting_number_filter, set_posting_number_filter) = signal("".to_string());
     let (sku_filter, set_sku_filter) = signal("".to_string());
+    let (operation_type_filter, set_operation_type_filter) = signal("".to_string());
     let (sort_by, set_sort_by) = signal("accrual_date".to_string());
     let (sort_desc, set_sort_desc) = signal(true);
 
@@ -83,6 +84,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
         let date_to_val = date_to.get();
         let posting_number_val = posting_number_filter.get();
         let sku_val = sku_filter.get();
+        let operation_type_val = operation_type_filter.get();
         let sort_by_val = sort_by.get();
         let sort_desc_val = sort_desc.get();
 
@@ -96,6 +98,9 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
         }
         if !sku_val.is_empty() {
             query_params.push_str(&format!("&sku={}", sku_val));
+        }
+        if !operation_type_val.is_empty() {
+            query_params.push_str(&format!("&operation_type={}", operation_type_val));
         }
 
         spawn_local(async move {
@@ -136,7 +141,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
         load_data();
     };
 
-    // Экспорт в Excel
+    // Экспорт в Excel (по аналогии с a014)
     let export_to_excel = move || {
         let items = data.get();
         if items.is_empty() {
@@ -144,50 +149,63 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
             return;
         }
 
-        // Создаем CSV содержимое
-        let mut csv = String::from("Date,Sale Date,Posting,SKU,Qty,Amount,Commission,Payout,Price,Type,Loaded At\n");
+        // UTF-8 BOM для правильного отображения кириллицы в Excel
+        let mut csv = String::from("\u{FEFF}");
+
+        // Заголовок с точкой с запятой как разделитель
+        csv.push_str("Date;Sale Date;Posting;SKU;Qty;Amount;Commission;Payout;Price;Type;Loaded At\n");
 
         for item in items {
-            let commission = item.commission_amount.map(|c| format!("{:.2}", c)).unwrap_or_else(|| "".to_string());
-            let payout = item.payout_amount.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "".to_string());
-            let price = item.price.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "".to_string());
-            let sale_date = item.sale_date.as_ref().map(|s| s.as_str()).unwrap_or("");
+            let sale_date = item.sale_date.as_ref().map(|s| s.as_str()).unwrap_or("-");
+            
+            // Форматируем числа с запятой как десятичный разделитель
+            let qty_str = format!("{:.2}", item.quantity).replace(".", ",");
+            let amount_str = format!("{:.2}", item.amount).replace(".", ",");
+            let commission_str = item.commission_amount
+                .map(|c| format!("{:.2}", c).replace(".", ","))
+                .unwrap_or_else(|| "-".to_string());
+            let payout_str = item.payout_amount
+                .map(|p| format!("{:.2}", p).replace(".", ","))
+                .unwrap_or_else(|| "-".to_string());
+            let price_str = item.price
+                .map(|p| format!("{:.2}", p).replace(".", ","))
+                .unwrap_or_else(|| "-".to_string());
 
             csv.push_str(&format!(
-                "{},{},{},{},{:.2},{:.2},{},{},{},{},{}\n",
+                "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\";\"{}\"\n",
                 item.accrual_date,
                 sale_date,
-                item.posting_number,
-                item.sku,
-                item.quantity,
-                item.amount,
-                commission,
-                payout,
-                price,
-                item.operation_type,
-                item.loaded_at_utc
+                item.posting_number.replace('\"', "\"\""),
+                item.sku.replace('\"', "\"\""),
+                qty_str,
+                amount_str,
+                commission_str,
+                payout_str,
+                price_str,
+                item.operation_type.replace('\"', "\"\""),
+                item.loaded_at_utc.replace('\"', "\"\"")
             ));
         }
 
-        // Создаем Blob и скачиваем файл
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                use wasm_bindgen::JsValue;
-                use js_sys::Array;
+        // Создаем Blob с CSV данными
+        use wasm_bindgen::JsValue;
+        use js_sys::Array;
+        
+        let array = Array::new();
+        array.push(&JsValue::from_str(&csv));
 
-                let array = Array::new();
-                array.push(&JsValue::from_str(&csv));
+        let blob_props = web_sys::BlobPropertyBag::new();
+        blob_props.set_type("text/csv;charset=utf-8;");
 
-                let blob_parts = array;
-                let blob_options = web_sys::BlobPropertyBag::new();
-                blob_options.set_type("text/csv;charset=utf-8;");
-
-                if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&blob_parts, &blob_options) {
-                    if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+        if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &blob_props) {
+            if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                if let Some(window) = web_sys::window() {
+                    if let Some(document) = window.document() {
                         if let Ok(a) = document.create_element("a") {
                             let a: web_sys::HtmlAnchorElement = a.unchecked_into();
                             a.set_href(&url);
-                            a.set_download(&format!("ozon_finance_realization_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S")));
+                            let filename = format!("ozon_finance_realization_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+                            a.set_download(&filename);
                             a.click();
                             let _ = web_sys::Url::revoke_object_url(&url);
                         }
@@ -265,6 +283,15 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     prop:value=move || sku_filter.get()
                     on:input=move |ev| {
                         set_sku_filter.set(event_target_value(&ev));
+                    }
+                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1;"
+                />
+                <input
+                    type="text"
+                    placeholder="Operation Type..."
+                    prop:value=move || operation_type_filter.get()
+                    on:input=move |ev| {
+                        set_operation_type_filter.set(event_target_value(&ev));
                     }
                     style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1;"
                 />

@@ -2,20 +2,105 @@ use axum::{extract::Query, Json};
 use chrono::NaiveDate;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a012_wb_sales;
+use crate::domain::a002_organization;
 use crate::shared::data::raw_storage;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesListItemDto {
+    #[serde(flatten)]
+    pub sales: WbSales,
+    pub organization_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListSalesQuery {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
 /// Handler для получения списка Wildberries Sales
-pub async fn list_sales() -> Result<Json<Vec<WbSales>>, axum::http::StatusCode> {
-    let items = a012_wb_sales::service::list_all().await.map_err(|e| {
-        tracing::error!("Failed to list Wildberries sales: {}", e);
+pub async fn list_sales(
+    Query(query): Query<ListSalesQuery>,
+) -> Result<Json<Vec<WbSalesListItemDto>>, axum::http::StatusCode> {
+    // Парсим даты
+    let date_from = query.date_from.as_ref().and_then(|s| {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+    });
+    
+    let date_to = query.date_to.as_ref().and_then(|s| {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+    });
+
+    let limit = query.limit.unwrap_or(20000); // По умолчанию максимум 20000 записей
+    let offset = query.offset.unwrap_or(0);
+
+    let mut items = if date_from.is_some() || date_to.is_some() {
+        a012_wb_sales::service::list_by_date_range(date_from, date_to)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list Wildberries sales: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    } else {
+        a012_wb_sales::service::list_all().await.map_err(|e| {
+            tracing::error!("Failed to list Wildberries sales: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };
+
+    // Сортируем по дате (новые сначала) перед применением пагинации
+    items.sort_by(|a, b| b.state.sale_dt.cmp(&a.state.sale_dt));
+
+    let total_count = items.len();
+    
+    // Применяем пагинацию
+    let items: Vec<_> = items
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+
+    tracing::info!(
+        "Loading WB sales: total={}, offset={}, limit={}, returned={}",
+        total_count,
+        offset,
+        limit,
+        items.len()
+    );
+
+    // ОПТИМИЗАЦИЯ: Загружаем все организации одним запросом
+    let organizations = a002_organization::service::list_all().await.map_err(|e| {
+        tracing::error!("Failed to load organizations: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(items))
+    // Создаем map для быстрого поиска
+    let org_map: std::collections::HashMap<String, String> = organizations
+        .into_iter()
+        .map(|org| (org.base.id.as_string(), org.base.description.clone()))
+        .collect();
+
+    // Формируем результат с названиями организаций
+    let result: Vec<WbSalesListItemDto> = items
+        .into_iter()
+        .map(|sale| {
+            let organization_name = org_map.get(&sale.header.organization_id).cloned();
+            WbSalesListItemDto {
+                sales: sale,
+                organization_name,
+            }
+        })
+        .collect();
+
+    tracing::info!("Loaded {} WB sales records", result.len());
+
+    Ok(Json(result))
 }
 
 /// Handler для получения детальной информации о Wildberries Sale

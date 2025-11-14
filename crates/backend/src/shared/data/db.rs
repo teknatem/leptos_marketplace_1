@@ -1127,6 +1127,9 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 description TEXT NOT NULL,
                 comment TEXT,
                 document_no TEXT NOT NULL UNIQUE,
+                status_norm TEXT NOT NULL DEFAULT '',
+                substatus_raw TEXT,
+                created_at_source TEXT,
                 header_json TEXT NOT NULL,
                 lines_json TEXT NOT NULL,
                 state_json TEXT NOT NULL,
@@ -1143,6 +1146,57 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             create_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Миграция: добавление полей status_norm и substatus_raw если их нет
+        let check_status_norm = r#"
+            SELECT COUNT(*) as cnt FROM pragma_table_info('a011_ozon_fbo_posting')
+            WHERE name='status_norm';
+        "#;
+        let has_status_norm = conn
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                check_status_norm.to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get::<i32>("", "cnt").unwrap_or(0) > 0)
+            .unwrap_or(false);
+
+        if !has_status_norm {
+            tracing::info!("Adding status_norm and substatus_raw columns to a011_ozon_fbo_posting");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a011_ozon_fbo_posting ADD COLUMN status_norm TEXT NOT NULL DEFAULT '';".to_string(),
+            ))
+            .await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a011_ozon_fbo_posting ADD COLUMN substatus_raw TEXT;".to_string(),
+            ))
+            .await?;
+        }
+
+        // Миграция: добавление поля created_at_source если его нет
+        let check_created_at_source = r#"
+            SELECT COUNT(*) as cnt FROM pragma_table_info('a011_ozon_fbo_posting')
+            WHERE name='created_at_source';
+        "#;
+        let has_created_at_source = conn
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                check_created_at_source.to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get::<i32>("", "cnt").unwrap_or(0) > 0)
+            .unwrap_or(false);
+
+        if !has_created_at_source {
+            tracing::info!("Adding created_at_source column to a011_ozon_fbo_posting");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a011_ozon_fbo_posting ADD COLUMN created_at_source TEXT;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // a012_wb_sales table - документы Wildberries Sales

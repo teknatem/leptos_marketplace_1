@@ -879,6 +879,10 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::a014_ozon_transactions::get_by_id)
                 .delete(handlers::a014_ozon_transactions::delete),
         )
+        .route(
+            "/api/ozon_transactions/by-posting/:posting_number",
+            get(handlers::a014_ozon_transactions::get_by_posting_number),
+        )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
         .route(

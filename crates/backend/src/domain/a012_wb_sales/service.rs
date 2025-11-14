@@ -1,5 +1,6 @@
 use super::repository;
 use anyhow::Result;
+use chrono::NaiveDate;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use uuid::Uuid;
 
@@ -49,6 +50,13 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<WbSales>> {
 
 pub async fn list_all() -> Result<Vec<WbSales>> {
     repository::list_all().await
+}
+
+pub async fn list_by_date_range(
+    date_from: Option<NaiveDate>,
+    date_to: Option<NaiveDate>,
+) -> Result<Vec<WbSales>> {
+    repository::list_by_date_range(date_from, date_to).await
 }
 
 pub async fn delete(id: Uuid) -> Result<bool> {

@@ -1048,7 +1048,7 @@ impl ImportExecutor {
                 } else {
                     "none"
                 };
-                
+
                 let delivered_at = posting
                     .delivering_date
                     .as_ref()
@@ -1058,7 +1058,7 @@ impl ImportExecutor {
                             .map(|dt| dt.with_timezone(&chrono::Utc))
                             .ok()
                     });
-                
+
                 tracing::debug!(
                     "FBS Posting {}: date_source={}, delivering_date={:?}, delivered_at={:?}, parsed_date={:?}",
                     posting_number,
@@ -1213,18 +1213,18 @@ impl ImportExecutor {
                 .fetch_fbo_postings(connection, date_from, date_to, limit, offset)
                 .await?;
 
-            if resp.result.postings.is_empty() {
+            let postings_count = resp.result.len();
+            if postings_count == 0 {
                 break;
             }
 
-            let postings_count = resp.result.postings.len();
             tracing::info!(
                 "Received {} FBO postings from API (offset={})",
                 postings_count,
                 offset
             );
 
-            for posting in resp.result.postings {
+            for posting in resp.result {
                 let posting_number = posting.posting_number.clone();
                 self.progress_tracker.set_current_item(
                     session_id,
@@ -1260,33 +1260,40 @@ impl ImportExecutor {
                     })
                     .collect();
 
-                // Парсим delivered_at (используем delivering_date как основное поле, delivered_at как fallback)
-                let date_source = if posting.delivering_date.is_some() {
-                    "delivering_date"
-                } else if posting.delivered_at.is_some() {
+                // Парсим delivered_at (FBO использует delivered_at и delivering_date)
+                let date_source = if posting.delivered_at.is_some() {
                     "delivered_at"
+                } else if posting.delivering_date.is_some() {
+                    "delivering_date"
                 } else {
                     "none"
                 };
-                
+
                 let delivered_at = posting
-                    .delivering_date
+                    .delivered_at
                     .as_ref()
-                    .or(posting.delivered_at.as_ref())
+                    .or(posting.delivering_date.as_ref())
                     .and_then(|s| {
                         chrono::DateTime::parse_from_rfc3339(s)
                             .map(|dt| dt.with_timezone(&chrono::Utc))
                             .ok()
                     });
-                
+
                 tracing::debug!(
-                    "FBO Posting {}: date_source={}, delivering_date={:?}, delivered_at={:?}, parsed_date={:?}",
+                    "FBO Posting {}: date_source={}, delivered_at={:?}, delivering_date={:?}, parsed_date={:?}",
                     posting_number,
                     date_source,
-                    posting.delivering_date,
                     posting.delivered_at,
+                    posting.delivering_date,
                     delivered_at
                 );
+
+                // Парсим дату создания заказа
+                let created_at = posting.created_at.as_ref().and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(s)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .ok()
+                });
 
                 // Создаем документ
                 let header = OzonFboPostingHeader {
@@ -1305,6 +1312,8 @@ impl ImportExecutor {
                 let state = OzonFboPostingState {
                     status_raw: posting.status.clone(),
                     status_norm,
+                    substatus_raw: posting.substatus.clone(),
+                    created_at,
                     delivered_at,
                     updated_at_source: None,
                 };
@@ -1359,8 +1368,8 @@ impl ImportExecutor {
                 );
             }
 
-            // Проверяем, есть ли еще данные
-            if !resp.result.has_next {
+            // FBO API не имеет has_next, проверяем по количеству записей
+            if postings_count < limit as usize {
                 break;
             }
 
@@ -1611,8 +1620,8 @@ impl ImportExecutor {
         use crate::domain::a002_organization;
         use crate::domain::a014_ozon_transactions;
         use contracts::domain::a014_ozon_transactions::aggregate::{
-            OzonTransactions, OzonTransactionsHeader, OzonTransactionsPosting,
-            OzonTransactionsItem, OzonTransactionsService, OzonTransactionsSourceMeta,
+            OzonTransactions, OzonTransactionsHeader, OzonTransactionsItem,
+            OzonTransactionsPosting, OzonTransactionsService, OzonTransactionsSourceMeta,
         };
 
         let aggregate_index = "a014_ozon_transactions";

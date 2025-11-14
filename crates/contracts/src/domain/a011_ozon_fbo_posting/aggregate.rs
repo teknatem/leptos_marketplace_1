@@ -81,6 +81,10 @@ pub struct OzonFboPostingState {
     pub status_raw: String,
     /// Нормализованный статус (DELIVERED и т.д.)
     pub status_norm: String,
+    /// Подстатус из API (детальный статус)
+    pub substatus_raw: Option<String>,
+    /// Дата/время создания заказа в источнике
+    pub created_at: Option<DateTime<Utc>>,
     /// Дата/время доставки (момент продажи)
     pub delivered_at: Option<DateTime<Utc>>,
     /// Дата/время обновления в источнике

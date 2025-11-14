@@ -549,7 +549,7 @@ impl ImportExecutor {
         use crate::domain::a002_organization;
         use crate::domain::a012_wb_sales;
         use contracts::domain::a012_wb_sales::aggregate::{
-            WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState,
+            WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState, WbSalesWarehouse,
         };
 
         let aggregate_index = "a012_wb_sales";
@@ -628,6 +628,18 @@ impl ImportExecutor {
             let sale_dt_str = sale_row.sale_dt.clone();
             let last_change_date_str = sale_row.last_change_date.clone();
 
+            // Логируем значения для отладки
+            if sale_row.finished_price.is_some() || sale_row.total_price.is_some() {
+                tracing::info!(
+                    "WB Sale {}: finishedPrice={:?}, totalPrice={:?}, forPay={:?}, priceWithDisc={:?}",
+                    document_no,
+                    sale_row.finished_price,
+                    sale_row.total_price,
+                    sale_row.for_pay,
+                    sale_row.price_with_disc
+                );
+            }
+
             // Создаем line (в WB одна продажа = одна строка)
             let line = WbSalesLine {
                 line_id: sale_row.srid.clone().unwrap_or_else(|| document_no.clone()),
@@ -639,11 +651,16 @@ impl ImportExecutor {
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string()),
                 qty: sale_row.quantity.unwrap_or(1) as f64,
-                price_list: sale_row.finished_price, // цена до скидки
+                price_list: sale_row.price_with_disc, // цена с учетом скидки WB
                 discount_total: sale_row.discount,
                 price_effective: sale_row.price_with_disc,
-                amount_line: sale_row.for_pay, // итоговая сумма к оплате
+                amount_line: sale_row.for_pay, // итоговая сумма к оплате (вознаграждение)
                 currency_code: Some("RUB".to_string()),
+                total_price: sale_row.total_price,
+                payment_sale_amount: sale_row.payment_sale_amount,
+                discount_percent: sale_row.discount_percent,
+                spp: sale_row.spp,
+                finished_price: sale_row.finished_price, // итоговая цена для клиента
             };
 
             // Парсим дату продажи
@@ -714,6 +731,14 @@ impl ImportExecutor {
                 },
                 sale_dt,
                 last_change_dt,
+                is_supply: sale_row.is_supply,
+                is_realization: sale_row.is_realization,
+            };
+
+            // Создаем warehouse
+            let warehouse = WbSalesWarehouse {
+                warehouse_name: sale_row.warehouse_name.clone(),
+                warehouse_type: sale_row.warehouse_type.clone(),
             };
 
             // Создаем source_meta
@@ -730,6 +755,7 @@ impl ImportExecutor {
                 header,
                 line,
                 state,
+                warehouse,
                 source_meta,
                 true, // is_posted = true при загрузке через API
             );

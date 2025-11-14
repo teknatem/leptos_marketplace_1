@@ -1,7 +1,7 @@
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use contracts::domain::a012_wb_sales::aggregate::{
-    WbSales, WbSalesId, WbSalesHeader, WbSalesLine, WbSalesState, WbSalesSourceMeta,
+    WbSales, WbSalesId, WbSalesHeader, WbSalesLine, WbSalesState, WbSalesSourceMeta, WbSalesWarehouse,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -23,6 +23,7 @@ pub struct Model {
     pub header_json: String,
     pub line_json: String,
     pub state_json: String,
+    pub warehouse_json: String,
     pub source_meta_json: String,
     pub is_deleted: bool,
     pub is_posted: bool,
@@ -56,6 +57,9 @@ impl From<Model> for WbSales {
         let state: WbSalesState = serde_json::from_str(&m.state_json).unwrap_or_else(|_| {
             panic!("Failed to deserialize state_json for document_no: {}", m.document_no)
         });
+        let warehouse: WbSalesWarehouse = serde_json::from_str(&m.warehouse_json).unwrap_or_else(|_| {
+            panic!("Failed to deserialize warehouse_json for document_no: {}", m.document_no)
+        });
         let source_meta: WbSalesSourceMeta =
             serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
                 panic!("Failed to deserialize source_meta_json for document_no: {}", m.document_no)
@@ -72,6 +76,7 @@ impl From<Model> for WbSales {
             header,
             line,
             state,
+            warehouse,
             source_meta,
             is_posted: m.is_posted,
         }
@@ -91,6 +96,34 @@ pub async fn list_all() -> Result<Vec<WbSales>> {
         .map(Into::into)
         .collect();
     Ok(items)
+}
+
+pub async fn list_by_date_range(
+    date_from: Option<NaiveDate>,
+    date_to: Option<NaiveDate>,
+) -> Result<Vec<WbSales>> {
+    let all_items: Vec<WbSales> = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    // Фильтруем по датам в памяти (так как sale_dt хранится в state JSON)
+    let filtered: Vec<WbSales> = all_items
+        .into_iter()
+        .filter(|sale| {
+            let sale_date = sale.state.sale_dt.date_naive();
+            
+            let after_from = date_from.map_or(true, |from| sale_date >= from);
+            let before_to = date_to.map_or(true, |to| sale_date <= to);
+            
+            after_from && before_to
+        })
+        .collect();
+
+    Ok(filtered)
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbSales>> {
@@ -113,6 +146,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let header_json = serde_json::to_string(&aggregate.header)?;
     let line_json = serde_json::to_string(&aggregate.line)?;
     let state_json = serde_json::to_string(&aggregate.state)?;
+    let warehouse_json = serde_json::to_string(&aggregate.warehouse)?;
     let source_meta_json = serde_json::to_string(&aggregate.source_meta)?;
 
     if let Some(existing_doc) = existing {
@@ -126,6 +160,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             header_json: Set(header_json),
             line_json: Set(line_json),
             state_json: Set(state_json),
+            warehouse_json: Set(warehouse_json.clone()),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
             is_posted: Set(aggregate.base.metadata.is_posted),
@@ -145,6 +180,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             header_json: Set(header_json),
             line_json: Set(line_json),
             state_json: Set(state_json),
+            warehouse_json: Set(warehouse_json),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
             is_posted: Set(aggregate.base.metadata.is_posted),

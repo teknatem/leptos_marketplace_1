@@ -70,6 +70,16 @@ pub struct WbSalesLine {
     pub amount_line: Option<f64>,
     /// Код валюты (обычно пусто, т.к. всё в рублях)
     pub currency_code: Option<String>,
+    /// Полная цена товара
+    pub total_price: Option<f64>,
+    /// Сумма платежа за продажу
+    pub payment_sale_amount: Option<f64>,
+    /// Процент скидки
+    pub discount_percent: Option<f64>,
+    /// SPP (Согласованная скидка продавца)
+    pub spp: Option<f64>,
+    /// Итоговая цена для клиента (finishedPrice из WB API)
+    pub finished_price: Option<f64>,
 }
 
 /// Статусы и временные метки
@@ -83,6 +93,19 @@ pub struct WbSalesState {
     pub sale_dt: DateTime<Utc>,
     /// Дата/время последнего изменения
     pub last_change_dt: Option<DateTime<Utc>>,
+    /// Флаг поставки
+    pub is_supply: Option<bool>,
+    /// Флаг реализации
+    pub is_realization: Option<bool>,
+}
+
+/// Информация о складе
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesWarehouse {
+    /// Название склада
+    pub warehouse_name: Option<String>,
+    /// Тип склада
+    pub warehouse_type: Option<String>,
 }
 
 /// Служебные метаданные
@@ -111,6 +134,9 @@ pub struct WbSales {
     /// Статусы и временные метки
     pub state: WbSalesState,
 
+    /// Информация о складе
+    pub warehouse: WbSalesWarehouse,
+
     /// Служебные метаданные
     pub source_meta: WbSalesSourceMeta,
 
@@ -125,6 +151,7 @@ impl WbSales {
         header: WbSalesHeader,
         line: WbSalesLine,
         state: WbSalesState,
+        warehouse: WbSalesWarehouse,
         source_meta: WbSalesSourceMeta,
         is_posted: bool,
     ) -> Self {
@@ -134,6 +161,7 @@ impl WbSales {
             header,
             line,
             state,
+            warehouse,
             source_meta,
             is_posted,
         }
@@ -146,6 +174,7 @@ impl WbSales {
         header: WbSalesHeader,
         line: WbSalesLine,
         state: WbSalesState,
+        warehouse: WbSalesWarehouse,
         source_meta: WbSalesSourceMeta,
         is_posted: bool,
     ) -> Self {
@@ -155,6 +184,7 @@ impl WbSales {
             header,
             line,
             state,
+            warehouse,
             source_meta,
             is_posted,
         }

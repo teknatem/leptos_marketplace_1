@@ -56,7 +56,10 @@ impl WildberriesApiClient {
         );
 
         // Вариант 3: Без settings вообще (минимальный запрос)
-        results.push(self.test_minimal_request(connection, "Minimal request (no settings)", 1000).await);
+        results.push(
+            self.test_minimal_request(connection, "Minimal request (no settings)", 1000)
+                .await,
+        );
 
         // Вариант 4: С явным textSearch пустым
         results.push(
@@ -87,11 +90,8 @@ impl WildberriesApiClient {
 
         // Вариант 6: Альтернативный endpoint - Supplier API (stocks)
         results.push(
-            self.test_stocks_endpoint(
-                connection,
-                "Alternative: Supplier stocks API",
-            )
-            .await,
+            self.test_stocks_endpoint(connection, "Alternative: Supplier stocks API")
+                .await,
         );
 
         // Вариант 7: КРИТИЧЕСКИЙ ТЕСТ - Попытка получить товары БЕЗ фильтра categories
@@ -120,11 +120,8 @@ impl WildberriesApiClient {
         // Вариант 9: ПОЛУЧИТЬ СПИСОК ВСЕХ КАТЕГОРИЙ ПРОДАВЦА
         // Проверить сколько категорий (subjects) используется
         results.push(
-            self.test_get_all_subjects(
-                connection,
-                "Get ALL subjects/categories used by seller",
-            )
-            .await,
+            self.test_get_all_subjects(connection, "Get ALL subjects/categories used by seller")
+                .await,
         );
 
         // Вариант 10: ПРОДОЛЖИТЬ ПАГИНАЦИЮ - получить СЛЕДУЮЩУЮ страницу
@@ -147,7 +144,10 @@ impl WildberriesApiClient {
         limit: i32,
         settings: WildberriesSettings,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
 
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
             if supplier_id.starts_with("http") {
@@ -272,7 +272,10 @@ impl WildberriesApiClient {
         test_name: &str,
         limit: i32,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
 
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
             if supplier_id.starts_with("http") {
@@ -383,7 +386,10 @@ impl WildberriesApiClient {
         base_url: &str,
         endpoint_path: &str,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
         self.log_to_file(&format!("Testing endpoint: {}{}", base_url, endpoint_path));
 
         let url = format!("{}{}", base_url, endpoint_path);
@@ -418,7 +424,7 @@ impl WildberriesApiClient {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
-            
+
             // 404 или 405 означает что endpoint не существует или метод не поддерживается
             if status.as_u16() == 404 || status.as_u16() == 405 {
                 return DiagnosticResult {
@@ -455,8 +461,10 @@ impl WildberriesApiClient {
             }
         };
 
-        self.log_to_file(&format!("Response body (first 500 chars): {}", 
-            body.chars().take(500).collect::<String>()));
+        self.log_to_file(&format!(
+            "Response body (first 500 chars): {}",
+            body.chars().take(500).collect::<String>()
+        ));
 
         // Пробуем распарсить как наш стандартный ответ
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
@@ -481,7 +489,9 @@ impl WildberriesApiClient {
                 DiagnosticResult {
                     test_name: test_name.to_string(),
                     success: false,
-                    error: Some("Response has different structure (not standard cards format)".to_string()),
+                    error: Some(
+                        "Response has different structure (not standard cards format)".to_string(),
+                    ),
                     total_returned: 0,
                     cursor_total: 0,
                     response_headers: Some(format!("{:?}", headers)),
@@ -495,7 +505,10 @@ impl WildberriesApiClient {
         connection: &ConnectionMP,
         test_name: &str,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
 
         // Supplier stocks API endpoint
         let url = "https://suppliers-api.wildberries.ru/api/v1/supplier/stocks";
@@ -566,8 +579,10 @@ impl WildberriesApiClient {
             }
         };
 
-        self.log_to_file(&format!("Response body (first 500 chars): {}", 
-            body.chars().take(500).collect::<String>()));
+        self.log_to_file(&format!(
+            "Response body (first 500 chars): {}",
+            body.chars().take(500).collect::<String>()
+        ));
 
         // Stocks API возвращает массив с другой структурой
         // Пробуем распарсить и посчитать количество товаров
@@ -615,7 +630,10 @@ impl WildberriesApiClient {
         connection: &ConnectionMP,
         test_name: &str,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
         self.log_to_file("📊 Getting list of ALL subjects/categories from seller account");
         self.log_to_file("This will show how many categories are used");
 
@@ -685,8 +703,10 @@ impl WildberriesApiClient {
             }
         };
 
-        self.log_to_file(&format!("Response body preview: {}", 
-            body.chars().take(1000).collect::<String>()));
+        self.log_to_file(&format!(
+            "Response body preview: {}",
+            body.chars().take(1000).collect::<String>()
+        ));
 
         // Попробуем распарсить как JSON
         match serde_json::from_str::<serde_json::Value>(&body) {
@@ -696,7 +716,7 @@ impl WildberriesApiClient {
                         "✓ Found {} subjects/categories available to this seller!",
                         data.len()
                     ));
-                    
+
                     // Найдем уникальные subjectID
                     let mut subject_ids = Vec::new();
                     for item in data.iter().take(20) {
@@ -720,8 +740,12 @@ impl WildberriesApiClient {
                             "🔥 IMPORTANT: Seller has {} categories, but API returns only from ONE (7717)!",
                             data.len()
                         ));
-                        self.log_to_file("This confirms: either need to query each category separately,");
-                        self.log_to_file("OR continue pagination to get products from other categories.");
+                        self.log_to_file(
+                            "This confirms: either need to query each category separately,",
+                        );
+                        self.log_to_file(
+                            "OR continue pagination to get products from other categories.",
+                        );
                     }
 
                     DiagnosticResult {
@@ -763,7 +787,10 @@ impl WildberriesApiClient {
         connection: &ConnectionMP,
         test_name: &str,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
         self.log_to_file("🔄 Testing pagination: Continue from FIRST page cursor");
         self.log_to_file("Hypothesis: API returns products by categories page-by-page");
 
@@ -781,7 +808,7 @@ impl WildberriesApiClient {
 
         // Сначала получим первую страницу для извлечения cursor
         self.log_to_file("Step 1: Get FIRST page to extract cursor...");
-        
+
         let first_request = WildberriesProductListRequest {
             settings: WildberriesSettings {
                 cursor: WildberriesCursor::default(),
@@ -924,7 +951,10 @@ impl WildberriesApiClient {
             return DiagnosticResult {
                 test_name: test_name.to_string(),
                 success: false,
-                error: Some(format!("Second request returned status {}: {}", status2, body)),
+                error: Some(format!(
+                    "Second request returned status {}: {}",
+                    status2, body
+                )),
                 total_returned: first_page.cards.len() as i32,
                 cursor_total: first_page.cursor.total as i32,
                 response_headers: Some(format!("{:?}", headers2)),
@@ -1004,7 +1034,10 @@ impl WildberriesApiClient {
         test_name: &str,
         limit: i32,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
         self.log_to_file("🗑️ CRITICAL: Checking TRASH/ARCHIVE endpoint");
         self.log_to_file("Maybe most products are ARCHIVED/DELETED?");
 
@@ -1101,8 +1134,10 @@ impl WildberriesApiClient {
             }
         };
 
-        self.log_to_file(&format!("Response body preview: {}", 
-            body.chars().take(500).collect::<String>()));
+        self.log_to_file(&format!(
+            "Response body preview: {}",
+            body.chars().take(500).collect::<String>()
+        ));
 
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
@@ -1161,7 +1196,10 @@ impl WildberriesApiClient {
         test_name: &str,
         limit: i32,
     ) -> DiagnosticResult {
-        self.log_to_file(&format!("\n========== DIAGNOSTIC TEST: {} ==========", test_name));
+        self.log_to_file(&format!(
+            "\n========== DIAGNOSTIC TEST: {} ==========",
+            test_name
+        ));
         self.log_to_file("CRITICAL: Testing if API filters by subjectID/category");
         self.log_to_file("Previous requests returned ONLY subjectID=7717");
         self.log_to_file("Trying to request ALL categories at once");
@@ -1258,7 +1296,9 @@ impl WildberriesApiClient {
                 ));
 
                 if unique_subjects.len() == 1 {
-                    self.log_to_file("⚠️ WARNING: Still only ONE subjectID! API might be filtering by category.");
+                    self.log_to_file(
+                        "⚠️ WARNING: Still only ONE subjectID! API might be filtering by category.",
+                    );
                 } else {
                     self.log_to_file(&format!(
                         "✓ GOOD: Multiple subjectIDs found! This approach might work."
@@ -1399,7 +1439,10 @@ impl WildberriesApiClient {
 
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
-                let cursor_str = data.cursor.updated_at.as_ref()
+                let cursor_str = data
+                    .cursor
+                    .updated_at
+                    .as_ref()
                     .map(|s| s.as_str())
                     .unwrap_or("none");
 
@@ -1418,8 +1461,7 @@ impl WildberriesApiClient {
                     let last_nm_id = data.cards.last().map(|c| c.nm_id);
                     self.log_to_file(&format!(
                         "Product range: first nmID={:?}, last nmID={:?}",
-                        first_nm_id,
-                        last_nm_id
+                        first_nm_id, last_nm_id
                     ));
                 }
 
@@ -1448,6 +1490,7 @@ impl WildberriesApiClient {
 
     /// Получить данные по продажам через Statistics API
     /// GET /api/v1/supplier/sales
+    /// ВАЖНО: Загружает ВСЕ записи с учетом пагинации API
     pub async fn fetch_sales(
         &self,
         connection: &ConnectionMP,
@@ -1463,43 +1506,148 @@ impl WildberriesApiClient {
         let date_from_str = date_from.format("%Y-%m-%d").to_string();
         let date_to_str = date_to.format("%Y-%m-%d").to_string();
 
+        // API Wildberries Statistics может возвращать до 100,000 записей за запрос,
+        // но рекомендуется делать запросы с флагом page для пагинации
+        // Согласно документации: если записей больше, то нужно делать повторные запросы
+        // используя параметр flag=1 для получения следующих страниц
+
+        let mut all_sales = Vec::new();
+        let mut page_flag = 0; // 0 = первая страница, 1 = следующие страницы
+
         self.log_to_file(&format!(
-            "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}\nAuthorization: ****",
-            url, date_from_str, date_to_str
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!("║ WILDBERRIES SALES API - LOADING ALL RECORDS"));
+        self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝"
         ));
 
-        let response = self
-            .client
-            .get(url)
-            .header("Authorization", &connection.api_key)
-            .query(&[("dateFrom", date_from_str), ("dateTo", date_to_str)])
-            .send()
-            .await?;
+        loop {
+            self.log_to_file(&format!(
+                "\n┌────────────────────────────────────────────────────────────┐"
+            ));
+            self.log_to_file(&format!(
+                "│ Request #{} (flag={})",
+                (page_flag + 1),
+                page_flag
+            ));
 
-        let status = response.status();
-        self.log_to_file(&format!("Response status: {}", status));
+            self.log_to_file(&format!(
+                "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}&flag={}\nAuthorization: ****",
+                url, date_from_str, date_to_str, page_flag
+            ));
 
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            self.log_to_file(&format!("ERROR Response body:\n{}", body));
-            tracing::error!("Wildberries Sales API request failed: {}", body);
-            anyhow::bail!("Wildberries Sales API failed with status {}: {}", status, body);
+            let response = self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[
+                    ("dateFrom", date_from_str.as_str()),
+                    ("dateTo", date_to_str.as_str()),
+                    ("flag", &page_flag.to_string()),
+                ])
+                .send()
+                .await?;
+
+            let status = response.status();
+            self.log_to_file(&format!("Response status: {}", status));
+
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                self.log_to_file(&format!("ERROR Response body:\n{}", body));
+                tracing::error!("Wildberries Sales API request failed: {}", body);
+                anyhow::bail!(
+                    "Wildberries Sales API failed with status {}: {}",
+                    status,
+                    body
+                );
+            }
+
+            let body = response.text().await?;
+            let body_preview = if body.len() > 5000 {
+                format!("{}... (total {} chars)", &body[..5000], body.len())
+            } else {
+                body.clone()
+            };
+            self.log_to_file(&format!(
+                "=== RESPONSE BODY PREVIEW ===\n{}\n",
+                body_preview
+            ));
+
+            match serde_json::from_str::<Vec<WbSaleRow>>(&body) {
+                Ok(page_data) => {
+                    let page_count = page_data.len();
+                    self.log_to_file(&format!("│ Received: {} records", page_count));
+                    self.log_to_file(&format!(
+                        "│ Total so far: {} records",
+                        all_sales.len() + page_count
+                    ));
+
+                    if page_data.is_empty() {
+                        self.log_to_file(&format!("│ ✓ Empty response - all records loaded"));
+                        self.log_to_file(&format!(
+                            "└────────────────────────────────────────────────────────────┘"
+                        ));
+                        break;
+                    }
+
+                    // Добавляем полученные данные
+                    all_sales.extend(page_data);
+
+                    // API WB Statistics возвращает максимум 100,000 записей за запрос
+                    // Если получили меньше, значит это последняя страница
+                    if page_count < 100000 {
+                        self.log_to_file(&format!(
+                            "│ ✓ Received {} records (less than limit) - last page",
+                            page_count
+                        ));
+                        self.log_to_file(&format!(
+                            "└────────────────────────────────────────────────────────────┘"
+                        ));
+                        break;
+                    }
+
+                    self.log_to_file(&format!(
+                        "│ → More records may be available, requesting next page..."
+                    ));
+                    self.log_to_file(&format!(
+                        "└────────────────────────────────────────────────────────────┘"
+                    ));
+
+                    // Переходим к следующей странице
+                    page_flag = 1;
+                }
+                Err(e) => {
+                    self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                    tracing::error!("Failed to parse Wildberries sales response: {}", e);
+                    anyhow::bail!("Failed to parse sales response: {}", e)
+                }
+            }
+
+            // Небольшая задержка между запросами для снижения нагрузки на API
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
 
-        let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!(
+            "║ COMPLETED: Loaded {} total sale records",
+            all_sales.len()
+        ));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝\n"
+        ));
 
-        match serde_json::from_str::<Vec<WbSaleRow>>(&body) {
-            Ok(data) => {
-                self.log_to_file(&format!("Successfully parsed {} sale rows", data.len()));
-                Ok(data)
-            }
-            Err(e) => {
-                self.log_to_file(&format!("Failed to parse JSON: {}", e));
-                tracing::error!("Failed to parse Wildberries sales response: {}", e);
-                anyhow::bail!("Failed to parse sales response: {}", e)
-            }
-        }
+        tracing::info!(
+            "✓ Wildberries Sales API: Successfully loaded {} total records for period {} to {}",
+            all_sales.len(),
+            date_from_str,
+            date_to_str
+        );
+
+        Ok(all_sales)
     }
 }
 
@@ -1709,6 +1857,24 @@ pub struct WbSaleRow {
     /// Итоговая стоимость
     #[serde(rename = "finishedPrice", default)]
     pub finished_price: Option<f64>,
+    /// Флаг поставки
+    #[serde(rename = "isSupply", default)]
+    pub is_supply: Option<bool>,
+    /// Флаг реализации
+    #[serde(rename = "isRealization", default)]
+    pub is_realization: Option<bool>,
+    /// Полная цена
+    #[serde(rename = "totalPrice", default)]
+    pub total_price: Option<f64>,
+    /// Процент скидки
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<f64>,
+    /// Сумма платежа за продажу
+    #[serde(rename = "paymentSaleAmount", default)]
+    pub payment_sale_amount: Option<f64>,
+    /// Тип склада
+    #[serde(rename = "warehouseType", default)]
+    pub warehouse_type: Option<String>,
 }
 
 // ============================================================================

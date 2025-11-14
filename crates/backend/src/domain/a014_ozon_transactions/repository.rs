@@ -119,6 +119,73 @@ pub async fn list_all() -> Result<Vec<OzonTransactions>> {
     Ok(items)
 }
 
+/// Получить список транзакций с фильтрами
+pub async fn list_with_filters(
+    date_from: Option<String>,
+    date_to: Option<String>,
+    transaction_type: Option<String>,
+    operation_type_name: Option<String>,
+    posting_number: Option<String>,
+) -> Result<Vec<OzonTransactions>> {
+    // Получаем все неудаленные транзакции
+    let mut query = Entity::find().filter(Column::IsDeleted.eq(false));
+
+    // Применяем фильтр по posting_number (частичное совпадение)
+    if let Some(posting) = posting_number {
+        if !posting.is_empty() {
+            query = query.filter(Column::PostingNumber.contains(&posting));
+        }
+    }
+
+    let items: Vec<OzonTransactions> = query
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    // Применяем фильтры по полям из JSON (парсим в памяти)
+    let filtered_items: Vec<OzonTransactions> = items
+        .into_iter()
+        .filter(|txn| {
+            // Фильтр по дате - сравниваем только дату без времени
+            if let (Some(from), Some(to)) = (&date_from, &date_to) {
+                // Извлекаем только дату из operation_date (формат: "2025-10-11 00:00:00" или "2025-10-11")
+                let op_date_only = txn.header.operation_date
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(&txn.header.operation_date);
+                
+                if op_date_only < from.as_str() || op_date_only > to.as_str() {
+                    return false;
+                }
+            }
+
+            // Фильтр по transaction_type
+            if let Some(ref tt) = transaction_type {
+                if !tt.is_empty() && &txn.header.transaction_type != tt {
+                    return false;
+                }
+            }
+
+            // Фильтр по operation_type_name
+            if let Some(ref otn) = operation_type_name {
+                if !otn.is_empty() && &txn.header.operation_type_name != otn {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect();
+
+    tracing::info!(
+        "A014 list_with_filters: returning {} filtered items",
+        filtered_items.len()
+    );
+    Ok(filtered_items)
+}
+
 pub async fn get_by_id(id: Uuid) -> Result<Option<OzonTransactions>> {
     let result = Entity::find_by_id(id.to_string()).one(conn()).await?;
     Ok(result.map(Into::into))
@@ -130,6 +197,20 @@ pub async fn get_by_operation_id(operation_id: i64) -> Result<Option<OzonTransac
         .one(conn())
         .await?;
     Ok(result.map(Into::into))
+}
+
+pub async fn get_by_posting_number(posting_number: &str) -> Result<Vec<OzonTransactions>> {
+    let items: Vec<OzonTransactions> = Entity::find()
+        .filter(Column::PostingNumber.eq(posting_number))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    
+    tracing::info!("A014 get_by_posting_number: found {} items for posting {}", items.len(), posting_number);
+    Ok(items)
 }
 
 /// Идемпотентная вставка/обновление по operation_id

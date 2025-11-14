@@ -67,6 +67,7 @@ pub struct OzonTransactionsHeader {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonTransactionsPosting {
     /// Схема доставки (FBS, FBO)
+    #[serde(default)]
     pub delivery_schema: String,
     /// Дата заказа
     pub order_date: String,
@@ -267,7 +268,12 @@ pub struct OzonTransactionsListDto {
     pub operation_date: String,
     pub posting_number: String,
     pub transaction_type: String,
+    pub delivery_schema: String,
     pub amount: f64,
+    pub accruals_for_sale: f64,
+    pub sale_commission: f64,
+    pub delivery_charge: f64,
+    pub delivering_date: Option<String>,
     pub is_posted: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
