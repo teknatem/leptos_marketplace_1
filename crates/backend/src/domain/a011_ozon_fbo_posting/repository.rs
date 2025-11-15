@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::{
-    OzonFboPosting, OzonFboPostingId, OzonFboPostingHeader, OzonFboPostingLine,
-    OzonFboPostingState, OzonFboPostingSourceMeta,
+    OzonFboPosting, OzonFboPostingHeader, OzonFboPostingId, OzonFboPostingLine,
+    OzonFboPostingSourceMeta, OzonFboPostingState,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -53,19 +53,30 @@ impl From<Model> for OzonFboPosting {
 
         let header: OzonFboPostingHeader =
             serde_json::from_str(&m.header_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize header_json for document_no: {}", m.document_no)
+                panic!(
+                    "Failed to deserialize header_json for document_no: {}",
+                    m.document_no
+                )
             });
         let lines: Vec<OzonFboPostingLine> =
             serde_json::from_str(&m.lines_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize lines_json for document_no: {}", m.document_no)
+                panic!(
+                    "Failed to deserialize lines_json for document_no: {}",
+                    m.document_no
+                )
             });
-        let state: OzonFboPostingState =
-            serde_json::from_str(&m.state_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize state_json for document_no: {}", m.document_no)
-            });
-        let source_meta: OzonFboPostingSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize source_meta_json for document_no: {}", m.document_no)
+        let state: OzonFboPostingState = serde_json::from_str(&m.state_json).unwrap_or_else(|_| {
+            panic!(
+                "Failed to deserialize state_json for document_no: {}",
+                m.document_no
+            )
+        });
+        let source_meta: OzonFboPostingSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize source_meta_json for document_no: {}",
+                    m.document_no
+                )
             });
 
         OzonFboPosting {
@@ -116,7 +127,7 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<OzonFboPosti
 pub async fn upsert_document(aggregate: &OzonFboPosting) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let existing = get_by_document_no(&aggregate.header.document_no).await?;
-    
+
     let header_json = serde_json::to_string(&aggregate.header)?;
     let lines_json = serde_json::to_string(&aggregate.lines)?;
     let state_json = serde_json::to_string(&aggregate.state)?;
@@ -180,4 +191,3 @@ pub async fn soft_delete(id: Uuid) -> Result<bool> {
         .await?;
     Ok(result.rows_affected > 0)
 }
-

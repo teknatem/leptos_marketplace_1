@@ -20,6 +20,16 @@ pub struct BarcodesByNomenclatureResponse {
     pub total_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DimensionValuesResponse {
+    pub dim1_category: Vec<String>,
+    pub dim2_line: Vec<String>,
+    pub dim3_model: Vec<String>,
+    pub dim4_format: Vec<String>,
+    pub dim5_sink: Vec<String>,
+    pub dim6_size: Vec<String>,
+}
+
 fn api_base() -> String {
     let window = match web_sys::window() {
         Some(w) => w,
@@ -182,6 +192,40 @@ pub async fn fetch_barcodes_by_nomenclature(
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: BarcodesByNomenclatureResponse =
+        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
+pub async fn fetch_dimension_values() -> Result<DimensionValuesResponse, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/nomenclature/dimensions", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: DimensionValuesResponse =
         serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }

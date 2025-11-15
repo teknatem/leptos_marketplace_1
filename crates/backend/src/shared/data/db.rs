@@ -263,6 +263,12 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 parent_id TEXT,
                 article TEXT NOT NULL DEFAULT '',
                 mp_ref_count INTEGER NOT NULL DEFAULT 0,
+                dim1_category TEXT NOT NULL DEFAULT '',
+                dim2_line TEXT NOT NULL DEFAULT '',
+                dim3_model TEXT NOT NULL DEFAULT '',
+                dim4_format TEXT NOT NULL DEFAULT '',
+                dim5_sink TEXT NOT NULL DEFAULT '',
+                dim6_size TEXT NOT NULL DEFAULT '',
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -276,24 +282,100 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Ensure mp_ref_count column exists; add if missing
+        // Ensure columns exist; add if missing
         let pragma = format!("PRAGMA table_info('{}');", "a004_nomenclature");
         let cols = conn
             .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
             .await?;
+
         let mut has_mp_ref_count = false;
+        let mut has_dim1_category = false;
+        let mut has_dim2_line = false;
+        let mut has_dim3_model = false;
+        let mut has_dim4_format = false;
+        let mut has_dim5_sink = false;
+        let mut has_dim6_size = false;
+
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
-            if name == "mp_ref_count" {
-                has_mp_ref_count = true;
-                break;
+            match name.as_str() {
+                "mp_ref_count" => has_mp_ref_count = true,
+                "dim1_category" => has_dim1_category = true,
+                "dim2_line" => has_dim2_line = true,
+                "dim3_model" => has_dim3_model = true,
+                "dim4_format" => has_dim4_format = true,
+                "dim5_sink" => has_dim5_sink = true,
+                "dim6_size" => has_dim6_size = true,
+                _ => {}
             }
         }
+
         if !has_mp_ref_count {
             tracing::info!("Adding mp_ref_count column to a004_nomenclature");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE a004_nomenclature ADD COLUMN mp_ref_count INTEGER NOT NULL DEFAULT 0;".to_string(),
+                "ALTER TABLE a004_nomenclature ADD COLUMN mp_ref_count INTEGER NOT NULL DEFAULT 0;"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim1_category {
+            tracing::info!("Adding dim1_category column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim1_category TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim2_line {
+            tracing::info!("Adding dim2_line column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim2_line TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim3_model {
+            tracing::info!("Adding dim3_model column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim3_model TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim4_format {
+            tracing::info!("Adding dim4_format column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim4_format TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim5_sink {
+            tracing::info!("Adding dim5_sink column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim5_sink TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_dim6_size {
+            tracing::info!("Adding dim6_size column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN dim6_size TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
             ))
             .await?;
         }
@@ -987,7 +1069,9 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             .await?;
 
         if !old_schema_exists.is_empty() {
-            tracing::warn!("Old p901_nomenclature_barcodes schema detected. Performing migration...");
+            tracing::warn!(
+                "Old p901_nomenclature_barcodes schema detected. Performing migration..."
+            );
 
             // 1. Переименовать старую таблицу
             let rename_old_table = r#"
@@ -1387,7 +1471,8 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 migration_sql.to_string(),
-            )).await?;
+            ))
+            .await?;
 
             // Копируем данные из старой таблицы
             let copy_data_sql = r#"
@@ -1416,13 +1501,15 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 copy_data_sql.to_string(),
-            )).await?;
+            ))
+            .await?;
 
             // Удаляем старую таблицу
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "DROP TABLE p902_ozon_finance_realization;".to_string(),
-            )).await?;
+            ))
+            .await?;
 
             // Переименовываем новую таблицу
             conn.execute(Statement::from_string(
@@ -1436,10 +1523,26 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             let create_idx3 = "CREATE INDEX IF NOT EXISTS idx_p902_connection_mp_ref ON p902_ozon_finance_realization (connection_mp_ref);";
             let create_idx4 = "CREATE INDEX IF NOT EXISTS idx_p902_posting_ref ON p902_ozon_finance_realization (posting_ref);";
 
-            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx1.to_string())).await?;
-            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx2.to_string())).await?;
-            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx3.to_string())).await?;
-            conn.execute(Statement::from_string(DatabaseBackend::Sqlite, create_idx4.to_string())).await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                create_idx1.to_string(),
+            ))
+            .await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                create_idx2.to_string(),
+            ))
+            .await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                create_idx3.to_string(),
+            ))
+            .await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                create_idx4.to_string(),
+            ))
+            .await?;
 
             tracing::info!("Migration of p902_ozon_finance_realization completed successfully");
         }

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use chrono::{NaiveDate, Utc};
 use contracts::domain::a012_wb_sales::aggregate::{
-    WbSales, WbSalesId, WbSalesHeader, WbSalesLine, WbSalesState, WbSalesSourceMeta, WbSalesWarehouse,
+    WbSales, WbSalesHeader, WbSalesId, WbSalesLine, WbSalesSourceMeta, WbSalesState,
+    WbSalesWarehouse,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -49,20 +50,36 @@ impl From<Model> for WbSales {
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
 
         let header: WbSalesHeader = serde_json::from_str(&m.header_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize header_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize header_json for document_no: {}",
+                m.document_no
+            )
         });
         let line: WbSalesLine = serde_json::from_str(&m.line_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize line_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize line_json for document_no: {}",
+                m.document_no
+            )
         });
         let state: WbSalesState = serde_json::from_str(&m.state_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize state_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize state_json for document_no: {}",
+                m.document_no
+            )
         });
-        let warehouse: WbSalesWarehouse = serde_json::from_str(&m.warehouse_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize warehouse_json for document_no: {}", m.document_no)
-        });
-        let source_meta: WbSalesSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize source_meta_json for document_no: {}", m.document_no)
+        let warehouse: WbSalesWarehouse =
+            serde_json::from_str(&m.warehouse_json).unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize warehouse_json for document_no: {}",
+                    m.document_no
+                )
+            });
+        let source_meta: WbSalesSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize source_meta_json for document_no: {}",
+                    m.document_no
+                )
             });
 
         WbSales {
@@ -115,10 +132,10 @@ pub async fn list_by_date_range(
         .into_iter()
         .filter(|sale| {
             let sale_date = sale.state.sale_dt.date_naive();
-            
+
             let after_from = date_from.map_or(true, |from| sale_date >= from);
             let before_to = date_to.map_or(true, |to| sale_date <= to);
-            
+
             after_from && before_to
         })
         .collect();
@@ -142,7 +159,7 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<WbSales>> {
 pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let existing = get_by_document_no(&aggregate.header.document_no).await?;
-    
+
     let header_json = serde_json::to_string(&aggregate.header)?;
     let line_json = serde_json::to_string(&aggregate.line)?;
     let state_json = serde_json::to_string(&aggregate.state)?;
@@ -203,4 +220,3 @@ pub async fn soft_delete(id: Uuid) -> Result<bool> {
         .await?;
     Ok(result.rows_affected > 0)
 }
-

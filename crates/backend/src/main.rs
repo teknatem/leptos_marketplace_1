@@ -544,6 +544,35 @@ async fn main() -> anyhow::Result<()> {
                 }
             }),
         )
+        .route(
+            "/api/nomenclature/import-excel",
+            post(|Json(excel_data): Json<domain::a004_nomenclature::excel_import::ExcelData>| async move {
+                tracing::info!("Received Excel import request with {} rows", excel_data.metadata.row_count);
+
+                // Импортируем данные из ExcelData (backend делает маппинг полей)
+                let result = match domain::a004_nomenclature::excel_import::import_nomenclature_from_excel_data(excel_data).await {
+                    Ok(result) => result,
+                    Err(e) => {
+                        tracing::error!("Excel import error: {}", e);
+                        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                    }
+                };
+
+                Ok(Json(result))
+            }),
+        )
+        .route(
+            "/api/nomenclature/dimensions",
+            get(|| async {
+                match domain::a004_nomenclature::repository::get_distinct_dimension_values().await {
+                    Ok(values) => Ok(Json(values)),
+                    Err(e) => {
+                        tracing::error!("Failed to get dimension values: {}", e);
+                        Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                    }
+                }
+            }),
+        )
         // Marketplace handlers
         .route(
             "/api/marketplace",

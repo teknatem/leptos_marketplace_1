@@ -16,6 +16,7 @@ pub fn Navbar() -> impl IntoView {
         ("a002_organization", "Организации", "building"),
         ("a003_counterparty", "Контрагенты", "contact"),
         ("a004_nomenclature", "Номенклатура", "list"),
+        ("a004_nomenclature_list", "Номенклатура (список)", "table"),
         ("a005_marketplace", "Маркетплейсы", "store"),
         ("a007_marketplace_product", "Товары МП", "package"),
         ("a008_marketplace_sales", "Продажи МП", "cash"),

@@ -221,53 +221,52 @@ impl WbSales {
 
 impl AggregateRoot for WbSales {
     type Id = WbSalesId;
-    
+
     fn id(&self) -> Self::Id {
         self.base.id
     }
-    
+
     fn code(&self) -> &str {
         &self.base.code
     }
-    
+
     fn description(&self) -> &str {
         &self.base.description
     }
-    
+
     fn metadata(&self) -> &EntityMetadata {
         &self.base.metadata
     }
-    
+
     fn metadata_mut(&mut self) -> &mut EntityMetadata {
         &mut self.base.metadata
     }
-    
+
     fn events(&self) -> &EventStore {
         &self.base.events
     }
-    
+
     fn events_mut(&mut self) -> &mut EventStore {
         &mut self.base.events
     }
-    
+
     fn aggregate_index() -> &'static str {
         "a012"
     }
-    
+
     fn collection_name() -> &'static str {
         "wb_sales"
     }
-    
+
     fn element_name() -> &'static str {
         "Документ WB Продажи"
     }
-    
+
     fn list_name() -> &'static str {
         "Документы WB Продажи"
     }
-    
+
     fn origin() -> Origin {
         Origin::Marketplace
     }
 }
-

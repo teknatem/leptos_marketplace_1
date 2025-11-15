@@ -22,6 +22,13 @@ pub struct Model {
     pub parent_id: Option<String>,
     pub article: String,
     pub mp_ref_count: i32,
+    // Измерения (классификация)
+    pub dim1_category: String,
+    pub dim2_line: String,
+    pub dim3_model: String,
+    pub dim4_format: String,
+    pub dim5_sink: String,
+    pub dim6_size: String,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -58,6 +65,12 @@ impl From<Model> for Nomenclature {
             parent_id: m.parent_id,
             article: m.article,
             mp_ref_count: m.mp_ref_count,
+            dim1_category: m.dim1_category,
+            dim2_line: m.dim2_line,
+            dim3_model: m.dim3_model,
+            dim4_format: m.dim4_format,
+            dim5_sink: m.dim5_sink,
+            dim6_size: m.dim6_size,
         }
     }
 }
@@ -103,6 +116,12 @@ pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
         parent_id: Set(aggregate.parent_id.clone()),
         article: Set(aggregate.article.clone()),
         mp_ref_count: Set(aggregate.mp_ref_count),
+        dim1_category: Set(aggregate.dim1_category.clone()),
+        dim2_line: Set(aggregate.dim2_line.clone()),
+        dim3_model: Set(aggregate.dim3_model.clone()),
+        dim4_format: Set(aggregate.dim4_format.clone()),
+        dim5_sink: Set(aggregate.dim5_sink.clone()),
+        dim6_size: Set(aggregate.dim6_size.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -125,6 +144,12 @@ pub async fn update(aggregate: &Nomenclature) -> anyhow::Result<()> {
         parent_id: Set(aggregate.parent_id.clone()),
         article: Set(aggregate.article.clone()),
         mp_ref_count: Set(aggregate.mp_ref_count),
+        dim1_category: Set(aggregate.dim1_category.clone()),
+        dim2_line: Set(aggregate.dim2_line.clone()),
+        dim3_model: Set(aggregate.dim3_model.clone()),
+        dim4_format: Set(aggregate.dim4_format.clone()),
+        dim5_sink: Set(aggregate.dim5_sink.clone()),
+        dim6_size: Set(aggregate.dim6_size.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),
@@ -198,4 +223,76 @@ pub async fn update_mp_ref_count(nomenclature_id: Uuid, count: i32) -> anyhow::R
         .exec(conn())
         .await?;
     Ok(())
+}
+
+/// Структура для возврата списка уникальных значений измерений
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DimensionValues {
+    pub dim1_category: Vec<String>,
+    pub dim2_line: Vec<String>,
+    pub dim3_model: Vec<String>,
+    pub dim4_format: Vec<String>,
+    pub dim5_sink: Vec<String>,
+    pub dim6_size: Vec<String>,
+}
+
+/// Получить все уникальные значения измерений
+pub async fn get_distinct_dimension_values() -> anyhow::Result<DimensionValues> {
+    use std::collections::BTreeSet;
+
+    // Получаем все записи
+    let all_items: Vec<Model> = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?;
+
+    // Используем BTreeSet для автоматической сортировки и уникальности
+    let mut dim1_set = BTreeSet::new();
+    let mut dim2_set = BTreeSet::new();
+    let mut dim3_set = BTreeSet::new();
+    let mut dim4_set = BTreeSet::new();
+    let mut dim5_set = BTreeSet::new();
+    let mut dim6_set = BTreeSet::new();
+
+    for item in all_items {
+        // Добавляем только непустые значения (после trim)
+        let dim1 = item.dim1_category.trim();
+        if !dim1.is_empty() {
+            dim1_set.insert(dim1.to_string());
+        }
+
+        let dim2 = item.dim2_line.trim();
+        if !dim2.is_empty() {
+            dim2_set.insert(dim2.to_string());
+        }
+
+        let dim3 = item.dim3_model.trim();
+        if !dim3.is_empty() {
+            dim3_set.insert(dim3.to_string());
+        }
+
+        let dim4 = item.dim4_format.trim();
+        if !dim4.is_empty() {
+            dim4_set.insert(dim4.to_string());
+        }
+
+        let dim5 = item.dim5_sink.trim();
+        if !dim5.is_empty() {
+            dim5_set.insert(dim5.to_string());
+        }
+
+        let dim6 = item.dim6_size.trim();
+        if !dim6.is_empty() {
+            dim6_set.insert(dim6.to_string());
+        }
+    }
+
+    Ok(DimensionValues {
+        dim1_category: dim1_set.into_iter().collect(),
+        dim2_line: dim2_set.into_iter().collect(),
+        dim3_model: dim3_set.into_iter().collect(),
+        dim4_format: dim4_set.into_iter().collect(),
+        dim5_sink: dim5_set.into_iter().collect(),
+        dim6_size: dim6_set.into_iter().collect(),
+    })
 }

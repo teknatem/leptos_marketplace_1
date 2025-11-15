@@ -58,6 +58,25 @@ pub struct Nomenclature {
 
     #[serde(rename = "mpRefCount", default)]
     pub mp_ref_count: i32,
+
+    // Измерения (классификация)
+    #[serde(rename = "dim1Category", default)]
+    pub dim1_category: String,
+
+    #[serde(rename = "dim2Line", default)]
+    pub dim2_line: String,
+
+    #[serde(rename = "dim3Model", default)]
+    pub dim3_model: String,
+
+    #[serde(rename = "dim4Format", default)]
+    pub dim4_format: String,
+
+    #[serde(rename = "dim5Sink", default)]
+    pub dim5_sink: String,
+
+    #[serde(rename = "dim6Size", default)]
+    pub dim6_size: String,
 }
 
 impl Nomenclature {
@@ -80,6 +99,12 @@ impl Nomenclature {
             parent_id,
             article,
             mp_ref_count: 0,
+            dim1_category: String::new(),
+            dim2_line: String::new(),
+            dim3_model: String::new(),
+            dim4_format: String::new(),
+            dim5_sink: String::new(),
+            dim6_size: String::new(),
         }
     }
 
@@ -103,6 +128,12 @@ impl Nomenclature {
             parent_id,
             article,
             mp_ref_count: 0,
+            dim1_category: String::new(),
+            dim2_line: String::new(),
+            dim3_model: String::new(),
+            dim4_format: String::new(),
+            dim5_sink: String::new(),
+            dim6_size: String::new(),
         }
     }
 
@@ -123,6 +154,14 @@ impl Nomenclature {
         self.parent_id = dto.parent_id.clone();
         self.article = dto.article.clone().unwrap_or_default();
         // mp_ref_count обновляется только автоматически при сопоставлении
+
+        // Обновление измерений
+        self.dim1_category = dto.dim1_category.clone().unwrap_or_default();
+        self.dim2_line = dto.dim2_line.clone().unwrap_or_default();
+        self.dim3_model = dto.dim3_model.clone().unwrap_or_default();
+        self.dim4_format = dto.dim4_format.clone().unwrap_or_default();
+        self.dim5_sink = dto.dim5_sink.clone().unwrap_or_default();
+        self.dim6_size = dto.dim6_size.clone().unwrap_or_default();
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -132,6 +171,27 @@ impl Nomenclature {
         if self.base.code.trim().is_empty() {
             return Err("Код не может быть пустым".into());
         }
+
+        // Валидация длины измерений
+        if self.dim1_category.len() > 40 {
+            return Err("Категория не должна превышать 40 символов".into());
+        }
+        if self.dim2_line.len() > 40 {
+            return Err("Линейка не должна превышать 40 символов".into());
+        }
+        if self.dim3_model.len() > 80 {
+            return Err("Модель не должна превышать 80 символов".into());
+        }
+        if self.dim4_format.len() > 20 {
+            return Err("Формат не должен превышать 20 символов".into());
+        }
+        if self.dim5_sink.len() > 40 {
+            return Err("Раковина не должна превышать 40 символов".into());
+        }
+        if self.dim6_size.len() > 20 {
+            return Err("Размер не должен превышать 20 символов".into());
+        }
+
         Ok(())
     }
 
@@ -212,4 +272,18 @@ pub struct NomenclatureDto {
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(rename = "mpRefCount", default)]
     pub mp_ref_count: i32,
+
+    // Измерения (классификация)
+    #[serde(rename = "dim1Category")]
+    pub dim1_category: Option<String>,
+    #[serde(rename = "dim2Line")]
+    pub dim2_line: Option<String>,
+    #[serde(rename = "dim3Model")]
+    pub dim3_model: Option<String>,
+    #[serde(rename = "dim4Format")]
+    pub dim4_format: Option<String>,
+    #[serde(rename = "dim5Sink")]
+    pub dim5_sink: Option<String>,
+    #[serde(rename = "dim6Size")]
+    pub dim6_size: Option<String>,
 }

@@ -7,7 +7,30 @@
     <link rel="stylesheet" href="styles/main.css">
     <link data-trunk rel="copy-dir" href="styles" />
     <link data-trunk rel="copy-dir" href="assets" />
-    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">    
+    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
+
+    <!-- SheetJS library for Excel parsing -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script>
+        // Excel parser helper function
+        window.parseExcelFile = function(arrayBuffer) {
+            try {
+                const workbook = XLSX.read(new Uint8Array(arrayBuffer), {type: 'array', raw: false});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                // Convert to array of arrays, treating all values as strings
+                const data = XLSX.utils.sheet_to_json(worksheet, {
+                    header: 1,
+                    raw: false,
+                    defval: ''
+                });
+                return data;
+            } catch (e) {
+                console.error('Excel parsing error:', e);
+                throw e;
+            }
+        };
+    </script>
 </head>
 <body>
     <link data-trunk rel="rust" data-target-name="frontend" />

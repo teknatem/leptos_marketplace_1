@@ -108,8 +108,13 @@ impl ImportExecutor {
                         .await?;
                 }
                 "a012_wb_sales" => {
-                    self.import_wb_sales(session_id, connection, request.date_from, request.date_to)
-                        .await?;
+                    self.import_wb_sales(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -587,14 +592,21 @@ impl ImportExecutor {
             };
 
         // Получаем продажи из API WB
-        let sales_rows = self.api_client.fetch_sales(connection, date_from, date_to).await?;
+        let sales_rows = self
+            .api_client
+            .fetch_sales(connection, date_from, date_to)
+            .await?;
 
         tracing::info!("Received {} sale rows from WB API", sales_rows.len());
 
         // Логируем первую запись для диагностики
         if let Some(first) = sales_rows.first() {
-            tracing::info!("Sample sale row - srid: {:?}, date (sale_dt): {:?}, lastChangeDate: {:?}",
-                first.srid, first.sale_dt, first.last_change_date);
+            tracing::info!(
+                "Sample sale row - srid: {:?}, date (sale_dt): {:?}, lastChangeDate: {:?}",
+                first.srid,
+                first.sale_dt,
+                first.last_change_date
+            );
         }
 
         // Обрабатываем каждую продажу
@@ -672,19 +684,23 @@ impl ImportExecutor {
                     .map(|dt| dt.with_timezone(&chrono::Utc))
                     .or_else(|_| {
                         // Формат с T и без timezone: 2025-01-15T10:30:00
-                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").map(
+                            |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
+                        )
                     })
                     .or_else(|_| {
                         // Формат с пробелом: 2025-01-15 10:30:00
-                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S").map(
+                            |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
+                        )
                     })
                     .or_else(|_| {
                         // Только дата: 2025-01-15
                         chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
                             .map(|nd| nd.and_hms_opt(0, 0, 0).unwrap())
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                            .map(|ndt| {
+                                chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc)
+                            })
                     });
 
                 match parsed {
@@ -693,7 +709,11 @@ impl ImportExecutor {
                         dt
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse sale_dt '{}': {}. Using current time as fallback.", date_str, e);
+                        tracing::warn!(
+                            "Failed to parse sale_dt '{}': {}. Using current time as fallback.",
+                            date_str,
+                            e
+                        );
                         chrono::Utc::now()
                     }
                 }

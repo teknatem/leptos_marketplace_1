@@ -32,7 +32,12 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
         }
     } else {
         // Если is_posted = false, удаляем проекции (если были)
-        if let Err(e) = crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string()).await {
+        if let Err(e) =
+            crate::projections::p900_mp_sales_register::repository::delete_by_registrator(
+                &id.to_string(),
+            )
+            .await
+        {
             tracing::error!("Failed to delete projections for WB Sales document: {}", e);
         }
     }
@@ -62,4 +67,3 @@ pub async fn list_by_date_range(
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
-

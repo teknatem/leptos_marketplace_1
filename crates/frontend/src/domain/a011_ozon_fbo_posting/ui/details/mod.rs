@@ -1,9 +1,9 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
-use gloo_net::http::Request;
-use wasm_bindgen::JsCast;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
+use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsCast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFboPostingDetailDto {
@@ -164,7 +164,8 @@ pub fn OzonFboPostingDetail(
                                 match serde_json::from_str::<OzonFboPostingDetailDto>(&text) {
                                     Ok(data) => {
                                         // Загружаем raw JSON от OZON
-                                        let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
+                                        let raw_payload_ref =
+                                            data.source_meta.raw_payload_ref.clone();
                                         let posting_id = data.id.clone();
                                         let document_no = data.header.document_no.clone();
                                         set_posting.set(Some(data));
@@ -172,37 +173,62 @@ pub fn OzonFboPostingDetail(
 
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
-                                            let raw_url = format!("http://localhost:3000/api/a011/raw/{}", raw_payload_ref);
+                                            let raw_url = format!(
+                                                "http://localhost:3000/api/a011/raw/{}",
+                                                raw_payload_ref
+                                            );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             // Форматируем JSON
-                                                            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&text) {
-                                                                if let Ok(formatted) = serde_json::to_string_pretty(&json_value) {
-                                                                    set_raw_json_from_ozon.set(Some(formatted));
+                                                            if let Ok(json_value) =
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
+                                                                )
+                                                            {
+                                                                if let Ok(formatted) =
+                                                                    serde_json::to_string_pretty(
+                                                                        &json_value,
+                                                                    )
+                                                                {
+                                                                    set_raw_json_from_ozon
+                                                                        .set(Some(formatted));
                                                                 }
                                                             }
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    log!("Failed to load raw JSON from OZON: {:?}", e);
+                                                    log!(
+                                                        "Failed to load raw JSON from OZON: {:?}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         });
 
                                         // Асинхронная загрузка проекций p900
                                         let set_projections = set_projections.clone();
-                                        let set_projections_loading = set_projections_loading.clone();
+                                        let set_projections_loading =
+                                            set_projections_loading.clone();
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
-                                            let projections_url = format!("http://localhost:3000/api/projections/p900/{}", posting_id);
+                                            let projections_url = format!(
+                                                "http://localhost:3000/api/projections/p900/{}",
+                                                posting_id
+                                            );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
-                                                            if let Ok(items) = serde_json::from_str::<Vec<SalesRegisterDto>>(&text) {
+                                                            if let Ok(items) = serde_json::from_str::<
+                                                                Vec<SalesRegisterDto>,
+                                                            >(
+                                                                &text
+                                                            ) {
                                                                 set_projections.set(items);
                                                             }
                                                         }
@@ -217,23 +243,32 @@ pub fn OzonFboPostingDetail(
 
                                         // Асинхронная загрузка транзакций a014
                                         let set_transactions = set_transactions.clone();
-                                        let set_transactions_loading = set_transactions_loading.clone();
+                                        let set_transactions_loading =
+                                            set_transactions_loading.clone();
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_transactions_loading.set(true);
                                             // URL-кодируем posting_number для корректной передачи в URL
-                                            let encoded_posting_number = urlencoding::encode(&document_no);
+                                            let encoded_posting_number =
+                                                urlencoding::encode(&document_no);
                                             let transactions_url = format!("http://localhost:3000/api/ozon_transactions/by-posting/{}", encoded_posting_number);
                                             log!("Loading transactions for posting_number: {} (encoded: {})", document_no, encoded_posting_number);
                                             log!("Request URL: {}", transactions_url);
-                                            
+
                                             match Request::get(&transactions_url).send().await {
                                                 Ok(resp) => {
                                                     let status = resp.status();
-                                                    log!("Transactions response status: {}", status);
+                                                    log!(
+                                                        "Transactions response status: {}",
+                                                        status
+                                                    );
                                                     if status == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             log!("Transactions response: {}", text);
-                                                            if let Ok(items) = serde_json::from_str::<Vec<TransactionListDto>>(&text) {
+                                                            if let Ok(items) = serde_json::from_str::<
+                                                                Vec<TransactionListDto>,
+                                                            >(
+                                                                &text
+                                                            ) {
                                                                 log!("Successfully parsed {} transactions", items.len());
                                                                 set_transactions.set(items);
                                                             } else {
@@ -313,10 +348,10 @@ pub fn OzonFboPostingDetail(
                                         on:click=move |_| set_active_tab.set("general")
                                         style=move || format!(
                                             "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "general" { 
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;" 
-                                            } else { 
-                                                "background: #f5f5f5; color: #666;" 
+                                            if active_tab.get() == "general" {
+                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                            } else {
+                                                "background: #f5f5f5; color: #666;"
                                             }
                                         )
                                     >
@@ -326,10 +361,10 @@ pub fn OzonFboPostingDetail(
                                         on:click=move |_| set_active_tab.set("lines")
                                         style=move || format!(
                                             "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "lines" { 
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;" 
-                                            } else { 
-                                                "background: #f5f5f5; color: #666;" 
+                                            if active_tab.get() == "lines" {
+                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                            } else {
+                                                "background: #f5f5f5; color: #666;"
                                             }
                                         )
                                     >
@@ -386,26 +421,26 @@ pub fn OzonFboPostingDetail(
                                         let conn_id = post.header.connection_id.clone();
                                         let org_id = post.header.organization_id.clone();
                                         let mp_id = post.header.marketplace_id.clone();
-                                        
+
                                         view! {
                                             <div class="general-info">
                                                 <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
                                                     <div style="font-weight: 600; color: #555;">"Document №:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.header.document_no.clone()}</div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Code:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.code.clone()}</div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Description:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.description.clone()}</div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Scheme:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
                                                         <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
                                                             {post.header.scheme.clone()}
                                                         </span>
                                                     </div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Status:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
                                                         <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
@@ -441,7 +476,7 @@ pub fn OzonFboPostingDetail(
                                                             }
                                                         }}
                                                     </div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
                                                     <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
                                                         <span style="color: #666;" title=conn_id.clone()>{format!("{}...", conn_id.chars().take(8).collect::<String>())}</span>
@@ -461,7 +496,7 @@ pub fn OzonFboPostingDetail(
                                                             "📋"
                                                         </button>
                                                     </div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Organization ID:"</div>
                                                     <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
                                                         <span style="color: #666;" title=org_id.clone()>{format!("{}...", org_id.chars().take(8).collect::<String>())}</span>
@@ -481,7 +516,7 @@ pub fn OzonFboPostingDetail(
                                                             "📋"
                                                         </button>
                                                     </div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Marketplace ID:"</div>
                                                     <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
                                                         <span style="color: #666;" title=mp_id.clone()>{format!("{}...", mp_id.chars().take(8).collect::<String>())}</span>
@@ -501,13 +536,13 @@ pub fn OzonFboPostingDetail(
                                                             "📋"
                                                         </button>
                                                     </div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Created At:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.metadata.created_at.clone()}</div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Updated At:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.metadata.updated_at.clone()}</div>
-                                                    
+
                                                     <div style="font-weight: 600; color: #555;">"Version:"</div>
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{post.metadata.version}</div>
                                                 </div>
@@ -654,7 +689,7 @@ pub fn OzonFboPostingDetail(
                                                     let mut items = transactions.get();
                                                     // Сортировка по дате (новые сначала)
                                                     items.sort_by(|a, b| b.operation_date.cmp(&a.operation_date));
-                                                    
+
                                                     if items.is_empty() {
                                                         view! {
                                                             <div style="padding: 20px; text-align: center; color: #999;">
@@ -786,7 +821,7 @@ pub fn OzonFboPostingDetail(
                 let close_transaction_detail = move || {
                     set_selected_transaction_id.set(None);
                 };
-                
+
                 view! {
                     <OzonTransactionsDetail
                         transaction_id=transaction_id
@@ -797,4 +832,3 @@ pub fn OzonFboPostingDetail(
         </div>
     }
 }
-

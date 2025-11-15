@@ -1,13 +1,13 @@
 use super::details::WbSalesDetail;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use chrono::{Datelike, Utc};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use chrono::{Datelike, Utc};
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 use wasm_bindgen::JsCast;
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
 fn format_date(iso_date: &str) -> String {
@@ -124,13 +124,13 @@ pub fn WbSalesList() -> impl IntoView {
 
             let date_from_val = date_from.get();
             let date_to_val = date_to.get();
-            
+
             // Ограничиваем количество записей для оптимизации
             let url = format!(
                 "http://localhost:3000/api/a012/wb-sales?date_from={}&date_to={}&limit=20000",
                 date_from_val, date_to_val
             );
-            
+
             log!("Loading WB sales with URL: {}", url);
 
             match Request::get(&url).send().await {
@@ -293,7 +293,13 @@ pub fn WbSalesList() -> impl IntoView {
         let total_amount: f64 = data.iter().filter_map(|s| s.amount_line).sum();
         let total_price: f64 = data.iter().filter_map(|s| s.total_price).sum();
         let total_finished: f64 = data.iter().filter_map(|s| s.finished_price).sum();
-        (data.len(), total_qty, total_amount, total_price, total_finished)
+        (
+            data.len(),
+            total_qty,
+            total_amount,
+            total_price,
+            total_finished,
+        )
     };
 
     // Автоматическая загрузка при открытии
@@ -572,13 +578,26 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
 
     for sale in data {
         let sale_date = format_date(&sale.sale_date);
-        let org_name = sale.organization_name.as_ref().map(|s| s.as_str()).unwrap_or("—");
-        
+        let org_name = sale
+            .organization_name
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("—");
+
         // Форматируем суммы с запятой как десятичный разделитель
         let qty_str = format!("{:.0}", sale.qty);
-        let amount_str = sale.amount_line.map(|a| format!("{:.2}", a).replace(".", ",")).unwrap_or_else(|| "—".to_string());
-        let total_price_str = sale.total_price.map(|a| format!("{:.2}", a).replace(".", ",")).unwrap_or_else(|| "—".to_string());
-        let finished_price_str = sale.finished_price.map(|a| format!("{:.2}", a).replace(".", ",")).unwrap_or_else(|| "—".to_string());
+        let amount_str = sale
+            .amount_line
+            .map(|a| format!("{:.2}", a).replace(".", ","))
+            .unwrap_or_else(|| "—".to_string());
+        let total_price_str = sale
+            .total_price
+            .map(|a| format!("{:.2}", a).replace(".", ","))
+            .unwrap_or_else(|| "—".to_string());
+        let finished_price_str = sale
+            .finished_price
+            .map(|a| format!("{:.2}", a).replace(".", ","))
+            .unwrap_or_else(|| "—".to_string());
 
         csv.push_str(&format!(
             "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
@@ -620,7 +639,10 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
         .map_err(|e| format!("Failed to cast to anchor: {:?}", e))?;
 
     a.set_href(&url);
-    let filename = format!("wb_sales_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let filename = format!(
+        "wb_sales_{}.csv",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+    );
     a.set_download(&filename);
     a.click();
 

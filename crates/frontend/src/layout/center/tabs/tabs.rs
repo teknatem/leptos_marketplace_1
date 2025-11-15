@@ -4,6 +4,7 @@
 // This is the component
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
+use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
 use crate::domain::a005_marketplace::ui::list::MarketplaceList;
 use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
@@ -44,6 +45,9 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "a004_nomenclature" => {
             view! { <crate::domain::a004_nomenclature::ui::tree::NomenclatureTree /> }.into_any()
+        }
+        Some(key) if key == "a004_nomenclature_list" => {
+            view! { <NomenclatureList /> }.into_any()
         }
         Some(key) if key == "a005_marketplace" => view! { <MarketplaceList /> }.into_any(),
         Some(key) if key == "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),

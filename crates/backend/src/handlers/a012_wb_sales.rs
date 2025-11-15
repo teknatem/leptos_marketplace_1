@@ -5,8 +5,8 @@ use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::a012_wb_sales;
 use crate::domain::a002_organization;
+use crate::domain::a012_wb_sales;
 use crate::shared::data::raw_storage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,13 +29,15 @@ pub async fn list_sales(
     Query(query): Query<ListSalesQuery>,
 ) -> Result<Json<Vec<WbSalesListItemDto>>, axum::http::StatusCode> {
     // Парсим даты
-    let date_from = query.date_from.as_ref().and_then(|s| {
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
-    });
-    
-    let date_to = query.date_to.as_ref().and_then(|s| {
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
-    });
+    let date_from = query
+        .date_from
+        .as_ref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+
+    let date_to = query
+        .date_to
+        .as_ref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 
     let limit = query.limit.unwrap_or(20000); // По умолчанию максимум 20000 записей
     let offset = query.offset.unwrap_or(0);
@@ -58,13 +60,9 @@ pub async fn list_sales(
     items.sort_by(|a, b| b.state.sale_dt.cmp(&a.state.sale_dt));
 
     let total_count = items.len();
-    
+
     // Применяем пагинацию
-    let items: Vec<_> = items
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
 
     tracing::info!(
         "Loading WB sales: total={}, offset={}, limit={}, returned={}",
@@ -132,11 +130,10 @@ pub async fn get_raw_json(
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
-    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str)
-        .map_err(|e| {
-            tracing::error!("Failed to parse raw JSON: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str).map_err(|e| {
+        tracing::error!("Failed to parse raw JSON: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(json_value))
 }
@@ -188,12 +185,10 @@ pub async fn post_period(
     let to = NaiveDate::parse_from_str(&req.to, "%Y-%m-%d")
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-    let documents = a012_wb_sales::service::list_all()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list documents: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let documents = a012_wb_sales::service::list_all().await.map_err(|e| {
+        tracing::error!("Failed to list documents: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let mut posted_count = 0;
     let mut failed_count = 0;
@@ -208,11 +203,7 @@ pub async fn post_period(
                 }
                 Err(e) => {
                     failed_count += 1;
-                    tracing::error!(
-                        "Failed to post document {}: {}",
-                        doc.base.id.as_string(),
-                        e
-                    );
+                    tracing::error!("Failed to post document {}: {}", doc.base.id.as_string(), e);
                 }
             }
         }
@@ -224,4 +215,3 @@ pub async fn post_period(
         "failed_count": failed_count
     })))
 }
-

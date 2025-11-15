@@ -54,6 +54,13 @@ impl NomenclatureDetailsViewModel {
                         f.parent_id = item.parent_id;
                         f.article = Some(item.article);
                         f.updated_at = Some(item.base.metadata.updated_at);
+                        // Load dimension fields
+                        f.dim1_category = Some(item.dim1_category);
+                        f.dim2_line = Some(item.dim2_line);
+                        f.dim3_model = Some(item.dim3_model);
+                        f.dim4_format = Some(item.dim4_format);
+                        f.dim5_sink = Some(item.dim5_sink);
+                        f.dim6_size = Some(item.dim6_size);
                     });
                 }
                 Err(e) => this.error.set(Some(e)),

@@ -27,3 +27,5 @@ FROM a012_wb_sales
 ORDER BY created_at DESC
 LIMIT 1;
 
+
+
