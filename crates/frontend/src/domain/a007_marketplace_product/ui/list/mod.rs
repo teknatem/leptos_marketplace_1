@@ -17,17 +17,15 @@ use std::rc::Rc;
 pub struct MarketplaceProductRow {
     pub id: String,
     pub code: String,
-    pub product_name: String,
-    pub art: String,
+    pub description: String,
+    pub article: String,
     pub marketplace_sku: String,
     pub barcode: Option<String>,
-    pub price: String,
-    pub stock: String,
-    pub marketplace_id: String,
+    pub marketplace_ref: String,
     pub marketplace_name: String,
-    pub connection_mp_id: String,
+    pub connection_mp_ref: String,
     pub connection_mp_name: String,
-    pub nomenclature_id: Option<String>,
+    pub nomenclature_ref: Option<String>,
     pub nomenclature_name: Option<String>,
 }
 
@@ -41,40 +39,32 @@ impl MarketplaceProductRow {
         use contracts::domain::common::AggregateId;
 
         let marketplace_name = marketplace_map
-            .get(&m.marketplace_id)
+            .get(&m.marketplace_ref)
             .cloned()
             .unwrap_or_else(|| "Неизвестно".to_string());
 
         let connection_mp_name = connection_mp_map
-            .get(&m.connection_mp_id)
+            .get(&m.connection_mp_ref)
             .cloned()
             .unwrap_or_else(|| "Неизвестно".to_string());
 
         let nomenclature_name = m
-            .nomenclature_id
+            .nomenclature_ref
             .as_ref()
             .and_then(|id| nomenclature_map.get(id).cloned());
 
         Self {
             id: m.base.id.as_string(),
             code: m.base.code,
-            product_name: m.product_name,
-            art: m.art,
+            description: m.base.description,
+            article: m.article,
             marketplace_sku: m.marketplace_sku,
             barcode: m.barcode,
-            price: m
-                .price
-                .map(|p| format!("{:.2}", p))
-                .unwrap_or_else(|| "-".to_string()),
-            stock: m
-                .stock
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string()),
-            marketplace_id: m.marketplace_id,
+            marketplace_ref: m.marketplace_ref,
             marketplace_name,
-            connection_mp_id: m.connection_mp_id,
+            connection_mp_ref: m.connection_mp_ref,
             connection_mp_name,
-            nomenclature_id: m.nomenclature_id.clone(),
+            nomenclature_ref: m.nomenclature_ref.clone(),
             nomenclature_name,
         }
     }
@@ -86,12 +76,10 @@ impl ExcelExportable for MarketplaceProductRow {
             "Код",
             "Маркетплейс",
             "Кабинет",
-            "Наименование",
+            "Описание",
             "Артикул",
             "SKU",
             "Штрихкод",
-            "Цена",
-            "Остаток",
             "Связь 1С",
             "Номенклатура 1С",
         ]
@@ -102,13 +90,11 @@ impl ExcelExportable for MarketplaceProductRow {
             self.code.clone(),
             self.marketplace_name.clone(),
             self.connection_mp_name.clone(),
-            self.product_name.clone(),
-            self.art.clone(),
+            self.description.clone(),
+            self.article.clone(),
             self.marketplace_sku.clone(),
             self.barcode.clone().unwrap_or_else(|| "-".to_string()),
-            self.price.clone(),
-            self.stock.clone(),
-            if self.nomenclature_id.is_some() {
+            if self.nomenclature_ref.is_some() {
                 "Да"
             } else {
                 "Нет"
@@ -126,11 +112,14 @@ impl Searchable for MarketplaceProductRow {
         let filter_lower = filter.to_lowercase();
 
         self.code.to_lowercase().contains(&filter_lower)
-            || self.product_name.to_lowercase().contains(&filter_lower)
-            || self.art.to_lowercase().contains(&filter_lower)
+            || self.description.to_lowercase().contains(&filter_lower)
+            || self.article.to_lowercase().contains(&filter_lower)
             || self.marketplace_sku.to_lowercase().contains(&filter_lower)
             || self.marketplace_name.to_lowercase().contains(&filter_lower)
-            || self.connection_mp_name.to_lowercase().contains(&filter_lower)
+            || self
+                .connection_mp_name
+                .to_lowercase()
+                .contains(&filter_lower)
             || self
                 .barcode
                 .as_ref()
@@ -144,8 +133,8 @@ impl Searchable for MarketplaceProductRow {
     fn get_field_value(&self, field: &str) -> Option<String> {
         match field {
             "code" => Some(self.code.clone()),
-            "product_name" => Some(self.product_name.clone()),
-            "art" => Some(self.art.clone()),
+            "description" => Some(self.description.clone()),
+            "article" => Some(self.article.clone()),
             "marketplace_sku" => Some(self.marketplace_sku.clone()),
             "marketplace_name" => Some(self.marketplace_name.clone()),
             "connection_mp_name" => Some(self.connection_mp_name.clone()),
@@ -168,11 +157,14 @@ impl Sortable for MarketplaceProductRow {
                 .connection_mp_name
                 .to_lowercase()
                 .cmp(&other.connection_mp_name.to_lowercase()),
-            "product_name" => self
-                .product_name
+            "description" => self
+                .description
                 .to_lowercase()
-                .cmp(&other.product_name.to_lowercase()),
-            "art" => self.art.to_lowercase().cmp(&other.art.to_lowercase()),
+                .cmp(&other.description.to_lowercase()),
+            "article" => self
+                .article
+                .to_lowercase()
+                .cmp(&other.article.to_lowercase()),
             "marketplace_sku" => self
                 .marketplace_sku
                 .to_lowercase()
@@ -188,17 +180,6 @@ impl Sortable for MarketplaceProductRow {
                     .as_ref()
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
-                a.cmp(&b)
-            }
-            "price" => {
-                // Сортируем числа правильно (парсим из строки)
-                let a = self.price.parse::<f64>().unwrap_or(0.0);
-                let b = other.price.parse::<f64>().unwrap_or(0.0);
-                a.partial_cmp(&b).unwrap_or(Ordering::Equal)
-            }
-            "stock" => {
-                let a = self.stock.parse::<i32>().unwrap_or(0);
-                let b = other.stock.parse::<i32>().unwrap_or(0);
                 a.cmp(&b)
             }
             "nomenclature_name" => {
@@ -249,7 +230,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .collect()
     };
 
-    // Создаем HashMap для маппинга connection_mp_id -> description
+    // Создаем HashMap для маппинга connection_mp_ref -> description
     let connection_mp_map = move || -> HashMap<String, String> {
         connections_mp
             .get()
@@ -279,7 +260,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         set_items.update(|rows| {
             for row in rows.iter_mut() {
                 let name = mp_map
-                    .get(&row.marketplace_id)
+                    .get(&row.marketplace_ref)
                     .cloned()
                     .unwrap_or_else(|| "Неизвестно".to_string());
                 row.marketplace_name = name;
@@ -292,7 +273,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         set_items.update(|rows| {
             for row in rows.iter_mut() {
                 let name = conn_map
-                    .get(&row.connection_mp_id)
+                    .get(&row.connection_mp_ref)
                     .cloned()
                     .unwrap_or_else(|| "Неизвестно".to_string());
                 row.connection_mp_name = name;
@@ -305,7 +286,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         set_items.update(|rows| {
             for row in rows.iter_mut() {
                 row.nomenclature_name = row
-                    .nomenclature_id
+                    .nomenclature_ref
                     .as_ref()
                     .and_then(|id| nom_map.get(id).cloned());
             }
@@ -321,7 +302,9 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     let nom_map = nomenclature_map();
                     let rows: Vec<MarketplaceProductRow> = v
                         .into_iter()
-                        .map(|p| MarketplaceProductRow::from_product(p, &mp_map, &conn_map, &nom_map))
+                        .map(|p| {
+                            MarketplaceProductRow::from_product(p, &mp_map, &conn_map, &nom_map)
+                        })
                         .collect();
                     set_items.set(rows);
                     set_error.set(None);
@@ -442,7 +425,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
             // Фильтр по маркетплейсу
             .filter(|row| {
                 if let Some(ref mp_id) = selected_marketplace.get() {
-                    &row.marketplace_id == mp_id
+                    &row.marketplace_ref == mp_id
                 } else {
                     true
                 }
@@ -617,17 +600,17 @@ pub fn MarketplaceProductList() -> impl IntoView {
                             </th>
                             <th
                                 class="cursor-pointer user-select-none"
-                                on:click=toggle_sort("product_name")
+                                on:click=toggle_sort("description")
                                 title="Сортировать"
                             >
-                                {move || format!("Наименование{}", get_sort_indicator(&sort_field.get(), "product_name", sort_ascending.get()))}
+                                {move || format!("Описание{}", get_sort_indicator(&sort_field.get(), "description", sort_ascending.get()))}
                             </th>
                             <th
                                 class="cursor-pointer user-select-none"
-                                on:click=toggle_sort("art")
+                                on:click=toggle_sort("article")
                                 title="Сортировать"
                             >
-                                {move || format!("Артикул{}", get_sort_indicator(&sort_field.get(), "art", sort_ascending.get()))}
+                                {move || format!("Артикул{}", get_sort_indicator(&sort_field.get(), "article", sort_ascending.get()))}
                             </th>
                             <th
                                 class="cursor-pointer user-select-none"
@@ -642,20 +625,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                 title="Сортировать"
                             >
                                 {move || format!("Штрихкод{}", get_sort_indicator(&sort_field.get(), "barcode", sort_ascending.get()))}
-                            </th>
-                            <th
-                                class="cursor-pointer user-select-none"
-                                on:click=toggle_sort("price")
-                                title="Сортировать"
-                            >
-                                {move || format!("Цена{}", get_sort_indicator(&sort_field.get(), "price", sort_ascending.get()))}
-                            </th>
-                            <th
-                                class="cursor-pointer user-select-none"
-                                on:click=toggle_sort("stock")
-                                title="Сортировать"
-                            >
-                                {move || format!("Остаток{}", get_sort_indicator(&sort_field.get(), "stock", sort_ascending.get()))}
                             </th>
                             <th>{"Связь 1С"}</th>
                             <th
@@ -688,16 +657,16 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                     view! { <span>{row.marketplace_name.clone()}</span> }.into_any()
                                 };
 
-                                let product_name_view = if current_filter.len() >= 3 {
-                                    highlight_matches(&row.product_name, &current_filter)
+                                let description_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.description, &current_filter)
                                 } else {
-                                    view! { <span>{row.product_name.clone()}</span> }.into_any()
+                                    view! { <span>{row.description.clone()}</span> }.into_any()
                                 };
 
-                                let art_view = if current_filter.len() >= 3 {
-                                    highlight_matches(&row.art, &current_filter)
+                                let article_view = if current_filter.len() >= 3 {
+                                    highlight_matches(&row.article, &current_filter)
                                 } else {
-                                    view! { <span>{row.art.clone()}</span> }.into_any()
+                                    view! { <span>{row.article.clone()}</span> }.into_any()
                                 };
 
                                 let sku_view = if current_filter.len() >= 3 {
@@ -747,14 +716,12 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                                 view! { <span>{row.connection_mp_name.clone()}</span> }.into_any()
                                             }
                                         }</td>
-                                        <td>{product_name_view}</td>
-                                        <td>{art_view}</td>
+                                        <td>{description_view}</td>
+                                        <td>{article_view}</td>
                                         <td>{sku_view}</td>
                                         <td>{barcode_view}</td>
-                                        <td>{row.price.clone()}</td>
-                                        <td>{row.stock.clone()}</td>
                                         <td style="text-align: center;">
-                                            {if row.nomenclature_id.is_some() {
+                                            {if row.nomenclature_ref.is_some() {
                                                 view! { <span style="color: green; font-weight: bold;">{"✓"}</span> }.into_any()
                                             } else {
                                                 view! { <span style="color: red;">{"✗"}</span> }.into_any()

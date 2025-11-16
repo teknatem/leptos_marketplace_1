@@ -19,20 +19,16 @@ pub struct Model {
     pub code: String,
     pub description: String,
     pub comment: Option<String>,
-    pub marketplace_id: String,
-    pub connection_mp_id: String,
+    pub marketplace_ref: String,
+    pub connection_mp_ref: String,
     pub marketplace_sku: String,
     pub barcode: Option<String>,
-    pub art: String,
-    pub product_name: String,
+    pub article: String,
     pub brand: Option<String>,
     pub category_id: Option<String>,
     pub category_name: Option<String>,
-    pub price: Option<f64>,
-    pub stock: Option<i32>,
     pub last_update: Option<chrono::DateTime<chrono::Utc>>,
-    pub marketplace_url: Option<String>,
-    pub nomenclature_id: Option<String>,
+    pub nomenclature_ref: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -64,20 +60,16 @@ impl From<Model> for MarketplaceProduct {
                 m.comment.clone(),
                 metadata,
             ),
-            marketplace_id: m.marketplace_id,
-            connection_mp_id: m.connection_mp_id,
+            marketplace_ref: m.marketplace_ref,
+            connection_mp_ref: m.connection_mp_ref,
             marketplace_sku: m.marketplace_sku,
             barcode: m.barcode,
-            art: m.art,
-            product_name: m.product_name,
+            article: m.article,
             brand: m.brand,
             category_id: m.category_id,
             category_name: m.category_name,
-            price: m.price,
-            stock: m.stock,
             last_update: m.last_update,
-            marketplace_url: m.marketplace_url,
-            nomenclature_id: m.nomenclature_id,
+            nomenclature_ref: m.nomenclature_ref,
         }
     }
 }
@@ -115,20 +107,16 @@ pub async fn insert(aggregate: &MarketplaceProduct) -> anyhow::Result<Uuid> {
         code: Set(aggregate.base.code.clone()),
         description: Set(aggregate.base.description.clone()),
         comment: Set(aggregate.base.comment.clone()),
-        marketplace_id: Set(aggregate.marketplace_id.clone()),
-        connection_mp_id: Set(aggregate.connection_mp_id.clone()),
+        marketplace_ref: Set(aggregate.marketplace_ref.clone()),
+        connection_mp_ref: Set(aggregate.connection_mp_ref.clone()),
         marketplace_sku: Set(aggregate.marketplace_sku.clone()),
         barcode: Set(aggregate.barcode.clone()),
-        art: Set(aggregate.art.clone()),
-        product_name: Set(aggregate.product_name.clone()),
+        article: Set(aggregate.article.clone()),
         brand: Set(aggregate.brand.clone()),
         category_id: Set(aggregate.category_id.clone()),
         category_name: Set(aggregate.category_name.clone()),
-        price: Set(aggregate.price),
-        stock: Set(aggregate.stock),
         last_update: Set(aggregate.last_update),
-        marketplace_url: Set(aggregate.marketplace_url.clone()),
-        nomenclature_id: Set(aggregate.nomenclature_id.clone()),
+        nomenclature_ref: Set(aggregate.nomenclature_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -146,20 +134,16 @@ pub async fn update(aggregate: &MarketplaceProduct) -> anyhow::Result<()> {
         code: Set(aggregate.base.code.clone()),
         description: Set(aggregate.base.description.clone()),
         comment: Set(aggregate.base.comment.clone()),
-        marketplace_id: Set(aggregate.marketplace_id.clone()),
-        connection_mp_id: Set(aggregate.connection_mp_id.clone()),
+        marketplace_ref: Set(aggregate.marketplace_ref.clone()),
+        connection_mp_ref: Set(aggregate.connection_mp_ref.clone()),
         marketplace_sku: Set(aggregate.marketplace_sku.clone()),
         barcode: Set(aggregate.barcode.clone()),
-        art: Set(aggregate.art.clone()),
-        product_name: Set(aggregate.product_name.clone()),
+        article: Set(aggregate.article.clone()),
         brand: Set(aggregate.brand.clone()),
         category_id: Set(aggregate.category_id.clone()),
         category_name: Set(aggregate.category_name.clone()),
-        price: Set(aggregate.price),
-        stock: Set(aggregate.stock),
         last_update: Set(aggregate.last_update),
-        marketplace_url: Set(aggregate.marketplace_url.clone()),
-        nomenclature_id: Set(aggregate.nomenclature_id.clone()),
+        nomenclature_ref: Set(aggregate.nomenclature_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),
@@ -182,11 +166,11 @@ pub async fn soft_delete(id: Uuid) -> anyhow::Result<bool> {
 }
 
 pub async fn get_by_marketplace_sku(
-    marketplace_id: &str,
+    marketplace_ref: &str,
     sku: &str,
 ) -> anyhow::Result<Option<MarketplaceProduct>> {
     let result = Entity::find()
-        .filter(Column::MarketplaceId.eq(marketplace_id))
+        .filter(Column::MarketplaceRef.eq(marketplace_ref))
         .filter(Column::MarketplaceSku.eq(sku))
         .filter(Column::IsDeleted.eq(false))
         .one(conn())
@@ -206,11 +190,11 @@ pub async fn get_by_barcode(barcode: &str) -> anyhow::Result<Vec<MarketplaceProd
     Ok(items)
 }
 
-pub async fn list_by_marketplace_id(
-    marketplace_id: &str,
+pub async fn list_by_marketplace_ref(
+    marketplace_ref: &str,
 ) -> anyhow::Result<Vec<MarketplaceProduct>> {
     let items: Vec<MarketplaceProduct> = Entity::find()
-        .filter(Column::MarketplaceId.eq(marketplace_id))
+        .filter(Column::MarketplaceRef.eq(marketplace_ref))
         .filter(Column::IsDeleted.eq(false))
         .all(conn())
         .await?
@@ -220,11 +204,11 @@ pub async fn list_by_marketplace_id(
     Ok(items)
 }
 
-pub async fn get_by_nomenclature_id(
-    nomenclature_id: &str,
+pub async fn get_by_nomenclature_ref(
+    nomenclature_ref: &str,
 ) -> anyhow::Result<Vec<MarketplaceProduct>> {
     let items: Vec<MarketplaceProduct> = Entity::find()
-        .filter(Column::NomenclatureId.eq(nomenclature_id))
+        .filter(Column::NomenclatureRef.eq(nomenclature_ref))
         .filter(Column::IsDeleted.eq(false))
         .all(conn())
         .await?

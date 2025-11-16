@@ -8,7 +8,7 @@ pub mod handlers;
 async fn main() -> anyhow::Result<()> {
     use axum::http::{header, Method};
     use axum::{
-        extract::Path,
+        extract::{Path, Query},
         routing::{get, post},
         Json, Router,
     };
@@ -121,6 +121,24 @@ async fn main() -> anyhow::Result<()> {
         match domain::a001_connection_1c::service::test_connection(dto).await {
             Ok(result) => Ok(Json(result)),
             Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        }
+    }
+
+    // Nomenclature search handler
+    #[derive(serde::Deserialize)]
+    struct SearchNomenclatureQuery {
+        article: String,
+    }
+    
+    async fn search_nomenclature_by_article(
+        Query(query): Query<SearchNomenclatureQuery>,
+    ) -> Result<Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>, axum::http::StatusCode> {
+        match domain::a004_nomenclature::repository::find_by_article(query.article.trim()).await {
+            Ok(items) => Ok(Json(items)),
+            Err(e) => {
+                tracing::error!("Failed to search nomenclature by article: {}", e);
+                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            }
         }
     }
 
@@ -572,6 +590,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }),
+        )
+        .route(
+            "/api/nomenclature/search",
+            get(search_nomenclature_by_article),
         )
         // Marketplace handlers
         .route(

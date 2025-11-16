@@ -19,7 +19,7 @@
     background: var(--color-bg-body);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
-    max-width: 600px;
+    max-width: 1200px;
     width: 90%;
     max-height: 90vh;
     overflow: auto;

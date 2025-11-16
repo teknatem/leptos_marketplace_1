@@ -1,4 +1,5 @@
 use super::view_model::MarketplaceProductDetailsViewModel;
+use crate::domain::a004_nomenclature::ui::picker::NomenclaturePicker;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::rc::Rc;
@@ -15,19 +16,52 @@ pub fn MarketplaceProductDetails(
     let vm_clone = vm.clone();
 
     view! {
-        <div class="details-container marketplace-product-details">
-            <div class="details-header">
-                <h3>
-                    {
-                        let vm = vm_clone.clone();
-                        move || if vm.is_edit_mode()() { "Редактирование товара" } else { "Новый товар маркетплейса" }
-                    }
-                </h3>
-            </div>
+        <div style="display: flex; justify-content: center; padding: 20px;">
+            <div class="details-container marketplace-product-details" style="width: 90%; min-width: 600px; max-width: 1500px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; padding: 24px;">
+                <div class="details-header" style="margin-bottom: 24px; border-bottom: 2px solid var(--color-primary, #4a90e2); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: var(--color-primary, #4a90e2); font-size: 1.2rem;">
+                        {
+                            let vm = vm_clone.clone();
+                            move || if vm.is_edit_mode()() { "Редактирование позиции маркетплейса" } else { "Новый товар маркетплейса" }
+                        }
+                    </h3>
+                    <div style="display: flex; gap: 12px;">
+                        <button
+                            class="btn btn-primary"
+                            on:click={
+                                let vm = vm_clone.clone();
+                                let on_saved = on_saved.clone();
+                                move |_| vm.save_command(on_saved.clone())
+                            }
+                            disabled={
+                                let vm = vm_clone.clone();
+                                move || !vm.is_form_valid()()
+                            }
+                        >
+                            {icon("save")}
+                            {
+                                let vm = vm_clone.clone();
+                                move || if vm.is_edit_mode()() { "Сохранить" } else { "Создать" }
+                            }
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            on:click=move |_| (on_cancel)(())
+                        >
+                            {icon("cancel")}
+                            {"Отмена"}
+                        </button>
+                    </div>
+                </div>
 
             {
                 let vm = vm_clone.clone();
                 move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
+            }
+
+            {
+                let vm = vm_clone.clone();
+                move || vm.success_message.get().map(|msg| view! { <div class="success">{msg}</div> })
             }
 
             <div class="details-form">
@@ -50,56 +84,46 @@ pub fn MarketplaceProductDetails(
                     />
                 </div>
 
-                <div class="form-group">
-                    <label for="product_name">{"Наименование товара"}</label>
-                    <input
-                        type="text"
-                        id="product_name"
-                        prop:value={
-                            let vm = vm_clone.clone();
-                            move || vm.form.get().product_name
-                        }
-                        on:input={
-                            let vm = vm_clone.clone();
-                            move |ev| {
-                                vm.form.update(|f| f.product_name = event_target_value(&ev));
-                            }
-                        }
-                        placeholder="Наименование на маркетплейсе"
-                    />
-                </div>
-
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="marketplace_id">{"ID Маркетплейса"}</label>
+                        <label for="marketplace_ref">{"Маркетплейс"}</label>
                         <input
                             type="text"
-                            id="marketplace_id"
+                            id="marketplace_ref"
+                            disabled
                             prop:value={
                                 let vm = vm_clone.clone();
-                                move || vm.form.get().marketplace_id
-                            }
-                            on:input={
-                                let vm = vm_clone.clone();
-                                move |ev| {
-                                    vm.form.update(|f| f.marketplace_id = event_target_value(&ev));
+                                move || {
+                                    let name = vm.marketplace_name.get();
+                                    if name.is_empty() {
+                                        "Загрузка...".to_string()
+                                    } else {
+                                        name
+                                    }
                                 }
                             }
-                            placeholder="UUID маркетплейса"
+                            placeholder="Маркетплейс"
                         />
                     </div>
 
                     <div class="form-group">
-                        <label for="connection_mp_id">{"Кабинет"}</label>
+                        <label for="connection_mp_ref">{"Кабинет"}</label>
                         <input
                             type="text"
-                            id="connection_mp_id"
+                            id="connection_mp_ref"
                             disabled
                             prop:value={
                                 let vm = vm_clone.clone();
-                                move || vm.form.get().connection_mp_id
+                                move || {
+                                    let name = vm.connection_name.get();
+                                    if name.is_empty() {
+                                        "Загрузка...".to_string()
+                                    } else {
+                                        name
+                                    }
+                                }
                             }
-                            placeholder="ID кабинета (авто)"
+                            placeholder="Кабинет"
                         />
                     </div>
                 </div>
@@ -127,18 +151,18 @@ pub fn MarketplaceProductDetails(
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="art">{"Артикул"}</label>
+                        <label for="article">{"Артикул"}</label>
                         <input
                             type="text"
-                            id="art"
+                            id="article"
                             prop:value={
                                 let vm = vm_clone.clone();
-                                move || vm.form.get().art
+                                move || vm.form.get().article
                             }
                             on:input={
                                 let vm = vm_clone.clone();
                                 move |ev| {
-                                    vm.form.update(|f| f.art = event_target_value(&ev));
+                                    vm.form.update(|f| f.article = event_target_value(&ev));
                                 }
                             }
                             placeholder="Артикул товара"
@@ -214,96 +238,119 @@ pub fn MarketplaceProductDetails(
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="price">{"Цена"}</label>
-                        <input
-                            type="number"
-                            step="0.01"
-                            id="price"
-                            prop:value={
-                                let vm = vm_clone.clone();
-                                move || vm.form.get().price.map(|p| p.to_string()).unwrap_or_default()
-                            }
-                            on:input={
-                                let vm = vm_clone.clone();
-                                move |ev| {
-                                    let value = event_target_value(&ev);
-                                    vm.form.update(|f| {
-                                        f.price = value.parse::<f64>().ok();
-                                    });
+                <fieldset style={
+                    let vm = vm_clone.clone();
+                    move || {
+                        let bg_color = if vm.form.get().nomenclature_ref.is_some() {
+                            "#d4edda" // светло-зеленый
+                        } else {
+                            "#f8d7da" // светло-розовый
+                        };
+                        format!("border: 2px solid #ddd; border-radius: 6px; padding: 16px; margin: 16px 0; background: {};", bg_color)
+                    }
+                }>
+                    <legend style="font-weight: 600; color: #333; padding: 0 8px;">{"Номенклатура (1С УТ)"}</legend>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="nomenclature_ref" style="font-weight: 500;">{"Наименование"}</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input
+                                type="text"
+                                id="nomenclature_ref"
+                                disabled
+                                prop:value={
+                                    let vm = vm_clone.clone();
+                                    move || {
+                                        let name = vm.nomenclature_name.get();
+                                        if name.is_empty() {
+                                            "Не выбрано".to_string()
+                                        } else {
+                                            name
+                                        }
+                                    }
                                 }
-                            }
-                            placeholder="0.00"
-                        />
+                                placeholder="Номенклатура"
+                                style="flex: 1; background: #fff;"
+                            />
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary"
+                                on:click={
+                                    let vm = vm_clone.clone();
+                                    move |_| vm.search_nomenclature_by_article()
+                                }
+                                disabled={
+                                    let vm = vm_clone.clone();
+                                    move || vm.form.get().article.trim().is_empty()
+                                }
+                                title="Поиск по артикулу"
+                                style="white-space: nowrap;"
+                            >
+                                {icon("search")}
+                                {"Поиск"}
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-secondary"
+                                on:click={
+                                    let vm = vm_clone.clone();
+                                    move |_| vm.open_picker()
+                                }
+                                title="Выбрать из списка"
+                                style="white-space: nowrap;"
+                            >
+                                {icon("list")}
+                                {"Выбрать"}
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-secondary"
+                                on:click={
+                                    let vm = vm_clone.clone();
+                                    move |_| vm.clear_nomenclature()
+                                }
+                                disabled={
+                                    let vm = vm_clone.clone();
+                                    move || vm.form.get().nomenclature_ref.is_none()
+                                }
+                                title="Очистить"
+                            >
+                                {icon("cancel")}
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="stock">{"Остаток"}</label>
-                        <input
-                            type="number"
-                            id="stock"
-                            prop:value={
-                                let vm = vm_clone.clone();
-                                move || vm.form.get().stock.map(|s| s.to_string()).unwrap_or_default()
-                            }
-                            on:input={
-                                let vm = vm_clone.clone();
-                                move |ev| {
-                                    let value = event_target_value(&ev);
-                                    vm.form.update(|f| {
-                                        f.stock = value.parse::<i32>().ok();
-                                    });
+                    <div class="form-row" style="gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="nomenclature_code_display" style="font-weight: 500;">{"Код"}</label>
+                            <input
+                                type="text"
+                                id="nomenclature_code_display"
+                                disabled
+                                prop:value={
+                                    let vm = vm_clone.clone();
+                                    move || vm.nomenclature_code.get()
                                 }
-                            }
-                            placeholder="0"
-                        />
+                                placeholder="—"
+                                style="background: #fff;"
+                            />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="nomenclature_article_display" style="font-weight: 500;">{"Артикул"}</label>
+                            <input
+                                type="text"
+                                id="nomenclature_article_display"
+                                disabled
+                                prop:value={
+                                    let vm = vm_clone.clone();
+                                    move || vm.nomenclature_article.get()
+                                }
+                                placeholder="—"
+                                style="background: #fff;"
+                            />
+                        </div>
                     </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="marketplace_url">{"URL товара на маркетплейсе"}</label>
-                    <input
-                        type="text"
-                        id="marketplace_url"
-                        prop:value={
-                            let vm = vm_clone.clone();
-                            move || vm.form.get().marketplace_url.clone().unwrap_or_default()
-                        }
-                        on:input={
-                            let vm = vm_clone.clone();
-                            move |ev| {
-                                let value = event_target_value(&ev);
-                                vm.form.update(|f| {
-                                    f.marketplace_url = if value.is_empty() { None } else { Some(value) };
-                                });
-                            }
-                        }
-                        placeholder="https://marketplace.com/product/123"
-                    />
-                </div>
-
-                <div class="form-group">
-                    <label for="nomenclature_id">{"ID номенклатуры (1С)"}</label>
-                    <input
-                        type="text"
-                        id="nomenclature_id"
-                        prop:value={
-                            let vm = vm_clone.clone();
-                            move || vm.form.get().nomenclature_id.clone().unwrap_or_default()
-                        }
-                        on:input={
-                            let vm = vm_clone.clone();
-                            move |ev| {
-                                let value = event_target_value(&ev);
-                                vm.form.update(|f| {
-                                    f.nomenclature_id = if value.is_empty() { None } else { Some(value) };
-                                });
-                            }
-                        }
-                        placeholder="UUID номенклатуры"
-                    />
-                </div>
+                </fieldset>
 
                 <div class="form-group">
                     <label for="comment">{"Комментарий"}</label>
@@ -328,33 +375,67 @@ pub fn MarketplaceProductDetails(
                 </div>
             </div>
 
-            <div class="details-actions">
-                <button
-                    class="btn btn-primary"
-                    on:click={
-                        let vm = vm_clone.clone();
-                        let on_saved = on_saved.clone();
-                        move |_| vm.save_command(on_saved.clone())
+            {
+                let vm = vm_clone.clone();
+                move || {
+                    if vm.show_picker.get() {
+                        let vm_for_selected = vm.clone();
+                        let vm_for_cancel = vm.clone();
+
+                        let on_selected_handler = {
+                            let vm = vm_for_selected.clone();
+                            move |item: Option<crate::domain::a004_nomenclature::ui::picker::NomenclaturePickerItem>| {
+                                if let Some(nom) = item {
+                                    vm.form.update(|f| f.nomenclature_ref = Some(nom.id.clone()));
+                                    vm.nomenclature_name.set(nom.description);
+                                    vm.nomenclature_code.set(nom.code);
+                                    vm.nomenclature_article.set(nom.article);
+                                    vm.success_message.set(Some("Номенклатура выбрана".to_string()));
+                                }
+                                vm.show_picker.set(false);
+                                vm.search_results.set(None);
+                            }
+                        };
+
+                        let on_cancel_handler = {
+                            let vm = vm_for_cancel.clone();
+                            move |_| {
+                                vm.show_picker.set(false);
+                                vm.search_results.set(None);
+                            }
+                        };
+
+                        // Если есть результаты поиска, передаем их в picker
+                        let prefiltered = vm.search_results.get();
+
+                        if let Some(filtered_list) = prefiltered {
+                            view! {
+                                <div class="modal-overlay">
+                                    <NomenclaturePicker
+                                        initial_selected_id=None
+                                        prefiltered_items=filtered_list
+                                        on_selected=on_selected_handler
+                                        on_cancel=on_cancel_handler
+                                    />
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="modal-overlay">
+                                    <NomenclaturePicker
+                                        initial_selected_id=None
+                                        on_selected=on_selected_handler
+                                        on_cancel=on_cancel_handler
+                                    />
+                                </div>
+                            }.into_any()
+                        }
+                    } else {
+                        view! {}.into_any()
                     }
-                    disabled={
-                        let vm = vm_clone.clone();
-                        move || !vm.is_form_valid()()
-                    }
-                >
-                    {icon("save")}
-                    {
-                        let vm = vm_clone.clone();
-                        move || if vm.is_edit_mode()() { "Сохранить" } else { "Создать" }
-                    }
-                </button>
-                <button
-                    class="btn btn-secondary"
-                    on:click=move |_| (on_cancel)(())
-                >
-                    {icon("cancel")}
-                    {"Отмена"}
-                </button>
-            </div>
+                }
+            }
+        </div>
         </div>
     }
 }

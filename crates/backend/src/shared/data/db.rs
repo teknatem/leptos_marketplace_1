@@ -514,20 +514,16 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 code TEXT NOT NULL DEFAULT '',
                 description TEXT NOT NULL,
                 comment TEXT,
-                marketplace_id TEXT NOT NULL,
-                connection_mp_id TEXT NOT NULL DEFAULT '',
+                marketplace_ref TEXT NOT NULL,
+                connection_mp_ref TEXT NOT NULL DEFAULT '',
                 marketplace_sku TEXT NOT NULL,
                 barcode TEXT,
-                art TEXT NOT NULL,
-                product_name TEXT NOT NULL,
+                article TEXT NOT NULL,
                 brand TEXT,
                 category_id TEXT,
                 category_name TEXT,
-                price REAL,
-                stock INTEGER,
                 last_update TEXT,
-                marketplace_url TEXT,
-                nomenclature_id TEXT,
+                nomenclature_ref TEXT,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -541,23 +537,23 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Ensure connection_mp_id column exists; add if missing
+        // Ensure connection_mp_ref column exists; add if missing
         let pragma = format!("PRAGMA table_info('{}');", "a007_marketplace_product");
         let cols = conn
             .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
             .await?;
-        let mut has_connection_mp_id = false;
+        let mut has_connection_mp_ref = false;
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
-            if name == "connection_mp_id" {
-                has_connection_mp_id = true;
+            if name == "connection_mp_ref" {
+                has_connection_mp_ref = true;
             }
         }
-        if !has_connection_mp_id {
-            tracing::info!("Adding connection_mp_id column to a007_marketplace_product");
+        if !has_connection_mp_ref {
+            tracing::info!("Adding connection_mp_ref column to a007_marketplace_product");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE a007_marketplace_product ADD COLUMN connection_mp_id TEXT NOT NULL DEFAULT '';".to_string(),
+                "ALTER TABLE a007_marketplace_product ADD COLUMN connection_mp_ref TEXT NOT NULL DEFAULT '';".to_string(),
             ))
             .await?;
             // Delete existing records as they are test data

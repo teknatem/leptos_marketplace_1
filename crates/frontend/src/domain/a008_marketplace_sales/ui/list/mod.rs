@@ -173,7 +173,7 @@ pub fn MarketplaceSalesList() -> impl IntoView {
             .into_iter()
             .map(|x| {
                 use contracts::domain::common::AggregateId;
-                (x.base.id.as_string(), x.product_name)
+                (x.base.id.as_string(), x.base.description.clone())
             })
             .collect()
     };

@@ -289,9 +289,6 @@ impl ImportExecutor {
         // Получаем barcode
         let barcode = product.product_barcode.clone();
 
-        // Получаем URL товара
-        let marketplace_url = product.product_url.clone();
-
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
             tracing::debug!("Updating existing product: {}", marketplace_sku);
@@ -300,15 +297,11 @@ impl ImportExecutor {
             existing_product.base.description = product.product_name.clone();
             existing_product.marketplace_sku = marketplace_sku.clone();
             existing_product.barcode = barcode.clone();
-            existing_product.art = marketplace_sku.clone();
-            existing_product.product_name = product.product_name.clone();
+            existing_product.article = marketplace_sku.clone();
             existing_product.brand = brand.clone();
             existing_product.category_id = category_id.clone();
             existing_product.category_name = category_name.clone();
-            existing_product.marketplace_url = marketplace_url.clone();
             existing_product.last_update = Some(chrono::Utc::now());
-            // Примечание: цена должна быть получена через отдельный API /b2bintegration/sale-prices/v1/sales-prices
-            // Пока оставляем существующую цену
             existing_product.before_write();
 
             a007_marketplace_product::repository::update(&existing_product).await?;
@@ -317,7 +310,7 @@ impl ImportExecutor {
             // Создаем новый товар
             tracing::debug!("Inserting new product: {}", marketplace_sku);
 
-            let new_product = MarketplaceProduct::new_for_insert(
+            let mut new_product = MarketplaceProduct::new_for_insert(
                 marketplace_sku.clone(),
                 product.product_name.clone(),
                 connection.marketplace_id.clone(),
@@ -325,17 +318,16 @@ impl ImportExecutor {
                 marketplace_sku.clone(),
                 barcode,
                 marketplace_sku.clone(),
-                product.product_name.clone(),
                 brand,
                 category_id,
                 category_name,
-                None, // price - должна быть получена через отдельный API
-                None, // stock - информация о остатках не предоставляется в products API
                 Some(chrono::Utc::now()),
-                marketplace_url,
-                None, // nomenclature_id
+                None, // nomenclature_ref
                 Some("Imported from LemanaPro".to_string()),
             );
+
+            // Автоматический поиск номенклатуры по артикулу
+            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)

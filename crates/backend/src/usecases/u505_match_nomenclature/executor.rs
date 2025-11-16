@@ -30,7 +30,7 @@ impl MatchExecutor {
 
         // Получить количество товаров для обработки
         let products = if let Some(marketplace_id) = &request.marketplace_id {
-            a007_marketplace_product::repository::list_by_marketplace_id(marketplace_id).await?
+              a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
         } else {
             a007_marketplace_product::service::list_all().await?
         };
@@ -131,7 +131,7 @@ impl MatchExecutor {
         // Загрузить товары маркетплейса
         let load_products_start = std::time::Instant::now();
         let products = if let Some(marketplace_id) = &request.marketplace_id {
-            a007_marketplace_product::repository::list_by_marketplace_id(marketplace_id).await?
+              a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
         } else {
             a007_marketplace_product::service::list_all().await?
         };
@@ -159,7 +159,7 @@ impl MatchExecutor {
             // Установить текущий товар
             self.progress_tracker.set_current_item(
                 session_id,
-                Some(format!("{} - {}", product.art, product.product_name)),
+                Some(format!("{} - {}", product.article, product.base.description)),
             );
 
             match self.process_product(&product, request, &article_index).await {
@@ -176,12 +176,12 @@ impl MatchExecutor {
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Failed to process product {}: {}", product.art, e);
+                    tracing::error!("Failed to process product {}: {}", product.article, e);
                     self.progress_tracker.add_error(
                         session_id,
-                        format!("Failed to process product {}", product.art),
+                        format!("Failed to process product {}", product.article),
                         Some(e.to_string()),
-                        Some(product.art.clone()),
+                        Some(product.article.clone()),
                     );
                     processed += 1;
                 }
@@ -282,7 +282,7 @@ impl MatchExecutor {
         // Подсчитать количество ссылок для каждой номенклатуры
         let mut ref_counts: HashMap<String, i32> = HashMap::new();
         for product in all_products {
-            if let Some(nomenclature_id) = &product.nomenclature_id {
+            if let Some(nomenclature_id) = &product.nomenclature_ref {
                 *ref_counts.entry(nomenclature_id.clone()).or_insert(0) += 1;
             }
         }
@@ -319,16 +319,16 @@ impl MatchExecutor {
         article_index: &HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
     ) -> Result<MatchResult> {
         // Проверить, нужно ли обрабатывать товар
-        if !request.overwrite_existing && product.nomenclature_id.is_some() {
+        if !request.overwrite_existing && product.nomenclature_ref.is_some() {
             tracing::debug!(
                 "Skipping product {} - already has nomenclature_id and overwrite_existing=false",
-                product.art
+                product.article
             );
             return Ok(MatchResult::Skipped);
         }
 
         // Найти номенклатуру по артикулу
-        let article = product.art.trim();
+        let article = product.article.trim();
         if article.is_empty() {
             tracing::warn!("Product {} has empty article", product.base.id.as_string());
             return self.clear_nomenclature_link(product).await;
@@ -393,7 +393,7 @@ impl MatchExecutor {
         nomenclature_id: String,
     ) -> Result<MatchResult> {
         let mut product_clone = product.clone();
-        product_clone.nomenclature_id = Some(nomenclature_id);
+        product_clone.nomenclature_ref = Some(nomenclature_id);
         product_clone.before_write();
 
         a007_marketplace_product::repository::update(&product_clone).await?;
@@ -405,13 +405,13 @@ impl MatchExecutor {
         &self,
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
     ) -> Result<MatchResult> {
-        if product.nomenclature_id.is_none() {
+        if product.nomenclature_ref.is_none() {
             // Уже пусто - не нужно обновлять
             return Ok(MatchResult::Cleared);
         }
 
         let mut product_clone = product.clone();
-        product_clone.nomenclature_id = None;
+        product_clone.nomenclature_ref = None;
         product_clone.before_write();
 
         a007_marketplace_product::repository::update(&product_clone).await?;
@@ -423,13 +423,13 @@ impl MatchExecutor {
         &self,
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
     ) -> Result<MatchResult> {
-        if product.nomenclature_id.is_none() {
+        if product.nomenclature_ref.is_none() {
             // Уже пусто - не нужно обновлять
             return Ok(MatchResult::ClearedAmbiguous);
         }
 
         let mut product_clone = product.clone();
-        product_clone.nomenclature_id = None;
+        product_clone.nomenclature_ref = None;
         product_clone.before_write();
 
         a007_marketplace_product::repository::update(&product_clone).await?;

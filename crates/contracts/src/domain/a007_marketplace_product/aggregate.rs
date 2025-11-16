@@ -47,12 +47,12 @@ pub struct MarketplaceProduct {
     pub base: BaseAggregate<MarketplaceProductId>,
 
     /// ID маркетплейса (ссылка на a005_marketplace)
-    #[serde(rename = "marketplaceId")]
-    pub marketplace_id: String,
+    #[serde(rename = "marketplaceRef")]
+    pub marketplace_ref: String,
 
     /// ID подключения к маркетплейсу (ссылка на a006_connection_mp)
-    #[serde(rename = "connectionMpId")]
-    pub connection_mp_id: String,
+    #[serde(rename = "connectionMpRef")]
+    pub connection_mp_ref: String,
 
     /// Внутренний ID товара в маркетплейсе
     #[serde(rename = "marketplaceSku")]
@@ -62,11 +62,7 @@ pub struct MarketplaceProduct {
     pub barcode: Option<String>,
 
     /// Артикул на маркетплейсе
-    pub art: String,
-
-    /// Наименование товара на маркетплейсе
-    #[serde(rename = "productName")]
-    pub product_name: String,
+    pub article: String,
 
     /// Бренд товара
     pub brand: Option<String>,
@@ -79,23 +75,13 @@ pub struct MarketplaceProduct {
     #[serde(rename = "categoryName")]
     pub category_name: Option<String>,
 
-    /// Текущая цена по маркетплейсу
-    pub price: Option<f64>,
-
-    /// Наличие на складе / остаток
-    pub stock: Option<i32>,
-
     /// Дата последнего обновления информации с маркетплейса
     #[serde(rename = "lastUpdate")]
     pub last_update: Option<chrono::DateTime<chrono::Utc>>,
 
-    /// Ссылка на товар на маркетплейсе
-    #[serde(rename = "marketplaceUrl")]
-    pub marketplace_url: Option<String>,
-
     /// Уникальный ID товара в собственной базе (ссылка на a004_nomenclature)
-    #[serde(rename = "nomenclatureId")]
-    pub nomenclature_id: Option<String>,
+    #[serde(rename = "nomenclatureRef")]
+    pub nomenclature_ref: Option<String>,
 }
 
 impl MarketplaceProduct {
@@ -104,20 +90,16 @@ impl MarketplaceProduct {
     pub fn new_for_insert(
         code: String,
         description: String,
-        marketplace_id: String,
-        connection_mp_id: String,
+        marketplace_ref: String,
+        connection_mp_ref: String,
         marketplace_sku: String,
         barcode: Option<String>,
-        art: String,
-        product_name: String,
+        article: String,
         brand: Option<String>,
         category_id: Option<String>,
         category_name: Option<String>,
-        price: Option<f64>,
-        stock: Option<i32>,
         last_update: Option<chrono::DateTime<chrono::Utc>>,
-        marketplace_url: Option<String>,
-        nomenclature_id: Option<String>,
+        nomenclature_ref: Option<String>,
         comment: Option<String>,
     ) -> Self {
         let mut base = BaseAggregate::new(
@@ -129,20 +111,16 @@ impl MarketplaceProduct {
 
         Self {
             base,
-            marketplace_id,
-            connection_mp_id,
+            marketplace_ref,
+            connection_mp_ref,
             marketplace_sku,
             barcode,
-            art,
-            product_name,
+            article,
             brand,
             category_id,
             category_name,
-            price,
-            stock,
             last_update,
-            marketplace_url,
-            nomenclature_id,
+            nomenclature_ref,
         }
     }
 
@@ -152,20 +130,16 @@ impl MarketplaceProduct {
         id: MarketplaceProductId,
         code: String,
         description: String,
-        marketplace_id: String,
-        connection_mp_id: String,
+        marketplace_ref: String,
+        connection_mp_ref: String,
         marketplace_sku: String,
         barcode: Option<String>,
-        art: String,
-        product_name: String,
+        article: String,
         brand: Option<String>,
         category_id: Option<String>,
         category_name: Option<String>,
-        price: Option<f64>,
-        stock: Option<i32>,
         last_update: Option<chrono::DateTime<chrono::Utc>>,
-        marketplace_url: Option<String>,
-        nomenclature_id: Option<String>,
+        nomenclature_ref: Option<String>,
         comment: Option<String>,
     ) -> Self {
         let mut base = BaseAggregate::new(
@@ -177,20 +151,16 @@ impl MarketplaceProduct {
 
         Self {
             base,
-            marketplace_id,
-            connection_mp_id,
+            marketplace_ref,
+            connection_mp_ref,
             marketplace_sku,
             barcode,
-            art,
-            product_name,
+            article,
             brand,
             category_id,
             category_name,
-            price,
-            stock,
             last_update,
-            marketplace_url,
-            nomenclature_id,
+            nomenclature_ref,
         }
     }
 
@@ -209,20 +179,16 @@ impl MarketplaceProduct {
         self.base.code = dto.code.clone().unwrap_or_default();
         self.base.description = dto.description.clone();
         self.base.comment = dto.comment.clone();
-        self.marketplace_id = dto.marketplace_id.clone();
-        self.connection_mp_id = dto.connection_mp_id.clone();
+        self.marketplace_ref = dto.marketplace_ref.clone();
+        self.connection_mp_ref = dto.connection_mp_ref.clone();
         self.marketplace_sku = dto.marketplace_sku.clone();
         self.barcode = dto.barcode.clone();
-        self.art = dto.art.clone();
-        self.product_name = dto.product_name.clone();
+        self.article = dto.article.clone();
         self.brand = dto.brand.clone();
         self.category_id = dto.category_id.clone();
         self.category_name = dto.category_name.clone();
-        self.price = dto.price;
-        self.stock = dto.stock;
         self.last_update = dto.last_update;
-        self.marketplace_url = dto.marketplace_url.clone();
-        self.nomenclature_id = dto.nomenclature_id.clone();
+        self.nomenclature_ref = dto.nomenclature_ref.clone();
     }
 
     /// Валидация данных
@@ -233,41 +199,14 @@ impl MarketplaceProduct {
         if self.base.code.trim().is_empty() {
             return Err("Код не может быть пустым".into());
         }
-        if self.marketplace_id.trim().is_empty() {
+        if self.marketplace_ref.trim().is_empty() {
             return Err("ID маркетплейса не может быть пустым".into());
         }
         if self.marketplace_sku.trim().is_empty() {
             return Err("SKU маркетплейса не может быть пустым".into());
         }
-        if self.art.trim().is_empty() {
+        if self.article.trim().is_empty() {
             return Err("Артикул не может быть пустым".into());
-        }
-        if self.product_name.trim().is_empty() {
-            return Err("Наименование товара не может быть пустым".into());
-        }
-
-        // Валидация URL если указан
-        if let Some(url) = &self.marketplace_url {
-            if !url.trim().is_empty()
-                && !url.starts_with("http://")
-                && !url.starts_with("https://")
-            {
-                return Err("URL должен начинаться с http:// или https://".into());
-            }
-        }
-
-        // Валидация цены
-        if let Some(price) = self.price {
-            if price < 0.0 {
-                return Err("Цена не может быть отрицательной".into());
-            }
-        }
-
-        // Валидация остатка
-        if let Some(stock) = self.stock {
-            if stock < 0 {
-                return Err("Остаток не может быть отрицательным".into());
-            }
         }
 
         Ok(())
@@ -341,28 +280,22 @@ pub struct MarketplaceProductDto {
     pub id: Option<String>,
     pub code: Option<String>,
     pub description: String,
-    #[serde(rename = "marketplaceId")]
-    pub marketplace_id: String,
-    #[serde(rename = "connectionMpId")]
-    pub connection_mp_id: String,
+    #[serde(rename = "marketplaceRef")]
+    pub marketplace_ref: String,
+    #[serde(rename = "connectionMpRef")]
+    pub connection_mp_ref: String,
     #[serde(rename = "marketplaceSku")]
     pub marketplace_sku: String,
     pub barcode: Option<String>,
-    pub art: String,
-    #[serde(rename = "productName")]
-    pub product_name: String,
+    pub article: String,
     pub brand: Option<String>,
     #[serde(rename = "categoryId")]
     pub category_id: Option<String>,
     #[serde(rename = "categoryName")]
     pub category_name: Option<String>,
-    pub price: Option<f64>,
-    pub stock: Option<i32>,
     #[serde(rename = "lastUpdate")]
     pub last_update: Option<chrono::DateTime<chrono::Utc>>,
-    #[serde(rename = "marketplaceUrl")]
-    pub marketplace_url: Option<String>,
-    #[serde(rename = "nomenclatureId")]
-    pub nomenclature_id: Option<String>,
+    #[serde(rename = "nomenclatureRef")]
+    pub nomenclature_ref: Option<String>,
     pub comment: Option<String>,
 }

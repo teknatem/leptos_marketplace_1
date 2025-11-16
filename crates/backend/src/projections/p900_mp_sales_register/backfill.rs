@@ -92,8 +92,8 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
 
     // Поиск или создание a007
     let marketplace_product_ref = match find_or_create_for_sale(FindOrCreateParams {
-        marketplace_id,
-        connection_mp_id: record.connection_mp_ref.clone(),
+        marketplace_ref: marketplace_id,
+        connection_mp_ref: record.connection_mp_ref.clone(),
         marketplace_sku: seller_sku.clone(),
         barcode: record.barcode.clone(),
         title: title.clone(),

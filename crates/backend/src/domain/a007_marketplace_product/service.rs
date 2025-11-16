@@ -2,7 +2,50 @@ use super::repository;
 use contracts::domain::a007_marketplace_product::aggregate::{
     MarketplaceProduct, MarketplaceProductDto,
 };
+use contracts::domain::common::AggregateId;
 use uuid::Uuid;
+
+/// Поиск и установка nomenclature_ref по артикулу
+/// Возвращает true если nomenclature_ref был установлен, false если нет
+pub async fn search_and_set_nomenclature(aggregate: &mut MarketplaceProduct) -> anyhow::Result<bool> {
+    // Если nomenclature_ref уже заполнен, ничего не делаем
+    if aggregate.nomenclature_ref.is_some() {
+        return Ok(false);
+    }
+
+    let article = aggregate.article.trim();
+    if article.is_empty() {
+        return Ok(false);
+    }
+
+    // Ищем по артикулу
+    let found_items = crate::domain::a004_nomenclature::repository::find_by_article(article).await?;
+
+    // Если найдено ровно 1 - устанавливаем
+    if found_items.len() == 1 {
+        let nomenclature_id = found_items[0].base.id.as_string();
+        aggregate.nomenclature_ref = Some(nomenclature_id);
+        tracing::info!(
+            "Auto-matched article '{}' to nomenclature '{}'",
+            article,
+            found_items[0].base.description
+        );
+        return Ok(true);
+    }
+
+    // В остальных случаях (0 или N) оставляем пустым
+    if found_items.is_empty() {
+        tracing::debug!("No nomenclature found for article '{}'", article);
+    } else {
+        tracing::warn!(
+            "Found {} nomenclatures for article '{}', manual selection required",
+            found_items.len(),
+            article
+        );
+    }
+
+    Ok(false)
+}
 
 /// Создание нового товара маркетплейса
 pub async fn create(dto: MarketplaceProductDto) -> anyhow::Result<Uuid> {
@@ -14,20 +57,16 @@ pub async fn create(dto: MarketplaceProductDto) -> anyhow::Result<Uuid> {
     let mut aggregate = MarketplaceProduct::new_for_insert(
         code,
         dto.description,
-        dto.marketplace_id,
-        dto.connection_mp_id,
+        dto.marketplace_ref,
+        dto.connection_mp_ref,
         dto.marketplace_sku,
         dto.barcode,
-        dto.art,
-        dto.product_name,
+        dto.article,
         dto.brand,
         dto.category_id,
         dto.category_name,
-        dto.price,
-        dto.stock,
         dto.last_update,
-        dto.marketplace_url,
-        dto.nomenclature_id,
+        dto.nomenclature_ref,
         dto.comment,
     );
 
@@ -35,6 +74,9 @@ pub async fn create(dto: MarketplaceProductDto) -> anyhow::Result<Uuid> {
     aggregate
         .validate()
         .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+
+    // Автоматический поиск номенклатуры если не задано
+    search_and_set_nomenclature(&mut aggregate).await?;
 
     // Before write
     aggregate.before_write();
@@ -61,6 +103,9 @@ pub async fn update(dto: MarketplaceProductDto) -> anyhow::Result<()> {
     aggregate
         .validate()
         .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+
+    // Автоматический поиск номенклатуры если не задано
+    search_and_set_nomenclature(&mut aggregate).await?;
 
     // Before write
     aggregate.before_write();
@@ -98,16 +143,16 @@ pub async fn get_by_barcode(barcode: &str) -> anyhow::Result<Vec<MarketplaceProd
 }
 
 /// Получение товаров маркетплейса
-pub async fn list_by_marketplace_id(
-    marketplace_id: &str,
+pub async fn list_by_marketplace_ref(
+    marketplace_ref: &str,
 ) -> anyhow::Result<Vec<MarketplaceProduct>> {
-    repository::list_by_marketplace_id(marketplace_id).await
+    repository::list_by_marketplace_ref(marketplace_ref).await
 }
 
 /// Параметры для поиска/создания товара при импорте продаж
 pub struct FindOrCreateParams {
-    pub marketplace_id: String,
-    pub connection_mp_id: String,
+    pub marketplace_ref: String,
+    pub connection_mp_ref: String,
     pub marketplace_sku: String,
     pub barcode: Option<String>,
     pub title: String,
@@ -122,9 +167,9 @@ pub struct FindOrCreateParams {
 ///
 /// Возвращает UUID найденного или созданного товара
 pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Result<Uuid> {
-    // Шаг 1: Поиск по (marketplace_id, marketplace_sku)
+    // Шаг 1: Поиск по (marketplace_ref, marketplace_sku)
     if let Some(existing) = repository::get_by_marketplace_sku(
-        &params.marketplace_id,
+        &params.marketplace_ref,
         &params.marketplace_sku,
     )
     .await?
@@ -134,8 +179,8 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
 
     // Шаг 2: Если есть barcode - поиск через p901
     if let Some(ref barcode) = params.barcode {
-        // Определяем источник для p901 по marketplace_id
-        let source = match params.marketplace_id.as_str() {
+        // Определяем источник для p901 по marketplace_ref
+        let source = match params.marketplace_ref.as_str() {
             id if id.contains("ozon") => "OZON",
             id if id.contains("wb") => "WB",
             id if id.contains("ym") => "YM",
@@ -150,14 +195,14 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
             )
             .await?;
 
-        // Если нашли nomenclature_ref - ищем a007 с этим nomenclature_id
+        // Если нашли nomenclature_ref - ищем a007 с этим nomenclature_ref
         if let Some(ref nom_ref) = nomenclature_ref {
-            let products = repository::get_by_nomenclature_id(nom_ref).await?;
+            let products = repository::get_by_nomenclature_ref(nom_ref).await?;
 
-            // Фильтруем по marketplace_id, берем первый подходящий
+            // Фильтруем по marketplace_ref, берем первый подходящий
             if let Some(existing) = products
                 .into_iter()
-                .find(|p| p.marketplace_id == params.marketplace_id)
+                .find(|p| p.marketplace_ref == params.marketplace_ref)
             {
                 return Ok(existing.base.id.value());
             }
@@ -175,20 +220,16 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
         id: None,
         code: Some(format!("MP-AUTO-{}", Uuid::new_v4())),
         description: params.title.clone(),
-        marketplace_id: params.marketplace_id.clone(),
-        connection_mp_id: params.connection_mp_id,
+        marketplace_ref: params.marketplace_ref.clone(),
+        connection_mp_ref: params.connection_mp_ref,
         marketplace_sku: params.marketplace_sku.clone(),
         barcode: params.barcode,
-        art: params.marketplace_sku, // Используем marketplace_sku как артикул
-        product_name: params.title,
+        article: params.marketplace_sku, // Используем marketplace_sku как артикул
         brand: None,
         category_id: None,
         category_name: None,
-        price: None,
-        stock: None,
         last_update: Some(now),
-        marketplace_url: None,
-        nomenclature_id: None, // Сопоставление через u505
+        nomenclature_ref: None, // Сопоставление через u505
         comment: Some(comment),
     };
 
@@ -203,40 +244,32 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             id: None,
             code: Some("mp-wb-001".into()),
             description: "Тестовый товар Wildberries".into(),
-            marketplace_id: "marketplace-wb-id".into(), // Здесь нужен реальный ID из a005
-            connection_mp_id: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
+            marketplace_ref: "marketplace-wb-id".into(), // Здесь нужен реальный ID из a005
+            connection_mp_ref: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
             marketplace_sku: "WB12345678".into(),
             barcode: Some("4607012345678".into()),
-            art: "ART-WB-001".into(),
-            product_name: "Тестовый товар Wildberries".into(),
+            article: "ART-WB-001".into(),
             brand: Some("Test Brand".into()),
             category_id: Some("CAT-123".into()),
             category_name: Some("Электроника".into()),
-            price: Some(1299.99),
-            stock: Some(150),
             last_update: Some(chrono::Utc::now()),
-            marketplace_url: Some("https://www.wildberries.ru/catalog/12345678/detail.aspx".into()),
-            nomenclature_id: None,
+            nomenclature_ref: None,
             comment: Some("Тестовый товар для демонстрации".into()),
         },
         MarketplaceProductDto {
             id: None,
             code: Some("mp-ozon-001".into()),
             description: "Тестовый товар Ozon".into(),
-            marketplace_id: "marketplace-ozon-id".into(), // Здесь нужен реальный ID из a005
-            connection_mp_id: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
+            marketplace_ref: "marketplace-ozon-id".into(), // Здесь нужен реальный ID из a005
+            connection_mp_ref: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
             marketplace_sku: "OZON87654321".into(),
             barcode: Some("4607087654321".into()),
-            art: "ART-OZON-001".into(),
-            product_name: "Тестовый товар Ozon".into(),
+            article: "ART-OZON-001".into(),
             brand: Some("Another Brand".into()),
             category_id: Some("CAT-456".into()),
             category_name: Some("Одежда".into()),
-            price: Some(2499.50),
-            stock: Some(75),
             last_update: Some(chrono::Utc::now()),
-            marketplace_url: Some("https://www.ozon.ru/product/87654321".into()),
-            nomenclature_id: None,
+            nomenclature_ref: None,
             comment: Some("Тестовый товар для демонстрации".into()),
         },
     ];

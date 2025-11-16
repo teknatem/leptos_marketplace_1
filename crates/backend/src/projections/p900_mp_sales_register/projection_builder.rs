@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// Helper функция для получения nomenclature_ref из marketplace_product
 async fn get_nomenclature_ref(marketplace_product_id: Uuid) -> anyhow::Result<Option<String>> {
     if let Some(mp_product) = get_by_id(marketplace_product_id).await? {
-        Ok(mp_product.nomenclature_id)
+        Ok(mp_product.nomenclature_ref)
     } else {
         Ok(None)
     }
@@ -28,8 +28,8 @@ pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> anyh
 
         // Поиск или создание a007
         let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
-            marketplace_id: document.header.marketplace_id.clone(),
-            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_ref: document.header.marketplace_id.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
             marketplace_sku: line.offer_id.clone(),
             barcode: line.barcode.clone(),
             title: line.name.clone(),
@@ -100,8 +100,8 @@ pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> anyh
 
         // Поиск или создание a007
         let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
-            marketplace_id: document.header.marketplace_id.clone(),
-            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_ref: document.header.marketplace_id.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
             marketplace_sku: line.offer_id.clone(),
             barcode: line.barcode.clone(),
             title: line.name.clone(),
@@ -166,8 +166,8 @@ pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Res
 
     // Поиск или создание a007
     let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
-        marketplace_id: document.header.marketplace_id.clone(),
-        connection_mp_id: document.header.connection_id.clone(),
+        marketplace_ref: document.header.marketplace_id.clone(),
+        connection_mp_ref: document.header.connection_id.clone(),
         marketplace_sku: document.line.supplier_article.clone(),
         barcode: Some(document.line.barcode.clone()),
         title: document.line.name.clone(),
@@ -242,8 +242,8 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Res
 
         // Поиск или создание a007
         let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
-            marketplace_id: document.header.marketplace_id.clone(),
-            connection_mp_id: document.header.connection_id.clone(),
+            marketplace_ref: document.header.marketplace_id.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
             marketplace_sku: line.shop_sku.clone(),
             barcode: None, // YM не предоставляет barcode в заказах
             title: line.name.clone(),
@@ -314,8 +314,8 @@ pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> any
 
     // Поиск или создание a007
     let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
-        marketplace_id: document.marketplace_id.clone(),
-        connection_mp_id: document.connection_id.clone(),
+        marketplace_ref: document.marketplace_id.clone(),
+        connection_mp_ref: document.connection_id.clone(),
         marketplace_sku: document.sku.clone(),
         barcode: None, // A009 не имеет barcode
         title: document.product_name.clone(),

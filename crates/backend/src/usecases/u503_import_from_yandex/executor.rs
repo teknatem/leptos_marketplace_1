@@ -338,7 +338,7 @@ impl ImportExecutor {
         &self,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
         offer: &super::yandex_api_client::YandexOffer,
-        mapping: &Option<super::yandex_api_client::YandexMapping>,
+        _mapping: &Option<super::yandex_api_client::YandexMapping>,
     ) -> Result<(bool, usize)> {
         use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 
@@ -350,8 +350,6 @@ impl ImportExecutor {
         )
         .await?;
 
-        // YandexOffer из offer-mappings не имеет price, устанавливаем None
-        let price = None;
 
         // Берем первый barcode из списка
         let barcode = offer.barcodes.first().cloned();
@@ -360,60 +358,57 @@ impl ImportExecutor {
         // Используем данные из offer.category если есть
         let (category_id, category_name) = (None, offer.category.clone());
 
-        // Получаем название товара из offer.name
-        let product_name = offer.name.clone().unwrap_or_else(|| "Без названия".to_string());
+        // Получаем название товара из offer.name для description
+        let product_title = offer.name.clone().unwrap_or_else(|| "Без названия".to_string());
 
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
             tracing::debug!("Updating existing product: {}", marketplace_sku);
 
             existing_product.base.code = offer.offer_id.clone();
-            existing_product.base.description = product_name.clone();
+            existing_product.base.description = product_title.clone();
             existing_product.marketplace_sku = marketplace_sku;
             existing_product.barcode = barcode.clone();
-            existing_product.art = offer.offer_id.clone();
-            existing_product.product_name = product_name.clone();
+            existing_product.article = offer.offer_id.clone();
             existing_product.brand = offer.vendor.clone();
             existing_product.category_id = category_id;
             existing_product.category_name = category_name;
-            existing_product.price = price;
             existing_product.last_update = Some(chrono::Utc::now());
             existing_product.before_write();
 
             a007_marketplace_product::repository::update(&existing_product).await?;
 
             // Импорт всех штрихкодов в проекцию p901
-            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &existing_product.nomenclature_id).await?;
+            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &existing_product.nomenclature_ref).await?;
 
             Ok((false, barcodes_count))
         } else {
             // Создаем новый товар
             tracing::debug!("Inserting new product: {}", marketplace_sku);
 
-            let new_product = MarketplaceProduct::new_for_insert(
+            let mut new_product = MarketplaceProduct::new_for_insert(
                 offer.offer_id.clone(),
-                product_name.clone(),
+                product_title.clone(),
                 connection.marketplace_id.clone(),
                 connection.base.id.as_string(),
                 marketplace_sku,
                 barcode,
                 offer.offer_id.clone(),
-                product_name,
                 offer.vendor.clone(),
                 category_id,
                 category_name,
-                price,
-                None, // stock - не доступен в базовом API
                 Some(chrono::Utc::now()),
-                None, // marketplace_url
-                None, // nomenclature_id
+                None, // nomenclature_ref
                 None, // comment
             );
+
+            // Автоматический поиск номенклатуры по артикулу
+            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
 
             // Импорт всех штрихкодов в проекцию p901
-            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &new_product.nomenclature_id).await?;
+            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &new_product.nomenclature_ref).await?;
 
             Ok((true, barcodes_count))
         }

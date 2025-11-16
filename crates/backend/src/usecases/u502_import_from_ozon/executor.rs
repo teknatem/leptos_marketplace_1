@@ -343,19 +343,8 @@ impl ImportExecutor {
         )
         .await?;
 
-        // Парсим цену
-        let price = product.price.parse::<f64>().ok();
-
         // Берем первый barcode из списка
         let barcode = product.barcodes.first().cloned();
-
-        // Получаем остатки
-        let stock = product
-            .stocks
-            .as_ref()
-            .and_then(|s| s.stocks.first())
-            .map(|item| item.present)
-            .unwrap_or(0);
 
         // Получаем category_id
         let category_id = product.description_category_id.map(|id| id.to_string());
@@ -368,11 +357,8 @@ impl ImportExecutor {
             existing_product.base.description = product.name.clone();
             existing_product.marketplace_sku = marketplace_sku;
             existing_product.barcode = barcode.clone();
-            existing_product.art = product.offer_id.clone();
-            existing_product.product_name = product.name.clone();
+            existing_product.article = product.offer_id.clone();
             existing_product.category_id = category_id.clone();
-            existing_product.price = price;
-            existing_product.stock = Some(stock);
             existing_product.last_update = Some(chrono::Utc::now());
             existing_product.before_write();
 
@@ -382,7 +368,7 @@ impl ImportExecutor {
             // Создаем новый товар
             tracing::debug!("Inserting new product: {}", marketplace_sku);
 
-            let new_product = MarketplaceProduct::new_for_insert(
+            let mut new_product = MarketplaceProduct::new_for_insert(
                 product.offer_id.clone(),
                 product.name.clone(),
                 connection.marketplace_id.clone(),
@@ -390,17 +376,16 @@ impl ImportExecutor {
                 marketplace_sku,
                 barcode,
                 product.offer_id.clone(),
-                product.name.clone(),
                 None, // brand
                 category_id,
                 None, // category_name
-                price,
-                Some(stock),
                 Some(chrono::Utc::now()),
-                None, // marketplace_url
-                None, // nomenclature_id
+                None, // nomenclature_ref
                 None, // comment
             );
+
+            // Автоматический поиск номенклатуры по артикулу
+            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)
@@ -522,7 +507,7 @@ impl ImportExecutor {
                         let pid = if let Some(mp) = existing {
                             mp.to_string_id()
                         } else {
-                            let new = contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct::new_for_insert(
+                            let mut new = contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct::new_for_insert(
                                 key.clone(),
                                 key.clone(),
                                 connection.marketplace_id.clone(),
@@ -530,17 +515,15 @@ impl ImportExecutor {
                                 key.clone(),
                                 None,
                                 key.clone(),
-                                key.clone(),
-                                None,
-                                None,
                                 None,
                                 None,
                                 None,
                                 Some(chrono::Utc::now()),
                                 None,
-                                None,
                                 Some("auto-created from finance operation".to_string()),
                             );
+                            // Автоматический поиск номенклатуры по артикулу
+                            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new).await;
                             let id = a007_marketplace_product::repository::insert(&new).await?;
                             id.to_string()
                         };

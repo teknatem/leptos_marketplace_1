@@ -261,36 +261,36 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             <div class="general-info">
                                                 <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
                                                     <div style="font-weight: 600; color: #555;">"Document №:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.header.document_no.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.header.document_no.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Code:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.code.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.code.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Description:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.description.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.description.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Event Type:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">
                                                         <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
                                                             {sale_data.state.event_type.clone()}
                                                         </span>
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Status:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">
                                                         <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
                                                             {sale_data.state.status_norm.clone()}
                                                         </span>
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Sale Date:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.state.sale_dt.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.state.sale_dt.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Last Change Date:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.state.last_change_dt.clone().unwrap_or("—".to_string())}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.state.last_change_dt.clone().unwrap_or("—".to_string())}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Is Supply:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">
                                                         {match sale_data.state.is_supply {
                                                             Some(true) => view! {
                                                                 <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
@@ -307,7 +307,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Is Realization:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">
                                                         {match sale_data.state.is_realization {
                                                             Some(true) => view! {
                                                                 <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
@@ -324,13 +324,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Warehouse Name:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.warehouse.warehouse_name.clone().unwrap_or("—".to_string())}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.warehouse.warehouse_name.clone().unwrap_or("—".to_string())}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Warehouse Type:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.warehouse.warehouse_type.clone().unwrap_or("—".to_string())}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.warehouse.warehouse_type.clone().unwrap_or("—".to_string())}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
+                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-family-base); font-size: 14px;">
                                                         <span style="color: #666;" title=conn_id.clone()>{format!("{}...", conn_id.chars().take(8).collect::<String>())}</span>
                                                         <button
                                                             on:click=move |_| {
@@ -350,7 +350,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Organization ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
+                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-family-base); font-size: 14px;">
                                                         <span style="color: #666;" title=org_id.clone()>{format!("{}...", org_id.chars().take(8).collect::<String>())}</span>
                                                         <button
                                                             on:click=move |_| {
@@ -370,7 +370,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Marketplace ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
+                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-family-base); font-size: 14px;">
                                                         <span style="color: #666;" title=mp_id.clone()>{format!("{}...", mp_id.chars().take(8).collect::<String>())}</span>
                                                         <button
                                                             on:click=move |_| {
@@ -390,13 +390,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Created At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.metadata.created_at.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.metadata.created_at.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Updated At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.metadata.updated_at.clone()}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.metadata.updated_at.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Version:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{sale_data.metadata.version}</div>
+                                                    <div style="font-family: var(--font-family-base); font-size: 14px;">{sale_data.metadata.version}</div>
                                                 </div>
                                             </div>
                                         }.into_any()
@@ -408,28 +408,28 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 <div style="margin-bottom: 20px;">
                                                     <div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px 20px; align-items: center; margin-bottom: 20px;">
                                                         <div style="font-weight: 600; color: #555;">"Line ID:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{line.line_id.clone()}</div>
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.line_id.clone()}</div>
 
                                                         <div style="font-weight: 600; color: #555;">"Артикул продавца:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 500;">{line.supplier_article.clone()}</div>
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.supplier_article.clone()}</div>
 
                                                         <div style="font-weight: 600; color: #555;">"NM ID:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{line.nm_id}</div>
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.nm_id}</div>
 
                                                         <div style="font-weight: 600; color: #555;">"Штрихкод:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{line.barcode.clone()}</div>
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.barcode.clone()}</div>
 
                                                         <div style="font-weight: 600; color: #555;">"Название:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 500;">{line.name.clone()}</div>
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.name.clone()}</div>
 
                                                         <div style="font-weight: 600; color: #555;">"Количество:"</div>
-                                                        <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">
                                                             {format!("{:.0}", line.qty)}
                                                         </div>
                                                     </div>
 
                                                     <h3 style="margin: 20px 0 10px 0; font-size: 16px; color: #555;">"Суммы и проценты"</h3>
-                                                    <table style="width: 50%; border-collapse: collapse; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <table style="width: 50%; border-collapse: collapse; font-family: var(--font-family-base); font-size: 14px;">
                                                         <thead>
                                                             <tr style="background: #f5f5f5;">
                                                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left; width: 40%;">"Наименование"</th>
