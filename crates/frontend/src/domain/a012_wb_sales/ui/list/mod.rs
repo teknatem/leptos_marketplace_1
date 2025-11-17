@@ -22,6 +22,32 @@ fn format_date(iso_date: &str) -> String {
     iso_date.to_string() // fallback
 }
 
+/// Форматирует число с разделителем тысяч (пробел)
+fn format_number_with_separator(num: f64, decimals: usize) -> String {
+    let formatted = format!("{:.prec$}", num, prec = decimals);
+    let parts: Vec<&str> = formatted.split('.').collect();
+
+    let integer_part = parts[0];
+    let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
+
+    // Добавляем пробелы каждые 3 цифры справа налево
+    let mut result = String::new();
+    let chars: Vec<char> = integer_part.chars().collect();
+    for (i, ch) in chars.iter().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.insert(0, ' ');
+        }
+        result.insert(0, *ch);
+    }
+
+    if decimals > 0 && !decimal_part.is_empty() {
+        result.push('.');
+        result.push_str(decimal_part);
+    }
+
+    result
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesDto {
     pub id: String,
@@ -35,6 +61,9 @@ pub struct WbSalesDto {
     pub finished_price: Option<f64>,
     pub event_type: String,
     pub organization_name: Option<String>,
+    pub marketplace_article: Option<String>,
+    pub nomenclature_code: Option<String>,
+    pub nomenclature_article: Option<String>,
 }
 
 impl Sortable for WbSalesDto {
@@ -79,6 +108,28 @@ impl Sortable for WbSalesDto {
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             },
+            "marketplace_article" => {
+                match (&self.marketplace_article, &other.marketplace_article) {
+                    (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            }
+            "nomenclature_code" => match (&self.nomenclature_code, &other.nomenclature_code) {
+                (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
+            "nomenclature_article" => {
+                match (&self.nomenclature_article, &other.nomenclature_article) {
+                    (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            }
             _ => Ordering::Equal,
         }
     }
@@ -90,6 +141,9 @@ pub fn WbSalesList() -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
+    let (batch_progress, set_batch_progress) = signal::<Option<(usize, usize)>>(None); // (processed, total)
+    let (is_batch_processing, set_is_batch_processing) = signal(false); // Синхронный флаг для блокировки
 
     // Сортировка
     let (sort_field, set_sort_field) = signal::<String>("sale_date".to_string());
@@ -194,6 +248,20 @@ pub fn WbSalesList() -> impl IntoView {
                                                     .unwrap_or("unknown")
                                                     .to_string();
 
+                                                // Новые поля из БД
+                                                let marketplace_article = v
+                                                    .get("marketplace_article")
+                                                    .and_then(|a| a.as_str())
+                                                    .map(|s| s.to_string());
+                                                let nomenclature_code = v
+                                                    .get("nomenclature_code")
+                                                    .and_then(|a| a.as_str())
+                                                    .map(|s| s.to_string());
+                                                let nomenclature_article = v
+                                                    .get("nomenclature_article")
+                                                    .and_then(|a| a.as_str())
+                                                    .map(|s| s.to_string());
+
                                                 let result = Some(WbSalesDto {
                                                     id: v.get("id")?.as_str()?.to_string(),
                                                     document_no: v
@@ -210,6 +278,9 @@ pub fn WbSalesList() -> impl IntoView {
                                                     finished_price,
                                                     event_type,
                                                     organization_name,
+                                                    marketplace_article,
+                                                    nomenclature_code,
+                                                    nomenclature_article,
                                                 });
 
                                                 if result.is_none() {
@@ -302,6 +373,90 @@ pub fn WbSalesList() -> impl IntoView {
         )
     };
 
+    // Selection helpers
+    let is_selected =
+        move |id: &str| -> bool { selected_ids.with(|ids| ids.iter().any(|x| x == id)) };
+    let toggle_row = move |id: String| {
+        set_selected_ids.update(|ids| {
+            if let Some(pos) = ids.iter().position(|x| x == &id) {
+                ids.remove(pos);
+            } else {
+                ids.push(id);
+            }
+        });
+    };
+    let clear_selection = move || set_selected_ids.set(Vec::new());
+    let select_all_current = move |checked: bool| {
+        if checked {
+            let all_ids: Vec<String> = get_sorted_items().into_iter().map(|s| s.id).collect();
+            set_selected_ids.set(all_ids);
+        } else {
+            clear_selection();
+        }
+    };
+
+    // Batch post/unpost actions - разбивает на чанки по 100 документов
+    let batch_update = move |post: bool| {
+        let ids = selected_ids.get();
+        if ids.is_empty() {
+            return;
+        }
+        let total = ids.len();
+        let reload = load_sales.clone();
+        let set_progress = set_batch_progress.clone();
+        let set_processing = set_is_batch_processing.clone();
+
+        // Сразу устанавливаем флаг обработки и начальный прогресс
+        set_processing.set(true);
+        set_progress.set(Some((0, total)));
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let endpoint = if post {
+                "http://localhost:3000/api/a012/wb-sales/batch-post"
+            } else {
+                "http://localhost:3000/api/a012/wb-sales/batch-unpost"
+            };
+
+            let mut processed = 0;
+
+            // Разбиваем на чанки по 100
+            for chunk in ids.chunks(100) {
+                let payload = serde_json::json!({
+                    "ids": chunk
+                });
+
+                let response = Request::post(endpoint)
+                    .header("Content-Type", "application/json")
+                    .body(serde_json::to_string(&payload).unwrap_or_default())
+                    .map(|req| req.send());
+
+                match response {
+                    Ok(future) => match future.await {
+                        Ok(_) => {
+                            processed += chunk.len();
+                            set_progress.set(Some((processed, total)));
+                        }
+                        Err(e) => {
+                            log!("Failed to send batch request: {:?}", e);
+                            processed += chunk.len();
+                            set_progress.set(Some((processed, total)));
+                        }
+                    },
+                    Err(e) => {
+                        log!("Failed to create batch request: {:?}", e);
+                        processed += chunk.len();
+                        set_progress.set(Some((processed, total)));
+                    }
+                }
+            }
+
+            // Сбросить прогресс и флаг, перезагрузить (выделение НЕ сбрасываем)
+            set_progress.set(None);
+            set_processing.set(false);
+            reload();
+        });
+    };
+
     // Автоматическая загрузка при открытии
     load_sales();
 
@@ -322,7 +477,7 @@ pub fn WbSalesList() -> impl IntoView {
                 } else {
                     view! {
                         <div>
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
                                 <h2 style="margin: 0; font-size: var(--font-size-h3); line-height: 1.2;">"Wildberries Sales (A012)"</h2>
 
                                 <label style="margin: 0; font-size: var(--font-size-sm); white-space: nowrap;">"От:"</label>
@@ -332,6 +487,7 @@ pub fn WbSalesList() -> impl IntoView {
                                     on:input=move |ev| {
                                         set_date_from.set(event_target_value(&ev));
                                     }
+                                    disabled=move || is_batch_processing.get()
                                     style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: var(--font-size-sm);"
                                 />
 
@@ -342,6 +498,7 @@ pub fn WbSalesList() -> impl IntoView {
                                     on:input=move |ev| {
                                         set_date_to.set(event_target_value(&ev));
                                     }
+                                    disabled=move || is_batch_processing.get()
                                     style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: var(--font-size-sm);"
                                 />
 
@@ -349,8 +506,10 @@ pub fn WbSalesList() -> impl IntoView {
                                     on:click=move |_| {
                                         load_sales();
                                     }
-                                    style="padding: 4px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm);"
-                                    disabled=move || loading.get()
+                                    style="padding: 4px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm); transition: all 0.2s;"
+                                    onmouseenter="this.style.opacity='0.85'; this.style.transform='translateY(-2px)'"
+                                    onmouseleave="this.style.opacity='1'; this.style.transform='translateY(0)'"
+                                    disabled=move || loading.get() || is_batch_processing.get()
                                 >
                                     {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
                                 </button>
@@ -362,39 +521,142 @@ pub fn WbSalesList() -> impl IntoView {
                                             log!("Failed to export: {}", e);
                                         }
                                     }
-                                    style="padding: 4px 12px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm);"
-                                    disabled=move || loading.get() || sales.get().is_empty()
+                                    style="padding: 4px 12px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm); transition: all 0.2s;"
+                                    onmouseenter="this.style.opacity='0.85'; this.style.transform='translateY(-2px)'"
+                                    onmouseleave="this.style.opacity='1'; this.style.transform='translateY(0)'"
+                                    disabled=move || loading.get() || sales.get().is_empty() || is_batch_processing.get()
                                 >
                                     "Экспорт в Excel"
                                 </button>
 
-                                {move || if !loading.get() {
-                                    let (count, total_qty, total_amount, total_price, total_finished) = totals();
-                                    let limit_warning = if count >= 20000 {
+                                <div style="margin-bottom: 8px;">
+                                    {move || {
+                                        let (count, total_qty, total_amount, total_price, total_finished) = totals();
+                                        let limit_warning = if !loading.get() && count >= 20000 {
+                                            view! {
+                                                <span style="margin-left: 8px; padding: 6px 12px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: var(--font-size-sm);">
+                                                    "⚠️ Показаны первые 20000 записей. Уточните период для полной загрузки."
+                                                </span>
+                                            }.into_any()
+                                        } else {
+                                            view! { <></> }.into_any()
+                                        };
                                         view! {
-                                            <span style="margin-left: 8px; padding: 6px 12px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: var(--font-size-sm);">
-                                                "⚠️ Показаны первые 20000 записей. Уточните период для полной загрузки."
-                                            </span>
-                                        }.into_any()
-                                    } else {
-                                        view! { <></> }.into_any()
+                                            <>
+                                                <span style="font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); background: var(--color-background-alt, #f5f5f5); padding: 6px 12px; border-radius: 4px;">
+                                                    "Total: " {format_number_with_separator(count as f64, 0)} " records | "
+                                                    "Кол-во: " {format_number_with_separator(total_qty, 0)} " | "
+                                                    "К выплате: " {format_number_with_separator(total_amount, 2)} " | "
+                                                    "Полная цена: " {format_number_with_separator(total_price, 2)} " | "
+                                                    "Итоговая: " {format_number_with_separator(total_finished, 2)}
+                                                </span>
+                                                {limit_warning}
+                                            </>
+                                        }
+                                    }}
+                                </div>
+                            </div>
+
+                            {move || {
+                                // Панель управления выделением - показываем только если есть выделенные строки или идет обработка
+                                let selected_count = selected_ids.get().len();
+                                let is_processing = batch_progress.get().is_some();
+
+                                if selected_count > 0 || is_processing {
+                                    // Подсчитываем итоги по выделенным строкам
+                                    let selected_totals = move || {
+                                        let sel_ids = selected_ids.get();
+                                        let all_items = get_sorted_items();
+                                        let selected_items: Vec<_> = all_items.into_iter()
+                                            .filter(|item| sel_ids.contains(&item.id))
+                                            .collect();
+
+                                        let count = selected_items.len();
+                                        let total_qty: f64 = selected_items.iter().map(|s| s.qty).sum();
+                                        let total_amount: f64 = selected_items.iter().filter_map(|s| s.amount_line).sum();
+                                        let total_price: f64 = selected_items.iter().filter_map(|s| s.total_price).sum();
+                                        let total_finished: f64 = selected_items.iter().filter_map(|s| s.finished_price).sum();
+
+                                        (count, total_qty, total_amount, total_price, total_finished)
                                     };
+
+                                    let (sel_count, sel_qty, sel_amount, sel_price, sel_finished) = selected_totals();
+
+                                    // Вычисляем прогресс для фонового градиента
+                                    let progress_percent = if let Some((processed, total)) = batch_progress.get() {
+                                        if total > 0 {
+                                            (processed as f64 / total as f64 * 100.0) as i32
+                                        } else {
+                                            0
+                                        }
+                                    } else {
+                                        0
+                                    };
+
+                                    let background_style = if is_processing {
+                                        if progress_percent == 0 {
+                                            // В начале обработки - полностью белый фон
+                                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; transition: background 0.3s ease;".to_string()
+                                        } else {
+                                            format!("background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; transition: background 0.3s ease;", progress_percent, progress_percent)
+                                        }
+                                    } else {
+                                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;".to_string()
+                                    };
+
                                     view! {
-                                        <>
-                                            <span style="margin-left: 8px; font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); background: var(--color-background-alt, #f5f5f5); padding: 6px 12px; border-radius: 4px;">
-                                                "Total: " {count} " records | "
-                                                "Кол-во: " {format!("{:.0}", total_qty)} " | "
-                                                "К выплате: " {format!("{:.2}", total_amount)} " | "
-                                                "Полная цена: " {format!("{:.2}", total_price)} " | "
-                                                "Итоговая: " {format!("{:.2}", total_finished)}
-                                            </span>
-                                            {limit_warning}
-                                        </>
+                                        <div style=background_style>
+                                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                                <span style="font-weight: 600; color: #2e7d32; font-size: var(--font-size-sm);">
+                                                    "Выделено: " {sel_count} " строк"
+                                                </span>
+
+                                                <span style="font-size: var(--font-size-sm); color: #424242;">
+                                                    "Кол-во: " {format_number_with_separator(sel_qty, 0)} " | "
+                                                    "К выплате: " {format_number_with_separator(sel_amount, 2)} " | "
+                                                    "Полная цена: " {format_number_with_separator(sel_price, 2)} " | "
+                                                    "Итоговая: " {format_number_with_separator(sel_finished, 2)}
+                                                </span>
+
+                                                <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+                                                    <button
+                                                        on:click=move |_| batch_update(true)
+                                                        disabled=move || selected_ids.get().is_empty() || is_batch_processing.get()
+                                                        style="padding: 4px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm); transition: all 0.2s;"
+                                                        onmouseenter="this.style.opacity='0.85'; this.style.transform='translateY(-2px)'"
+                                                        onmouseleave="this.style.opacity='1'; this.style.transform='translateY(0)'"
+                                                        title="Провести выбранные документы"
+                                                    >
+                                                        {move || format!("✓ Post ({})", selected_ids.get().len())}
+                                                    </button>
+                                                    <button
+                                                        on:click=move |_| batch_update(false)
+                                                        disabled=move || selected_ids.get().is_empty() || is_batch_processing.get()
+                                                        style="padding: 4px 12px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm); transition: all 0.2s;"
+                                                        onmouseenter="this.style.opacity='0.85'; this.style.transform='translateY(-2px)'"
+                                                        onmouseleave="this.style.opacity='1'; this.style.transform='translateY(0)'"
+                                                        title="Снять проведение выбранных документов"
+                                                    >
+                                                        {move || format!("✗ Unpost ({})", selected_ids.get().len())}
+                                                    </button>
+                                                    <button
+                                                        on:click=move |_| clear_selection()
+                                                        disabled=move || selected_ids.get().is_empty() || is_batch_processing.get()
+                                                        style="padding: 4px 12px; background: #9e9e9e; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: var(--font-size-sm); transition: all 0.2s;"
+                                                        onmouseenter="this.style.opacity='0.85'; this.style.transform='translateY(-2px)'"
+                                                        onmouseleave="this.style.opacity='1'; this.style.transform='translateY(0)'"
+                                                        title="Очистить выделение"
+                                                    >
+                                                        "✕ Clear"
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     }.into_any()
                                 } else {
                                     view! { <></> }.into_any()
-                                }}
-                            </div>
+                                }
+                            }}
 
             {move || {
                 // Render summary and table; render filled rows only when not loading and no error
@@ -405,7 +667,21 @@ pub fn WbSalesList() -> impl IntoView {
                                 <table class="data-table" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
+                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 38px;">
+                                                        <input
+                                                            type="checkbox"
+                                                            on:change=move |ev| {
+                                                                let checked = event_target_checked(&ev);
+                                                                select_all_current(checked);
+                                                            }
+                                                            prop:checked=move || {
+                                                                let total = get_sorted_items().len();
+                                                                let sel = selected_ids.with(|ids| ids.len());
+                                                                total > 0 && sel == total
+                                                            }
+                                                            disabled=move || is_batch_processing.get()
+                                                        />
+                                                    </th>
                                             <th
                                                 style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
                                                 on:click=toggle_sort("document_no")
@@ -433,6 +709,27 @@ pub fn WbSalesList() -> impl IntoView {
                                                 title="Сортировать"
                                             >
                                                 {move || format!("Артикул{}", get_sort_indicator(&sort_field.get(), "supplier_article", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("marketplace_article")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Артикул МП{}", get_sort_indicator(&sort_field.get(), "marketplace_article", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("nomenclature_article")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Артикул 1С{}", get_sort_indicator(&sort_field.get(), "nomenclature_article", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("nomenclature_code")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Код 1С{}", get_sort_indicator(&sort_field.get(), "nomenclature_code", sort_ascending.get()))}
                                             </th>
                                             <th
                                                 style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
@@ -480,8 +777,10 @@ pub fn WbSalesList() -> impl IntoView {
                                     </thead>
                                     <tbody>
                                         {move || get_sorted_items().into_iter().map(|sale| {
-                                            let short_id = sale.id.chars().take(8).collect::<String>();
                                             let sale_id = sale.id.clone();
+                                            let sale_id_for_check = sale_id.clone();
+                                            let sale_id_for_change = sale_id.clone();
+                                            let sale_id_for_row = sale_id.clone();
                                             let formatted_date = format_date(&sale.sale_date);
                                             let formatted_amount = sale.amount_line
                                                 .map(|a| format!("{:.2}", a))
@@ -496,19 +795,32 @@ pub fn WbSalesList() -> impl IntoView {
                                             view! {
                                                 <tr
                                                     on:click=move |_| {
-                                                        set_selected_id.set(Some(sale_id.clone()));
+                                                        set_selected_id.set(Some(sale_id_for_row.clone()));
                                                     }
                                                     style="cursor: pointer; transition: background 0.2s;"
                                                     onmouseenter="this.style.background='#f5f5f5'"
                                                     onmouseleave="this.style.background='white'"
                                                 >
-                                                    <td style="border: 1px solid #ddd; padding: 8px;">
-                                                        <code style="font-size: 0.85em;">{format!("{}...", short_id)}</code>
+                                                    <td
+                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center;"
+                                                        on:click=move |ev| {
+                                                            ev.stop_propagation();
+                                                        }
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            prop:checked=move || is_selected(&sale_id_for_check)
+                                                            on:change=move |_| toggle_row(sale_id_for_change.clone())
+                                                            disabled=move || is_batch_processing.get()
+                                                        />
                                                     </td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.document_no}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{formatted_date}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.organization_name.clone().unwrap_or_else(|| "—".to_string())}</td>
-                                                    <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.85em;">{sale.supplier_article}</code></td>
+                                                    <td style="border: 1px solid #ddd; padding: 8px;">{sale.supplier_article}</td>
+                                                    <td style="border: 1px solid #ddd; padding: 8px;"><span style="color: #1976d2; font-weight: 600;">{sale.marketplace_article.clone().unwrap_or_else(|| "—".to_string())}</span></td>
+                                                    <td style="border: 1px solid #ddd; padding: 8px;"><span style="color: #2e7d32; font-weight: 600;">{sale.nomenclature_article.clone().unwrap_or_else(|| "—".to_string())}</span></td>
+                                                    <td style="border: 1px solid #ddd; padding: 8px;"><span style="color: #2e7d32; font-weight: 600;">{sale.nomenclature_code.clone().unwrap_or_else(|| "—".to_string())}</span></td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.name}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{formatted_qty}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{formatted_amount}</td>
@@ -538,11 +850,14 @@ pub fn WbSalesList() -> impl IntoView {
                                 <table class="data-table" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 38px;"></th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Document №"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Дата продажи"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Организация"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Артикул"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Артикул МП"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Артикул 1С"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Код 1С"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Название"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Кол-во"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"К выплате"</th>
@@ -552,7 +867,7 @@ pub fn WbSalesList() -> impl IntoView {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td colspan="11"></td></tr>
+                                                <tr><td colspan="14"></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -574,12 +889,27 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
     let mut csv = String::from("\u{FEFF}");
 
     // Заголовок с точкой с запятой как разделитель
-    csv.push_str("Document №;Дата продажи;Организация;Артикул;Название;Количество;К выплате;Полная цена;Итоговая цена;Тип\n");
+    csv.push_str("Document №;Дата продажи;Организация;Артикул;Артикул МП;Артикул 1С;Код 1С;Название;Количество;К выплате;Полная цена;Итоговая цена;Тип\n");
 
     for sale in data {
         let sale_date = format_date(&sale.sale_date);
         let org_name = sale
             .organization_name
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("—");
+        let mp_article = sale
+            .marketplace_article
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("—");
+        let nom_code = sale
+            .nomenclature_code
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("—");
+        let nom_article = sale
+            .nomenclature_article
             .as_ref()
             .map(|s| s.as_str())
             .unwrap_or("—");
@@ -600,11 +930,14 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
             .unwrap_or_else(|| "—".to_string());
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
             sale.document_no.replace('\"', "\"\""),
             sale_date,
             org_name.replace('\"', "\"\""),
             sale.supplier_article.replace('\"', "\"\""),
+            mp_article.replace('\"', "\"\""),
+            nom_article.replace('\"', "\"\""),
+            nom_code.replace('\"', "\"\""),
             sale.name.replace('\"', "\"\""),
             qty_str,
             amount_str,

@@ -20,6 +20,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a003, set_import_a003) = signal(true);
     let (import_a004, set_import_a004) = signal(true);
     let (import_p901, set_import_p901) = signal(true);
+    let (delete_obsolete, set_delete_obsolete) = signal(false);
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u501_session_id";
@@ -155,6 +156,7 @@ pub fn ImportWidget() -> impl IntoView {
                 connection_id: conn_id,
                 target_aggregates: targets,
                 mode: ImportMode::Interactive,
+                delete_obsolete: delete_obsolete.get(),
             };
 
             match api::start_import(request).await {
@@ -248,6 +250,26 @@ pub fn ImportWidget() -> impl IntoView {
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
                     "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
+                </div>
+            </div>
+
+            // Опции импорта
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
+                    "Опции импорта:"
+                </label>
+                <div style="padding: 8px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffc107;">
+                    <label>
+                        <input
+                            type="checkbox"
+                            prop:checked=move || delete_obsolete.get()
+                            on:change=move |ev| { set_delete_obsolete.set(event_target_checked(&ev)); }
+                        />
+                        " Удалять устаревшие записи (которых нет в 1С)"
+                    </label>
+                    <div style="margin-top: 5px; font-size: 12px; color: #856404;">
+                        "⚠️ Внимание: Записи, которых нет в источнике 1С, будут удалены из БД (жесткое удаление)"
+                    </div>
                 </div>
             </div>
 

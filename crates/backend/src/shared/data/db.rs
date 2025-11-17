@@ -269,6 +269,8 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 dim4_format TEXT NOT NULL DEFAULT '',
                 dim5_sink TEXT NOT NULL DEFAULT '',
                 dim6_size TEXT NOT NULL DEFAULT '',
+                is_assembly INTEGER NOT NULL DEFAULT 0,
+                base_nomenclature_ref TEXT,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -295,6 +297,8 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         let mut has_dim4_format = false;
         let mut has_dim5_sink = false;
         let mut has_dim6_size = false;
+        let mut has_is_assembly = false;
+        let mut has_base_nomenclature_ref = false;
 
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
@@ -306,6 +310,8 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 "dim4_format" => has_dim4_format = true,
                 "dim5_sink" => has_dim5_sink = true,
                 "dim6_size" => has_dim6_size = true,
+                "is_assembly" => has_is_assembly = true,
+                "base_nomenclature_ref" => has_base_nomenclature_ref = true,
                 _ => {}
             }
         }
@@ -375,6 +381,26 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "ALTER TABLE a004_nomenclature ADD COLUMN dim6_size TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_is_assembly {
+            tracing::info!("Adding is_assembly column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN is_assembly INTEGER NOT NULL DEFAULT 0;"
+                    .to_string(),
+            ))
+            .await?;
+        }
+
+        if !has_base_nomenclature_ref {
+            tracing::info!("Adding base_nomenclature_ref column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN base_nomenclature_ref TEXT;"
                     .to_string(),
             ))
             .await?;

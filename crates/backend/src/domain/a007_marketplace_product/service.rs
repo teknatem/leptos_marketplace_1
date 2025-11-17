@@ -129,12 +129,12 @@ pub async fn list_all() -> anyhow::Result<Vec<MarketplaceProduct>> {
     repository::list_all().await
 }
 
-/// Получение товара по SKU маркетплейса
-pub async fn get_by_marketplace_sku(
-    marketplace_id: &str,
+/// Получение товара по connection_mp_ref и SKU
+pub async fn get_by_connection_and_sku(
+    connection_mp_ref: &str,
     sku: &str,
 ) -> anyhow::Result<Option<MarketplaceProduct>> {
-    repository::get_by_marketplace_sku(marketplace_id, sku).await
+    repository::get_by_connection_and_sku(connection_mp_ref, sku).await
 }
 
 /// Получение товаров по штрихкоду
@@ -161,15 +161,15 @@ pub struct FindOrCreateParams {
 /// Найти или создать a007_marketplace_product для регистра продаж
 ///
 /// Алгоритм поиска:
-/// 1. Поиск по (marketplace_id, marketplace_sku)
+/// 1. Поиск по (connection_mp_ref, marketplace_sku)
 /// 2. Если не найден и есть barcode - поиск через p901 по штрихкоду маркетплейса
 /// 3. Если не найден - создание нового a007 с комментарием
 ///
 /// Возвращает UUID найденного или созданного товара
 pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Result<Uuid> {
-    // Шаг 1: Поиск по (marketplace_ref, marketplace_sku)
-    if let Some(existing) = repository::get_by_marketplace_sku(
-        &params.marketplace_ref,
+    // Шаг 1: Поиск по (connection_mp_ref, marketplace_sku)
+    if let Some(existing) = repository::get_by_connection_and_sku(
+        &params.connection_mp_ref,
         &params.marketplace_sku,
     )
     .await?

@@ -165,12 +165,12 @@ pub async fn soft_delete(id: Uuid) -> anyhow::Result<bool> {
     Ok(result.rows_affected > 0)
 }
 
-pub async fn get_by_marketplace_sku(
-    marketplace_ref: &str,
+pub async fn get_by_connection_and_sku(
+    connection_mp_ref: &str,
     sku: &str,
 ) -> anyhow::Result<Option<MarketplaceProduct>> {
     let result = Entity::find()
-        .filter(Column::MarketplaceRef.eq(marketplace_ref))
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
         .filter(Column::MarketplaceSku.eq(sku))
         .filter(Column::IsDeleted.eq(false))
         .one(conn())

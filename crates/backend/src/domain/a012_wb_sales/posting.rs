@@ -9,23 +9,24 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
+    // Автозаполнение ссылок на marketplace_product и nomenclature
+    super::service::auto_fill_references(&mut document).await?;
+
     // Установить флаг is_posted
     document.is_posted = true;
+    document.base.metadata.is_posted = document.is_posted;
     document.before_write();
 
     // Сохранить документ
     repository::upsert_document(&document).await?;
 
     // Удалить старые проекции (если были)
-    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(
-        &id.to_string(),
-    )
-    .await?;
+    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     // Создать новые проекции
     crate::projections::p900_mp_sales_register::service::project_wb_sales(&document, id).await?;
 
-    tracing::info!("Posted document a012: {}", id);
     Ok(())
 }
 
@@ -38,17 +39,15 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     // Снять флаг is_posted
     document.is_posted = false;
+    document.base.metadata.is_posted = document.is_posted;
     document.before_write();
 
     // Сохранить документ
     repository::upsert_document(&document).await?;
 
     // Удалить проекции
-    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(
-        &id.to_string(),
-    )
-    .await?;
+    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
-    tracing::info!("Unposted document a012: {}", id);
     Ok(())
 }

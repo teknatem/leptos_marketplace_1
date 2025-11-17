@@ -34,6 +34,14 @@ pub struct UtNomenclatureOData {
     #[serde(rename = "Артикул", alias = "Article", default)]
     pub article: Option<String>,
 
+    // Требуется сборка
+    #[serde(rename = "ТребуетсяСборка", default)]
+    pub is_assembly: Option<bool>,
+
+    // Номенклатура для остатков (ссылка на другую номенклатуру)
+    #[serde(rename = "НоменклатураДляОстатков_Key", default)]
+    pub base_nomenclature_key: Option<String>,
+
     // Игнорировать дополнительные поля
     #[serde(flatten)]
     #[serde(skip_serializing)]
@@ -78,6 +86,7 @@ impl UtNomenclatureOData {
         };
 
         let parent_id = Self::normalize_parent_id(&self.parent_key);
+        let base_nomenclature_ref = Self::normalize_parent_id(&self.base_nomenclature_key);
 
         let mut agg = Nomenclature::new_with_id(
             id,
@@ -89,6 +98,9 @@ impl UtNomenclatureOData {
             self.article.clone().unwrap_or_default(),
             None,
         );
+        // Применить новые поля
+        agg.is_assembly = self.is_assembly.unwrap_or(false);
+        agg.base_nomenclature_ref = base_nomenclature_ref;
         // Применить признак удаления из источника
         agg.base.metadata.is_deleted = self.deletion_mark;
         Ok(agg)
@@ -97,6 +109,7 @@ impl UtNomenclatureOData {
     /// Проверка, нужно ли обновлять существующий агрегат
     pub fn should_update(&self, existing: &Nomenclature) -> bool {
         let normalized_parent = Self::normalize_parent_id(&self.parent_key);
+        let normalized_base_ref = Self::normalize_parent_id(&self.base_nomenclature_key);
         existing.base.code != self.code
             || existing.base.description != self.description
             || existing.full_description != self.full_description.clone().unwrap_or_default()
@@ -104,6 +117,8 @@ impl UtNomenclatureOData {
             || existing.parent_id != normalized_parent
             || existing.base.metadata.is_deleted != self.deletion_mark
             || existing.article != self.article.clone().unwrap_or_default()
+            || existing.is_assembly != self.is_assembly.unwrap_or(false)
+            || existing.base_nomenclature_ref != normalized_base_ref
     }
 }
 

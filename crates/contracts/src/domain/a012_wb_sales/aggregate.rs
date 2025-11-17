@@ -142,6 +142,12 @@ pub struct WbSales {
 
     /// Флаг проведения документа (для формирования проекций)
     pub is_posted: bool,
+
+    /// Ссылка на товар маркетплейса (a007_marketplace_product)
+    pub marketplace_product_ref: Option<String>,
+
+    /// Ссылка на номенклатуру 1С (a004_nomenclature)
+    pub nomenclature_ref: Option<String>,
 }
 
 impl WbSales {
@@ -164,6 +170,8 @@ impl WbSales {
             warehouse,
             source_meta,
             is_posted,
+            marketplace_product_ref: None,
+            nomenclature_ref: None,
         }
     }
 
@@ -187,6 +195,8 @@ impl WbSales {
             warehouse,
             source_meta,
             is_posted,
+            marketplace_product_ref: None,
+            nomenclature_ref: None,
         }
     }
 

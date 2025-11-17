@@ -477,8 +477,8 @@ impl ImportExecutor {
 
         // Используем nm_id как marketplace_sku
         let marketplace_sku = card.nm_id.to_string();
-        let existing = a007_marketplace_product::repository::get_by_marketplace_sku(
-            &connection.marketplace_id,
+        let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
+            &connection.base.id.as_string(),
             &marketplace_sku,
         )
         .await?;

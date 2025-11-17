@@ -29,6 +29,8 @@ pub struct Model {
     pub dim4_format: String,
     pub dim5_sink: String,
     pub dim6_size: String,
+    pub is_assembly: bool,
+    pub base_nomenclature_ref: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -71,6 +73,8 @@ impl From<Model> for Nomenclature {
             dim4_format: m.dim4_format,
             dim5_sink: m.dim5_sink,
             dim6_size: m.dim6_size,
+            is_assembly: m.is_assembly,
+            base_nomenclature_ref: m.base_nomenclature_ref,
         }
     }
 }
@@ -122,6 +126,8 @@ pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
         dim4_format: Set(aggregate.dim4_format.clone()),
         dim5_sink: Set(aggregate.dim5_sink.clone()),
         dim6_size: Set(aggregate.dim6_size.clone()),
+        is_assembly: Set(aggregate.is_assembly),
+        base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -150,6 +156,8 @@ pub async fn update(aggregate: &Nomenclature) -> anyhow::Result<()> {
         dim4_format: Set(aggregate.dim4_format.clone()),
         dim5_sink: Set(aggregate.dim5_sink.clone()),
         dim6_size: Set(aggregate.dim6_size.clone()),
+        is_assembly: Set(aggregate.is_assembly),
+        base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),
@@ -295,4 +303,20 @@ pub async fn get_distinct_dimension_values() -> anyhow::Result<DimensionValues> 
         dim5_sink: dim5_set.into_iter().collect(),
         dim6_size: dim6_set.into_iter().collect(),
     })
+}
+
+/// Удалить записи по списку ID (жесткое удаление)
+pub async fn delete_by_ids(ids: Vec<Uuid>) -> anyhow::Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+
+    let id_strings: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+    
+    let result = Entity::delete_many()
+        .filter(Column::Id.is_in(id_strings))
+        .exec(conn())
+        .await?;
+    
+    Ok(result.rows_affected)
 }

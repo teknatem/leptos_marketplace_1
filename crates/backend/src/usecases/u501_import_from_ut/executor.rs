@@ -111,7 +111,7 @@ impl ImportExecutor {
                     self.import_counterparties(session_id, connection).await?;
                 }
                 "a004_nomenclature" => {
-                    self.import_nomenclature(session_id, connection).await?;
+                    self.import_nomenclature(session_id, connection, request.delete_obsolete).await?;
                 }
                 "p901_barcodes" => {
                     self.import_barcodes(session_id, connection).await?;
@@ -380,6 +380,7 @@ impl ImportExecutor {
         &self,
         session_id: &str,
         connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+        delete_obsolete: bool,
     ) -> Result<()> {
         use a004_nomenclature::u501_import_from_ut::UtNomenclatureListResponse;
 
@@ -547,15 +548,64 @@ impl ImportExecutor {
         );
 
         // Проверяем сколько записей реально в базе
-        match a004_nomenclature::repository::list_all().await {
+        let db_items = match a004_nomenclature::repository::list_all().await {
             Ok(items) => {
                 tracing::info!(
                     "📊 Database verification: {} items in a004_nomenclature table",
                     items.len()
                 );
+                items
             }
             Err(e) => {
                 tracing::error!("Failed to verify database: {}", e);
+                vec![]
+            }
+        };
+
+        // Удаление устаревших записей (которых нет в источнике)
+        if delete_obsolete && !unique_ids.is_empty() {
+            tracing::info!("🗑️  Checking for obsolete records to delete...");
+            
+            // Получаем все ID из БД
+            let db_ids: std::collections::HashSet<uuid::Uuid> = db_items
+                .iter()
+                .map(|item| item.base.id.value())
+                .collect();
+            
+            // Преобразуем unique_ids (String) в UUID
+            let source_ids: std::collections::HashSet<uuid::Uuid> = unique_ids
+                .iter()
+                .filter_map(|s| uuid::Uuid::parse_str(s).ok())
+                .collect();
+            
+            // Находим ID, которые есть в БД, но нет в источнике
+            let obsolete_ids: Vec<uuid::Uuid> = db_ids
+                .difference(&source_ids)
+                .copied()
+                .collect();
+            
+            if !obsolete_ids.is_empty() {
+                tracing::info!(
+                    "🗑️  Found {} obsolete records to delete",
+                    obsolete_ids.len()
+                );
+                
+                match a004_nomenclature::repository::delete_by_ids(obsolete_ids.clone()).await {
+                    Ok(deleted_count) => {
+                        tracing::info!("✅ Deleted {} obsolete records", deleted_count);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to delete obsolete records: {}", e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            "Failed to delete obsolete records".to_string(),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+            } else {
+                tracing::info!("✅ No obsolete records found");
             }
         }
 
@@ -593,6 +643,12 @@ impl ImportExecutor {
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .map(|u| u.to_string());
             existing_item.article = odata.article.clone().unwrap_or_default();
+            existing_item.is_assembly = odata.is_assembly.unwrap_or(false);
+            existing_item.base_nomenclature_ref = odata
+                .base_nomenclature_key
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .map(|u| u.to_string());
             existing_item.base.metadata.is_deleted = odata.deletion_mark;
             existing_item.before_write();
 

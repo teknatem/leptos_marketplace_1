@@ -77,6 +77,12 @@ pub struct Nomenclature {
 
     #[serde(rename = "dim6Size", default)]
     pub dim6_size: String,
+
+    #[serde(rename = "isAssembly", default)]
+    pub is_assembly: bool,
+
+    #[serde(rename = "baseNomenclatureRef")]
+    pub base_nomenclature_ref: Option<String>,
 }
 
 impl Nomenclature {
@@ -105,6 +111,8 @@ impl Nomenclature {
             dim4_format: String::new(),
             dim5_sink: String::new(),
             dim6_size: String::new(),
+            is_assembly: false,
+            base_nomenclature_ref: None,
         }
     }
 
@@ -134,6 +142,8 @@ impl Nomenclature {
             dim4_format: String::new(),
             dim5_sink: String::new(),
             dim6_size: String::new(),
+            is_assembly: false,
+            base_nomenclature_ref: None,
         }
     }
 
@@ -162,6 +172,14 @@ impl Nomenclature {
         self.dim4_format = dto.dim4_format.clone().unwrap_or_default();
         self.dim5_sink = dto.dim5_sink.clone().unwrap_or_default();
         self.dim6_size = dto.dim6_size.clone().unwrap_or_default();
+
+        // Обновление новых полей
+        if let Some(is_assembly) = dto.is_assembly {
+            self.is_assembly = is_assembly;
+        }
+        if dto.base_nomenclature_ref.is_some() {
+            self.base_nomenclature_ref = dto.base_nomenclature_ref.clone();
+        }
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -286,4 +304,9 @@ pub struct NomenclatureDto {
     pub dim5_sink: Option<String>,
     #[serde(rename = "dim6Size")]
     pub dim6_size: Option<String>,
+
+    #[serde(rename = "isAssembly")]
+    pub is_assembly: Option<bool>,
+    #[serde(rename = "baseNomenclatureRef")]
+    pub base_nomenclature_ref: Option<String>,
 }

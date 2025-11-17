@@ -270,8 +270,8 @@ impl ImportExecutor {
 
         // Проверяем, существует ли товар по marketplace_sku (productItem)
         let marketplace_sku = product.product_item.to_string();
-        let existing = a007_marketplace_product::repository::get_by_marketplace_sku(
-            &connection.marketplace_id,
+        let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
+            &connection.base.id.as_string(),
             &marketplace_sku,
         )
         .await?;

@@ -12,6 +12,10 @@ pub struct ImportRequest {
     /// Режим импорта (опционально, для будущего расширения)
     #[serde(default)]
     pub mode: ImportMode,
+
+    /// Удалять записи, которых нет в источнике (жесткое удаление)
+    #[serde(default)]
+    pub delete_obsolete: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

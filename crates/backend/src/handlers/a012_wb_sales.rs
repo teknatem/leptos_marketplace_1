@@ -14,6 +14,9 @@ pub struct WbSalesListItemDto {
     #[serde(flatten)]
     pub sales: WbSales,
     pub organization_name: Option<String>,
+    pub marketplace_article: Option<String>,
+    pub nomenclature_code: Option<String>,
+    pub nomenclature_article: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,14 +67,6 @@ pub async fn list_sales(
     // Применяем пагинацию
     let items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
 
-    tracing::info!(
-        "Loading WB sales: total={}, offset={}, limit={}, returned={}",
-        total_count,
-        offset,
-        limit,
-        items.len()
-    );
-
     // ОПТИМИЗАЦИЯ: Загружаем все организации одним запросом
     let organizations = a002_organization::service::list_all().await.map_err(|e| {
         tracing::error!("Failed to load organizations: {}", e);
@@ -84,19 +79,59 @@ pub async fn list_sales(
         .map(|org| (org.base.id.as_string(), org.base.description.clone()))
         .collect();
 
-    // Формируем результат с названиями организаций
+    // Загружаем все товары маркетплейса
+    let marketplace_products = crate::domain::a007_marketplace_product::service::list_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load marketplace products: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let mp_map: std::collections::HashMap<String, (String, Option<String>)> = marketplace_products
+        .into_iter()
+        .map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone())))
+        .collect();
+
+    // Загружаем всю номенклатуру
+    let nomenclature_items = crate::domain::a004_nomenclature::service::list_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load nomenclature: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let nom_map: std::collections::HashMap<String, (String, String)> = nomenclature_items
+        .into_iter()
+        .map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone())))
+        .collect();
+
+    // Формируем результат с дополнительными полями
     let result: Vec<WbSalesListItemDto> = items
         .into_iter()
         .map(|sale| {
             let organization_name = org_map.get(&sale.header.organization_id).cloned();
+            
+            // Получаем данные из marketplace_product
+            let (marketplace_article, nomenclature_ref_from_mp) = sale.marketplace_product_ref
+                .as_ref()
+                .and_then(|mp_ref| mp_map.get(mp_ref).cloned())
+                .unwrap_or((String::new(), None));
+
+            // Получаем данные из nomenclature (приоритет отдаем прямой ссылке из sale)
+            let nom_ref = sale.nomenclature_ref.as_ref().or(nomenclature_ref_from_mp.as_ref());
+            let (nomenclature_code, nomenclature_article) = nom_ref
+                .and_then(|nom_ref| nom_map.get(nom_ref).cloned())
+                .unwrap_or((String::new(), String::new()));
+
             WbSalesListItemDto {
                 sales: sale,
                 organization_name,
+                marketplace_article: Some(marketplace_article),
+                nomenclature_code: Some(nomenclature_code),
+                nomenclature_article: Some(nomenclature_article),
             }
         })
         .collect();
-
-    tracing::info!("Loaded {} WB sales records", result.len());
 
     Ok(Json(result))
 }
@@ -176,6 +211,11 @@ pub struct PostPeriodRequest {
     pub to: String,
 }
 
+#[derive(Deserialize)]
+pub struct BatchOperationRequest {
+    pub ids: Vec<String>,
+}
+
 /// Handler для проведения документов за период
 pub async fn post_period(
     Query(req): Query<PostPeriodRequest>,
@@ -199,7 +239,6 @@ pub async fn post_period(
             match a012_wb_sales::posting::post_document(doc.base.id.value()).await {
                 Ok(_) => {
                     posted_count += 1;
-                    tracing::info!("Posted document: {}", doc.base.id.as_string());
                 }
                 Err(e) => {
                     failed_count += 1;
@@ -213,5 +252,81 @@ pub async fn post_period(
         "success": true,
         "posted_count": posted_count,
         "failed_count": failed_count
+    })))
+}
+
+/// Handler для пакетного проведения документов (до 100 документов за раз)
+pub async fn batch_post_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a012_wb_sales::posting::post_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch posted {} documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
+    })))
+}
+
+/// Handler для пакетной отмены проведения документов (до 100 документов за раз)
+pub async fn batch_unpost_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a012_wb_sales::posting::unpost_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch unposted {} documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
     })))
 }

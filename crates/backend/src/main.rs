@@ -31,7 +31,10 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| {
+                // Отключаем логи SQL запросов, но оставляем логи приложения
+                "info,sqlx=warn,sea_orm=warn".into()
+            }),
         ))
         .with(tracing_subscriber::fmt::layer())
         .with(
@@ -1135,6 +1138,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a012/wb-sales/post-period",
             post(handlers::a012_wb_sales::post_period),
+        )
+        .route(
+            "/api/a012/wb-sales/batch-post",
+            post(handlers::a012_wb_sales::batch_post_documents),
+        )
+        .route(
+            "/api/a012/wb-sales/batch-unpost",
+            post(handlers::a012_wb_sales::batch_unpost_documents),
         )
         // A013 YM Order handlers
         .route(

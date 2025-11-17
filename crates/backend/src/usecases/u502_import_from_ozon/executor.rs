@@ -337,8 +337,8 @@ impl ImportExecutor {
 
         // Проверяем, существует ли товар по marketplace_sku (product_id)
         let marketplace_sku = product.id.to_string();
-        let existing = a007_marketplace_product::repository::get_by_marketplace_sku(
-            &connection.marketplace_id,
+        let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
+            &connection.base.id.as_string(),
             &marketplace_sku,
         )
         .await?;
@@ -499,8 +499,8 @@ impl ImportExecutor {
                         pid.clone()
                     } else {
                         let existing =
-                            a007_marketplace_product::repository::get_by_marketplace_sku(
-                                &connection.marketplace_id,
+                            a007_marketplace_product::repository::get_by_connection_and_sku(
+                                &connection.base.id.as_string(),
                                 &key,
                             )
                             .await?;
