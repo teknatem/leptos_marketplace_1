@@ -821,6 +821,18 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                         </thead>
                                                         <tbody>
                                                             <tr>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Полная цена"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"total_price"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.total_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Процент скидки"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"discount_percent"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.discount_percent.map(|d| format!("{:.1}", d)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"%"</td>
+                                                            </tr>
+                                                            <tr>
                                                                 <td style="border: 1px solid #ddd; padding: 8px;">"Цена без скидок"</td>
                                                                 <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"price_list"</code></td>
                                                                 <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.price_list.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
@@ -838,23 +850,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
                                                                 <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
                                                             </tr>
-                                                            <tr style="background:rgb(138, 227, 254);">
-                                                                <td style="border: 1px solid #ddd; padding: 8px; font-weight: 600;">"К выплате"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"amount_line"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: 600;">{line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
-                                                            </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Полная цена"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"total_price"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.total_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Сумма платежа"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"payment_sale_amount"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"СПП"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"spp"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.spp.map(|s| format!("{:.1}", s)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"%"</td>
                                                             </tr>
                                                             <tr>
                                                                 <td style="border: 1px solid #ddd; padding: 8px;">"Итоговая цена"</td>
@@ -863,16 +863,16 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Процент скидки"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"discount_percent"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.discount_percent.map(|d| format!("{:.1}", d)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"%"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"Сумма платежа"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"payment_sale_amount"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
                                                             </tr>
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"СПП"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"spp"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{line.spp.map(|s| format!("{:.1}", s)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">"%"</td>
+                                                            <tr style="background:rgb(138, 227, 254);">
+                                                                <td style="border: 1px solid #ddd; padding: 8px; font-weight: 600;">"К выплате"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;"><code style="font-size: 0.9em;">"amount_line"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: 600;">{line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 8px;">"rub"</td>
                                                             </tr>
                                                         </tbody>
                                                     </table>

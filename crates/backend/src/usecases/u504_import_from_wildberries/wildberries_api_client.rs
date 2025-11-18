@@ -1649,6 +1649,129 @@ impl WildberriesApiClient {
 
         Ok(all_sales)
     }
+
+    /// Загрузить финансовые отчеты из Wildberries по периоду (reportDetailByPeriod)
+    /// Возвращает только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+    pub async fn fetch_finance_report_by_period(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<Vec<WbFinanceReportRow>> {
+        let url = "https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries API");
+        }
+
+        let date_from_str = date_from.format("%Y-%m-%d").to_string();
+        let date_to_str = date_to.format("%Y-%m-%d").to_string();
+
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!(
+            "║ WILDBERRIES FINANCE REPORT API - reportDetailByPeriod"
+        ));
+        self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝"
+        ));
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}\nAuthorization: ****",
+            url, date_from_str, date_to_str
+        ));
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .query(&[("dateFrom", date_from_str.as_str()), ("dateTo", date_to_str.as_str())])
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Wildberries Finance Report API request failed: {}", body);
+            anyhow::bail!(
+                "Wildberries Finance Report API failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        let body_preview = if body.len() > 5000 {
+            format!("{}... (total {} chars)", &body[..5000], body.len())
+        } else {
+            body.clone()
+        };
+        self.log_to_file(&format!(
+            "=== RESPONSE BODY PREVIEW ===\n{}\n",
+            body_preview
+        ));
+
+        // Парсим все записи
+        let all_rows: Vec<WbFinanceReportRow> = match serde_json::from_str(&body) {
+            Ok(rows) => rows,
+            Err(e) => {
+                self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                tracing::error!("Failed to parse Wildberries finance report response: {}", e);
+                anyhow::bail!("Failed to parse finance report response: {}", e)
+            }
+        };
+
+        // Фильтруем только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+        let daily_reports: Vec<WbFinanceReportRow> = all_rows
+            .into_iter()
+            .filter(|row| row.report_type == Some(1))
+            .collect();
+
+        // Логируем первые 3 записи для проверки загрузки полей
+        for (idx, row) in daily_reports.iter().take(3).enumerate() {
+            self.log_to_file(&format!(
+                "\n=== Sample Record {} ===\nrrd_id: {:?}\ncommission_percent: {:?}\nppvz_sales_commission: {:?}\nretail_price_withdisc_rub: {:?}\nretail_amount: {:?}\n",
+                idx + 1,
+                row.rrd_id,
+                row.commission_percent,
+                row.ppvz_sales_commission,
+                row.retail_price_withdisc_rub,
+                row.retail_amount
+            ));
+            tracing::info!(
+                "WB Finance Report sample {}: rrd_id={:?}, commission_percent={:?}, ppvz_sales_commission={:?}",
+                idx + 1,
+                row.rrd_id,
+                row.commission_percent,
+                row.ppvz_sales_commission
+            );
+        }
+
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!(
+            "║ COMPLETED: Loaded {} daily finance report records",
+            daily_reports.len()
+        ));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝\n"
+        ));
+
+        tracing::info!(
+            "✓ Wildberries Finance Report API: Successfully loaded {} daily records for period {} to {}",
+            daily_reports.len(),
+            date_from_str,
+            date_to_str
+        );
+
+        Ok(daily_reports)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -1875,6 +1998,253 @@ pub struct WbSaleRow {
     /// Тип склада
     #[serde(rename = "warehouseType", default)]
     pub warehouse_type: Option<String>,
+}
+
+// ============================================================================
+// Finance Report structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbFinanceReportRow {
+    /// ID строки отчета
+    #[serde(default)]
+    pub rrd_id: Option<i64>,
+    /// Дата строки финансового отчёта
+    #[serde(default)]
+    pub rr_dt: Option<String>,
+    /// Номенклатурный номер товара
+    #[serde(default)]
+    pub nm_id: Option<i64>,
+    /// Артикул продавца
+    #[serde(default)]
+    pub sa_name: Option<String>,
+    /// Категория товара
+    #[serde(default)]
+    pub subject_name: Option<String>,
+    /// Тип операции по заказу
+    #[serde(default)]
+    pub supplier_oper_name: Option<String>,
+    /// Количество товаров
+    #[serde(default)]
+    pub quantity: Option<i32>,
+    /// Розничная цена за единицу товара
+    #[serde(default)]
+    pub retail_price: Option<f64>,
+    /// Общая сумма продажи
+    #[serde(default)]
+    pub retail_amount: Option<f64>,
+    /// Цена продажи с учетом скидок
+    #[serde(default)]
+    pub retail_price_withdisc_rub: Option<f64>,
+    /// Процент комиссии Wildberries
+    #[serde(default)]
+    pub commission_percent: Option<f64>,
+    /// Комиссия за эквайринг
+    #[serde(default)]
+    pub acquiring_fee: Option<f64>,
+    /// Процент комиссии за эквайринг
+    #[serde(default)]
+    pub acquiring_percent: Option<f64>,
+    /// Сумма, уплаченная покупателем за доставку
+    #[serde(default)]
+    pub delivery_amount: Option<f64>,
+    /// Стоимость доставки на стороне продавца
+    #[serde(default)]
+    pub delivery_rub: Option<f64>,
+    /// Сумма услуги по возврату денежных средств
+    #[serde(default)]
+    pub ppvz_vw: Option<f64>,
+    /// НДС по услуге возврата денежных средств
+    #[serde(default)]
+    pub ppvz_vw_nds: Option<f64>,
+    /// Комиссия WB за продажу
+    #[serde(default)]
+    pub ppvz_sales_commission: Option<f64>,
+    /// Сумма возврата за возвращённые товары
+    #[serde(default)]
+    pub return_amount: Option<f64>,
+    /// Сумма штрафа, удержанного с продавца
+    #[serde(default)]
+    pub penalty: Option<f64>,
+    /// Дополнительные (корректирующие) выплаты продавцу
+    #[serde(default)]
+    pub additional_payment: Option<f64>,
+    /// Плата за хранение товаров на складе
+    #[serde(default)]
+    pub storage_fee: Option<f64>,
+    /// Скорректированные расходы на логистику
+    #[serde(default)]
+    pub rebill_logistic_cost: Option<f64>,
+    /// Тип бонуса или штрафа
+    #[serde(default)]
+    pub bonus_type_name: Option<String>,
+        /// Тип отчета (1 = daily, 2 = weekly)
+    #[serde(default)]
+    pub report_type: Option<i32>,
+    
+    // ============ Дополнительные поля из API (для полного JSON) ============
+    /// ID реализационного отчета
+    #[serde(default)]
+    pub realizationreport_id: Option<i64>,
+    /// Дата начала периода отчета
+    #[serde(default)]
+    pub date_from: Option<String>,
+    /// Дата окончания периода отчета
+    #[serde(default)]
+    pub date_to: Option<String>,
+    /// Дата создания отчета
+    #[serde(default)]
+    pub create_dt: Option<String>,
+    /// Валюта
+    #[serde(default)]
+    pub currency_name: Option<String>,
+    /// Код договора поставщика
+    #[serde(default)]
+    pub suppliercontract_code: Option<String>,
+    /// ID сборочного задания
+    #[serde(default)]
+    pub gi_id: Option<i64>,
+    /// Процент доставки
+    #[serde(default)]
+    pub dlv_prc: Option<f64>,
+    /// Дата начала действия фикс. тарифа
+    #[serde(default)]
+    pub fix_tariff_date_from: Option<String>,
+    /// Дата окончания действия фикс. тарифа
+    #[serde(default)]
+    pub fix_tariff_date_to: Option<String>,
+    /// Бренд товара
+    #[serde(default)]
+    pub brand_name: Option<String>,
+    /// Размер товара
+    #[serde(default)]
+    pub ts_name: Option<String>,
+    /// Штрихкод товара
+    #[serde(default)]
+    pub barcode: Option<String>,
+    /// Тип документа
+    #[serde(default)]
+    pub doc_type_name: Option<String>,
+    /// Процент скидки
+    #[serde(default)]
+    pub sale_percent: Option<f64>,
+    /// Название склада
+    #[serde(default)]
+    pub office_name: Option<String>,
+    /// Дата заказа
+    #[serde(default)]
+    pub order_dt: Option<String>,
+    /// Дата продажи
+    #[serde(default)]
+    pub sale_dt: Option<String>,
+    /// ID поставки
+    #[serde(default)]
+    pub shk_id: Option<i64>,
+    /// Тип коробов
+    #[serde(default)]
+    pub gi_box_type_name: Option<String>,
+    /// Скидка на товар для отчета
+    #[serde(default)]
+    pub product_discount_for_report: Option<f64>,
+    /// Промо поставщика
+    #[serde(default)]
+    pub supplier_promo: Option<f64>,
+    /// Согласованная скидка продавца
+    #[serde(default)]
+    pub ppvz_spp_prc: Option<f64>,
+    /// Базовый процент комиссии
+    #[serde(default)]
+    pub ppvz_kvw_prc_base: Option<f64>,
+    /// Процент комиссии
+    #[serde(default)]
+    pub ppvz_kvw_prc: Option<f64>,
+    /// Процент повышения рейтинга поставщика
+    #[serde(default)]
+    pub sup_rating_prc_up: Option<f64>,
+    /// Участие в КГВП v2
+    #[serde(default)]
+    pub is_kgvp_v2: Option<i32>,
+    /// К перечислению за товар
+    #[serde(default)]
+    pub ppvz_for_pay: Option<f64>,
+    /// Вознаграждение
+    #[serde(default)]
+    pub ppvz_reward: Option<f64>,
+    /// Тип процессинга платежа
+    #[serde(default)]
+    pub payment_processing: Option<String>,
+    /// Банк-эквайер
+    #[serde(default)]
+    pub acquiring_bank: Option<String>,
+    /// Название пункта выдачи
+    #[serde(default)]
+    pub ppvz_office_name: Option<String>,
+    /// ID пункта выдачи
+    #[serde(default)]
+    pub ppvz_office_id: Option<i64>,
+    /// ID поставщика
+    #[serde(default)]
+    pub ppvz_supplier_id: Option<i64>,
+    /// Название поставщика
+    #[serde(default)]
+    pub ppvz_supplier_name: Option<String>,
+    /// ИНН поставщика
+    #[serde(default)]
+    pub ppvz_inn: Option<String>,
+    /// Номер декларации
+    #[serde(default)]
+    pub declaration_number: Option<String>,
+    /// ID стикера
+    #[serde(default)]
+    pub sticker_id: Option<String>,
+    /// Страна продажи
+    #[serde(default)]
+    pub site_country: Option<String>,
+    /// Доставка силами продавца
+    #[serde(default)]
+    pub srv_dbs: Option<bool>,
+    /// Организация, предоставившая логистику
+    #[serde(default)]
+    pub rebill_logistic_org: Option<String>,
+    /// Удержания
+    #[serde(default)]
+    pub deduction: Option<f64>,
+    /// Приемка
+    #[serde(default)]
+    pub acceptance: Option<f64>,
+    /// ID сборочного задания
+    #[serde(default)]
+    pub assembly_id: Option<i64>,
+    /// Код маркировки
+    #[serde(default)]
+    pub kiz: Option<String>,
+    /// Уникальный идентификатор строки
+    #[serde(default)]
+    pub srid: Option<String>,
+    /// Юридическое лицо
+    #[serde(default)]
+    pub is_legal_entity: Option<bool>,
+    /// ID возврата
+    #[serde(default)]
+    pub trbx_id: Option<String>,
+    /// Сумма софинансирования рассрочки
+    #[serde(default)]
+    pub installment_cofinancing_amount: Option<f64>,
+    /// Процент скидки WiBES
+    #[serde(default)]
+    pub wibes_wb_discount_percent: Option<f64>,
+    /// Сумма кэшбэка
+    #[serde(default)]
+    pub cashback_amount: Option<f64>,
+    /// Скидка по кэшбэку
+    #[serde(default)]
+    pub cashback_discount: Option<f64>,
+    /// Изменение комиссии по кэшбэку
+    #[serde(default)]
+    pub cashback_commission_change: Option<f64>,
+    /// Уникальный ID заказа
+    #[serde(default)]
+    pub order_uid: Option<String>,
 }
 
 // ============================================================================

@@ -1436,6 +1436,18 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
+    // p903_wb_finance_report table - финансовые отчеты Wildberries
+    let check_p903 = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p903_wb_finance_report';
+    "#;
+    let p903_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_p903.to_string(),
+        ))
+        .await?;
+
     if p902_exists.is_empty() {
         tracing::info!("Creating p902_ozon_finance_realization table");
     } else {
@@ -1669,6 +1681,149 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
 
         tracing::info!("Created p902_ozon_finance_realization table with indexes");
+    }
+
+    // ============================================================
+    // P903: Wildberries Finance Report
+    // ============================================================
+    if p903_exists.is_empty() {
+        let create_p903_table_sql = r#"
+            CREATE TABLE p903_wb_finance_report (
+                -- Composite Primary Key
+                rr_dt TEXT NOT NULL,              -- Дата строки финансового отчёта
+                rrd_id INTEGER NOT NULL,          -- Внутренний ID строки отчета
+
+                -- Metadata
+                connection_mp_ref TEXT NOT NULL,
+                organization_ref TEXT NOT NULL,
+
+                -- Main Fields (22 specified fields)
+                acquiring_fee REAL,               -- Комиссия за эквайринг
+                acquiring_percent REAL,           -- Процент комиссии за эквайринг
+                additional_payment REAL,          -- Дополнительные выплаты
+                bonus_type_name TEXT,             -- Тип бонуса или штрафа
+                commission_percent REAL,          -- Процент комиссии WB
+                delivery_amount REAL,             -- Сумма за доставку от покупателя
+                delivery_rub REAL,                -- Стоимость доставки для продавца
+                nm_id INTEGER,                    -- Артикул WB
+                penalty REAL,                     -- Штраф
+                ppvz_vw REAL,                     -- Услуга возврата средств
+                ppvz_vw_nds REAL,                 -- НДС по услуге возврата
+                ppvz_sales_commission REAL,       -- Комиссия WB за продажу
+                quantity INTEGER,                 -- Количество товаров
+                rebill_logistic_cost REAL,        -- Расходы на логистику
+                retail_amount REAL,               -- Общая сумма продажи
+                retail_price REAL,                -- Розничная цена за единицу
+                retail_price_withdisc_rub REAL,   -- Цена с учетом скидок
+                return_amount REAL,               -- Сумма возврата
+                sa_name TEXT,                     -- Артикул продавца
+                storage_fee REAL,                 -- Плата за хранение
+                subject_name TEXT,                -- Категория товара
+                supplier_oper_name TEXT,          -- Тип операции
+                cashback_amount REAL,             -- Сумма кэшбэка
+                ppvz_for_pay REAL,                -- К перечислению за товар
+                ppvz_kvw_prc REAL,                -- Процент комиссии
+                ppvz_kvw_prc_base REAL,           -- Базовый процент комиссии
+                srv_dbs INTEGER,                  -- Доставка силами продавца (0/1)
+
+                -- Technical fields
+                loaded_at_utc TEXT NOT NULL,
+                payload_version INTEGER NOT NULL DEFAULT 1,
+                extra TEXT,                       -- Full JSON from API
+
+                PRIMARY KEY (rr_dt, rrd_id)
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Create indexes for fast search
+        let create_p903_idx1 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_rr_dt
+            ON p903_wb_finance_report (rr_dt);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx1.to_string(),
+        ))
+        .await?;
+
+        let create_p903_idx2 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_nm_id
+            ON p903_wb_finance_report (nm_id);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx2.to_string(),
+        ))
+        .await?;
+
+        let create_p903_idx3 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_connection_mp_ref
+            ON p903_wb_finance_report (connection_mp_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx3.to_string(),
+        ))
+        .await?;
+
+        tracing::info!("Created p903_wb_finance_report table with indexes");
+    } else {
+        // Миграция: добавить поле ppvz_sales_commission если его нет
+        let check_column = conn
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "PRAGMA table_info(p903_wb_finance_report);".to_string(),
+            ))
+            .await?;
+
+        let has_ppvz_sales_commission = check_column.iter().any(|row| {
+            row.try_get::<String>("", "name")
+                .ok()
+                .map(|name| name == "ppvz_sales_commission")
+                .unwrap_or(false)
+        });
+
+        if !has_ppvz_sales_commission {
+            tracing::info!("Migrating p903_wb_finance_report: adding ppvz_sales_commission column");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE p903_wb_finance_report ADD COLUMN ppvz_sales_commission REAL;".to_string(),
+            ))
+            .await?;
+            tracing::info!("Migration of p903_wb_finance_report completed successfully");
+        }
+
+        // Миграция: добавить новые поля если их нет
+        let new_fields = vec![
+            ("cashback_amount", "REAL"),
+            ("ppvz_for_pay", "REAL"),
+            ("ppvz_kvw_prc", "REAL"),
+            ("ppvz_kvw_prc_base", "REAL"),
+            ("srv_dbs", "INTEGER"),
+        ];
+
+        for (field_name, field_type) in new_fields {
+            let has_field = check_column.iter().any(|row| {
+                row.try_get::<String>("", "name")
+                    .ok()
+                    .map(|name| name == field_name)
+                    .unwrap_or(false)
+            });
+
+            if !has_field {
+                tracing::info!("Migrating p903_wb_finance_report: adding {} column", field_name);
+                conn.execute(Statement::from_string(
+                    DatabaseBackend::Sqlite,
+                    format!("ALTER TABLE p903_wb_finance_report ADD COLUMN {} {};", field_name, field_type),
+                ))
+                .await?;
+            }
+        }
     }
 
     DB_CONN

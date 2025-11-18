@@ -21,6 +21,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
     let (import_a012, set_import_a012) = signal(false);
+    let (import_p903, set_import_p903) = signal(false);
 
     // Даты для импорта (по умолчанию: последние 30 дней)
     let default_date_from = Utc::now().naive_utc().date() - Duration::days(30);
@@ -183,6 +184,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a012.get() {
                 targets.push("a012_wb_sales".to_string());
             }
+            if import_p903.get() {
+                targets.push("p903_wb_finance_report".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -324,9 +328,17 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a012_wb_sales - Продажи Wildberries"
                     </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_p903.get()
+                            on:change=move |ev| { set_import_p903.set(event_target_checked(&ev)); }
+                        />
+                        " p903_wb_finance_report - Финансовый отчет WB"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /content/v2/get/cards/list (товары), GET /api/v1/supplier/sales (продажи)"
+                    "API: POST /content/v2/get/cards/list (товары), GET /api/v1/supplier/sales (продажи), GET /api/v5/supplier/reportDetailByPeriod (финансы)"
                 </div>
             </div>
 

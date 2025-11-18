@@ -1059,6 +1059,15 @@ async fn main() -> anyhow::Result<()> {
             "/api/p902/stats",
             get(handlers::p902_ozon_finance_realization::get_stats),
         )
+        // P903 WB Finance Report handlers
+        .route(
+            "/api/p903/finance-report",
+            get(handlers::p903_wb_finance_report::list_finance_report),
+        )
+        .route(
+            "/api/p903/finance-report/:rr_dt/:rrd_id",
+            get(handlers::p903_wb_finance_report::get_finance_report_detail),
+        )
         // A009 OZON Returns handlers
         .route(
             "/api/a009/ozon-returns/:id/post",

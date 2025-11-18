@@ -44,6 +44,7 @@ impl ImportExecutor {
             let aggregate_name = match aggregate_index.as_str() {
                 "a007_marketplace_product" => "Товары маркетплейса",
                 "a012_wb_sales" => "Продажи Wildberries",
+                "p903_wb_finance_report" => "Финансовый отчет WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -109,6 +110,15 @@ impl ImportExecutor {
                 }
                 "a012_wb_sales" => {
                     self.import_wb_sales(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "p903_wb_finance_report" => {
+                    self.import_wb_finance_report(
                         session_id,
                         connection,
                         request.date_from,
@@ -530,7 +540,9 @@ impl ImportExecutor {
             );
 
             // Автоматический поиск номенклатуры по артикулу
-            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
+            let _ =
+                a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
+                    .await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)
@@ -816,6 +828,234 @@ impl ImportExecutor {
             total_processed,
             total_inserted,
             total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Импорт финансовых отчетов Wildberries из API в p903_wb_finance_report
+    async fn import_wb_finance_report(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::projections::p903_wb_finance_report::repository;
+
+        let aggregate_index = "p903_wb_finance_report";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_deleted = 0;
+
+        tracing::info!(
+            "Importing WB finance report for session: {} from date: {} to date: {}",
+            session_id,
+            date_from,
+            date_to
+        );
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Импорт по дням: для каждого дня делаем отдельный запрос
+        let mut current_date = date_from;
+
+        while current_date <= date_to {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("Загрузка за {}", current_date.format("%Y-%m-%d"))),
+            );
+
+            tracing::info!(
+                "Processing finance report for date: {}",
+                current_date.format("%Y-%m-%d")
+            );
+
+            // Получаем финансовые отчеты из API WB за день
+            let report_rows = self
+                .api_client
+                .fetch_finance_report_by_period(connection, current_date, current_date)
+                .await?;
+
+            tracing::info!(
+                "Received {} finance report rows from WB API for {}",
+                report_rows.len(),
+                current_date.format("%Y-%m-%d")
+            );
+
+            // Удаляем старые данные за этот день перед вставкой новых
+            let deleted = repository::delete_by_date(current_date).await?;
+            total_deleted += deleted;
+
+            if deleted > 0 {
+                tracing::info!(
+                    "Deleted {} existing finance report records for date {}",
+                    deleted,
+                    current_date.format("%Y-%m-%d")
+                );
+            }
+
+            // Вставляем новые записи
+            let rows_count = report_rows.len() as i32;
+            for (idx, row) in report_rows.into_iter().enumerate() {
+                // Проверяем обязательные поля
+                if row.rrd_id.is_none() || row.rr_dt.is_none() {
+                    tracing::warn!("Skipping row with missing rrd_id or rr_dt: {:?}", row);
+                    continue;
+                }
+
+                let rrd_id = row.rrd_id.unwrap();
+                let rr_dt_str = row.rr_dt.clone().unwrap();
+
+                // Логируем первые 5 записей для проверки загрузки
+                if total_processed < 5 {
+                    tracing::info!(
+                        "WB Finance Report row {}: rrd_id={}, commission_percent={:?}, ppvz_sales_commission={:?}, retail_price_withdisc_rub={:?}",
+                        total_processed + 1,
+                        rrd_id,
+                        row.commission_percent,
+                        row.ppvz_sales_commission,
+                        row.retail_price_withdisc_rub
+                    );
+                }
+
+                // Парсим дату
+                let rr_dt = match chrono::NaiveDate::parse_from_str(&rr_dt_str, "%Y-%m-%d") {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::warn!("Failed to parse rr_dt '{}': {}", rr_dt_str, e);
+                        continue;
+                    }
+                };
+
+                // Сериализуем полную запись в JSON для поля extra
+                let extra_json = serde_json::to_string(&row).ok();
+
+                // Создаем entry
+                let entry = repository::WbFinanceReportEntry {
+                    rr_dt,
+                    rrd_id,
+                    connection_mp_ref: connection.base.id.as_string(),
+                    organization_ref: organization_id.clone(),
+                    acquiring_fee: row.acquiring_fee,
+                    acquiring_percent: row.acquiring_percent,
+                    additional_payment: row.additional_payment,
+                    bonus_type_name: row.bonus_type_name,
+                    commission_percent: row.commission_percent,
+                    delivery_amount: row.delivery_amount,
+                    delivery_rub: row.delivery_rub,
+                    nm_id: row.nm_id,
+                    penalty: row.penalty,
+                    ppvz_vw: row.ppvz_vw,
+                    ppvz_vw_nds: row.ppvz_vw_nds,
+                    ppvz_sales_commission: row.ppvz_sales_commission,
+                    quantity: row.quantity,
+                    rebill_logistic_cost: row.rebill_logistic_cost,
+                    retail_amount: row.retail_amount,
+                    retail_price: row.retail_price,
+                    retail_price_withdisc_rub: row.retail_price_withdisc_rub,
+                    return_amount: row.return_amount,
+                    sa_name: row.sa_name,
+                    storage_fee: row.storage_fee,
+                    subject_name: row.subject_name,
+                    supplier_oper_name: row.supplier_oper_name,
+                    cashback_amount: row.cashback_amount,
+                    ppvz_for_pay: row.ppvz_for_pay,
+                    ppvz_kvw_prc: row.ppvz_kvw_prc,
+                    ppvz_kvw_prc_base: row.ppvz_kvw_prc_base,
+                    srv_dbs: row.srv_dbs.map(|b| if b { 1 } else { 0 }),
+                    payload_version: 1,
+                    extra: extra_json,
+                };
+
+                // Вставляем запись
+                if let Err(e) = repository::upsert_entry(&entry).await {
+                    let error_msg = format!(
+                        "Failed to insert finance report entry (rrd_id={}): {}",
+                        rrd_id, e
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg,
+                        None,
+                    );
+                } else {
+                    total_inserted += 1;
+                }
+
+                total_processed += 1;
+
+                // Обновляем прогресс
+                if (idx + 1) % 100 == 0 || (idx + 1) == rows_count as usize {
+                    self.progress_tracker.update_aggregate(
+                        session_id,
+                        aggregate_index,
+                        total_processed,
+                        None, // total неизвестен, так как грузим по дням
+                        total_inserted,
+                        0, // нет обновлений, только вставки
+                    );
+                    self.progress_tracker.set_current_item(
+                        session_id,
+                        aggregate_index,
+                        Some(format!(
+                            "Обработано {} записей за {}",
+                            total_processed,
+                            current_date.format("%Y-%m-%d")
+                        )),
+                    );
+                }
+            }
+
+            // Переходим к следующему дню
+            current_date = current_date
+                .checked_add_signed(chrono::Duration::days(1))
+                .unwrap_or(date_to + chrono::Duration::days(1));
+        }
+
+        // Завершаем агрегат
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_processed,
+            None,
+            total_inserted,
+            0,
+        );
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "WB finance report import completed: processed={}, inserted={}, deleted={}",
+            total_processed,
+            total_inserted,
+            total_deleted
         );
 
         Ok(())

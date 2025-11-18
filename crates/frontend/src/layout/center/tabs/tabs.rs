@@ -19,6 +19,7 @@ use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
+use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
@@ -114,6 +115,9 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "p902_ozon_finance_realization" => {
             view! { <OzonFinanceRealizationList /> }.into_any()
+        }
+        Some(key) if key == "p903_wb_finance_report" => {
+            view! { <WbFinanceReportList /> }.into_any()
         }
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }
