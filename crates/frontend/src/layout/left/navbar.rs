@@ -27,6 +27,7 @@ pub fn Navbar() -> impl IntoView {
     let documents = vec![
         ("a010_ozon_fbs_posting", "OZON FBS Posting", "file-text"),
         ("a011_ozon_fbo_posting", "OZON FBO Posting", "file-text"),
+        ("a015_wb_orders", "WB Orders", "file-text"),
         ("a012_wb_sales", "WB Sales", "file-text"),
         ("a013_ym_order", "YM Orders", "file-text"),
         ("a014_ozon_transactions", "Транзакции OZON", "credit-card"),

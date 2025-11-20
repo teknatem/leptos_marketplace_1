@@ -11,7 +11,7 @@ use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDeta
 use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSalesDetailDto {
+pub struct WbOrderDetailDto {
     pub id: String,
     pub code: String,
     pub description: String,
@@ -19,6 +19,7 @@ pub struct WbSalesDetailDto {
     pub line: LineDto,
     pub state: StateDto,
     pub warehouse: WarehouseDto,
+    pub geography: GeographyDto,
     pub source_meta: SourceMetaDto,
     pub metadata: MetadataDto,
     pub marketplace_product_ref: Option<String>,
@@ -39,26 +40,24 @@ pub struct LineDto {
     pub supplier_article: String,
     pub nm_id: i64,
     pub barcode: String,
-    pub name: String,
+    pub category: Option<String>,
+    pub subject: Option<String>,
+    pub brand: Option<String>,
+    pub tech_size: Option<String>,
     pub qty: f64,
-    pub price_list: Option<f64>,
-    pub discount_total: Option<f64>,
-    pub price_effective: Option<f64>,
-    pub amount_line: Option<f64>,
-    pub currency_code: Option<String>,
     pub total_price: Option<f64>,
-    pub payment_sale_amount: Option<f64>,
     pub discount_percent: Option<f64>,
     pub spp: Option<f64>,
     pub finished_price: Option<f64>,
+    pub price_with_disc: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateDto {
-    pub event_type: String,
-    pub status_norm: String,
-    pub sale_dt: String,
+    pub order_dt: String,
     pub last_change_dt: Option<String>,
+    pub is_cancel: bool,
+    pub cancel_dt: Option<String>,
     pub is_supply: Option<bool>,
     pub is_realization: Option<bool>,
 }
@@ -69,8 +68,19 @@ pub struct WarehouseDto {
     pub warehouse_type: Option<String>,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeographyDto {
+    pub country_name: Option<String>,
+    pub oblast_okrug_name: Option<String>,
+    pub region_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceMetaDto {
+    pub income_id: Option<i64>,
+    pub sticker: Option<String>,
+    pub g_number: Option<String>,
     pub raw_payload_ref: String,
     pub fetched_at: String,
     pub document_version: i32,
@@ -113,8 +123,8 @@ pub struct FinanceReportLink {
 }
 
 #[component]
-pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
-    let (sale, set_sale) = signal::<Option<WbSalesDetailDto>>(None);
+pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+    let (order, set_order) = signal::<Option<WbOrderDetailDto>>(None);
     let (raw_json_from_wb, set_raw_json_from_wb) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
@@ -135,13 +145,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         signal::<Option<String>>(None);
     let (selected_nomenclature_id, set_selected_nomenclature_id) = signal::<Option<String>>(None);
 
-    let is_posted = Memo::new(move |_| sale.get().map(|s| s.metadata.is_posted).unwrap_or(false));
+    let is_posted = Memo::new(move |_| order.get().map(|s| s.metadata.is_posted).unwrap_or(false));
 
     // Сохраняем id в StoredValue для использования в обработчиках
     let stored_id = StoredValue::new(id.clone());
 
     // Функция для загрузки связанных данных (marketplace_product и nomenclature)
-    let load_related_data = move |data: &WbSalesDetailDto| {
+    let load_related_data = move |data: &WbOrderDetailDto| {
         // Загружаем данные marketplace_product если есть
         if let Some(ref mp_ref) = data.marketplace_product_ref {
             let mp_ref_clone = mp_ref.clone();
@@ -213,7 +223,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a012/wb-sales/{}", id);
+            let url = format!("http://localhost:3000/api/a015/wb-orders/{}", id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -222,7 +232,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         match response.text().await {
                             Ok(text) => {
                                 // Парсим структуру
-                                match serde_json::from_str::<WbSalesDetailDto>(&text) {
+                                match serde_json::from_str::<WbOrderDetailDto>(&text) {
                                     Ok(data) => {
                                         // Загружаем raw JSON от WB
                                         let raw_payload_ref =
@@ -231,13 +241,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         // Загружаем связанные данные
                                         load_related_data(&data);
 
-                                        set_sale.set(Some(data));
+                                        set_order.set(Some(data));
                                         set_loading.set(false);
 
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
-                                                "http://localhost:3000/api/a012/raw/{}",
+                                                "http://localhost:3000/api/a015/raw/{}",
                                                 raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
@@ -274,7 +284,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         });
                                     }
                                     Err(e) => {
-                                        log!("Failed to parse sale: {:?}", e);
+                                        log!("Failed to parse order: {:?}", e);
                                         set_error.set(Some(format!("Failed to parse: {}", e)));
                                         set_loading.set(false);
                                     }
@@ -292,7 +302,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                     }
                 }
                 Err(e) => {
-                    log!("Failed to fetch sale: {:?}", e);
+                    log!("Failed to fetch order: {:?}", e);
                     set_error.set(Some(format!("Failed to fetch: {}", e)));
                     set_loading.set(false);
                 }
@@ -304,8 +314,8 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     Effect::new(move || {
         let tab = active_tab.get();
         if tab == "links" || tab == "line" {
-            if let Some(sale_data) = sale.get() {
-                let srid_val = sale_data.header.document_no.clone();
+            if let Some(order_data) = order.get() {
+                let srid_val = order_data.header.document_no.clone();
                 if !srid_val.is_empty() && linked_finance_reports.get().is_empty() {
                     set_links_loading.set(true);
                     set_links_error.set(None);
@@ -371,11 +381,10 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     };
 
     view! {
-        <div class="sale-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 15px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <h2 style="margin: 0;">"Wildberries Sales Details"</h2>
-                    <Show when=move || sale.get().is_some()>
+        <div class="order-detail" style="padding: 12px; height: 100%; display: flex; flex-direction: column; overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <Show when=move || order.get().is_some()>
                         {move || {
                             let posted = is_posted.get();
                             view! {
@@ -395,7 +404,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                     </Show>
                 </div>
                 <div style="display: flex; gap: 8px;">
-                    <Show when=move || sale.get().is_some()>
+                    <Show when=move || order.get().is_some()>
                         <Show
                             when=move || !is_posted.get()
                             fallback=move || {
@@ -405,19 +414,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
                                             wasm_bindgen_futures::spawn_local(async move {
-                                                let url = format!("http://localhost:3000/api/a012/wb-sales/{}/unpost", doc_id);
+                                                let url = format!("http://localhost:3000/api/a015/wb-orders/{}/unpost", doc_id);
                                                 match Request::post(&url).send().await {
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document unposted successfully");
                                                             // Перезагрузить только данные документа
-                                                            let reload_url = format!("http://localhost:3000/api/a012/wb-sales/{}", doc_id);
+                                                            let reload_url = format!("http://localhost:3000/api/a015/wb-orders/{}", doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
-                                                                    if let Ok(data) = serde_json::from_str::<WbSalesDetailDto>(&text) {
+                                                                    if let Ok(data) = serde_json::from_str::<WbOrderDetailDto>(&text) {
                                                                         log!("Reloaded document, is_posted: {}", data.metadata.is_posted);
                                                                         load_related_data(&data);
-                                                                        set_sale.set(Some(data));
+                                                                        set_order.set(Some(data));
                                                                     }
                                                                 }
                                                             }
@@ -447,19 +456,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
                                             wasm_bindgen_futures::spawn_local(async move {
-                                                let url = format!("http://localhost:3000/api/a012/wb-sales/{}/post", doc_id);
+                                                let url = format!("http://localhost:3000/api/a015/wb-orders/{}/post", doc_id);
                                                 match Request::post(&url).send().await {
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document posted successfully");
                                                             // Перезагрузить только данные документа
-                                                            let reload_url = format!("http://localhost:3000/api/a012/wb-sales/{}", doc_id);
+                                                            let reload_url = format!("http://localhost:3000/api/a015/wb-orders/{}", doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
-                                                                    if let Ok(data) = serde_json::from_str::<WbSalesDetailDto>(&text) {
+                                                                    if let Ok(data) = serde_json::from_str::<WbOrderDetailDto>(&text) {
                                                                         log!("Reloaded document, is_posted: {}", data.metadata.is_posted);
                                                                         load_related_data(&data);
-                                                                        set_sale.set(Some(data));
+                                                                        set_order.set(Some(data));
                                                                     }
                                                                 }
                                                             }
@@ -474,25 +483,25 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 set_posting.set(false);
                                             });
                                         }
-                                        disabled=move || posting.get()
-                                        style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"
+                                                        disabled=move || posting.get()
+                                                        style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px;"
+                                                    >
+                                                        {move || if posting.get() { "Posting..." } else { "✓ Post" }}
+                                                    </button>
+                                                }
+                                            }
+                                        </Show>
+                                    </Show>
+                                    <button
+                                        on:click=move |_| on_close.run(())
+                                        style="padding: 6px 12px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;"
                                     >
-                                        {move || if posting.get() { "Posting..." } else { "✓ Post" }}
+                                        "✕ Close"
                                     </button>
-                                }
-                            }
-                        </Show>
-                    </Show>
-                    <button
-                        on:click=move |_| on_close.run(())
-                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                    >
-                        "✕ Close"
-                    </button>
-                </div>
-            </div>
+                                </div>
+                            </div>
 
-            <div style="flex: 1; overflow-y: auto; min-height: 0;">
+            <div style="flex: 1; overflow-y: auto; min-height: 0; padding-right: 8px;">
                 {move || {
                     if loading.get() {
                         view! {
@@ -502,19 +511,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }.into_any()
                     } else if let Some(err) = error.get() {
                         view! {
-                            <div style="padding: 20px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828;">
+                            <div style="padding: 12px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828;">
                                 <strong>"Error: "</strong>{err}
                             </div>
                         }.into_any()
-                    } else if let Some(sale_data) = sale.get() {
+                    } else if let Some(order_data) = order.get() {
                         view! {
                             <div style="height: 100%; display: flex; flex-direction: column;">
                                 // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 12px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
                                     <button
                                         on:click=move |_| set_active_tab.set("general")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: 8px 16px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
                                             if active_tab.get() == "general" {
                                                 "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
                                             } else {
@@ -527,7 +536,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("line")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: 8px 16px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
                                             if active_tab.get() == "line" {
                                                 "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
                                             } else {
@@ -540,7 +549,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("json")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: 8px 16px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
                                             if active_tab.get() == "json" {
                                                 "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
                                             } else {
@@ -553,7 +562,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("links")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
+                                            "padding: 8px 16px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
                                             if active_tab.get() == "links" {
                                                 "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
                                             } else {
@@ -566,19 +575,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                 </div>
 
                                 // Контент вкладок
-                                <div style="flex: 1; overflow-y: auto; padding: 10px 0;">
+                                <div style="flex: 1; overflow-y: auto; max-height: calc(100vh - 150px); padding: 10px 0;">
                                     {move || {
                                 let tab = active_tab.get();
                                 match tab.as_ref() {
                                     "general" => {
-                                        let conn_id = sale_data.header.connection_id.clone();
-                                        let org_id = sale_data.header.organization_id.clone();
-                                        let mp_id = sale_data.header.marketplace_id.clone();
+                                        let conn_id = order_data.header.connection_id.clone();
+                                        let org_id = order_data.header.organization_id.clone();
+                                        let mp_id = order_data.header.marketplace_id.clone();
 
                                         view! {
                                             <div class="general-info" style="max-width: 1400px;">
                                                 // Блоки товара и номенклатуры в две колонки
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                                                     // Блок: Товар маркетплейса
                                                     <div style="padding: 10px 15px; background: #e3f2fd; border-radius: 6px; border-left: 3px solid #2196F3;">
                                                         <div style="font-weight: 600; color: #1976d2; font-size: 13px; margin-bottom: 8px;">"📦 Товар маркетплейса"</div>
@@ -588,9 +597,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                     <div
                                                                         style="color: #0d47a1; font-weight: 600; cursor: pointer; text-decoration: underline;"
                                                                         on:click={
-                                                                            let sale_signal = sale.clone();
+                                                                            let order_signal = order.clone();
                                                                             move |_| {
-                                                                                if let Some(s) = sale_signal.get() {
+                                                                                if let Some(s) = order_signal.get() {
                                                                                     if let Some(ref mp_ref) = s.marketplace_product_ref {
                                                                                         set_selected_marketplace_product_id.set(Some(mp_ref.clone()));
                                                                                     }
@@ -622,9 +631,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                     <div
                                                                         style="color: #1b5e20; font-weight: 600; cursor: pointer; text-decoration: underline;"
                                                                         on:click={
-                                                                            let sale_signal = sale.clone();
+                                                                            let order_signal = order.clone();
                                                                             move |_| {
-                                                                                if let Some(s) = sale_signal.get() {
+                                                                                if let Some(s) = order_signal.get() {
                                                                                     if let Some(ref nom_ref) = s.nomenclature_ref {
                                                                                         set_selected_nomenclature_id.set(Some(nom_ref.clone()));
                                                                                     }
@@ -649,53 +658,50 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 </div>
 
                                                 // 2 колонки для основных данных
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                                                     // Левая колонка
-                                                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
-                                                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                                            <div style="font-weight: 600; color: #555;">"Document №:"</div>
-                                                            <div>{sale_data.header.document_no.clone()}</div>
+                                                    <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                                                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: start;">
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px;">"Document №:"</div>
+                                                            <div>{order_data.header.document_no.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Code:"</div>
-                                                            <div>{sale_data.code.clone()}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Code:"</div>
+                                                            <div>{order_data.code.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Description:"</div>
-                                                            <div>{sale_data.description.clone()}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Description:"</div>
+                                                            <div>{order_data.description.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Event Type:"</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Статус заказа:"</div>
                                                             <div>
-                                                                <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
-                                                                    {sale_data.state.event_type.clone()}
+                                                                <span style=move || if order_data.state.is_cancel { 
+                                                                    "padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;" 
+                                                                } else { 
+                                                                    "padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;" 
+                                                                }>
+                                                                    {if order_data.state.is_cancel { "Отменён" } else { "Активен" }}
                                                                 </span>
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Status:"</div>
-                                                            <div>
-                                                                <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
-                                                                    {sale_data.state.status_norm.clone()}
-                                                                </span>
-                                                            </div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Order Date:"</div>
+                                                            <div>{format_datetime(&order_data.state.order_dt)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Sale Date:"</div>
-                                                            <div>{format_datetime(&sale_data.state.sale_dt)}</div>
-
-                                                            <div style="font-weight: 600; color: #555;">"Last Change:"</div>
-                                                            <div>{sale_data.state.last_change_dt.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Last Change:"</div>
+                                                            <div>{order_data.state.last_change_dt.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
                                                         </div>
                                                     </div>
 
                                                     // Правая колонка
-                                                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                                                    <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #e0e0e0;">
                                                         <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                                            <div style="font-weight: 600; color: #555;">"Warehouse Name:"</div>
-                                                            <div>{sale_data.warehouse.warehouse_name.clone().unwrap_or("—".to_string())}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Warehouse Name:"</div>
+                                                            <div>{order_data.warehouse.warehouse_name.clone().unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Warehouse Type:"</div>
-                                                            <div>{sale_data.warehouse.warehouse_type.clone().unwrap_or("—".to_string())}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Warehouse Type:"</div>
+                                                            <div>{order_data.warehouse.warehouse_type.clone().unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Is Supply:"</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Is Supply:"</div>
                                                             <div>
-                                                                {match sale_data.state.is_supply {
+                                                                {match order_data.state.is_supply {
                                                                     Some(true) => view! {
                                                                         <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
                                                                             "Yes"
@@ -710,9 +716,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 }}
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Is Realization:"</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Is Realization:"</div>
                                                             <div>
-                                                                {match sale_data.state.is_realization {
+                                                                {match order_data.state.is_realization {
                                                                     Some(true) => view! {
                                                                         <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
                                                                             "Yes"
@@ -727,24 +733,24 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 }}
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Created At:"</div>
-                                                            <div>{format_datetime(&sale_data.metadata.created_at)}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Created At:"</div>
+                                                            <div>{format_datetime(&order_data.metadata.created_at)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Updated At:"</div>
-                                                            <div>{format_datetime(&sale_data.metadata.updated_at)}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Updated At:"</div>
+                                                            <div>{format_datetime(&order_data.metadata.updated_at)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Version:"</div>
-                                                            <div>{sale_data.metadata.version}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Version:"</div>
+                                                            <div>{order_data.metadata.version}</div>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 // UUID section at bottom
-                                                <div style="background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
-                                                    <h4 style="margin: 0 0 12px 0; color: #666; font-size: 14px; font-weight: 600;">"Technical IDs"</h4>
+                                                <div style="background: #fafafa; padding: 10px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                                                    <h4 style="margin: 0 0 12px 0; color: #666; font-size: 13px; font-weight: 600;">"Technical IDs"</h4>
                                                     <div style="display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: center; font-size: 13px;">
 
-                                                        <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
+                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Connection ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: 8px;">
                                                             <code style="font-size: 12px; color: #666;" title=conn_id.clone()>{conn_id.clone()}</code>
                                                             <button
@@ -764,7 +770,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Organization ID:"</div>
+                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Organization ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: 8px;">
                                                             <code style="font-size: 12px; color: #666;" title=org_id.clone()>{org_id.clone()}</code>
                                                             <button
@@ -784,7 +790,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Marketplace ID:"</div>
+                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Marketplace ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: 8px;">
                                                             <code style="font-size: 12px; color: #666;" title=mp_id.clone()>{mp_id.clone()}</code>
                                                             <button
@@ -804,9 +810,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Marketplace Product ID:"</div>
+                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Marketplace Product ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: 8px;">
-                                                            {if let Some(ref mp_ref) = sale_data.marketplace_product_ref {
+                                                            {if let Some(ref mp_ref) = order_data.marketplace_product_ref {
                                                                 let mp_ref_copy = mp_ref.clone();
                                                                 view! {
                                                                     <>
@@ -833,9 +839,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                             }}
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Nomenclature ID:"</div>
+                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Nomenclature ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: 8px;">
-                                                            {if let Some(ref nom_ref) = sale_data.nomenclature_ref {
+                                                            {if let Some(ref nom_ref) = order_data.nomenclature_ref {
                                                                 let nom_ref_copy = nom_ref.clone();
                                                                 view! {
                                                                     <>
@@ -867,33 +873,76 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         }.into_any()
                                     },
                                     "line" => {
-                                        let line = &sale_data.line;
+                                        let line = &order_data.line;
                                         view! {
                                             <div class="line-info">
-                                                <div style="margin-bottom: 20px;">
-                                                    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px 20px; align-items: center; margin-bottom: 20px;">
-                                                        <div style="font-weight: 600; color: #555;">"Line ID:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.line_id.clone()}</div>
+                                                <div style="margin-bottom: 12px;">
+                                                    // Единый блок с информацией о товаре и метаданных
+                                                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 15px;">
+                                                        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 8px 15px; align-items: center;">
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Line ID:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.line_id.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Артикул продавца:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.supplier_article.clone()}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Артикул продавца:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px; font-weight: 500;">{line.supplier_article.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"NM ID:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.nm_id}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"NM ID:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.nm_id}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Штрихкод:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.barcode.clone()}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Штрихкод:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.barcode.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Название:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.name.clone()}</div>
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Бренд:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px; font-weight: 500;">{line.brand.clone().unwrap_or("—".to_string())}</div>
+                                                            
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Категория:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.category.clone().unwrap_or("—".to_string())}</div>
+                                                            
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Предмет:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.subject.clone().unwrap_or("—".to_string())}</div>
+                                                            
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Размер:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">{line.tech_size.clone().unwrap_or("—".to_string())}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Количество:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">
-                                                            {format!("{:.0}", line.qty)}
+                                                            <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Количество:"</div>
+                                                            <div style="font-family: var(--font-family-base); font-size: 13px;">
+                                                                {format!("{:.0}", line.qty)}
+                                                            </div>
+
+                                                            // Разделитель
+                                                            <div style="grid-column: 1 / -1; height: 1px; background: #e0e0e0; margin: 8px 0;"></div>
+
+                                                            // Метаданные заказа
+                                                            {order_data.source_meta.g_number.as_ref().map(|g_num| {
+                                                                view! {
+                                                                    <>
+                                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"G-номер:"</div>
+                                                                        <div style="font-family: var(--font-family-base); font-size: 13px; color: #1976d2; font-weight: 600;">{g_num.clone()}</div>
+                                                                    </>
+                                                                }
+                                                            })}
+                                                            
+                                                            {order_data.source_meta.income_id.map(|inc_id| {
+                                                                view! {
+                                                                    <>
+                                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Номер поставки:"</div>
+                                                                        <div style="font-family: var(--font-family-base); font-size: 13px;">{inc_id}</div>
+                                                                    </>
+                                                                }
+                                                            })}
+                                                            
+                                                            {order_data.source_meta.sticker.as_ref().map(|sticker| {
+                                                                view! {
+                                                                    <>
+                                                                        <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Стикер:"</div>
+                                                                        <div style="font-family: var(--font-family-base); font-size: 13px;">{sticker.clone()}</div>
+                                                                    </>
+                                                                }
+                                                            })}
                                                         </div>
                                                     </div>
 
-                                                    <h3 style="margin: 12px 0 6px 0; font-size: 14px; color: #555;">"Суммы и проценты"</h3>
+                                                    <h3 style="margin: 15px 0 8px 0; font-size: 14px; color: #1976d2; font-weight: 700; background: #e3f2fd; padding: 8px 12px; border-radius: 4px; border-left: 4px solid #2196F3;">"Суммы и проценты"</h3>
                                                     <table style="width: 50%; border-collapse: collapse; font-family: var(--font-family-base); font-size: 13px;">
                                                         <thead>
                                                             <tr style="background: #f5f5f5;">
@@ -917,21 +966,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px;">"%"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Цена без скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"price_list"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.price_list.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Сумма скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"discount_total"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.discount_total.map(|d| format!("{:.2}", d)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Цена после скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"price_effective"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Цена с учетом скидки"</td>
+                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"price_with_disc"</code></td>
+                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.price_with_disc.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
                                                             </tr>
                                                             <tr>
@@ -944,18 +981,6 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px;">"Итоговая цена"</td>
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"finished_price"</code></td>
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.finished_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Сумма платежа"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"payment_sale_amount"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
-                                                            </tr>
-                                                            <tr style="background:rgb(138, 227, 254);">
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; font-weight: 600;">"К выплате"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"amount_line"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right; font-weight: 600;">{line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}</td>
                                                                 <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
                                                             </tr>
                                                         </tbody>
@@ -1016,7 +1041,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 
                                                             view! {
                                                                 <div>
-                                                                    <h3 style="margin: 12px 0 6px 0; font-size: 14px; color: #555;">"Финансовые детали"</h3>
+                                                                    <h3 style="margin: 15px 0 8px 0; font-size: 14px; color: #1976d2; font-weight: 700; background: #e3f2fd; padding: 8px 12px; border-radius: 4px; border-left: 4px solid #2196F3;">"Финансовые детали"</h3>
                                                                     <table style="width: 70%; border-collapse: collapse; font-family: var(--font-family-base); font-size: 13px;">
                                                                         <thead>
                                                                             <tr style="background: #f5f5f5;">
@@ -1057,13 +1082,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             {move || {
                                                 if let Some(json) = raw_json_from_wb.get() {
                                                     view! {
-                                                        <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">
+                                                        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">
                                                             {json}
                                                         </pre>
                                                     }.into_any()
                                                 } else {
                                                     view! {
-                                                        <div style="padding: 20px; text-align: center; color: #999;">
+                                                        <div style="padding: 12px; text-align: center; color: #999;">
                                                             "Loading raw JSON from WB..."
                                                         </div>
                                                     }.into_any()

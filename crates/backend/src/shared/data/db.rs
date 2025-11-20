@@ -1805,6 +1805,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ("ppvz_kvw_prc", "REAL"),
             ("ppvz_kvw_prc_base", "REAL"),
             ("srv_dbs", "INTEGER"),
+            ("srid", "TEXT"),
         ];
 
         for (field_name, field_type) in new_fields {

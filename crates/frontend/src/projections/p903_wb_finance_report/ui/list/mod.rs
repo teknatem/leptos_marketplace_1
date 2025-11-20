@@ -39,6 +39,7 @@ pub struct WbFinanceReportDto {
     pub ppvz_kvw_prc: Option<f64>,
     pub ppvz_kvw_prc_base: Option<f64>,
     pub srv_dbs: Option<i32>,
+    pub srid: Option<String>,
     pub loaded_at_utc: String,
     pub payload_version: i32,
     pub extra: Option<String>,
@@ -59,7 +60,7 @@ struct SelectedReport {
 
 async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
     let window = web_sys::window().ok_or("No window object")?;
-    let url = "/api/a006/connection-mp/list";
+    let url = "http://localhost:3000/api/connection_mp";
 
     let resp_value = JsFuture::from(window.fetch_with_str(url))
         .await
@@ -83,15 +84,16 @@ async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
     let mut result = Vec::new();
     if let Some(items) = connections.as_array() {
         for item in items {
-            if let (Some(id), Some(name)) = (
+            if let (Some(id), Some(description)) = (
                 item.get("id").and_then(|v| v.as_str()),
-                item.get("name").and_then(|v| v.as_str()),
+                item.get("description").and_then(|v| v.as_str()),
             ) {
-                result.push((id.to_string(), name.to_string()));
+                result.push((id.to_string(), description.to_string()));
             }
         }
     }
 
+    log!("fetch_connections: loaded {} connections", result.len());
     Ok(result)
 }
 
@@ -114,19 +116,21 @@ pub fn WbFinanceReportList() -> impl IntoView {
     let (sa_name_filter, set_sa_name_filter) = signal("".to_string());
     let (connection_filter, set_connection_filter) = signal("".to_string());
     let (operation_filter, set_operation_filter) = signal("".to_string());
+    let (srid_filter, set_srid_filter) = signal("".to_string());
     let (sort_by, set_sort_by) = signal("rr_dt".to_string());
     let (sort_desc, set_sort_desc) = signal(true);
 
     // Загрузка списка подключений для отображения названий
     let (connections, set_connections) = signal(Vec::<(String, String)>::new());
     
-    Effect::new(move || {
-        spawn_local(async move {
-            // Загружаем подключения
-            if let Ok(conns) = fetch_connections().await {
-                set_connections.set(conns);
-            }
-        });
+    // Загружаем подключения при монтировании
+    spawn_local(async move {
+        if let Ok(conns) = fetch_connections().await {
+            log!("Loaded {} connections", conns.len());
+            set_connections.set(conns);
+        } else {
+            log!("Failed to load connections");
+        }
     });
 
     let load_data = move || {
@@ -139,6 +143,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
         let sa_name_val = sa_name_filter.get();
         let connection_val = connection_filter.get();
         let operation_val = operation_filter.get();
+        let srid_val = srid_filter.get();
         let sort_by_val = sort_by.get();
         let sort_desc_val = sort_desc.get();
 
@@ -160,6 +165,9 @@ pub fn WbFinanceReportList() -> impl IntoView {
         }
         if !operation_val.is_empty() {
             query_params.push_str(&format!("&supplier_oper_name={}", operation_val));
+        }
+        if !srid_val.is_empty() {
+            query_params.push_str(&format!("&srid={}", srid_val));
         }
 
         spawn_local(async move {
@@ -220,7 +228,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
         let mut csv = String::from("\u{FEFF}");
 
         // Заголовок с точкой с запятой как разделитель
-        csv.push_str("Date;RRD_ID;NM_ID;SA_Name;Subject;Operation;Qty;Retail_Amount;Price_withDisc;Commission%;Sales_Commission;Acquiring_Fee;Penalty;Storage_Fee;Loaded_At\n");
+        csv.push_str("Date;RRD_ID;NM_ID;SA_Name;Subject;Operation;Qty;Retail_Amount;Price_withDisc;Commission%;Sales_Commission;Acquiring_Fee;Penalty;Storage_Fee;SRID;Loaded_At\n");
 
         for item in items {
             let nm_id_str = item
@@ -275,9 +283,14 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 .storage_fee
                 .map(|s| format!("{:.2}", s).replace(".", ","))
                 .unwrap_or_else(|| "-".to_string());
+            let srid_str = item
+                .srid
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("-");
 
             csv.push_str(&format!(
-                "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};{};{};{};\"{}\"\n",
+                "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};{};{};{};\"{}\";\"{}\"\n",
                 item.rr_dt,
                 item.rrd_id,
                 nm_id_str,
@@ -292,6 +305,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 acquiring_str,
                 penalty_str,
                 storage_str,
+                srid_str.replace('\"', "\"\""),
                 item.loaded_at_utc.replace('\"', "\"\"")
             ));
         }
@@ -424,15 +438,33 @@ pub fn WbFinanceReportList() -> impl IntoView {
 
                 </select>
 
-                <input
-                    type="text"
-                    placeholder="Operation (Тип операции)..."
-                    prop:value=move || operation_filter.get()
-                    on:input=move |ev| {
+                <select
+                    on:change=move |ev| {
                         set_operation_filter.set(event_target_value(&ev));
                     }
 
                     style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1; min-width: 150px;"
+                >
+                    <option value="">"Все операции"</option>
+                    <option value="Продажа">"Продажа"</option>
+                    <option value="Возврат">"Возврат"</option>
+                    <option value="Логистика">"Логистика"</option>
+                    <option value="Хранение">"Хранение"</option>
+                    <option value="Платная приемка">"Платная приемка"</option>
+                    <option value="Корректировка продаж">"Корректировка продаж"</option>
+                    <option value="Корректировка возвратов">"Корректировка возвратов"</option>
+                    <option value="Прочее">"Прочее"</option>
+                </select>
+
+                <input
+                    type="text"
+                    placeholder="SRID..."
+                    prop:value=move || srid_filter.get()
+                    on:input=move |ev| {
+                        set_srid_filter.set(event_target_value(&ev));
+                    }
+
+                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1; min-width: 120px;"
                 />
 
                 <select
@@ -479,6 +511,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                         };
 
                         // Расчет итогов
+                        let items_count = items.len();
                         let total_qty: i32 = items
                             .iter()
                             .map(|item| item.quantity.unwrap_or(0))
@@ -486,6 +519,22 @@ pub fn WbFinanceReportList() -> impl IntoView {
                         let total_retail: f64 = items
                             .iter()
                             .map(|item| item.retail_amount.unwrap_or(0.0))
+                            .sum();
+                        let total_price_withdisc: f64 = items
+                            .iter()
+                            .map(|item| item.retail_price_withdisc_rub.unwrap_or(0.0))
+                            .sum();
+                        let total_sales_comm: f64 = items
+                            .iter()
+                            .map(|item| item.ppvz_sales_commission.unwrap_or(0.0))
+                            .sum();
+                        let total_acquiring: f64 = items
+                            .iter()
+                            .map(|item| item.acquiring_fee.unwrap_or(0.0))
+                            .sum();
+                        let total_logistics: f64 = items
+                            .iter()
+                            .map(|item| item.rebill_logistic_cost.unwrap_or(0.0))
                             .sum();
                         let total_penalty: f64 = items
                             .iter()
@@ -497,10 +546,15 @@ pub fn WbFinanceReportList() -> impl IntoView {
                             .sum();
 
                         view! {
-                            <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; display: flex; gap: 24px;">
+                            <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; display: flex; gap: 20px; flex-wrap: wrap;">
                                 <span>"ИТОГО:"</span>
+                                <span style="color: #1976d2;">"Строк: " {items_count}</span>
                                 <span>"Qty: " {total_qty}</span>
                                 <span>"Retail: " {format!("{:.2}", total_retail)}</span>
+                                <span>"Price w/Disc: " {format!("{:.2}", total_price_withdisc)}</span>
+                                <span>"Sales Comm: " {format!("{:.2}", total_sales_comm)}</span>
+                                <span>"Acquiring: " {format!("{:.2}", total_acquiring)}</span>
+                                <span>"Logistics: " {format!("{:.2}", total_logistics)}</span>
                                 <span>"Penalty: " {format!("{:.2}", total_penalty)}</span>
                                 <span>"Storage: " {format!("{:.2}", total_storage)}</span>
                             </div>
@@ -518,8 +572,11 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">
                                                 "Кабинет"
                                             </th>
-                                            <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">
-                                                "RRD ID"
+                                            <th
+                                                on:click=move |_| handle_column_sort("rrd_id")
+                                                style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "RRD ID" {sort_indicator("rrd_id")}
                                             </th>
                                             <th
                                                 on:click=move |_| handle_column_sort("nm_id")
@@ -533,11 +590,17 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             >
                                                 "SA Name" {sort_indicator("sa_name")}
                                             </th>
-                                            <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">
-                                                "Subject"
+                                            <th
+                                                on:click=move |_| handle_column_sort("subject_name")
+                                                style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Subject" {sort_indicator("subject_name")}
                                             </th>
-                                            <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">
-                                                "Operation"
+                                            <th
+                                                on:click=move |_| handle_column_sort("supplier_oper_name")
+                                                style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Operation" {sort_indicator("supplier_oper_name")}
                                             </th>
                                             <th
                                                 on:click=move |_| handle_column_sort("quantity")
@@ -551,26 +614,53 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             >
                                                 "Retail" {sort_indicator("retail_amount")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Price w/Disc"
+                                            <th
+                                                on:click=move |_| handle_column_sort("retail_price_withdisc_rub")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Price w/Disc" {sort_indicator("retail_price_withdisc_rub")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Commission%"
+                                            <th
+                                                on:click=move |_| handle_column_sort("commission_percent")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Commission%" {sort_indicator("commission_percent")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Sales Comm"
+                                            <th
+                                                on:click=move |_| handle_column_sort("ppvz_sales_commission")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Sales Comm" {sort_indicator("ppvz_sales_commission")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Acquiring"
+                                            <th
+                                                on:click=move |_| handle_column_sort("acquiring_fee")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Acquiring" {sort_indicator("acquiring_fee")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Penalty"
+                                            <th
+                                                on:click=move |_| handle_column_sort("penalty")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Penalty" {sort_indicator("penalty")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Logistics"
+                                            <th
+                                                on:click=move |_| handle_column_sort("rebill_logistic_cost")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Logistics" {sort_indicator("rebill_logistic_cost")}
                                             </th>
-                                            <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">
-                                                "Storage"
+                                            <th
+                                                on:click=move |_| handle_column_sort("storage_fee")
+                                                style="padding: 8px; text-align: right; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "Storage" {sort_indicator("storage_fee")}
+                                            </th>
+                                            <th
+                                                on:click=move |_| handle_column_sort("srid")
+                                                style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
+                                            >
+                                                "SRID" {sort_indicator("srid")}
                                             </th>
                                         </tr>
                                     </thead>
@@ -673,6 +763,12 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                                             {item
                                                                 .storage_fee
                                                                 .map(|s| format!("{:.2}", s))
+                                                                .unwrap_or_else(|| "-".to_string())}
+                                                        </td>
+                                                        <td style="padding: 6px 8px; font-size: 11px;">
+                                                            {item
+                                                                .srid
+                                                                .clone()
                                                                 .unwrap_or_else(|| "-".to_string())}
                                                         </td>
                                                     </tr>

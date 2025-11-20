@@ -20,6 +20,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
+    let (import_a015, set_import_a015) = signal(false);
     let (import_a012, set_import_a012) = signal(false);
     let (import_p903, set_import_p903) = signal(false);
 
@@ -131,6 +132,7 @@ pub fn ImportWidget() -> impl IntoView {
                             set_progress.set(Some(prog.clone()));
                             if is_finished {
                                 clear_session_storage();
+                                set_session_id.set(None);
                                 break;
                             }
                         }
@@ -165,6 +167,13 @@ pub fn ImportWidget() -> impl IntoView {
         }
     });
 
+    let on_reset = move |_| {
+        clear_session_storage();
+        set_session_id.set(None);
+        set_progress.set(None);
+        set_error_msg.set(String::new());
+    };
+
     let on_start_import = move |_| {
         let conn_id = selected_connection.get();
         if conn_id.is_empty() {
@@ -180,6 +189,9 @@ pub fn ImportWidget() -> impl IntoView {
             let mut targets: Vec<String> = Vec::new();
             if import_a007.get() {
                 targets.push("a007_marketplace_product".to_string());
+            }
+            if import_a015.get() {
+                targets.push("a015_wb_orders".to_string());
             }
             if import_a012.get() {
                 targets.push("a012_wb_sales".to_string());
@@ -302,7 +314,7 @@ pub fn ImportWidget() -> impl IntoView {
                     </div>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "Период используется для импорта продаж (a012_wb_sales)"
+                    "Период используется для импорта заказов (a015_wb_orders) и продаж (a012_wb_sales)"
                 </div>
             </div>
 
@@ -323,6 +335,14 @@ pub fn ImportWidget() -> impl IntoView {
                     <label style="display: block;">
                         <input
                             type="checkbox"
+                            prop:checked=move || import_a015.get()
+                            on:change=move |ev| { set_import_a015.set(event_target_checked(&ev)); }
+                        />
+                        " a015_wb_orders - Заказы Wildberries"
+                    </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
                             prop:checked=move || import_a012.get()
                             on:change=move |ev| { set_import_a012.set(event_target_checked(&ev)); }
                         />
@@ -338,12 +358,12 @@ pub fn ImportWidget() -> impl IntoView {
                     </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /content/v2/get/cards/list (товары), GET /api/v1/supplier/sales (продажи), GET /api/v5/supplier/reportDetailByPeriod (финансы)"
+                    "API: POST /content/v2/get/cards/list (товары), GET /api/v1/supplier/orders (заказы), GET /api/v1/supplier/sales (продажи), GET /api/v5/supplier/reportDetailByPeriod (финансы)"
                 </div>
             </div>
 
-            // Кнопка запуска
-            <div style="margin: 20px 0;">
+            // Кнопки управления
+            <div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
                 <button
                     style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
                     on:click=on_start_import
@@ -357,6 +377,32 @@ pub fn ImportWidget() -> impl IntoView {
                         "Запустить импорт"
                     }}
                 </button>
+                
+                {move || {
+                    if let Some(prog) = progress.get() {
+                        let is_finished = matches!(
+                            prog.status,
+                            ImportStatus::Completed
+                                | ImportStatus::CompletedWithErrors
+                                | ImportStatus::Failed
+                                | ImportStatus::Cancelled
+                        );
+                        if is_finished && session_id.get().is_none() {
+                            view! {
+                                <button
+                                    style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
+                                    on:click=on_reset
+                                >
+                                    "Начать заново"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }
+                    } else {
+                        view! { <></> }.into_any()
+                    }
+                }}
             </div>
 
             // Ошибки

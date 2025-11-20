@@ -75,6 +75,8 @@ pub struct Model {
     pub ppvz_kvw_prc_base: Option<f64>,
     #[sea_orm(nullable)]
     pub srv_dbs: Option<i32>,
+    #[sea_orm(nullable)]
+    pub srid: Option<String>,
 
     // Technical fields
     pub loaded_at_utc: String,
@@ -127,6 +129,7 @@ pub struct WbFinanceReportEntry {
     pub ppvz_kvw_prc: Option<f64>,
     pub ppvz_kvw_prc_base: Option<f64>,
     pub srv_dbs: Option<i32>,
+    pub srid: Option<String>,
 
     // Technical
     pub payload_version: i32,
@@ -193,6 +196,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
         active_model.ppvz_kvw_prc = Set(entry.ppvz_kvw_prc);
         active_model.ppvz_kvw_prc_base = Set(entry.ppvz_kvw_prc_base);
         active_model.srv_dbs = Set(entry.srv_dbs);
+        active_model.srid = Set(entry.srid.clone());
         active_model.loaded_at_utc = Set(loaded_at_utc);
         active_model.payload_version = Set(entry.payload_version);
         active_model.extra = Set(entry.extra.clone());
@@ -232,6 +236,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
             ppvz_kvw_prc: Set(entry.ppvz_kvw_prc),
             ppvz_kvw_prc_base: Set(entry.ppvz_kvw_prc_base),
             srv_dbs: Set(entry.srv_dbs),
+            srid: Set(entry.srid.clone()),
             loaded_at_utc: Set(loaded_at_utc),
             payload_version: Set(entry.payload_version),
             extra: Set(entry.extra.clone()),
@@ -251,6 +256,8 @@ pub async fn list_with_filters(
     sa_name: Option<String>,
     connection_mp_ref: Option<String>,
     organization_ref: Option<String>,
+    supplier_oper_name: Option<String>,
+    srid: Option<String>,
     sort_by: &str,
     sort_desc: bool,
     limit: i32,
@@ -288,6 +295,20 @@ pub async fn list_with_filters(
         query = query.filter(Column::OrganizationRef.eq(org));
     }
 
+    // Фильтр по supplier_oper_name (тип операции)
+    if let Some(ref oper) = supplier_oper_name {
+        if !oper.is_empty() {
+            query = query.filter(Column::SupplierOperName.eq(oper));
+        }
+    }
+
+    // Фильтр по srid (точное совпадение)
+    if let Some(ref srid_val) = srid {
+        if !srid_val.is_empty() {
+            query = query.filter(Column::Srid.eq(srid_val));
+        }
+    }
+
     // Подсчет общего количества записей (до пагинации)
     let total_count = query.clone().count(db).await? as i32;
 
@@ -298,6 +319,13 @@ pub async fn list_with_filters(
                 query.order_by_desc(Column::RrDt)
             } else {
                 query.order_by_asc(Column::RrDt)
+            }
+        }
+        "rrd_id" => {
+            if sort_desc {
+                query.order_by_desc(Column::RrdId)
+            } else {
+                query.order_by_asc(Column::RrdId)
             }
         }
         "nm_id" => {
@@ -314,6 +342,20 @@ pub async fn list_with_filters(
                 query.order_by_asc(Column::SaName)
             }
         }
+        "subject_name" => {
+            if sort_desc {
+                query.order_by_desc(Column::SubjectName)
+            } else {
+                query.order_by_asc(Column::SubjectName)
+            }
+        }
+        "supplier_oper_name" => {
+            if sort_desc {
+                query.order_by_desc(Column::SupplierOperName)
+            } else {
+                query.order_by_asc(Column::SupplierOperName)
+            }
+        }
         "quantity" => {
             if sort_desc {
                 query.order_by_desc(Column::Quantity)
@@ -326,6 +368,62 @@ pub async fn list_with_filters(
                 query.order_by_desc(Column::RetailAmount)
             } else {
                 query.order_by_asc(Column::RetailAmount)
+            }
+        }
+        "retail_price_withdisc_rub" => {
+            if sort_desc {
+                query.order_by_desc(Column::RetailPriceWithdiscRub)
+            } else {
+                query.order_by_asc(Column::RetailPriceWithdiscRub)
+            }
+        }
+        "commission_percent" => {
+            if sort_desc {
+                query.order_by_desc(Column::CommissionPercent)
+            } else {
+                query.order_by_asc(Column::CommissionPercent)
+            }
+        }
+        "ppvz_sales_commission" => {
+            if sort_desc {
+                query.order_by_desc(Column::PpvzSalesCommission)
+            } else {
+                query.order_by_asc(Column::PpvzSalesCommission)
+            }
+        }
+        "acquiring_fee" => {
+            if sort_desc {
+                query.order_by_desc(Column::AcquiringFee)
+            } else {
+                query.order_by_asc(Column::AcquiringFee)
+            }
+        }
+        "penalty" => {
+            if sort_desc {
+                query.order_by_desc(Column::Penalty)
+            } else {
+                query.order_by_asc(Column::Penalty)
+            }
+        }
+        "rebill_logistic_cost" => {
+            if sort_desc {
+                query.order_by_desc(Column::RebillLogisticCost)
+            } else {
+                query.order_by_asc(Column::RebillLogisticCost)
+            }
+        }
+        "storage_fee" => {
+            if sort_desc {
+                query.order_by_desc(Column::StorageFee)
+            } else {
+                query.order_by_asc(Column::StorageFee)
+            }
+        }
+        "srid" => {
+            if sort_desc {
+                query.order_by_desc(Column::Srid)
+            } else {
+                query.order_by_asc(Column::Srid)
             }
         }
         _ => {
@@ -358,5 +456,17 @@ pub async fn get_by_id(rr_dt: &str, rrd_id: i64) -> Result<Option<Model>> {
         .await?;
 
     Ok(item)
+}
+
+/// Поиск записей по srid
+pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
+    let db = get_connection();
+
+    let items = Entity::find()
+        .filter(Column::Srid.eq(srid))
+        .all(db)
+        .await?;
+
+    Ok(items)
 }
 

@@ -117,6 +117,37 @@ impl ImportExecutor {
                     )
                     .await?;
                 }
+                "a015_wb_orders" => {
+                    // Orders API может быть недоступен - пытаемся, но не останавливаем импорт
+                    match self.import_wb_orders(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await {
+                        Ok(_) => {
+                            tracing::info!("✅ WB Orders imported successfully");
+                        }
+                        Err(e) => {
+                            let warning_msg = format!(
+                                "⚠️ WB Orders API unavailable: {}. Skipping orders import. This may be normal if the API endpoint doesn't exist.",
+                                e
+                            );
+                            tracing::warn!("{}", warning_msg);
+                            
+                            self.progress_tracker
+                                .add_error(
+                                    session_id,
+                                    Some("a015_wb_orders".to_string()),
+                                    warning_msg.clone(),
+                                    Some(format!("API might not be available: {}", e)),
+                                );
+                            
+                            // Продолжаем импорт остальных агрегатов
+                        }
+                    }
+                }
                 "p903_wb_finance_report" => {
                     self.import_wb_finance_report(
                         session_id,
@@ -833,6 +864,268 @@ impl ImportExecutor {
         Ok(())
     }
 
+    /// Импорт заказов из Wildberries API в a015_wb_orders
+    async fn import_wb_orders(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a015_wb_orders;
+        use contracts::domain::a015_wb_orders::aggregate::{
+            WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta,
+            WbOrdersState, WbOrdersWarehouse,
+        };
+
+        let aggregate_index = "a015_wb_orders";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        tracing::info!(
+            "Importing WB orders for session: {} from date: {} to date: {}",
+            session_id,
+            date_from,
+            date_to
+        );
+
+        // Получаем ID организации по названию
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let error_msg = format!(
+                        "Организация '{}' не найдена в справочнике",
+                        connection.organization
+                    );
+                    tracing::error!("{}", error_msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        error_msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", error_msg);
+                }
+            };
+
+        // Получаем заказы из API WB
+        let order_rows = self
+            .api_client
+            .fetch_orders(connection, date_from, date_to)
+            .await?;
+
+        tracing::info!("Received {} order rows from WB API", order_rows.len());
+
+        // Логируем первую запись для диагностики
+        if let Some(first) = order_rows.first() {
+            tracing::info!(
+                "Sample order row - srid: {:?}, date: {:?}, lastChangeDate: {:?}",
+                first.srid,
+                first.date,
+                first.last_change_date
+            );
+        }
+
+        // Обрабатываем каждый заказ
+        for order_row in order_rows {
+            // SRID - уникальный идентификатор строки заказа (используем как document_no)
+            let document_no = order_row
+                .srid
+                .clone()
+                .unwrap_or_else(|| format!("WB_ORDER_{}", chrono::Utc::now().timestamp()));
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("WB Order {}", document_no)),
+            );
+
+            // Проверяем, существует ли документ
+            let existing = a015_wb_orders::service::get_by_document_no(&document_no).await?;
+            let is_new = existing.is_none();
+
+            // Создаем header
+            let header = WbOrdersHeader {
+                document_no: document_no.clone(),
+                connection_id: connection.base.id.as_string(),
+                organization_id: organization_id.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+            };
+
+            // Клонируем значения, которые будут нужны позже
+            let supplier_article = order_row.supplier_article.clone().unwrap_or_default();
+            let order_dt_str = order_row.date.clone();
+            let last_change_date_str = order_row.last_change_date.clone();
+
+            // Создаем line (в WB один заказ = одна строка)
+            let line = WbOrdersLine {
+                line_id: order_row.srid.clone().unwrap_or_else(|| document_no.clone()),
+                supplier_article: supplier_article.clone(),
+                nm_id: order_row.nm_id.unwrap_or(0),
+                barcode: order_row.barcode.clone().unwrap_or_default(),
+                category: order_row.category.clone(),
+                subject: order_row.subject.clone(),
+                brand: order_row.brand.clone(),
+                tech_size: order_row.tech_size.clone(),
+                qty: 1.0, // Заказы всегда по 1 шт
+                total_price: order_row.total_price,
+                discount_percent: order_row.discount_percent,
+                spp: order_row.spp,
+                finished_price: order_row.finished_price,
+                price_with_disc: order_row.price_with_disc,
+            };
+
+            // Парсим дату заказа
+            let order_dt = if let Some(date_str) = order_dt_str.as_ref() {
+                chrono::DateTime::parse_from_rfc3339(date_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+                            .ok()
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+                    .unwrap_or_else(chrono::Utc::now)
+            } else {
+                chrono::Utc::now()
+            };
+
+            // Парсим дату последнего изменения
+            let last_change_dt = if let Some(date_str) = last_change_date_str.as_ref() {
+                chrono::DateTime::parse_from_rfc3339(date_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+                            .ok()
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+            } else {
+                None
+            };
+
+            // Парсим дату отмены (если есть)
+            let cancel_dt = if let Some(cancel_date_str) = order_row.cancel_date.as_ref() {
+                chrono::DateTime::parse_from_rfc3339(cancel_date_str)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(cancel_date_str, "%Y-%m-%dT%H:%M:%S")
+                            .ok()
+                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+            } else {
+                None
+            };
+
+            // Создаем state
+            let state = WbOrdersState {
+                order_dt,
+                last_change_dt,
+                is_cancel: order_row.is_cancel.unwrap_or(false),
+                cancel_dt,
+                is_supply: order_row.is_supply,
+                is_realization: order_row.is_realization,
+            };
+
+            // Создаем warehouse
+            let warehouse = WbOrdersWarehouse {
+                warehouse_name: order_row.warehouse_name.clone(),
+                warehouse_type: order_row.warehouse_type.clone(),
+            };
+
+            // Создаем geography
+            let geography = WbOrdersGeography {
+                country_name: order_row.country_name.clone(),
+                oblast_okrug_name: order_row.oblast_okrug_name.clone(),
+                region_name: order_row.region_name.clone(),
+            };
+
+            // Создаем source_meta
+            let source_meta = WbOrdersSourceMeta {
+                income_id: order_row.income_id,
+                sticker: order_row.sticker.clone(),
+                g_number: order_row.g_number.clone(),
+                raw_payload_ref: String::new(), // Будет заполнено в service::store_document_with_raw
+                fetched_at: chrono::Utc::now(),
+                document_version: 1,
+            };
+
+            // Создаем документ
+            let description = format!(
+                "WB Order {} - {}",
+                supplier_article,
+                order_dt.format("%Y-%m-%d %H:%M:%S")
+            );
+
+            // Извлекаем document_date из API (поле date)
+            let document_date = order_row.date.clone();
+
+            let document = WbOrders::new_for_insert(
+                document_no.clone(),
+                description,
+                header,
+                line,
+                state,
+                warehouse,
+                geography,
+                source_meta,
+                true, // is_posted = true по умолчанию
+                document_date,
+            );
+
+            // Сохраняем документ с raw JSON
+            let raw_json = serde_json::to_string(&order_row)?;
+            match a015_wb_orders::service::store_document_with_raw(document, &raw_json).await {
+                Ok(_) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process WB order {}: {}", document_no, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process WB order {}", document_no),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "WB orders import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
     /// Импорт финансовых отчетов Wildberries из API в p903_wb_finance_report
     async fn import_wb_finance_report(
         &self,
@@ -986,6 +1279,7 @@ impl ImportExecutor {
                     ppvz_kvw_prc: row.ppvz_kvw_prc,
                     ppvz_kvw_prc_base: row.ppvz_kvw_prc_base,
                     srv_dbs: row.srv_dbs.map(|b| if b { 1 } else { 0 }),
+                    srid: row.srid.clone(),
                     payload_version: 1,
                     extra: extra_json,
                 };

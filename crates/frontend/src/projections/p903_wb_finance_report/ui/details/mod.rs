@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
+// Import WbSalesDetail for opening linked documents
+use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbFinanceReportDto {
     pub rr_dt: String,
@@ -38,6 +41,7 @@ pub struct WbFinanceReportDto {
     pub ppvz_kvw_prc: Option<f64>,
     pub ppvz_kvw_prc_base: Option<f64>,
     pub srv_dbs: Option<i32>,
+    pub srid: Option<String>,
     pub loaded_at_utc: String,
     pub payload_version: i32,
     pub extra: Option<String>,
@@ -55,6 +59,38 @@ struct FieldRow {
     value: String,
 }
 
+// Simplified WbSales structure for links display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesLink {
+    pub id: String,
+    pub header: WbSalesHeaderLink,
+    pub line: WbSalesLineLink,
+    pub state: WbSalesStateLink,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesHeaderLink {
+    pub document_no: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesLineLink {
+    pub nm_id: i64,
+    pub supplier_article: String,
+    pub name: String,
+    pub qty: f64,
+    pub total_price: Option<f64>,
+    pub payment_sale_amount: Option<f64>,
+    pub price_effective: Option<f64>,
+    pub amount_line: Option<f64>,
+    pub finished_price: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesStateLink {
+    pub sale_dt: String,
+}
+
 #[component]
 pub fn WbFinanceReportDetail(
     rr_dt: String,
@@ -67,6 +103,12 @@ pub fn WbFinanceReportDetail(
     let (active_tab, set_active_tab) = signal("fields");
     let (sort_by, set_sort_by) = signal("description".to_string());
     let (sort_desc, set_sort_desc) = signal(false);
+
+    // Linked sales documents
+    let (linked_sales, set_linked_sales) = signal::<Vec<WbSalesLink>>(Vec::new());
+    let (links_loading, set_links_loading) = signal(false);
+    let (links_error, set_links_error) = signal(None::<String>);
+    let (selected_sale_id, set_selected_sale_id) = signal::<Option<String>>(None);
 
     // Загрузка данных
     let rr_dt_clone = rr_dt.clone();
@@ -87,6 +129,35 @@ pub fn WbFinanceReportDetail(
                 }
             }
         });
+    });
+
+    // Загрузка связанных документов продаж при активации вкладки Links
+    Effect::new(move || {
+        let tab = active_tab.get();
+        if tab == "links" {
+            if let Some(item) = data.get() {
+                if let Some(srid_val) = item.srid {
+                    if !srid_val.is_empty() {
+                        set_links_loading.set(true);
+                        set_links_error.set(None);
+
+                        spawn_local(async move {
+                            match fetch_linked_sales(&srid_val).await {
+                                Ok(sales) => {
+                                    set_linked_sales.set(sales);
+                                    set_links_loading.set(false);
+                                }
+                                Err(e) => {
+                                    log!("Failed to fetch linked sales: {:?}", e);
+                                    set_links_error.set(Some(e));
+                                    set_links_loading.set(false);
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
     });
 
     // Преобразование данных в таблицу полей
@@ -321,6 +392,11 @@ pub fn WbFinanceReportDetail(
                     })
                     .unwrap_or_else(|| "-".to_string()),
             },
+            FieldRow {
+                description: "SRID (Уникальный идентификатор строки)".to_string(),
+                field_id: "srid".to_string(),
+                value: item.srid.clone().unwrap_or_else(|| "-".to_string()),
+            },
         ];
 
         // Сортировка
@@ -455,6 +531,18 @@ pub fn WbFinanceReportDetail(
                                     >
                                         "Raw JSON"
                                     </button>
+                                    <button
+                                        on:click=move |_| set_active_tab.set("links")
+                                        style=move || {
+                                            if active_tab.get() == "links" {
+                                                "padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-bottom: 3px solid var(--primary-color); cursor: pointer; font-weight: bold;"
+                                            } else {
+                                                "padding: 8px 16px; background: transparent; color: var(--text-color); border: none; cursor: pointer;"
+                                            }
+                                        }
+                                    >
+                                        "Links"
+                                    </button>
                                 </div>
                                 {
                                     let export_excel = export_to_excel.clone();
@@ -532,7 +620,7 @@ pub fn WbFinanceReportDetail(
                                         </div>
                                     }
                                         .into_any()
-                                } else {
+                                } else if active_tab.get() == "json" {
                                     let json_text = data
                                         .get()
                                         .and_then(|d| d.extra)
@@ -551,6 +639,97 @@ pub fn WbFinanceReportDetail(
                                         </div>
                                     }
                                         .into_any()
+                                } else if active_tab.get() == "links" {
+                                    if links_loading.get() {
+                                        view! { <p>"Loading linked sales..."</p> }.into_any()
+                                    } else if let Some(err) = links_error.get() {
+                                        view! { <p style="color: red;">"Error loading links: " {err}</p> }.into_any()
+                                    } else {
+                                        let sales = linked_sales.get();
+                                        if sales.is_empty() {
+                                            view! { <p>"No linked sales documents found for this SRID."</p> }.into_any()
+                                        } else {
+                                            let total_qty: f64 = sales.iter().map(|s| s.line.qty).sum();
+                                            let total_total_price: f64 = sales.iter().filter_map(|s| s.line.total_price).sum();
+                                            let total_payment: f64 = sales.iter().filter_map(|s| s.line.payment_sale_amount).sum();
+                                            let total_amount: f64 = sales.iter().filter_map(|s| s.line.amount_line).sum();
+                                            let total_finished: f64 = sales.iter().filter_map(|s| s.line.finished_price).sum();
+
+                                            view! {
+                                                <div>
+                                                    <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; display: flex; gap: 24px;">
+                                                        <span>"Found: " {sales.len()} " documents"</span>
+                                                        <span>"Total Qty: " {format!("{:.2}", total_qty)}</span>
+                                                        <span>"Total Price: " {format!("{:.2}", total_total_price)}</span>
+                                                        <span>"Payment: " {format!("{:.2}", total_payment)}</span>
+                                                        <span>"Amount: " {format!("{:.2}", total_amount)}</span>
+                                                        <span>"Finished: " {format!("{:.2}", total_finished)}</span>
+                                                    </div>
+
+                                                    <div style="max-height: calc(100vh - 280px); overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px;">
+                                                        <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
+                                                            <thead style="position: sticky; top: 0; z-index: 10; background: var(--secondary-bg-color);">
+                                                                <tr style="border-bottom: 2px solid var(--border-color);">
+                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Date"</th>
+                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Document No"</th>
+                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"NM ID"</th>
+                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Supplier Article"</th>
+                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Name"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Qty"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Total Price"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Payment"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Price Effective"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Amount Line"</th>
+                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Finished Price"</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <For
+                                                                    each=move || sales.clone()
+                                                                    key=|sale| sale.id.clone()
+                                                                    children=move |sale: WbSalesLink| {
+                                                                        let sale_id = sale.id.clone();
+                                                                        view! {
+                                                                            <tr
+                                                                                on:click=move |_| {
+                                                                                    set_selected_sale_id.set(Some(sale_id.clone()))
+                                                                                }
+                                                                                style="border-bottom: 1px solid var(--border-color); cursor: pointer; hover:background: var(--hover-bg-color);"
+                                                                            >
+                                                                                <td style="padding: 6px 8px;">{sale.state.sale_dt.clone()}</td>
+                                                                                <td style="padding: 6px 8px; font-size: 11px;">{sale.header.document_no.clone()}</td>
+                                                                                <td style="padding: 6px 8px;">{sale.line.nm_id}</td>
+                                                                                <td style="padding: 6px 8px;">{sale.line.supplier_article.clone()}</td>
+                                                                                <td style="padding: 6px 8px;">{sale.line.name.clone()}</td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">{format!("{:.2}", sale.line.qty)}</td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">
+                                                                                    {sale.line.total_price.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">
+                                                                                    {sale.line.payment_sale_amount.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">
+                                                                                    {sale.line.price_effective.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">
+                                                                                    {sale.line.amount_line.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 6px 8px; text-align: right;">
+                                                                                    {sale.line.finished_price.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    }
+                                                                />
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            }.into_any()
+                                        }
+                                    }
+                                } else {
+                                    view! { <div></div> }.into_any()
                                 }
                             }}
 
@@ -562,6 +741,24 @@ pub fn WbFinanceReportDetail(
                 }
             }}
             </div>
+
+            // Modal for WbSalesDetail when clicking on a linked sale
+            {move || {
+                if let Some(sale_id) = selected_sale_id.get() {
+                    view! {
+                        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+                            <div style="background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 1200px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+                                <WbSalesDetail
+                                    id=sale_id.clone()
+                                    on_close=move || set_selected_sale_id.set(None)
+                                />
+                            </div>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <div></div> }.into_any()
+                }
+            }}
         </div>
     }
 }
@@ -569,6 +766,29 @@ pub fn WbFinanceReportDetail(
 async fn fetch_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailResponse, String> {
     let window = web_sys::window().ok_or("No window object")?;
     let url = format!("/api/p903/finance-report/{}/{}", rr_dt, rrd_id);
+
+    let resp_value = JsFuture::from(window.fetch_with_str(&url))
+        .await
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+    let resp: web_sys::Response = resp_value
+        .dyn_into()
+        .map_err(|_| "Failed to cast to Response")?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let json = JsFuture::from(resp.json().map_err(|_| "Failed to get JSON")?)
+        .await
+        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
+}
+
+async fn fetch_linked_sales(srid: &str) -> Result<Vec<WbSalesLink>, String> {
+    let window = web_sys::window().ok_or("No window object")?;
+    let url = format!("/api/a012/wb-sales/search-by-srid?srid={}", srid);
 
     let resp_value = JsFuture::from(window.fetch_with_str(&url))
         .await

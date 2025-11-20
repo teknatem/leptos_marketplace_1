@@ -228,3 +228,15 @@ pub async fn soft_delete(id: Uuid) -> Result<bool> {
         .await?;
     Ok(result.rows_affected > 0)
 }
+
+pub async fn search_by_document_no(document_no: &str) -> Result<Vec<WbSales>> {
+    let items: Vec<WbSales> = Entity::find()
+        .filter(Column::DocumentNo.eq(document_no))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    Ok(items)
+}

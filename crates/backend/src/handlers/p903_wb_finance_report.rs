@@ -3,6 +3,7 @@ use contracts::projections::p903_wb_finance_report::dto::{
     WbFinanceReportDetailResponse, WbFinanceReportDto, WbFinanceReportListRequest,
     WbFinanceReportListResponse,
 };
+use serde::Deserialize;
 
 use crate::projections::p903_wb_finance_report::repository;
 
@@ -17,6 +18,8 @@ pub async fn list_finance_report(
         req.sa_name,
         req.connection_mp_ref,
         req.organization_ref,
+        req.supplier_oper_name,
+        req.srid,
         &req.sort_by,
         req.sort_desc,
         req.limit,
@@ -54,6 +57,27 @@ pub async fn get_finance_report_detail(
     Ok(Json(WbFinanceReportDetailResponse {
         item: model_to_dto(item),
     }))
+}
+
+/// Handler для поиска записей по srid
+#[derive(Debug, Deserialize)]
+pub struct SearchBySridQuery {
+    pub srid: String,
+}
+
+pub async fn search_by_srid(
+    Query(query): Query<SearchBySridQuery>,
+) -> Result<Json<Vec<WbFinanceReportDto>>, axum::http::StatusCode> {
+    let items = repository::search_by_srid(&query.srid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to search finance report by srid: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let dtos: Vec<WbFinanceReportDto> = items.into_iter().map(model_to_dto).collect();
+
+    Ok(Json(dtos))
 }
 
 /// Преобразование Model в DTO
@@ -98,6 +122,7 @@ fn model_to_dto(model: repository::Model) -> WbFinanceReportDto {
         ppvz_kvw_prc: model.ppvz_kvw_prc,
         ppvz_kvw_prc_base: model.ppvz_kvw_prc_base,
         srv_dbs: model.srv_dbs,
+        srid: model.srid,
         loaded_at_utc: loaded_at_formatted,
         payload_version: model.payload_version,
         extra: model.extra,

@@ -1065,6 +1065,10 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::p903_wb_finance_report::list_finance_report),
         )
         .route(
+            "/api/p903/finance-report/search-by-srid",
+            get(handlers::p903_wb_finance_report::search_by_srid),
+        )
+        .route(
             "/api/p903/finance-report/:rr_dt/:rrd_id",
             get(handlers::p903_wb_finance_report::get_finance_report_detail),
         )
@@ -1133,6 +1137,10 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::a012_wb_sales::get_sale_detail),
         )
         .route(
+            "/api/a012/wb-sales/search-by-srid",
+            get(handlers::a012_wb_sales::search_by_srid),
+        )
+        .route(
             "/api/a012/raw/:ref_id",
             get(handlers::a012_wb_sales::get_raw_json),
         )
@@ -1180,6 +1188,35 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a013/ym-order/post-period",
             post(handlers::a013_ym_order::post_period),
+        )
+        // A015 WB Orders handlers
+        .route(
+            "/api/a015/wb-orders",
+            get(handlers::a015_wb_orders::list_orders),
+        )
+        .route(
+            "/api/a015/wb-orders/:id",
+            get(handlers::a015_wb_orders::get_order_detail),
+        )
+        .route(
+            "/api/a015/wb-orders/search-by-srid",
+            get(handlers::a015_wb_orders::search_by_srid),
+        )
+        .route(
+            "/api/a015/raw/:ref_id",
+            get(handlers::a015_wb_orders::get_raw_json),
+        )
+        .route(
+            "/api/a015/wb-orders/:id/delete",
+            post(handlers::a015_wb_orders::delete_order),
+        )
+        .route(
+            "/api/a015/wb-orders/:id/post",
+            post(handlers::a015_wb_orders::post_order),
+        )
+        .route(
+            "/api/a015/wb-orders/:id/unpost",
+            post(handlers::a015_wb_orders::unpost_order),
         )
         // P900 Sales Register - get projections by registrator
         .route(

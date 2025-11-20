@@ -9,6 +9,13 @@ use std::cmp::Ordering;
 use wasm_bindgen::JsCast;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Organization {
+    pub id: String,
+    pub code: String,
+    pub description: String,
+}
+
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
 fn format_date(iso_date: &str) -> String {
     // Парсим ISO 8601: "2025-11-05T16:52:58.585775200Z"
@@ -64,6 +71,7 @@ pub struct WbSalesDto {
     pub marketplace_article: Option<String>,
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
+    pub operation_date: Option<String>,
 }
 
 impl Sortable for WbSalesDto {
@@ -130,6 +138,12 @@ impl Sortable for WbSalesDto {
                     (None, None) => Ordering::Equal,
                 }
             }
+            "operation_date" => match (&self.operation_date, &other.operation_date) {
+                (Some(a), Some(b)) => a.cmp(b),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             _ => Ordering::Equal,
         }
     }
@@ -144,6 +158,10 @@ pub fn WbSalesList() -> impl IntoView {
     let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
     let (batch_progress, set_batch_progress) = signal::<Option<(usize, usize)>>(None); // (processed, total)
     let (is_batch_processing, set_is_batch_processing) = signal(false); // Синхронный флаг для блокировки
+
+    // Организации
+    let (organizations, set_organizations) = signal::<Vec<Organization>>(Vec::new());
+    let (selected_organization_id, set_selected_organization_id) = signal::<Option<String>>(None);
 
     // Сортировка
     let (sort_field, set_sort_field) = signal::<String>("sale_date".to_string());
@@ -178,12 +196,18 @@ pub fn WbSalesList() -> impl IntoView {
 
             let date_from_val = date_from.get();
             let date_to_val = date_to.get();
+            let org_id = selected_organization_id.get();
 
             // Ограничиваем количество записей для оптимизации
-            let url = format!(
+            let mut url = format!(
                 "http://localhost:3000/api/a012/wb-sales?date_from={}&date_to={}&limit=20000",
                 date_from_val, date_to_val
             );
+
+            // Добавляем фильтр по организации, если выбрана
+            if let Some(org_id) = org_id {
+                url.push_str(&format!("&organization_id={}", org_id));
+            }
 
             log!("Loading WB sales with URL: {}", url);
 
@@ -261,6 +285,10 @@ pub fn WbSalesList() -> impl IntoView {
                                                     .get("nomenclature_article")
                                                     .and_then(|a| a.as_str())
                                                     .map(|s| s.to_string());
+                                                let operation_date = v
+                                                    .get("operation_date")
+                                                    .and_then(|a| a.as_str())
+                                                    .map(|s| s.to_string());
 
                                                 let result = Some(WbSalesDto {
                                                     id: v.get("id")?.as_str()?.to_string(),
@@ -281,6 +309,7 @@ pub fn WbSalesList() -> impl IntoView {
                                                     marketplace_article,
                                                     nomenclature_code,
                                                     nomenclature_article,
+                                                    operation_date,
                                                 });
 
                                                 if result.is_none() {
@@ -457,6 +486,18 @@ pub fn WbSalesList() -> impl IntoView {
         });
     };
 
+    // Загрузка организаций при монтировании
+    wasm_bindgen_futures::spawn_local(async move {
+        match fetch_organizations().await {
+            Ok(orgs) => {
+                set_organizations.set(orgs);
+            }
+            Err(e) => {
+                log!("Failed to load organizations: {}", e);
+            }
+        }
+    });
+
     // Автоматическая загрузка при открытии
     load_sales();
 
@@ -501,6 +542,33 @@ pub fn WbSalesList() -> impl IntoView {
                                     disabled=move || is_batch_processing.get()
                                     style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: var(--font-size-sm);"
                                 />
+
+                                <label style="margin: 0; font-size: var(--font-size-sm); white-space: nowrap;">"Организация:"</label>
+                                <select
+                                    on:change=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        if value.is_empty() {
+                                            set_selected_organization_id.set(None);
+                                        } else {
+                                            set_selected_organization_id.set(Some(value));
+                                        }
+                                    }
+                                    disabled=move || is_batch_processing.get()
+                                    style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: var(--font-size-sm); min-width: 200px;"
+                                >
+                                    <option value="">"Все организации"</option>
+                                    {move || organizations.get().into_iter().map(|org| {
+                                        let org_id = org.id.clone();
+                                        let org_desc = org.description.clone();
+                                        view! {
+                                            <option value=org_id.clone() selected=move || {
+                                                selected_organization_id.get().as_ref() == Some(&org_id)
+                                            }>
+                                                {org_desc}
+                                            </option>
+                                        }
+                                    }).collect_view()}
+                                </select>
 
                                 <button
                                     on:click=move |_| {
@@ -698,6 +766,13 @@ pub fn WbSalesList() -> impl IntoView {
                                             </th>
                                             <th
                                                 style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=toggle_sort("operation_date")
+                                                title="Сортировать"
+                                            >
+                                                {move || format!("Дата операции{}", get_sort_indicator(&sort_field.get(), "operation_date", sort_ascending.get()))}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
                                                 on:click=toggle_sort("organization_name")
                                                 title="Сортировать"
                                             >
@@ -816,6 +891,11 @@ pub fn WbSalesList() -> impl IntoView {
                                                     </td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.document_no}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{formatted_date}</td>
+                                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                                        <span style="color: #d32f2f; font-weight: 600;">
+                                                            {sale.operation_date.clone().unwrap_or_else(|| "—".to_string())}
+                                                        </span>
+                                                    </td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.organization_name.clone().unwrap_or_else(|| "—".to_string())}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;">{sale.supplier_article}</td>
                                                     <td style="border: 1px solid #ddd; padding: 8px;"><span style="color: #1976d2; font-weight: 600;">{sale.marketplace_article.clone().unwrap_or_else(|| "—".to_string())}</span></td>
@@ -853,6 +933,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 38px;"></th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Document №"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Дата продажи"</th>
+                                            <th style="border: 1px solid #ddd; padding: 8px;">"Дата операции"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Организация"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Артикул"</th>
                                             <th style="border: 1px solid #ddd; padding: 8px;">"Артикул МП"</th>
@@ -867,7 +948,7 @@ pub fn WbSalesList() -> impl IntoView {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                                <tr><td colspan="14"></td></tr>
+                                                <tr><td colspan="15"></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -883,16 +964,55 @@ pub fn WbSalesList() -> impl IntoView {
     }
 }
 
+/// Загрузка списка организаций
+async fn fetch_organizations() -> Result<Vec<Organization>, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request as WebRequest, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = "http://localhost:3000/api/organization";
+    let request = WebRequest::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<Organization> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
 /// Экспорт WB Sales в CSV для Excel
 fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
     // UTF-8 BOM для правильного отображения кириллицы в Excel
     let mut csv = String::from("\u{FEFF}");
 
     // Заголовок с точкой с запятой как разделитель
-    csv.push_str("Document №;Дата продажи;Организация;Артикул;Артикул МП;Артикул 1С;Код 1С;Название;Количество;К выплате;Полная цена;Итоговая цена;Тип\n");
+    csv.push_str("Document №;Дата продажи;Дата операции;Организация;Артикул;Артикул МП;Артикул 1С;Код 1С;Название;Количество;К выплате;Полная цена;Итоговая цена;Тип\n");
 
     for sale in data {
         let sale_date = format_date(&sale.sale_date);
+        let operation_date = sale
+            .operation_date
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("—");
         let org_name = sale
             .organization_name
             .as_ref()
@@ -930,9 +1050,10 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
             .unwrap_or_else(|| "—".to_string());
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
             sale.document_no.replace('\"', "\"\""),
             sale_date,
+            operation_date.replace('\"', "\"\""),
             org_name.replace('\"', "\"\""),
             sale.supplier_article.replace('\"', "\"\""),
             mp_article.replace('\"', "\"\""),

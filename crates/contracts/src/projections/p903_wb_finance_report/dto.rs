@@ -39,6 +39,7 @@ pub struct WbFinanceReportDto {
     pub ppvz_kvw_prc: Option<f64>,
     pub ppvz_kvw_prc_base: Option<f64>,
     pub srv_dbs: Option<i32>,
+    pub srid: Option<String>,
 
     // Technical fields
     pub loaded_at_utc: String,
@@ -59,6 +60,10 @@ pub struct WbFinanceReportListRequest {
     pub connection_mp_ref: Option<String>,
     #[serde(default)]
     pub organization_ref: Option<String>,
+    #[serde(default)]
+    pub supplier_oper_name: Option<String>,
+    #[serde(default)]
+    pub srid: Option<String>,
     #[serde(default = "default_sort_by")]
     pub sort_by: String,
     #[serde(default = "default_true")]

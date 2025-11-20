@@ -13,8 +13,9 @@ impl WildberriesApiClient {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(60)) // Увеличен таймаут для медленных API
                 .danger_accept_invalid_certs(true) // Временно для отладки
+                .redirect(reqwest::redirect::Policy::limited(10)) // Следовать редиректам
                 .build()
                 .expect("Failed to create HTTP client"),
         }
@@ -1565,8 +1566,9 @@ impl WildberriesApiClient {
             }
 
             let body = response.text().await?;
-            let body_preview = if body.len() > 5000 {
-                format!("{}... (total {} chars)", &body[..5000], body.len())
+            let body_preview = if body.chars().count() > 5000 {
+                let preview: String = body.chars().take(5000).collect();
+                format!("{}... (total {} chars)", preview, body.len())
             } else {
                 body.clone()
             };
@@ -1687,7 +1689,10 @@ impl WildberriesApiClient {
             .client
             .get(url)
             .header("Authorization", &connection.api_key)
-            .query(&[("dateFrom", date_from_str.as_str()), ("dateTo", date_to_str.as_str())])
+            .query(&[
+                ("dateFrom", date_from_str.as_str()),
+                ("dateTo", date_to_str.as_str()),
+            ])
             .send()
             .await?;
 
@@ -1706,8 +1711,9 @@ impl WildberriesApiClient {
         }
 
         let body = response.text().await?;
-        let body_preview = if body.len() > 5000 {
-            format!("{}... (total {} chars)", &body[..5000], body.len())
+        let body_preview = if body.chars().count() > 5000 {
+            let preview: String = body.chars().take(5000).collect();
+            format!("{}... (total {} chars)", preview, body.len())
         } else {
             body.clone()
         };
@@ -1771,6 +1777,310 @@ impl WildberriesApiClient {
         );
 
         Ok(daily_reports)
+    }
+
+    /// Получить данные по заказам через Statistics API
+    /// GET /api/v1/supplier/orders
+    ///
+    /// Параметры API:
+    /// - dateFrom (обязательный): RFC3339 формат, дата последнего изменения заказа
+    /// - flag (опциональный):
+    ///   * flag=0 (по умолчанию): lastChangeDate >= dateFrom, до ~100k записей
+    ///   * flag=1: ВСЕ заказы/продажи за дату dateFrom (игнорирует время)
+    ///
+    /// ВАЖНО: API использует только dateFrom (без dateTo)!
+    /// Для загрузки данных за период нужно итерировать по датам.
+    pub async fn fetch_orders(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<Vec<WbOrderRow>> {
+        let url = "https://statistics-api.wildberries.ru/api/v1/supplier/orders";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries API");
+        }
+
+        let mut all_orders = Vec::new();
+
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!("║ WILDBERRIES ORDERS API - LOADING ALL RECORDS"));
+        self.log_to_file(&format!("║ Period: {} to {}", date_from, date_to));
+        self.log_to_file(&format!("║ API URL: {}", url));
+        self.log_to_file(&format!(
+            "║ Method: Iterate by date with flag=1 (all orders per day)"
+        ));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝"
+        ));
+
+        // Итерируем по каждой дате в диапазоне
+        let mut current_date = date_from;
+        let mut day_counter = 1;
+
+        while current_date <= date_to {
+            // Формат RFC3339 для даты (с временем 00:00:00)
+            let date_from_rfc3339 = format!("{}T00:00:00", current_date.format("%Y-%m-%d"));
+
+            self.log_to_file(&format!(
+                "\n┌────────────────────────────────────────────────────────────┐"
+            ));
+            self.log_to_file(&format!(
+                "│ Day {}: {} (flag=1 - all orders for this date)",
+                day_counter, current_date
+            ));
+
+            self.log_to_file(&format!(
+                "=== REQUEST ===\nGET {}?dateFrom={}&flag=1\nAuthorization: ****",
+                url, date_from_rfc3339
+            ));
+
+            let response = match self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[
+                    ("dateFrom", date_from_rfc3339.as_str()),
+                    ("flag", "1"), // flag=1 для получения ВСЕХ заказов за дату
+                ])
+                .send()
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let error_msg = format!("HTTP request to Orders API failed: {:?}", e);
+                    self.log_to_file(&error_msg);
+                    tracing::error!("❌ Wildberries Orders API connection error: {}", e);
+
+                    // Проверяем конкретные типы ошибок
+                    if e.is_timeout() {
+                        anyhow::bail!(
+                            "⏱️ Request timeout: Orders API не ответил в течение 60 секунд.\n\n\
+                            ⚠️ ВЕРОЯТНАЯ ПРИЧИНА: API endpoint /api/v1/supplier/orders может не существовать в Wildberries API.\n\
+                            💡 РЕКОМЕНДАЦИЯ: Попробуйте отключить импорт заказов (a015_wb_orders) и использовать только:\n\
+                               - a007_marketplace_product (товары)\n\
+                               - a012_wb_sales (продажи)\n\
+                               - p903_wb_finance_report (финансы)\n\n\
+                            📚 Проверьте актуальную документацию: https://openapi.wb.ru/statistics/api/ru/\n\
+                            🔗 URL: {}", 
+                            url
+                        );
+                    } else if e.is_connect() {
+                        anyhow::bail!(
+                            "🔌 Connection error: не удалось подключиться к WB Orders API.\n\n\
+                            ⚠️ ВЕРОЯТНАЯ ПРИЧИНА: API endpoint не существует или был изменён.\n\
+                            Возможные решения:\n\
+                            1. 📚 Проверьте документацию Wildberries API\n\
+                            2. 🌐 Убедитесь в наличии интернет-соединения\n\
+                            3. 🔑 Проверьте права API ключа\n\
+                            4. ⚙️ Отключите импорт заказов и используйте Sales API (a012)\n\n\
+                            🔗 URL: {}\n\
+                            Error: {}",
+                            url,
+                            e
+                        );
+                    } else if e.is_request() {
+                        anyhow::bail!("📤 Request error при загрузке orders: {}", e);
+                    } else {
+                        anyhow::bail!(
+                            "❓ Unknown error при запросе orders: {}.\n\n\
+                            ⚠️ ВОЗМОЖНО: API endpoint не существует или не доступен.\n\
+                            📝 Проверьте документацию Wildberries API для корректного endpoint заказов.\n\
+                            🔗 URL: {}", 
+                            e, url
+                        );
+                    }
+                }
+            };
+
+            let status = response.status();
+            let final_url = response.url().clone();
+            self.log_to_file(&format!("Response status: {}", status));
+            self.log_to_file(&format!("Final URL: {}", final_url));
+
+            // Логируем заголовки ответа для диагностики
+            self.log_to_file(&format!("Response headers:"));
+            for (name, value) in response.headers() {
+                if let Ok(val_str) = value.to_str() {
+                    self.log_to_file(&format!("  {}: {}", name, val_str));
+                }
+            }
+
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                self.log_to_file(&format!("ERROR Response body:\n{}", body));
+                tracing::error!(
+                    "Wildberries Orders API request failed for date {}: {}",
+                    current_date,
+                    body
+                );
+
+                // Если 404 или другая ошибка для конкретной даты, пропускаем и идем дальше
+                if status.as_u16() == 404 {
+                    self.log_to_file(&format!(
+                        "│ ⚠️ No orders found for date {}, skipping...",
+                        current_date
+                    ));
+                    self.log_to_file(&format!(
+                        "└────────────────────────────────────────────────────────────┘"
+                    ));
+                    current_date = current_date.succ_opt().unwrap_or(current_date);
+                    day_counter += 1;
+                    continue;
+                }
+
+                // Специальная обработка для 302 редиректов
+                if status.as_u16() == 302 || status.as_u16() == 301 {
+                    anyhow::bail!(
+                        "Wildberries Orders API returned redirect {} for date {}. \
+                        This may indicate:\n\
+                        1. Incorrect API endpoint URL\n\
+                        2. Missing or invalid authentication\n\
+                        3. API endpoint has moved\n\
+                        Response: {}\n\
+                        Check Wildberries API documentation for the correct endpoint.",
+                        status,
+                        current_date,
+                        body
+                    );
+                }
+
+                anyhow::bail!(
+                    "Wildberries Orders API failed with status {} for date {}: {}",
+                    status,
+                    current_date,
+                    body
+                );
+            }
+
+            // Читаем тело ответа
+            let body = match response.text().await {
+                Ok(b) => b,
+                Err(e) => {
+                    self.log_to_file(&format!("│ ⚠️ Failed to read response body: {}", e));
+                    tracing::error!(
+                        "Failed to read response body for date {}: {}",
+                        current_date,
+                        e
+                    );
+                    // Считаем это пустым ответом и переходим к следующей дате
+                    current_date = current_date.succ_opt().unwrap_or(current_date);
+                    day_counter += 1;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                    continue;
+                }
+            };
+
+            self.log_to_file(&format!("Body length: {} bytes", body.len()));
+
+            // Проверяем, не пустой ли ответ
+            let body_trimmed = body.trim();
+            if body_trimmed.is_empty() {
+                self.log_to_file(&format!("│ Empty response for date {}", current_date));
+                self.log_to_file(&format!("│ Received: 0 orders for {}", current_date));
+                self.log_to_file(&format!("│ Total so far: {} records", all_orders.len()));
+                self.log_to_file(&format!(
+                    "└────────────────────────────────────────────────────────────┘"
+                ));
+
+                // Пустой ответ - это нормально, значит нет заказов за эту дату
+                current_date = current_date.succ_opt().unwrap_or(current_date);
+                day_counter += 1;
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                continue;
+            }
+
+            let body_preview = if body.chars().count() > 5000 {
+                let preview: String = body.chars().take(5000).collect();
+                format!("{}... (total {} chars)", preview, body.len())
+            } else {
+                body.clone()
+            };
+            self.log_to_file(&format!(
+                "=== RESPONSE BODY PREVIEW ===\n{}\n",
+                body_preview
+            ));
+
+            match serde_json::from_str::<Vec<WbOrderRow>>(&body) {
+                Ok(day_data) => {
+                    let day_count = day_data.len();
+                    self.log_to_file(&format!(
+                        "│ Received: {} orders for {}",
+                        day_count, current_date
+                    ));
+                    self.log_to_file(&format!(
+                        "│ Total so far: {} records",
+                        all_orders.len() + day_count
+                    ));
+                    self.log_to_file(&format!(
+                        "└────────────────────────────────────────────────────────────┘"
+                    ));
+
+                    // Добавляем полученные данные
+                    all_orders.extend(day_data);
+                }
+                Err(e) => {
+                    self.log_to_file(&format!(
+                        "Failed to parse JSON for date {}: {}",
+                        current_date, e
+                    ));
+                    self.log_to_file(&format!("Response body: {}", body_preview));
+                    tracing::error!(
+                        "Failed to parse Wildberries orders response for {}: {}",
+                        current_date,
+                        e
+                    );
+
+                    // Если это пустой массив или какой-то некритичный ответ, пропускаем
+                    if body_trimmed == "[]" {
+                        self.log_to_file(&format!(
+                            "│ Empty array for date {}, skipping...",
+                            current_date
+                        ));
+                        current_date = current_date.succ_opt().unwrap_or(current_date);
+                        day_counter += 1;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        continue;
+                    }
+
+                    anyhow::bail!(
+                        "Failed to parse orders response for date {}: {}",
+                        current_date,
+                        e
+                    )
+                }
+            }
+
+            // Переходим к следующей дате
+            current_date = current_date.succ_opt().unwrap_or(current_date);
+            day_counter += 1;
+
+            // Небольшая задержка между запросами для снижения нагрузки на API
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        }
+
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!(
+            "║ COMPLETED: Loaded {} total order records",
+            all_orders.len()
+        ));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝\n"
+        ));
+
+        tracing::info!(
+            "✓ Wildberries Orders API: Successfully loaded {} total records for period {} to {}",
+            all_orders.len(),
+            date_from,
+            date_to
+        );
+
+        Ok(all_orders)
     }
 }
 
@@ -2078,10 +2388,10 @@ pub struct WbFinanceReportRow {
     /// Тип бонуса или штрафа
     #[serde(default)]
     pub bonus_type_name: Option<String>,
-        /// Тип отчета (1 = daily, 2 = weekly)
+    /// Тип отчета (1 = daily, 2 = weekly)
     #[serde(default)]
     pub report_type: Option<i32>,
-    
+
     // ============ Дополнительные поля из API (для полного JSON) ============
     /// ID реализационного отчета
     #[serde(default)]
@@ -2245,6 +2555,95 @@ pub struct WbFinanceReportRow {
     /// Уникальный ID заказа
     #[serde(default)]
     pub order_uid: Option<String>,
+}
+
+// ============================================================================
+// Orders structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbOrderRow {
+    /// Дата заказа
+    #[serde(default)]
+    pub date: Option<String>,
+    /// Дата последнего изменения
+    #[serde(rename = "lastChangeDate", default)]
+    pub last_change_date: Option<String>,
+    /// Название склада
+    #[serde(rename = "warehouseName", default)]
+    pub warehouse_name: Option<String>,
+    /// Тип склада
+    #[serde(rename = "warehouseType", default)]
+    pub warehouse_type: Option<String>,
+    /// Название страны
+    #[serde(rename = "countryName", default)]
+    pub country_name: Option<String>,
+    /// Название области/округа
+    #[serde(rename = "oblastOkrugName", default)]
+    pub oblast_okrug_name: Option<String>,
+    /// Название региона
+    #[serde(rename = "regionName", default)]
+    pub region_name: Option<String>,
+    /// Артикул продавца
+    #[serde(rename = "supplierArticle", default)]
+    pub supplier_article: Option<String>,
+    /// nmId (ID номенклатуры WB)
+    #[serde(rename = "nmId", default)]
+    pub nm_id: Option<i64>,
+    /// Баркод
+    #[serde(default)]
+    pub barcode: Option<String>,
+    /// Категория
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Предмет
+    #[serde(default)]
+    pub subject: Option<String>,
+    /// Бренд
+    #[serde(default)]
+    pub brand: Option<String>,
+    /// Размер
+    #[serde(rename = "techSize", default)]
+    pub tech_size: Option<String>,
+    /// Номер поставки
+    #[serde(rename = "incomeID", default)]
+    pub income_id: Option<i64>,
+    /// Флаг поставки
+    #[serde(rename = "isSupply", default)]
+    pub is_supply: Option<bool>,
+    /// Флаг реализации
+    #[serde(rename = "isRealization", default)]
+    pub is_realization: Option<bool>,
+    /// Цена без скидки
+    #[serde(rename = "totalPrice", default)]
+    pub total_price: Option<f64>,
+    /// Процент скидки
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<f64>,
+    /// SPP (Согласованная скидка продавца)
+    #[serde(default)]
+    pub spp: Option<f64>,
+    /// Итоговая цена для клиента
+    #[serde(rename = "finishedPrice", default)]
+    pub finished_price: Option<f64>,
+    /// Цена с учетом скидки
+    #[serde(rename = "priceWithDisc", default)]
+    pub price_with_disc: Option<f64>,
+    /// Флаг отмены заказа
+    #[serde(rename = "isCancel", default)]
+    pub is_cancel: Option<bool>,
+    /// Дата отмены
+    #[serde(rename = "cancelDate", default)]
+    pub cancel_date: Option<String>,
+    /// ID стикера
+    #[serde(default)]
+    pub sticker: Option<String>,
+    /// G-номер
+    #[serde(rename = "gNumber", default)]
+    pub g_number: Option<String>,
+    /// SRID - уникальный идентификатор заказа
+    #[serde(default)]
+    pub srid: Option<String>,
 }
 
 // ============================================================================

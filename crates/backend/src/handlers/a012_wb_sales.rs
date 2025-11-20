@@ -8,6 +8,63 @@ use uuid::Uuid;
 use crate::domain::a002_organization;
 use crate::domain::a012_wb_sales;
 use crate::shared::data::raw_storage;
+use crate::shared::data::db::get_connection;
+use sea_orm::{ConnectionTrait, Statement};
+use std::collections::HashMap;
+
+/// Получить минимальные даты операций (rr_dt) из P903 по SRID
+/// Возвращает две HashMap: (sales_dates, return_dates)
+async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, HashMap<String, String>), anyhow::Error> {
+    let db = get_connection();
+    
+    // SQL запрос для операций "Продажа"
+    let sql_sales = r#"
+        SELECT srid, MIN(rr_dt) as min_rr_dt
+        FROM p903_wb_finance_report
+        WHERE srid IS NOT NULL AND srid != ''
+          AND supplier_oper_name = 'Продажа'
+        GROUP BY srid
+    "#;
+    
+    // SQL запрос для операций "Возврат"
+    let sql_returns = r#"
+        SELECT srid, MIN(rr_dt) as min_rr_dt
+        FROM p903_wb_finance_report
+        WHERE srid IS NOT NULL AND srid != ''
+          AND supplier_oper_name = 'Возврат'
+        GROUP BY srid
+    "#;
+    
+    // Выполняем запрос для продаж
+    let stmt_sales = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_sales.to_string());
+    let sales_result = db.query_all(stmt_sales).await?;
+    
+    let mut sales_dates = HashMap::new();
+    for row in sales_result {
+        if let (Ok(srid), Ok(rr_dt)) = (
+            row.try_get::<String>("", "srid"),
+            row.try_get::<String>("", "min_rr_dt"),
+        ) {
+            sales_dates.insert(srid, rr_dt);
+        }
+    }
+    
+    // Выполняем запрос для возвратов
+    let stmt_returns = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_returns.to_string());
+    let returns_result = db.query_all(stmt_returns).await?;
+    
+    let mut return_dates = HashMap::new();
+    for row in returns_result {
+        if let (Ok(srid), Ok(rr_dt)) = (
+            row.try_get::<String>("", "srid"),
+            row.try_get::<String>("", "min_rr_dt"),
+        ) {
+            return_dates.insert(srid, rr_dt);
+        }
+    }
+    
+    Ok((sales_dates, return_dates))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesListItemDto {
@@ -17,6 +74,7 @@ pub struct WbSalesListItemDto {
     pub marketplace_article: Option<String>,
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
+    pub operation_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,6 +83,7 @@ pub struct ListSalesQuery {
     pub date_to: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub organization_id: Option<String>,
 }
 
 /// Handler для получения списка Wildberries Sales
@@ -59,10 +118,13 @@ pub async fn list_sales(
         })?
     };
 
+    // Фильтруем по organization_id, если указан
+    if let Some(org_id) = query.organization_id {
+        items.retain(|sale| sale.header.organization_id == org_id);
+    }
+
     // Сортируем по дате (новые сначала) перед применением пагинации
     items.sort_by(|a, b| b.state.sale_dt.cmp(&a.state.sale_dt));
-
-    let total_count = items.len();
 
     // Применяем пагинацию
     let items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
@@ -105,6 +167,9 @@ pub async fn list_sales(
         .map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone())))
         .collect();
 
+    // Загружаем даты операций из P903 (для продаж и возвратов отдельно)
+    let (sales_dates, return_dates) = get_operation_dates_from_p903().await.unwrap_or_default();
+
     // Формируем результат с дополнительными полями
     let result: Vec<WbSalesListItemDto> = items
         .into_iter()
@@ -123,12 +188,30 @@ pub async fn list_sales(
                 .and_then(|nom_ref| nom_map.get(nom_ref).cloned())
                 .unwrap_or((String::new(), String::new()));
 
+            // Получаем дату операции из P903 по document_no (SRID)
+            // Выбираем дату в зависимости от знака finished_price
+            let operation_date = match sale.line.finished_price {
+                Some(price) if price > 0.0 => {
+                    // Положительная цена - ищем среди продаж
+                    sales_dates.get(&sale.header.document_no).cloned()
+                },
+                Some(price) if price < 0.0 => {
+                    // Отрицательная цена - ищем среди возвратов
+                    return_dates.get(&sale.header.document_no).cloned()
+                },
+                _ => {
+                    // None или 0 - не устанавливаем дату
+                    None
+                }
+            };
+
             WbSalesListItemDto {
                 sales: sale,
                 organization_name,
                 marketplace_article: Some(marketplace_article),
                 nomenclature_code: Some(nomenclature_code),
                 nomenclature_article: Some(nomenclature_article),
+                operation_date,
             }
         })
         .collect();
@@ -151,6 +234,25 @@ pub async fn get_sale_detail(
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
     Ok(Json(item))
+}
+
+/// Handler для поиска документов по srid (document_no)
+#[derive(Debug, Deserialize)]
+pub struct SearchBySridQuery {
+    pub srid: String,
+}
+
+pub async fn search_by_srid(
+    Query(query): Query<SearchBySridQuery>,
+) -> Result<Json<Vec<WbSales>>, axum::http::StatusCode> {
+    let items = a012_wb_sales::repository::search_by_document_no(&query.srid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to search by srid: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(items))
 }
 
 /// Handler для получения raw JSON от WB API по raw_payload_ref
