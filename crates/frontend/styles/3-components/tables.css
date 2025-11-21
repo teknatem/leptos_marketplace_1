@@ -42,7 +42,7 @@ thead th {
 table td {
     padding: var(--space-md) var(--space-xl);
     border-bottom: 1px solid var(--color-border-lighter);
-    font-size: var(--font-size-base);
+    font-size: var(--font-size-xs);
 }
 
 table tr {

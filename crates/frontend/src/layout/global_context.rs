@@ -93,6 +93,14 @@ impl AppGlobalContext {
         self.active.set(Some(key.to_string()));
     }
 
+    pub fn update_tab_title(&self, key: &str, new_title: &str) {
+        self.opened.update(|tabs| {
+            if let Some(tab) = tabs.iter_mut().find(|t| t.key == key) {
+                tab.title = new_title.to_string();
+            }
+        });
+    }
+
     pub fn close_tab(&self, key: &str) {
         self.opened.update(|tabs| tabs.retain(|tab| tab.key != key));
         if self

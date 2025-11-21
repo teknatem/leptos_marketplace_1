@@ -128,6 +128,20 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     // Сохраняем id в StoredValue для использования в обработчиках
     let stored_id = StoredValue::new(id.clone());
 
+    // Получаем tabs_store для обновления названия вкладки
+    let tabs_store =
+        leptos::context::use_context::<crate::layout::global_context::AppGlobalContext>()
+            .expect("AppGlobalContext not found");
+
+    // Обновляем название вкладки когда данные загружены
+    Effect::new(move || {
+        if let Some(sale_data) = sale.get() {
+            let tab_key = format!("a012_wb_sales_detail_{}", stored_id.get_value());
+            let tab_title = format!("WB Sales {}", sale_data.header.document_no);
+            tabs_store.update_tab_title(&tab_key, &tab_title);
+        }
+    });
+
     // Функция для загрузки связанных данных (marketplace_product и nomenclature)
     let load_related_data = move |data: &WbSalesDetailDto| {
         // Загружаем данные marketplace_product если есть
@@ -361,30 +375,30 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     };
 
     view! {
-        <div class="sale-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 15px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <h2 style="margin: 0;">"Wildberries Sales Details"</h2>
+        <div class="sale-detail" style="padding: var(--space-xl); height: 100%; display: flex; flex-direction: column; background: var(--color-hover-table); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
+            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: var(--space-xl);">
+                    <h2 style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-white); letter-spacing: 0.5px;">"📋 Wildberries Sales Details"</h2>
                     <Show when=move || sale.get().is_some()>
                         {move || {
                             let posted = is_posted.get();
                             view! {
                                 <div style=move || format!(
-                                    "display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; {}",
+                                    "display: flex; align-items: center; gap: var(--space-xs); padding: 3px var(--space-md); border-radius: var(--radius-sm); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); {}",
                                     if posted {
-                                        "background: #e8f5e9; color: #2e7d32; border: 2px solid #4CAF50;"
+                                        "background: rgba(255,255,255,0.2); color: var(--color-success); border: 1px solid rgba(76,175,80,0.5);"
                                     } else {
-                                        "background: #fff3e0; color: #e65100; border: 2px solid #FF9800;"
+                                        "background: rgba(255,255,255,0.2); color: var(--color-warning); border: 1px solid rgba(255,152,0,0.5);"
                                     }
                                 )>
-                                    <span style="font-size: 16px;">{if posted { "✓" } else { "○" }}</span>
+                                    <span style="font-size: var(--font-size-sm);">{if posted { "✓" } else { "○" }}</span>
                                     <span>{if posted { "Проведен" } else { "Не проведен" }}</span>
                                 </div>
                             }
                         }}
                     </Show>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: var(--space-md);">
                     <Show when=move || sale.get().is_some()>
                         <Show
                             when=move || !is_posted.get()
@@ -423,7 +437,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             });
                                         }
                                         disabled=move || posting.get()
-                                        style="padding: 8px 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"
+                                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-warning); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
                                     >
                                         {move || if posting.get() { "Unposting..." } else { "✗ Unpost" }}
                                     </button>
@@ -465,7 +479,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             });
                                         }
                                         disabled=move || posting.get()
-                                        style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"
+                                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-success); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
                                     >
                                         {move || if posting.get() { "Posting..." } else { "✓ Post" }}
                                     </button>
@@ -475,7 +489,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                     </Show>
                     <button
                         on:click=move |_| on_close.run(())
-                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-danger); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
                     >
                         "✕ Close"
                     </button>
@@ -500,15 +514,15 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         view! {
                             <div style="height: 100%; display: flex; flex-direction: column;">
                                 // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                                <div class="tabs" style="border-bottom: 2px solid var(--color-border-light); margin-bottom: var(--space-lg); flex-shrink: 0; background: var(--color-bg-body); position: sticky; top: 0; z-index: var(--z-sticky);">
                                     <button
                                         on:click=move |_| set_active_tab.set("general")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
                                             if active_tab.get() == "general" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
                                             } else {
-                                                "background: #f5f5f5; color: #666;"
+                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
                                             }
                                         )
                                     >
@@ -517,11 +531,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("line")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
                                             if active_tab.get() == "line" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
                                             } else {
-                                                "background: #f5f5f5; color: #666;"
+                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
                                             }
                                         )
                                     >
@@ -530,11 +544,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("json")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
                                             if active_tab.get() == "json" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
                                             } else {
-                                                "background: #f5f5f5; color: #666;"
+                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
                                             }
                                         )
                                     >
@@ -543,11 +557,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     <button
                                         on:click=move |_| set_active_tab.set("links")
                                         style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
+                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
                                             if active_tab.get() == "links" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
                                             } else {
-                                                "background: #f5f5f5; color: #666;"
+                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
                                             }
                                         )
                                     >
@@ -556,7 +570,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                 </div>
 
                                 // Контент вкладок
-                                <div style="flex: 1; overflow-y: auto; padding: 10px 0;">
+                                <div style="flex: 1; overflow-y: auto; padding: var(--space-md) 0;">
                                     {move || {
                                 let tab = active_tab.get();
                                 match tab.as_ref() {
@@ -568,15 +582,15 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         view! {
                                             <div class="general-info" style="max-width: 1400px;">
                                                 // Блоки товара и номенклатуры в две колонки
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); margin-bottom: var(--space-lg);">
                                                     // Блок: Товар маркетплейса
-                                                    <div style="padding: 10px 15px; background: #e3f2fd; border-radius: 6px; border-left: 3px solid #2196F3;">
-                                                        <div style="font-weight: 600; color: #1976d2; font-size: 13px; margin-bottom: 8px;">"📦 Товар маркетплейса"</div>
+                                                    <div style="padding: var(--space-md) var(--space-xl); background: #e3f2fd; border-radius: var(--radius-md); border-left: 3px solid var(--color-primary);">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: #1976d2; font-size: var(--font-size-xs); margin-bottom: var(--space-md);">"📦 Товар маркетплейса"</div>
                                                         {move || if let Some(ref mp_info) = marketplace_product_info.get() {
                                                             view! {
-                                                                <div style="font-size: 13px; line-height: 1.6;">
+                                                                <div style="font-size: var(--font-size-xs); line-height: var(--line-height-normal);">
                                                                     <div
-                                                                        style="color: #0d47a1; font-weight: 600; cursor: pointer; text-decoration: underline;"
+                                                                        style="color: #0d47a1; font-weight: var(--font-weight-semibold); cursor: pointer; text-decoration: underline;"
                                                                         on:click={
                                                                             let sale_signal = sale.clone();
                                                                             move |_| {
@@ -590,27 +604,27 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                     >
                                                                         {mp_info.description.clone()}
                                                                     </div>
-                                                                    <div style="color: #666; margin-top: 4px;">
-                                                                        <span style="font-weight: 600;">"Артикул: "</span>
-                                                                        <code style="background: #bbdefb; padding: 2px 6px; border-radius: 3px; font-size: 12px;">{mp_info.article.clone()}</code>
+                                                                    <div style="color: var(--color-text-muted); margin-top: 3px;">
+                                                                        <span style="font-weight: var(--font-weight-semibold);">"Артикул: "</span>
+                                                                        <code style="background: #bbdefb; padding: 2px var(--space-sm); border-radius: var(--radius-sm); font-size: 11px;">{mp_info.article.clone()}</code>
                                                                     </div>
                                                                 </div>
                                                             }.into_any()
                                                         } else {
                                                             view! {
-                                                                <div style="color: #999; font-style: italic; font-size: 13px;">"Не привязан"</div>
+                                                                <div style="color: #999; font-style: italic; font-size: var(--font-size-xs);">"Не привязан"</div>
                                                             }.into_any()
                                                         }}
                                                     </div>
 
                                                     // Блок: Номенклатура 1С
-                                                    <div style="padding: 10px 15px; background: #e8f5e9; border-radius: 6px; border-left: 3px solid #4CAF50;">
-                                                        <div style="font-weight: 600; color: #2e7d32; font-size: 13px; margin-bottom: 8px;">"📋 Номенклатура 1С"</div>
+                                                    <div style="padding: var(--space-md) var(--space-xl); background: #e8f5e9; border-radius: var(--radius-md); border-left: 3px solid var(--color-success);">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: #2e7d32; font-size: var(--font-size-xs); margin-bottom: var(--space-md);">"📋 Номенклатура 1С"</div>
                                                         {move || if let Some(ref nom_info) = nomenclature_info.get() {
                                                             view! {
-                                                                <div style="font-size: 13px; line-height: 1.6;">
+                                                                <div style="font-size: var(--font-size-xs); line-height: var(--line-height-normal);">
                                                                     <div
-                                                                        style="color: #1b5e20; font-weight: 600; cursor: pointer; text-decoration: underline;"
+                                                                        style="color: #1b5e20; font-weight: var(--font-weight-semibold); cursor: pointer; text-decoration: underline;"
                                                                         on:click={
                                                                             let sale_signal = sale.clone();
                                                                             move |_| {
@@ -624,75 +638,75 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                     >
                                                                         {nom_info.description.clone()}
                                                                     </div>
-                                                                    <div style="color: #666; margin-top: 4px;">
-                                                                        <span style="font-weight: 600;">"Артикул: "</span>
-                                                                        <code style="background: #c8e6c9; padding: 2px 6px; border-radius: 3px; font-size: 12px;">{nom_info.article.clone()}</code>
+                                                                    <div style="color: var(--color-text-muted); margin-top: 3px;">
+                                                                        <span style="font-weight: var(--font-weight-semibold);">"Артикул: "</span>
+                                                                        <code style="background: #c8e6c9; padding: 2px var(--space-sm); border-radius: var(--radius-sm); font-size: 11px;">{nom_info.article.clone()}</code>
                                                                     </div>
                                                                 </div>
                                                             }.into_any()
                                                         } else {
                                                             view! {
-                                                                <div style="color: #999; font-style: italic; font-size: 13px;">"Не привязана"</div>
+                                                                <div style="color: #999; font-style: italic; font-size: var(--font-size-xs);">"Не привязана"</div>
                                                             }.into_any()
                                                         }}
                                                     </div>
                                                 </div>
 
                                                 // 2 колонки для основных данных
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); margin-bottom: var(--space-lg);">
                                                     // Левая колонка
-                                                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
-                                                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                                            <div style="font-weight: 600; color: #555;">"Document №:"</div>
+                                                    <div style="background: var(--color-bg-body); padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
+                                                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--space-md); align-items: start; font-size: var(--font-size-sm);">
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Document №:"</div>
                                                             <div>{sale_data.header.document_no.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Code:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Code:"</div>
                                                             <div>{sale_data.code.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Description:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Description:"</div>
                                                             <div>{sale_data.description.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Event Type:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Event Type:"</div>
                                                             <div>
-                                                                <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
+                                                                <span style="padding: 2px var(--space-md); background: #e3f2fd; color: #1976d2; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                     {sale_data.state.event_type.clone()}
                                                                 </span>
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Status:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Status:"</div>
                                                             <div>
-                                                                <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
+                                                                <span style="padding: 2px var(--space-md); background: #e8f5e9; color: #2e7d32; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                     {sale_data.state.status_norm.clone()}
                                                                 </span>
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Sale Date:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Sale Date:"</div>
                                                             <div>{format_datetime(&sale_data.state.sale_dt)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Last Change:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Last Change:"</div>
                                                             <div>{sale_data.state.last_change_dt.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
                                                         </div>
                                                     </div>
 
                                                     // Правая колонка
-                                                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
-                                                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                                            <div style="font-weight: 600; color: #555;">"Warehouse Name:"</div>
+                                                    <div style="background: var(--color-bg-body); padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
+                                                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--space-md); align-items: start; font-size: var(--font-size-sm);">
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Warehouse Name:"</div>
                                                             <div>{sale_data.warehouse.warehouse_name.clone().unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Warehouse Type:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Warehouse Type:"</div>
                                                             <div>{sale_data.warehouse.warehouse_type.clone().unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Is Supply:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Is Supply:"</div>
                                                             <div>
                                                                 {match sale_data.state.is_supply {
                                                                     Some(true) => view! {
-                                                                        <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
+                                                                        <span style="padding: 2px var(--space-md); background: #e3f2fd; color: #1976d2; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                             "Yes"
                                                                         </span>
                                                                     }.into_any(),
                                                                     Some(false) => view! {
-                                                                        <span style="padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;">
+                                                                        <span style="padding: 2px var(--space-md); background: #ffebee; color: #c62828; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                             "No"
                                                                         </span>
                                                                     }.into_any(),
@@ -700,16 +714,16 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 }}
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Is Realization:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Is Realization:"</div>
                                                             <div>
                                                                 {match sale_data.state.is_realization {
                                                                     Some(true) => view! {
-                                                                        <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
+                                                                        <span style="padding: 2px var(--space-md); background: #e3f2fd; color: #1976d2; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                             "Yes"
                                                                         </span>
                                                                     }.into_any(),
                                                                     Some(false) => view! {
-                                                                        <span style="padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;">
+                                                                        <span style="padding: 2px var(--space-md); background: #ffebee; color: #c62828; border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs);">
                                                                             "No"
                                                                         </span>
                                                                     }.into_any(),
@@ -717,26 +731,26 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                 }}
                                                             </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Created At:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Created At:"</div>
                                                             <div>{format_datetime(&sale_data.metadata.created_at)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Updated At:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Updated At:"</div>
                                                             <div>{format_datetime(&sale_data.metadata.updated_at)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Version:"</div>
+                                                            <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Version:"</div>
                                                             <div>{sale_data.metadata.version}</div>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 // UUID section at bottom
-                                                <div style="background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
-                                                    <h4 style="margin: 0 0 12px 0; color: #666; font-size: 14px; font-weight: 600;">"Technical IDs"</h4>
-                                                    <div style="display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: center; font-size: 13px;">
+                                                <div style="background: #fafafa; padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
+                                                    <h4 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-muted); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);">"Technical IDs"</h4>
+                                                    <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--space-md); align-items: center; font-size: var(--font-size-xs);">
 
-                                                        <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
-                                                        <div style="display: flex; align-items: center; gap: 8px;">
-                                                            <code style="font-size: 12px; color: #666;" title=conn_id.clone()>{conn_id.clone()}</code>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Connection ID:"</div>
+                                                        <div style="display: flex; align-items: center; gap: var(--space-md);">
+                                                            <code style="font-size: var(--font-size-xs); color: var(--color-text-muted);" title=conn_id.clone()>{conn_id.clone()}</code>
                                                             <button
                                                                 on:click=move |_| {
                                                                     let uuid_copy = conn_id.clone();
@@ -747,16 +761,16 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                         }
                                                                     });
                                                                 }
-                                                                style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
+                                                                style="padding: 2px var(--space-md); font-size: 11px; border: 1px solid var(--color-border-light); background: var(--color-bg-body); border-radius: var(--radius-sm); cursor: pointer;"
                                                                 title="Copy to clipboard"
                                                             >
                                                                 "📋"
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Organization ID:"</div>
-                                                        <div style="display: flex; align-items: center; gap: 8px;">
-                                                            <code style="font-size: 12px; color: #666;" title=org_id.clone()>{org_id.clone()}</code>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Organization ID:"</div>
+                                                        <div style="display: flex; align-items: center; gap: var(--space-md);">
+                                                            <code style="font-size: var(--font-size-xs); color: var(--color-text-muted);" title=org_id.clone()>{org_id.clone()}</code>
                                                             <button
                                                                 on:click=move |_| {
                                                                     let uuid_copy = org_id.clone();
@@ -767,16 +781,16 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                         }
                                                                     });
                                                                 }
-                                                                style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
+                                                                style="padding: 2px var(--space-md); font-size: 11px; border: 1px solid var(--color-border-light); background: var(--color-bg-body); border-radius: var(--radius-sm); cursor: pointer;"
                                                                 title="Copy to clipboard"
                                                             >
                                                                 "📋"
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Marketplace ID:"</div>
-                                                        <div style="display: flex; align-items: center; gap: 8px;">
-                                                            <code style="font-size: 12px; color: #666;" title=mp_id.clone()>{mp_id.clone()}</code>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Marketplace ID:"</div>
+                                                        <div style="display: flex; align-items: center; gap: var(--space-md);">
+                                                            <code style="font-size: var(--font-size-xs); color: var(--color-text-muted);" title=mp_id.clone()>{mp_id.clone()}</code>
                                                             <button
                                                                 on:click=move |_| {
                                                                     let uuid_copy = mp_id.clone();
@@ -787,20 +801,20 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                         }
                                                                     });
                                                                 }
-                                                                style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
+                                                                style="padding: 2px var(--space-md); font-size: 11px; border: 1px solid var(--color-border-light); background: var(--color-bg-body); border-radius: var(--radius-sm); cursor: pointer;"
                                                                 title="Copy to clipboard"
                                                             >
                                                                 "📋"
                                                             </button>
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Marketplace Product ID:"</div>
-                                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Marketplace Product ID:"</div>
+                                                        <div style="display: flex; align-items: center; gap: var(--space-md);">
                                                             {if let Some(ref mp_ref) = sale_data.marketplace_product_ref {
                                                                 let mp_ref_copy = mp_ref.clone();
                                                                 view! {
                                                                     <>
-                                                                        <code style="font-size: 12px; color: #666;" title=mp_ref.clone()>{mp_ref.clone()}</code>
+                                                                        <code style="font-size: var(--font-size-xs); color: var(--color-text-muted);" title=mp_ref.clone()>{mp_ref.clone()}</code>
                                                                         <button
                                                                             on:click=move |_| {
                                                                                 let uuid_copy = mp_ref_copy.clone();
@@ -811,7 +825,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                                     }
                                                                                 });
                                                                             }
-                                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
+                                                                            style="padding: 2px var(--space-md); font-size: 11px; border: 1px solid var(--color-border-light); background: var(--color-bg-body); border-radius: var(--radius-sm); cursor: pointer;"
                                                                             title="Copy to clipboard"
                                                                         >
                                                                             "📋"
@@ -823,13 +837,13 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                             }}
                                                         </div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Nomenclature ID:"</div>
-                                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Nomenclature ID:"</div>
+                                                        <div style="display: flex; align-items: center; gap: var(--space-md);">
                                                             {if let Some(ref nom_ref) = sale_data.nomenclature_ref {
                                                                 let nom_ref_copy = nom_ref.clone();
                                                                 view! {
                                                                     <>
-                                                                        <code style="font-size: 12px; color: #666;" title=nom_ref.clone()>{nom_ref.clone()}</code>
+                                                                        <code style="font-size: var(--font-size-xs); color: var(--color-text-muted);" title=nom_ref.clone()>{nom_ref.clone()}</code>
                                                                         <button
                                                                             on:click=move |_| {
                                                                                 let uuid_copy = nom_ref_copy.clone();
@@ -840,7 +854,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                                     }
                                                                                 });
                                                                             }
-                                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
+                                                                            style="padding: 2px var(--space-md); font-size: 11px; border: 1px solid var(--color-border-light); background: var(--color-bg-body); border-radius: var(--radius-sm); cursor: pointer;"
                                                                             title="Copy to clipboard"
                                                                         >
                                                                             "📋"
@@ -860,93 +874,93 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         let line = &sale_data.line;
                                         view! {
                                             <div class="line-info">
-                                                <div style="margin-bottom: 20px;">
-                                                    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px 20px; align-items: center; margin-bottom: 20px;">
-                                                        <div style="font-weight: 600; color: #555;">"Line ID:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.line_id.clone()}</div>
+                                                <div style="margin-bottom: var(--space-lg);">
+                                                    <div style="display: grid; grid-template-columns: 150px 1fr; gap: var(--space-md) var(--space-xl); align-items: center; margin-bottom: var(--space-lg); font-size: var(--font-size-sm);">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Line ID:"</div>
+                                                        <div>{line.line_id.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Артикул продавца:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.supplier_article.clone()}</div>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Артикул продавца:"</div>
+                                                        <div style="font-weight: var(--font-weight-medium);">{line.supplier_article.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"NM ID:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.nm_id}</div>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"NM ID:"</div>
+                                                        <div>{line.nm_id}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Штрихкод:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">{line.barcode.clone()}</div>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Штрихкод:"</div>
+                                                        <div>{line.barcode.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Название:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px; font-weight: 500;">{line.name.clone()}</div>
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Название:"</div>
+                                                        <div style="font-weight: var(--font-weight-medium);">{line.name.clone()}</div>
 
-                                                        <div style="font-weight: 600; color: #555;">"Количество:"</div>
-                                                        <div style="font-family: var(--font-family-base); font-size: 14px;">
+                                                        <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Количество:"</div>
+                                                        <div>
                                                             {format!("{:.0}", line.qty)}
                                                         </div>
                                                     </div>
 
-                                                    <h3 style="margin: 12px 0 6px 0; font-size: 14px; color: #555;">"Суммы и проценты"</h3>
-                                                    <table style="width: 50%; border-collapse: collapse; font-family: var(--font-family-base); font-size: 13px;">
+                                                    <h3 style="margin: var(--space-md) 0 var(--space-xs) 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); font-weight: var(--font-weight-semibold);">"Суммы и проценты"</h3>
+                                                    <table style="width: 50%; border-collapse: collapse; font-family: var(--font-family-base); font-size: var(--font-size-sm);">
                                                         <thead>
-                                                            <tr style="background: #f5f5f5;">
-                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: left; width: 40%;">"Наименование"</th>
-                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: left; width: 25%;">"Поле"</th>
-                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: right; width: 20%;">"Значение"</th>
-                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: left; width: 15%;">"Ед."</th>
+                                                            <tr style="background: var(--color-hover-bg);">
+                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: left; width: 40%;">"Наименование"</th>
+                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: left; width: 25%;">"Поле"</th>
+                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right; width: 20%;">"Значение"</th>
+                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: left; width: 15%;">"Ед."</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Полная цена"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"total_price"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.total_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Полная цена"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"total_price"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.total_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Процент скидки"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"discount_percent"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.discount_percent.map(|d| format!("{:.1}", d)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"%"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Процент скидки"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"discount_percent"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.discount_percent.map(|d| format!("{:.1}", d)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"%"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Цена без скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"price_list"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.price_list.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Цена без скидок"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"price_list"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.price_list.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Сумма скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"discount_total"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.discount_total.map(|d| format!("{:.2}", d)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Сумма скидок"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"discount_total"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.discount_total.map(|d| format!("{:.2}", d)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Цена после скидок"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"price_effective"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Цена после скидок"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"price_effective"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"СПП"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"spp"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.spp.map(|s| format!("{:.1}", s)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"%"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"СПП"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"spp"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.spp.map(|s| format!("{:.1}", s)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"%"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Итоговая цена"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"finished_price"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.finished_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Итоговая цена"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"finished_price"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.finished_price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"Сумма платежа"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"payment_sale_amount"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"Сумма платежа"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"payment_sale_amount"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                             <tr style="background:rgb(138, 227, 254);">
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; font-weight: 600;">"К выплате"</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">"amount_line"</code></td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right; font-weight: 600;">{line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 4px 6px;">"rub"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); font-weight: var(--font-weight-semibold);">"К выплате"</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>"amount_line"</code></td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right; font-weight: var(--font-weight-semibold);">{line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}</td>
+                                                                <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">"rub"</td>
                                                             </tr>
                                                         </tbody>
                                                     </table>
@@ -1006,24 +1020,24 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 
                                                             view! {
                                                                 <div>
-                                                                    <h3 style="margin: 12px 0 6px 0; font-size: 14px; color: #555;">"Финансовые детали"</h3>
-                                                                    <table style="width: 70%; border-collapse: collapse; font-family: var(--font-family-base); font-size: 13px;">
+                                                                    <h3 style="margin: var(--space-md) 0 var(--space-xs) 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); font-weight: var(--font-weight-semibold);">"Финансовые детали"</h3>
+                                                                    <table style="width: 70%; border-collapse: collapse; font-family: var(--font-family-base); font-size: var(--font-size-sm);">
                                                                         <thead>
-                                                                            <tr style="background: #f5f5f5;">
-                                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: center; width: 8%;">"#"</th>
-                                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: left; width: 47%;">"Наименование"</th>
-                                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: left; width: 25%;">"Поле"</th>
-                                                                                <th style="border: 1px solid #ddd; padding: 4px 6px; text-align: right; width: 20%;">"Значение"</th>
+                                                                            <tr style="background: var(--color-hover-bg);">
+                                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: center; width: 8%;">"#"</th>
+                                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: left; width: 47%;">"Наименование"</th>
+                                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: left; width: 25%;">"Поле"</th>
+                                                                                <th style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right; width: 20%;">"Значение"</th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
                                                                             {rows.into_iter().map(|(num, name, field, value)| {
                                                                                 view! {
                                                                                     <tr>
-                                                                                        <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: center;">{num}</td>
-                                                                                        <td style="border: 1px solid #ddd; padding: 4px 6px;">{name}</td>
-                                                                                        <td style="border: 1px solid #ddd; padding: 4px 6px;"><code style="font-size: 0.85em;">{field}</code></td>
-                                                                                        <td style="border: 1px solid #ddd; padding: 4px 6px; text-align: right;">{value}</td>
+                                                                                        <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: center;">{num}</td>
+                                                                                        <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);">{name}</td>
+                                                                                        <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm);"><code>{field}</code></td>
+                                                                                        <td style="border: 1px solid var(--color-border-light); padding: 3px var(--space-sm); text-align: right;">{value}</td>
                                                                                     </tr>
                                                                                 }
                                                                             }).collect_view()}
@@ -1041,19 +1055,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                     },
                                     "json" => view! {
                                         <div class="json-info">
-                                            <div style="margin-bottom: 10px;">
+                                            <div style="margin-bottom: var(--space-md); font-size: var(--font-size-sm);">
                                                 <strong>"Raw JSON from WB API:"</strong>
                                             </div>
                                             {move || {
                                                 if let Some(json) = raw_json_from_wb.get() {
                                                     view! {
-                                                        <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">
+                                                        <pre style="background: var(--color-hover-bg); padding: var(--space-xl); border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--font-size-sm); line-height: var(--line-height-normal);">
                                                             {json}
                                                         </pre>
                                                     }.into_any()
                                                 } else {
                                                     view! {
-                                                        <div style="padding: 20px; text-align: center; color: #999;">
+                                                        <div style="padding: var(--space-4xl); text-align: center; color: #999; font-size: var(--font-size-sm);">
                                                             "Loading raw JSON from WB..."
                                                         </div>
                                                     }.into_any()
