@@ -7,16 +7,17 @@ use uuid::Uuid;
 
 use crate::domain::a002_organization;
 use crate::domain::a012_wb_sales;
-use crate::shared::data::raw_storage;
 use crate::shared::data::db::get_connection;
+use crate::shared::data::raw_storage;
 use sea_orm::{ConnectionTrait, Statement};
 use std::collections::HashMap;
 
 /// Получить минимальные даты операций (rr_dt) из P903 по SRID
 /// Возвращает две HashMap: (sales_dates, return_dates)
-async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, HashMap<String, String>), anyhow::Error> {
+async fn get_operation_dates_from_p903(
+) -> Result<(HashMap<String, String>, HashMap<String, String>), anyhow::Error> {
     let db = get_connection();
-    
+
     // SQL запрос для операций "Продажа"
     let sql_sales = r#"
         SELECT srid, MIN(rr_dt) as min_rr_dt
@@ -25,7 +26,7 @@ async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, Has
           AND supplier_oper_name = 'Продажа'
         GROUP BY srid
     "#;
-    
+
     // SQL запрос для операций "Возврат"
     let sql_returns = r#"
         SELECT srid, MIN(rr_dt) as min_rr_dt
@@ -34,11 +35,12 @@ async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, Has
           AND supplier_oper_name = 'Возврат'
         GROUP BY srid
     "#;
-    
+
     // Выполняем запрос для продаж
-    let stmt_sales = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_sales.to_string());
+    let stmt_sales =
+        Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_sales.to_string());
     let sales_result = db.query_all(stmt_sales).await?;
-    
+
     let mut sales_dates = HashMap::new();
     for row in sales_result {
         if let (Ok(srid), Ok(rr_dt)) = (
@@ -48,11 +50,12 @@ async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, Has
             sales_dates.insert(srid, rr_dt);
         }
     }
-    
+
     // Выполняем запрос для возвратов
-    let stmt_returns = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_returns.to_string());
+    let stmt_returns =
+        Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql_returns.to_string());
     let returns_result = db.query_all(stmt_returns).await?;
-    
+
     let mut return_dates = HashMap::new();
     for row in returns_result {
         if let (Ok(srid), Ok(rr_dt)) = (
@@ -62,7 +65,7 @@ async fn get_operation_dates_from_p903() -> Result<(HashMap<String, String>, Has
             return_dates.insert(srid, rr_dt);
         }
     }
-    
+
     Ok((sales_dates, return_dates))
 }
 
@@ -151,7 +154,12 @@ pub async fn list_sales(
 
     let mp_map: std::collections::HashMap<String, (String, Option<String>)> = marketplace_products
         .into_iter()
-        .map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone())))
+        .map(|mp| {
+            (
+                mp.base.id.as_string(),
+                (mp.article.clone(), mp.nomenclature_ref.clone()),
+            )
+        })
         .collect();
 
     // Загружаем всю номенклатуру
@@ -164,7 +172,12 @@ pub async fn list_sales(
 
     let nom_map: std::collections::HashMap<String, (String, String)> = nomenclature_items
         .into_iter()
-        .map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone())))
+        .map(|nom| {
+            (
+                nom.base.id.as_string(),
+                (nom.base.code.clone(), nom.article.clone()),
+            )
+        })
         .collect();
 
     // Загружаем даты операций из P903 (для продаж и возвратов отдельно)
@@ -175,15 +188,19 @@ pub async fn list_sales(
         .into_iter()
         .map(|sale| {
             let organization_name = org_map.get(&sale.header.organization_id).cloned();
-            
+
             // Получаем данные из marketplace_product
-            let (marketplace_article, nomenclature_ref_from_mp) = sale.marketplace_product_ref
+            let (marketplace_article, nomenclature_ref_from_mp) = sale
+                .marketplace_product_ref
                 .as_ref()
                 .and_then(|mp_ref| mp_map.get(mp_ref).cloned())
                 .unwrap_or((String::new(), None));
 
             // Получаем данные из nomenclature (приоритет отдаем прямой ссылке из sale)
-            let nom_ref = sale.nomenclature_ref.as_ref().or(nomenclature_ref_from_mp.as_ref());
+            let nom_ref = sale
+                .nomenclature_ref
+                .as_ref()
+                .or(nomenclature_ref_from_mp.as_ref());
             let (nomenclature_code, nomenclature_article) = nom_ref
                 .and_then(|nom_ref| nom_map.get(nom_ref).cloned())
                 .unwrap_or((String::new(), String::new()));
@@ -194,11 +211,11 @@ pub async fn list_sales(
                 Some(price) if price > 0.0 => {
                     // Положительная цена - ищем среди продаж
                     sales_dates.get(&sale.header.document_no).cloned()
-                },
+                }
                 Some(price) if price < 0.0 => {
                     // Отрицательная цена - ищем среди возвратов
                     return_dates.get(&sale.header.document_no).cloned()
-                },
+                }
                 _ => {
                     // None или 0 - не устанавливаем дату
                     None

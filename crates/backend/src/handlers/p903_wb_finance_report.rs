@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::projections::p903_wb_finance_report::repository;
 
 /// Handler для получения списка финансовых отчетов с фильтрами
-pub async fn list_finance_report(
+pub async fn list_reports(
     Query(req): Query<WbFinanceReportListRequest>,
 ) -> Result<Json<WbFinanceReportListResponse>, axum::http::StatusCode> {
     let (items, total) = repository::list_with_filters(
@@ -43,7 +43,7 @@ pub async fn list_finance_report(
 }
 
 /// Handler для получения детальной информации по композитному ключу
-pub async fn get_finance_report_detail(
+pub async fn get_report_detail(
     axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
 ) -> Result<Json<WbFinanceReportDetailResponse>, axum::http::StatusCode> {
     let item = repository::get_by_id(&rr_dt, rrd_id)
@@ -57,6 +57,21 @@ pub async fn get_finance_report_detail(
     Ok(Json(WbFinanceReportDetailResponse {
         item: model_to_dto(item),
     }))
+}
+
+/// Handler для получения raw JSON по композитному ключу
+pub async fn get_raw_json(
+    axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
+) -> Result<String, axum::http::StatusCode> {
+    let item = repository::get_by_id(&rr_dt, rrd_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get finance report raw json: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    Ok(item.extra.unwrap_or_else(|| "{}".to_string()))
 }
 
 /// Handler для поиска записей по srid

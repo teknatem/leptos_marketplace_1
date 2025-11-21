@@ -148,3 +148,46 @@
 .btn-test svg {
     stroke: currentColor;
 }
+
+/* Action buttons for modern interfaces (P904, etc.) */
+.action-button {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.action-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.action-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.action-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.action-button-success {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    box-shadow: 0 2px 4px rgba(76,175,80,0.2);
+}
+
+.action-button-success:hover:not(:disabled) {
+    box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+}
+
+.action-button-primary {
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    box-shadow: 0 2px 4px rgba(33,150,243,0.2);
+}
+
+.action-button-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 8px rgba(33,150,243,0.3);
+}

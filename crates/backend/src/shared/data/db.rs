@@ -1827,6 +1827,128 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
+    // ============================================================
+    // P904: Sales Data
+    // ============================================================
+    let check_p904_sales_data = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p904_sales_data';
+    "#;
+    let p904_sales_data_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_p904_sales_data.to_string(),
+        ))
+        .await?;
+
+    if p904_sales_data_exists.is_empty() {
+        tracing::info!("Creating p904_sales_data table");
+        let create_p904_sales_data_table_sql = r#"
+            CREATE TABLE p904_sales_data (
+                -- Technical fields
+                registrator_ref TEXT NOT NULL,
+                registrator_type TEXT NOT NULL DEFAULT '',
+                
+                -- Dimensions
+                date TEXT NOT NULL,
+                connection_mp_ref TEXT NOT NULL,
+                nomenclature_ref TEXT NOT NULL,
+                marketplace_product_ref TEXT NOT NULL,
+                
+                -- Sums
+                customer_in REAL NOT NULL DEFAULT 0,
+                customer_out REAL NOT NULL DEFAULT 0,
+                coinvest_in REAL NOT NULL DEFAULT 0,
+                commission_out REAL NOT NULL DEFAULT 0,
+                acquiring_out REAL NOT NULL DEFAULT 0,
+                penalty_out REAL NOT NULL DEFAULT 0,
+                logistics_out REAL NOT NULL DEFAULT 0,
+                seller_out REAL NOT NULL DEFAULT 0,
+                price_full REAL NOT NULL DEFAULT 0,
+                price_list REAL NOT NULL DEFAULT 0,
+                price_return REAL NOT NULL DEFAULT 0,
+                commission_percent REAL NOT NULL DEFAULT 0,
+                coinvest_persent REAL NOT NULL DEFAULT 0,
+                total REAL NOT NULL DEFAULT 0,
+                
+                -- Info fields
+                document_no TEXT NOT NULL,
+                article TEXT NOT NULL,
+                posted_at TEXT NOT NULL,
+                
+                -- Primary Key
+                id TEXT PRIMARY KEY NOT NULL
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p904_sales_data_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Index on registrator_ref for fast deletion
+        let create_idx_registrator = r#"
+            CREATE INDEX IF NOT EXISTS idx_p904_registrator
+            ON p904_sales_data (registrator_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_registrator.to_string(),
+        ))
+        .await?;
+    } else {
+        // Migration: add registrator_type if not exists
+        let check_column = conn
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "PRAGMA table_info(p904_sales_data);".to_string(),
+            ))
+            .await?;
+
+        let has_registrator_type = check_column.iter().any(|row| {
+            row.try_get::<String>("", "name")
+                .ok()
+                .map(|name| name == "registrator_type")
+                .unwrap_or(false)
+        });
+
+        if !has_registrator_type {
+            tracing::info!("Migrating p904_sales_data: adding registrator_type column");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE p904_sales_data ADD COLUMN registrator_type TEXT NOT NULL DEFAULT '';".to_string(),
+            ))
+            .await?;
+        }
+    }
+
+    // ============================================================
+    // User Form Settings
+    // ============================================================
+    let check_user_form_settings = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_form_settings';"
+                .to_string(),
+        ))
+        .await?;
+
+    if check_user_form_settings.is_empty() {
+        tracing::info!("Creating user_form_settings table");
+        let create_user_form_settings_sql = r#"
+            CREATE TABLE user_form_settings (
+                form_key TEXT PRIMARY KEY NOT NULL,
+                settings_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_user_form_settings_sql.to_string(),
+        ))
+        .await?;
+    }
+
     DB_CONN
         .set(conn)
         .map_err(|_| anyhow::anyhow!("Failed to set DB_CONN"))?;

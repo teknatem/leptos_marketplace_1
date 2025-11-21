@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
+use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesDetailDto {
@@ -98,20 +99,6 @@ pub struct NomenclatureInfo {
 }
 
 // Finance Report Link structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinanceReportLink {
-    pub rr_dt: String,
-    pub rrd_id: i64,
-    pub ppvz_vw: Option<f64>,
-    pub ppvz_vw_nds: Option<f64>,
-    pub retail_amount: Option<f64>,
-    pub ppvz_for_pay: Option<f64>,
-    pub commission_percent: Option<f64>,
-    pub retail_price: Option<f64>,
-    pub retail_price_withdisc_rub: Option<f64>,
-    pub acquiring_fee: Option<f64>,
-}
-
 #[component]
 pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (sale, set_sale) = signal::<Option<WbSalesDetailDto>>(None);
@@ -125,9 +112,10 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 
     // Linked finance reports
     let (linked_finance_reports, set_linked_finance_reports) =
-        signal::<Vec<FinanceReportLink>>(Vec::new());
+        signal::<Vec<WbFinanceReportDto>>(Vec::new());
     let (links_loading, set_links_loading) = signal(false);
     let (links_error, set_links_error) = signal(None::<String>);
+    let (links_fetch_attempted, set_links_fetch_attempted) = signal(false);
     let (selected_finance_report, set_selected_finance_report) =
         signal::<Option<(String, i64)>>(None);
     let (nomenclature_info, set_nomenclature_info) = signal::<Option<NomenclatureInfo>>(None);
@@ -306,9 +294,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         if tab == "links" || tab == "line" {
             if let Some(sale_data) = sale.get() {
                 let srid_val = sale_data.header.document_no.clone();
-                if !srid_val.is_empty() && linked_finance_reports.get().is_empty() {
+                // Проверяем флаг: загружаем только если еще не пытались загружать
+                if !srid_val.is_empty() && !links_fetch_attempted.get() {
                     set_links_loading.set(true);
                     set_links_error.set(None);
+                    set_links_fetch_attempted.set(true);
 
                     spawn_local(async move {
                         let url =
@@ -316,7 +306,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         match Request::get(&url).send().await {
                             Ok(resp) => {
                                 if resp.status() == 200 {
-                                    match resp.json::<Vec<FinanceReportLink>>().await {
+                                    match resp.json::<Vec<WbFinanceReportDto>>().await {
                                         Ok(reports) => {
                                             set_linked_finance_reports.set(reports);
                                             set_links_loading.set(false);
@@ -1118,7 +1108,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                     <For
                                                                         each=move || reports.clone()
                                                                         key=|report| format!("{}_{}", report.rr_dt, report.rrd_id)
-                                                                        children=move |report: FinanceReportLink| {
+                                                                        children=move |report: WbFinanceReportDto| {
                                                                             let rr_dt = report.rr_dt.clone();
                                                                             let rrd_id = report.rrd_id;
                                                                             view! {

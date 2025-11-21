@@ -63,6 +63,7 @@ pub fn Navbar() -> impl IntoView {
         ("p901_barcodes", "Штрихкоды номенклатуры", "barcode"),
         ("p902_ozon_finance_realization", "OZON Finance Realization (Postings)", "dollar-sign"),
         ("p903_wb_finance_report", "WB Finance Report (P903)", "dollar-sign"),
+        ("p904_sales_data", "Sales Data (P904)", "dollar-sign"),
     ];
 
     view! {

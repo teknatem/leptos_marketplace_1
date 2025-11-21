@@ -1,12 +1,15 @@
 pub mod domain;
+pub mod handlers;
 pub mod projections;
 pub mod shared;
 pub mod usecases;
-pub mod handlers;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    use axum::http::{header, Method};
+    use axum::body::Body;
+    use axum::http::{header, Method, Request};
+    use axum::middleware::{self, Next};
+    use axum::response::Response;
     use axum::{
         extract::{Path, Query},
         routing::{get, post},
@@ -43,6 +46,78 @@ async fn main() -> anyhow::Result<()> {
                 .with_ansi(false),
         )
         .init();
+
+    // Функция для форматирования чисел с разделителями триад
+    fn format_number(n: usize) -> String {
+        let s = n.to_string();
+        let mut result = String::new();
+        for (i, ch) in s.chars().rev().enumerate() {
+            if i > 0 && i % 3 == 0 {
+                result.push('.');
+            }
+            result.push(ch);
+        }
+        result.chars().rev().collect()
+    }
+
+    // Простой middleware для логирования запросов
+    async fn request_logger(req: Request<Body>, next: Next) -> Response {
+        use axum::body::to_bytes;
+        use chrono::Utc;
+
+        let start = std::time::Instant::now();
+        let method = req.method().clone();
+        let uri = req.uri().clone();
+
+        let response = next.run(req).await;
+
+        let (parts, body) = response.into_parts();
+
+        // Читаем тело ответа, чтобы узнать реальный размер
+        let bytes = match to_bytes(body, usize::MAX).await {
+            Ok(b) => b,
+            Err(_) => {
+                let duration = start.elapsed();
+                let timestamp = Utc::now() + chrono::Duration::hours(3);
+                // Ошибка - используем коричневый цвет
+                println!(
+                    "\x1b[33m{}\x1b[0m | {:>5}ms | {:>12} | {} {:>6} {}",
+                    timestamp.format("%H:%M:%S"),
+                    duration.as_millis(),
+                    "error",
+                    parts.status.as_u16(),
+                    method,
+                    uri.path()
+                );
+                return Response::from_parts(parts, Body::default());
+            }
+        };
+
+        let size = bytes.len();
+        let duration = start.elapsed();
+        let timestamp = Utc::now() + chrono::Duration::hours(3);
+
+        // Выбираем цвет для времени: голубой для 200, коричневый для остальных
+        let color_code = if parts.status.as_u16() == 200 {
+            "36"
+        } else {
+            "33"
+        };
+
+        println!(
+            "\x1b[{}m{}\x1b[0m | {:>5}ms | {:>12} | {} {:>6} {}",
+            color_code,
+            timestamp.format("%H:%M:%S"),
+            duration.as_millis(),
+            format!("{}", format_number(size)),
+            parts.status.as_u16(),
+            method,
+            uri.path()
+        );
+
+        // Создаем новый ответ с прочитанным телом
+        Response::from_parts(parts, Body::from(bytes))
+    }
 
     // Define a database path in the `target` directory in a platform-agnostic way
     let db_path = std::path::Path::new("target").join("db").join("app.db");
@@ -132,10 +207,13 @@ async fn main() -> anyhow::Result<()> {
     struct SearchNomenclatureQuery {
         article: String,
     }
-    
+
     async fn search_nomenclature_by_article(
         Query(query): Query<SearchNomenclatureQuery>,
-    ) -> Result<Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>, axum::http::StatusCode> {
+    ) -> Result<
+        Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
+        axum::http::StatusCode,
+    > {
         match domain::a004_nomenclature::repository::find_by_article(query.article.trim()).await {
             Ok(items) => Ok(Json(items)),
             Err(e) => {
@@ -395,13 +473,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // UseCase u506: Import from LemanaPro handlers
-    static LEMANAPRO_IMPORT_EXECUTOR: Lazy<Arc<usecases::u506_import_from_lemanapro::ImportExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u506_import_from_lemanapro::ProgressTracker::new());
-            Arc::new(usecases::u506_import_from_lemanapro::ImportExecutor::new(
-                tracker,
-            ))
-        });
+    static LEMANAPRO_IMPORT_EXECUTOR: Lazy<
+        Arc<usecases::u506_import_from_lemanapro::ImportExecutor>,
+    > = Lazy::new(|| {
+        let tracker = Arc::new(usecases::u506_import_from_lemanapro::ProgressTracker::new());
+        Arc::new(usecases::u506_import_from_lemanapro::ImportExecutor::new(
+            tracker,
+        ))
+    });
 
     async fn start_lemanapro_import_handler(
         Json(request): Json<contracts::usecases::u506_import_from_lemanapro::ImportRequest>,
@@ -1062,7 +1141,7 @@ async fn main() -> anyhow::Result<()> {
         // P903 WB Finance Report handlers
         .route(
             "/api/p903/finance-report",
-            get(handlers::p903_wb_finance_report::list_finance_report),
+            get(handlers::p903_wb_finance_report::list_reports),
         )
         .route(
             "/api/p903/finance-report/search-by-srid",
@@ -1070,7 +1149,25 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/p903/finance-report/:rr_dt/:rrd_id",
-            get(handlers::p903_wb_finance_report::get_finance_report_detail),
+            get(handlers::p903_wb_finance_report::get_report_detail),
+        )
+        .route(
+            "/api/p903/finance-report/:rr_dt/:rrd_id/raw",
+            get(handlers::p903_wb_finance_report::get_raw_json),
+        )
+        // P904 Sales Data handlers
+        .route(
+            "/api/p904/sales-data",
+            get(handlers::p904_sales_data::list),
+        )
+        // Form Settings handlers
+        .route(
+            "/api/form-settings/:form_key",
+            get(handlers::form_settings::get_settings),
+        )
+        .route(
+            "/api/form-settings",
+            post(handlers::form_settings::save_settings),
         )
         // A009 OZON Returns handlers
         .route(
@@ -1224,6 +1321,7 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::p900_sales_register::get_by_registrator),
         )
         .fallback_service(ServeDir::new("dist"))
+        .layer(middleware::from_fn(request_logger))
         .layer(cors);
 
     let addr: SocketAddr = ([0, 0, 0, 0], 3000).into();

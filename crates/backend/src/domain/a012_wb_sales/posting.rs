@@ -23,9 +23,12 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Удалить старые проекции (если были)
     crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string())
         .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     // Создать новые проекции
     crate::projections::p900_mp_sales_register::service::project_wb_sales(&document, id).await?;
+    crate::projections::p904_sales_data::service::project_wb_sales(&document, id).await?;
 
     Ok(())
 }
@@ -47,6 +50,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     // Удалить проекции
     crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string())
+        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
         .await?;
 
     Ok(())

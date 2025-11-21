@@ -1,5 +1,6 @@
 use leptos::prelude::Effect;
 use leptos::prelude::*;
+use std::collections::HashMap;
 use web_sys::window;
 
 #[derive(Clone, Copy)]
@@ -8,6 +9,7 @@ pub struct AppGlobalContext {
     pub active: RwSignal<Option<String>>,
     pub left_open: RwSignal<bool>,
     pub right_open: RwSignal<bool>,
+    pub form_states: RwSignal<HashMap<String, serde_json::Value>>,
 }
 
 impl AppGlobalContext {
@@ -17,7 +19,19 @@ impl AppGlobalContext {
             active: RwSignal::new(None),
             left_open: RwSignal::new(true),
             right_open: RwSignal::new(true),
+            form_states: RwSignal::new(HashMap::new()),
         }
+    }
+
+    pub fn get_form_state(&self, form_key: &str) -> Option<serde_json::Value> {
+        self.form_states
+            .with_untracked(|states| states.get(form_key).cloned())
+    }
+
+    pub fn set_form_state(&self, form_key: String, state: serde_json::Value) {
+        self.form_states.update(|states| {
+            states.insert(form_key, state);
+        });
     }
 
     pub fn init_router_integration(&self) {

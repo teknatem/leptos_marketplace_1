@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
+use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbOrderDetailDto {
@@ -108,20 +109,6 @@ pub struct NomenclatureInfo {
 }
 
 // Finance Report Link structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinanceReportLink {
-    pub rr_dt: String,
-    pub rrd_id: i64,
-    pub ppvz_vw: Option<f64>,
-    pub ppvz_vw_nds: Option<f64>,
-    pub retail_amount: Option<f64>,
-    pub ppvz_for_pay: Option<f64>,
-    pub commission_percent: Option<f64>,
-    pub retail_price: Option<f64>,
-    pub retail_price_withdisc_rub: Option<f64>,
-    pub acquiring_fee: Option<f64>,
-}
-
 #[component]
 pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (order, set_order) = signal::<Option<WbOrderDetailDto>>(None);
@@ -135,7 +122,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
 
     // Linked finance reports
     let (linked_finance_reports, set_linked_finance_reports) =
-        signal::<Vec<FinanceReportLink>>(Vec::new());
+        signal::<Vec<WbFinanceReportDto>>(Vec::new());
     let (links_loading, set_links_loading) = signal(false);
     let (links_error, set_links_error) = signal(None::<String>);
     let (selected_finance_report, set_selected_finance_report) =
@@ -326,7 +313,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                         match Request::get(&url).send().await {
                             Ok(resp) => {
                                 if resp.status() == 200 {
-                                    match resp.json::<Vec<FinanceReportLink>>().await {
+                                    match resp.json::<Vec<WbFinanceReportDto>>().await {
                                         Ok(reports) => {
                                             set_linked_finance_reports.set(reports);
                                             set_links_loading.set(false);
@@ -1143,7 +1130,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                     <For
                                                                         each=move || reports.clone()
                                                                         key=|report| format!("{}_{}", report.rr_dt, report.rrd_id)
-                                                                        children=move |report: FinanceReportLink| {
+                                                                        children=move |report: WbFinanceReportDto| {
                                                                             let rr_dt = report.rr_dt.clone();
                                                                             let rrd_id = report.rrd_id;
                                                                             view! {
