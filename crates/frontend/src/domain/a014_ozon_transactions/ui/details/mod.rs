@@ -3,6 +3,10 @@ use leptos::logging::log;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
 
+// Import posting detail components
+use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
+use crate::domain::a011_ozon_fbo_posting::ui::details::OzonFboPostingDetail;
+
 // DTO структуры для детального представления
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonTransactionsDetailDto {
@@ -15,6 +19,10 @@ pub struct OzonTransactionsDetailDto {
     pub services: Vec<ServiceDto>,
     #[serde(rename = "is_posted")]
     pub is_posted: bool,
+    #[serde(rename = "posting_ref")]
+    pub posting_ref: Option<String>,
+    #[serde(rename = "posting_ref_type")]
+    pub posting_ref_type: Option<String>,
     #[serde(rename = "created_at")]
     pub created_at: String,
     #[serde(rename = "updated_at")]
@@ -81,8 +89,17 @@ pub fn OzonTransactionsDetail(
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
+    let (posting, set_posting) = signal(false);
+    
+    // Signal for selected posting document (type, id)
+    let (selected_posting, set_selected_posting) = signal::<Option<(String, String)>>(None);
 
+    // Store transaction ID for use in handlers
+    let stored_id = StoredValue::new(transaction_id.clone());
     let transaction_id_for_effect = transaction_id.clone();
+    
+    // Memo for posting status
+    let is_posted = Memo::new(move |_| transaction_data.get().map(|s| s.is_posted).unwrap_or(false));
 
     // Загрузить детальные данные
     Effect::new(move || {
@@ -133,15 +150,123 @@ pub fn OzonTransactionsDetail(
 
     view! {
         <div class="modal-overlay" on:click=move |_| on_close.run(())>
-            <div class="modal-content-wide" on:click=move |e| e.stop_propagation() style="display: flex; flex-direction: column; max-height: 90vh;">
-                <div style="padding: 20px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                    <h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #333;">"Детали транзакции OZON"</h3>
-                    <button
-                        on:click=move |_| on_close.run(())
-                        style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; line-height: 1; padding: 0; width: 30px; height: 30px;"
-                    >
-                        "✕"
-                    </button>
+            <div class="modal-content-wide" on:click=move |e| e.stop_propagation() style="display: flex; flex-direction: column; max-height: 90vh; padding: var(--space-xl); background: var(--color-hover-table); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
+                <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: var(--space-xl);">
+                        <h2 style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-white); letter-spacing: 0.5px;">"💳 Детали транзакции OZON"</h2>
+                        <Show when=move || transaction_data.get().is_some()>
+                            {move || {
+                                let posted = is_posted.get();
+                                view! {
+                                    <div style=move || format!(
+                                        "display: flex; align-items: center; gap: var(--space-xs); padding: 3px var(--space-md); border-radius: var(--radius-sm); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); {}",
+                                        if posted {
+                                            "background: rgba(255,255,255,0.2); color: var(--color-success); border: 1px solid rgba(76,175,80,0.5);"
+                                        } else {
+                                            "background: rgba(255,255,255,0.2); color: var(--color-warning); border: 1px solid rgba(255,152,0,0.5);"
+                                        }
+                                    )>
+                                        <span style="font-size: var(--font-size-sm);">{if posted { "✓" } else { "○" }}</span>
+                                        <span>{if posted { "Проведен" } else { "Не проведен" }}</span>
+                                    </div>
+                                }
+                            }}
+                        </Show>
+                    </div>
+                    <div style="display: flex; gap: var(--space-md);">
+                        <Show when=move || transaction_data.get().is_some()>
+                            <Show
+                                when=move || !is_posted.get()
+                                fallback=move || {
+                                    view! {
+                                        <button
+                                            on:click=move |_| {
+                                                let doc_id = stored_id.get_value();
+                                                set_posting.set(true);
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    let url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/unpost", doc_id);
+                                                    match Request::post(&url).send().await {
+                                                        Ok(response) => {
+                                                            if response.status() == 200 {
+                                                                log!("Transaction unposted successfully");
+                                                                // Reload transaction data
+                                                                let reload_url = format!("http://localhost:3000/api/ozon_transactions/{}", doc_id);
+                                                                if let Ok(resp) = Request::get(&reload_url).send().await {
+                                                                    if let Ok(text) = resp.text().await {
+                                                                        if let Ok(data) = serde_json::from_str::<OzonTransactionsDetailDto>(&text) {
+                                                                            log!("Reloaded transaction, is_posted: {}", data.is_posted);
+                                                                            set_transaction_data.set(Some(data));
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                log!("Failed to unpost: status {}", response.status());
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            log!("Error unposting: {:?}", e);
+                                                        }
+                                                    }
+                                                    set_posting.set(false);
+                                                });
+                                            }
+                                            disabled=move || posting.get()
+                                            style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-warning); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
+                                        >
+                                            {move || if posting.get() { "Отмена проведения..." } else { "✗ Отменить проведение" }}
+                                        </button>
+                                    }
+                                }
+                            >
+                                {
+                                    view! {
+                                        <button
+                                            on:click=move |_| {
+                                                let doc_id = stored_id.get_value();
+                                                set_posting.set(true);
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    let url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/post", doc_id);
+                                                    match Request::post(&url).send().await {
+                                                        Ok(response) => {
+                                                            if response.status() == 200 {
+                                                                log!("Transaction posted successfully");
+                                                                // Reload transaction data
+                                                                let reload_url = format!("http://localhost:3000/api/ozon_transactions/{}", doc_id);
+                                                                if let Ok(resp) = Request::get(&reload_url).send().await {
+                                                                    if let Ok(text) = resp.text().await {
+                                                                        if let Ok(data) = serde_json::from_str::<OzonTransactionsDetailDto>(&text) {
+                                                                            log!("Reloaded transaction, is_posted: {}", data.is_posted);
+                                                                            set_transaction_data.set(Some(data));
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                log!("Failed to post: status {}", response.status());
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            log!("Error posting: {:?}", e);
+                                                        }
+                                                    }
+                                                    set_posting.set(false);
+                                                });
+                                            }
+                                            disabled=move || posting.get()
+                                            style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-success); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
+                                        >
+                                            {move || if posting.get() { "Проведение..." } else { "✓ Провести" }}
+                                        </button>
+                                    }
+                                }
+                            </Show>
+                        </Show>
+                        <button
+                            on:click=move |_| on_close.run(())
+                            style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-danger); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
+                        >
+                            "✕ Закрыть"
+                        </button>
+                    </div>
                 </div>
 
                 <div style="flex: 1; overflow-y: auto; min-height: 0;">
@@ -259,7 +384,7 @@ pub fn OzonTransactionsDetail(
                                                             <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
                                                                 <div style="font-weight: 600; color: #555;">"Posting Number:"</div>
                                                                 <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
-                                                                    <span style="color: #2196F3; font-weight: 500; cursor: pointer;">{data.posting.posting_number.clone()}</span>
+                                                                    <span style="color: #2196F3; font-weight: 500;">{data.posting.posting_number.clone()}</span>
                                                                 </div>
 
                                                                 <div style="font-weight: 600; color: #555;">"Схема доставки:"</div>
@@ -270,6 +395,41 @@ pub fn OzonTransactionsDetail(
 
                                                                 <div style="font-weight: 600; color: #555;">"Warehouse ID:"</div>
                                                                 <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{data.posting.warehouse_id}</div>
+
+                                                                <div style="font-weight: 600; color: #555;">"Документ отгрузки:"</div>
+                                                                <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                                    {move || {
+                                                                        let data = transaction_data.get().unwrap();
+                                                                        if let (Some(posting_ref), Some(posting_ref_type)) = (&data.posting_ref, &data.posting_ref_type) {
+                                                                            let ref_clone = posting_ref.clone();
+                                                                            let type_clone = posting_ref_type.clone();
+                                                                            view! {
+                                                                                <a
+                                                                                    href="#"
+                                                                                    on:click=move |ev| {
+                                                                                        ev.prevent_default();
+                                                                                        set_selected_posting.set(Some((type_clone.clone(), ref_clone.clone())));
+                                                                                    }
+                                                                                    style="color: #2196F3; text-decoration: underline; cursor: pointer; font-weight: 500;"
+                                                                                >
+                                                                                    {format!("{} {}", posting_ref_type, data.posting.posting_number.clone())}
+                                                                                </a>
+                                                                            }.into_any()
+                                                                        } else if data.is_posted {
+                                                                            view! {
+                                                                                <span style="color: #f44336; font-weight: 600;">
+                                                                                    "⚠️ Документ отгрузки не найден"
+                                                                                </span>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            view! {
+                                                                                <span style="color: #999;">
+                                                                                    "—"
+                                                                                </span>
+                                                                            }.into_any()
+                                                                        }
+                                                                    }}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -348,6 +508,39 @@ pub fn OzonTransactionsDetail(
                     }}
                 </div>
             </div>
+
+            // Modal for posting document details (A010 or A011)
+            {move || {
+                if let Some((posting_type, posting_id)) = selected_posting.get() {
+                    if posting_type == "A010" {
+                        view! {
+                            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+                                <div style="background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
+                                    <OzonFbsPostingDetail
+                                        id=posting_id
+                                        on_close=move || set_selected_posting.set(None)
+                                    />
+                                </div>
+                            </div>
+                        }.into_any()
+                    } else if posting_type == "A011" {
+                        view! {
+                            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+                                <div style="background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
+                                    <OzonFboPostingDetail
+                                        id=posting_id
+                                        on_close=move || set_selected_posting.set(None)
+                                    />
+                                </div>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                } else {
+                    view! { <div></div> }.into_any()
+                }
+            }}
         </div>
     }
 }

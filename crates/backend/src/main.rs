@@ -1016,6 +1016,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/ozon_transactions/by-posting/:posting_number",
             get(handlers::a014_ozon_transactions::get_by_posting_number),
         )
+        .route(
+            "/api/a014/ozon-transactions/:id/post",
+            post(handlers::a014_ozon_transactions::post_document),
+        )
+        .route(
+            "/api/a014/ozon-transactions/:id/unpost",
+            post(handlers::a014_ozon_transactions::unpost_document),
+        )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
         .route(
@@ -1159,6 +1167,25 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/p904/sales-data",
             get(handlers::p904_sales_data::list),
+        )
+        // P905 WB Commission History handlers
+        .route(
+            "/api/p905-commission/list",
+            get(handlers::p905_wb_commission_history::list_commissions),
+        )
+        .route(
+            "/api/p905-commission/sync",
+            post(handlers::p905_wb_commission_history::sync_commissions),
+        )
+        .route(
+            "/api/p905-commission/:id",
+            get(handlers::p905_wb_commission_history::get_commission)
+                .put(handlers::p905_wb_commission_history::save_commission)
+                .delete(handlers::p905_wb_commission_history::delete_commission),
+        )
+        .route(
+            "/api/p905-commission",
+            post(handlers::p905_wb_commission_history::save_commission),
         )
         // Form Settings handlers
         .route(

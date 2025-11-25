@@ -129,6 +129,12 @@ pub struct OzonTransactions {
 
     /// Флаг проведения документа (для будущего постинга)
     pub is_posted: bool,
+
+    /// Ссылка на документ постинга (A010 или A011)
+    pub posting_ref: Option<String>,
+
+    /// Тип документа постинга ("A010" или "A011")
+    pub posting_ref_type: Option<String>,
 }
 
 impl OzonTransactions {
@@ -151,6 +157,8 @@ impl OzonTransactions {
             services,
             source_meta,
             is_posted,
+            posting_ref: None,
+            posting_ref_type: None,
         }
     }
 
@@ -174,6 +182,8 @@ impl OzonTransactions {
             services,
             source_meta,
             is_posted,
+            posting_ref: None,
+            posting_ref_type: None,
         }
     }
 
@@ -273,8 +283,11 @@ pub struct OzonTransactionsListDto {
     pub accruals_for_sale: f64,
     pub sale_commission: f64,
     pub delivery_charge: f64,
+    pub substatus: Option<String>,
     pub delivering_date: Option<String>,
     pub is_posted: bool,
+    pub posting_ref: Option<String>,
+    pub posting_ref_type: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -291,6 +304,8 @@ pub struct OzonTransactionsDetailDto {
     pub services: Vec<OzonTransactionsService>,
     pub source_meta: OzonTransactionsSourceMeta,
     pub is_posted: bool,
+    pub posting_ref: Option<String>,
+    pub posting_ref_type: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_deleted: bool,
@@ -308,4 +323,6 @@ pub struct OzonTransactionsDto {
     pub services: Vec<OzonTransactionsService>,
     pub source_meta: OzonTransactionsSourceMeta,
     pub is_posted: bool,
+    pub posting_ref: Option<String>,
+    pub posting_ref_type: Option<String>,
 }

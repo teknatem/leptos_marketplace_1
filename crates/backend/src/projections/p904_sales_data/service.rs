@@ -1,6 +1,7 @@
 use super::{projection_builder, repository};
 use anyhow::Result;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
+use contracts::domain::a014_ozon_transactions::aggregate::OzonTransactions;
 use uuid::Uuid;
 
 /// Проецировать WB Sales в Sales Data (P904)
@@ -31,5 +32,21 @@ pub async fn list_with_filters(
     limit: Option<u64>,
 ) -> Result<Vec<repository::ModelWithCabinet>> {
     repository::list_with_filters(date_from, date_to, connection_mp_ref, limit).await
+}
+
+/// Проецировать OZON Transactions в Sales Data (P904)
+pub async fn project_ozon_transactions(document: &OzonTransactions, document_id: Uuid) -> Result<()> {
+    let entries = projection_builder::from_ozon_transactions(document, &document_id.to_string()).await?;
+    
+    for entry in entries {
+        repository::upsert_entry(&entry).await?;
+    }
+
+    tracing::info!(
+        "Projected OZON Transactions document {} into Sales Data P904",
+        document.header.operation_id
+    );
+
+    Ok(())
 }
 

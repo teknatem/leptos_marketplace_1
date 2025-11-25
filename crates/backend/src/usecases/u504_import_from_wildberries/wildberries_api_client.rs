@@ -2082,6 +2082,81 @@ impl WildberriesApiClient {
 
         Ok(all_orders)
     }
+
+    /// Получить тарифы комиссий по категориям
+    /// GET https://common-api.wildberries.ru/api/v1/tariffs/commission?locale=ru
+    ///
+    /// Требует авторизацию через API ключ
+    pub async fn fetch_commission_tariffs(
+        &self,
+        connection: &ConnectionMP,
+    ) -> Result<Vec<CommissionTariffRow>> {
+        let url = "https://common-api.wildberries.ru/api/v1/tariffs/commission?locale=ru";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Commission Tariffs API");
+        }
+
+        self.log_to_file(&format!(
+            "\n╔════════════════════════════════════════════════════════════════╗"
+        ));
+        self.log_to_file(&format!("║ WILDBERRIES COMMISSION TARIFFS API"));
+        self.log_to_file(&format!("║ URL: {}", url));
+        self.log_to_file(&format!("║ Method: GET (requires Authorization header)"));
+        self.log_to_file(&format!(
+            "╚════════════════════════════════════════════════════════════════╝"
+        ));
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!(
+                "Wildberries Commission Tariffs API request failed: {}",
+                body
+            );
+            anyhow::bail!(
+                "Wildberries Commission Tariffs API failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+
+        // Parse JSON response
+        let parsed: CommissionTariffResponse = serde_json::from_str(&body).map_err(|e| {
+            self.log_to_file(&format!("ERROR: Failed to parse JSON: {}", e));
+            anyhow::anyhow!("Failed to parse commission tariffs response: {}", e)
+        })?;
+
+        self.log_to_file(&format!(
+            "✓ Successfully parsed {} commission tariff records",
+            parsed.report.len()
+        ));
+
+        tracing::info!(
+            "✓ Wildberries Commission Tariffs API: Successfully loaded {} tariff records",
+            parsed.report.len()
+        );
+
+        Ok(parsed.report)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -2644,6 +2719,39 @@ pub struct WbOrderRow {
     /// SRID - уникальный идентификатор заказа
     #[serde(default)]
     pub srid: Option<String>,
+}
+
+// ============================================================================
+// Commission Tariffs structures
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommissionTariffRow {
+    #[serde(rename = "kgvpBooking")]
+    pub kgvp_booking: f64,
+    #[serde(rename = "kgvpMarketplace")]
+    pub kgvp_marketplace: f64,
+    #[serde(rename = "kgvpPickup")]
+    pub kgvp_pickup: f64,
+    #[serde(rename = "kgvpSupplier")]
+    pub kgvp_supplier: f64,
+    #[serde(rename = "kgvpSupplierExpress")]
+    pub kgvp_supplier_express: f64,
+    #[serde(rename = "paidStorageKgvp")]
+    pub paid_storage_kgvp: f64,
+    #[serde(rename = "parentID")]
+    pub parent_id: i32,
+    #[serde(rename = "parentName")]
+    pub parent_name: String,
+    #[serde(rename = "subjectID")]
+    pub subject_id: i32,
+    #[serde(rename = "subjectName")]
+    pub subject_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommissionTariffResponse {
+    pub report: Vec<CommissionTariffRow>,
 }
 
 // ============================================================================

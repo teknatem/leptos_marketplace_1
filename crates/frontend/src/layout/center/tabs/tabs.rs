@@ -23,6 +23,8 @@ use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
 use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::projections::p904_sales_data::ui::list::SalesDataList;
+use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
+use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::usecases::u501_import_from_ut;
@@ -140,6 +142,15 @@ pub fn Tabs() -> impl IntoView {
         }
         Some(key) if key == "p904_sales_data" => {
             view! { <SalesDataList /> }.into_any()
+        }
+        Some(key) if key == "p905_commission_history" => {
+            view! { <CommissionHistoryList /> }.into_any()
+        }
+        Some(key) if key.starts_with("p905-commission/") => {
+            view! { <CommissionHistoryDetails id=key.strip_prefix("p905-commission/").unwrap().to_string() /> }.into_any()
+        }
+        Some(key) if key == "p905-commission-new" => {
+            view! { <CommissionHistoryDetails /> }.into_any()
         }
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }

@@ -45,6 +45,7 @@ impl ImportExecutor {
                 "a007_marketplace_product" => "Товары маркетплейса",
                 "a012_wb_sales" => "Продажи Wildberries",
                 "p903_wb_finance_report" => "Финансовый отчет WB",
+                "p905_wb_commission_history" => "История комиссий WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -119,13 +120,15 @@ impl ImportExecutor {
                 }
                 "a015_wb_orders" => {
                     // Orders API может быть недоступен - пытаемся, но не останавливаем импорт
-                    match self.import_wb_orders(
-                        session_id,
-                        connection,
-                        request.date_from,
-                        request.date_to,
-                    )
-                    .await {
+                    match self
+                        .import_wb_orders(
+                            session_id,
+                            connection,
+                            request.date_from,
+                            request.date_to,
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             tracing::info!("✅ WB Orders imported successfully");
                         }
@@ -135,15 +138,14 @@ impl ImportExecutor {
                                 e
                             );
                             tracing::warn!("{}", warning_msg);
-                            
-                            self.progress_tracker
-                                .add_error(
-                                    session_id,
-                                    Some("a015_wb_orders".to_string()),
-                                    warning_msg.clone(),
-                                    Some(format!("API might not be available: {}", e)),
-                                );
-                            
+
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some("a015_wb_orders".to_string()),
+                                warning_msg.clone(),
+                                Some(format!("API might not be available: {}", e)),
+                            );
+
                             // Продолжаем импорт остальных агрегатов
                         }
                     }
@@ -156,6 +158,10 @@ impl ImportExecutor {
                         request.date_to,
                     )
                     .await?;
+                }
+                "p905_wb_commission_history" => {
+                    self.import_commission_history(session_id, connection)
+                        .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -964,7 +970,10 @@ impl ImportExecutor {
 
             // Создаем line (в WB один заказ = одна строка)
             let line = WbOrdersLine {
-                line_id: order_row.srid.clone().unwrap_or_else(|| document_no.clone()),
+                line_id: order_row
+                    .srid
+                    .clone()
+                    .unwrap_or_else(|| document_no.clone()),
                 supplier_article: supplier_article.clone(),
                 nm_id: order_row.nm_id.unwrap_or(0),
                 barcode: order_row.barcode.clone().unwrap_or_default(),
@@ -988,7 +997,9 @@ impl ImportExecutor {
                     .or_else(|| {
                         chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
                             .ok()
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                            .map(|ndt| {
+                                chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc)
+                            })
                     })
                     .unwrap_or_else(chrono::Utc::now)
             } else {
@@ -1003,7 +1014,9 @@ impl ImportExecutor {
                     .or_else(|| {
                         chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
                             .ok()
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                            .map(|ndt| {
+                                chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc)
+                            })
                     })
             } else {
                 None
@@ -1017,7 +1030,9 @@ impl ImportExecutor {
                     .or_else(|| {
                         chrono::NaiveDateTime::parse_from_str(cancel_date_str, "%Y-%m-%dT%H:%M:%S")
                             .ok()
-                            .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+                            .map(|ndt| {
+                                chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc)
+                            })
                     })
             } else {
                 None
@@ -1353,6 +1368,219 @@ impl ImportExecutor {
         );
 
         Ok(())
+    }
+
+    /// Импорт истории комиссий WB (для использования в u504)
+    async fn import_commission_history(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<()> {
+        let aggregate_index = "p905_wb_commission_history";
+
+        tracing::info!("Starting commission history import");
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Загрузка тарифов комиссий из WB API".to_string()),
+        );
+
+        match self.sync_commission_tariffs(connection).await {
+            Ok((new_count, updated_count, skipped_count)) => {
+                let total = new_count + updated_count + skipped_count;
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total as i32,
+                    Some(total as i32),
+                    new_count as i32,
+                    updated_count as i32,
+                );
+
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "Завершено: {} новых, {} обновлено, {} пропущено",
+                        new_count, updated_count, skipped_count
+                    )),
+                );
+
+                self.progress_tracker
+                    .complete_aggregate(session_id, aggregate_index);
+
+                tracing::info!(
+                    "Commission history import completed: new={}, updated={}, skipped={}",
+                    new_count,
+                    updated_count,
+                    skipped_count
+                );
+
+                Ok(())
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to sync commission tariffs: {}", e);
+                tracing::error!("{}", error_msg);
+
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    error_msg.clone(),
+                    Some(e.to_string()),
+                );
+
+                Err(e)
+            }
+        }
+    }
+
+    /// Синхронизация тарифов комиссий Wildberries
+    /// Загружает данные из API и сохраняет только для категорий, которые есть в a007_marketplace_product
+    pub async fn sync_commission_tariffs(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<(usize, usize, usize)> {
+        tracing::info!("Starting commission tariffs sync from Wildberries API");
+
+        // 1. Получить все комиссии из API
+        let all_tariffs = self.api_client.fetch_commission_tariffs(connection).await?;
+        tracing::info!(
+            "Fetched {} total tariff records from API",
+            all_tariffs.len()
+        );
+
+        // 2. Получить уникальные category_id из a007_marketplace_product
+        let db = crate::shared::data::db::get_connection();
+        use sea_orm::{EntityTrait, QuerySelect};
+
+        let category_ids: Vec<Option<String>> =
+            crate::domain::a007_marketplace_product::repository::Entity::find()
+                .select_only()
+                .column(crate::domain::a007_marketplace_product::repository::Column::CategoryId)
+                .distinct()
+                .into_tuple()
+                .all(db)
+                .await?;
+
+        // Собираем subject_ids (преобразуем category_id в i32)
+        let mut our_subject_ids = std::collections::HashSet::new();
+        for cat_id in category_ids.into_iter().flatten() {
+            // category_id может быть строкой, попробуем преобразовать в i32
+            if let Ok(subject_id) = cat_id.parse::<i32>() {
+                our_subject_ids.insert(subject_id);
+            }
+        }
+
+        // Добавляем фиксированные категории
+        our_subject_ids.insert(7717);
+        our_subject_ids.insert(7436);
+        our_subject_ids.insert(5931);
+        our_subject_ids.insert(4263);
+
+        tracing::info!("Added 4 fixed category IDs: 7717, 7436, 5931, 4263");
+
+        tracing::info!(
+            "Found {} unique category IDs in marketplace products",
+            our_subject_ids.len()
+        );
+
+        // 3. Фильтруем тарифы: оставляем только те, что есть в наших продуктах
+        let filtered_tariffs: Vec<_> = all_tariffs
+            .into_iter()
+            .filter(|tariff| our_subject_ids.contains(&tariff.subject_id))
+            .collect();
+
+        tracing::info!(
+            "Filtered to {} tariff records matching our categories",
+            filtered_tariffs.len()
+        );
+
+        // 4. Для каждого тарифа проверяем, есть ли изменения
+        let mut new_records = 0;
+        let mut updated_records = 0;
+        let mut skipped_records = 0;
+
+        let today = chrono::Utc::now().date_naive();
+
+        for tariff in filtered_tariffs {
+            // Получить последнюю запись для этой категории
+            let latest =
+                crate::projections::p905_wb_commission_history::repository::get_latest_by_subject(
+                    tariff.subject_id,
+                )
+                .await?;
+
+            // Сериализуем текущий тариф в JSON для сравнения
+            let current_json = serde_json::to_string(&tariff)?;
+
+            // Если записи нет или JSON изменился - создаем новую запись
+            let should_create = match latest {
+                None => {
+                    tracing::debug!(
+                        "No existing record for subject_id {}, creating new",
+                        tariff.subject_id
+                    );
+                    true
+                }
+                Some(ref existing) => {
+                    // Сравниваем JSON
+                    if existing.raw_json != current_json {
+                        tracing::debug!(
+                            "JSON changed for subject_id {}, creating new record",
+                            tariff.subject_id
+                        );
+                        true
+                    } else {
+                        tracing::debug!(
+                            "No changes for subject_id {}, skipping",
+                            tariff.subject_id
+                        );
+                        false
+                    }
+                }
+            };
+
+            if should_create {
+                let entry =
+                    crate::projections::p905_wb_commission_history::repository::CommissionEntry {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        date: today,
+                        subject_id: tariff.subject_id,
+                        subject_name: tariff.subject_name.clone(),
+                        parent_id: tariff.parent_id,
+                        parent_name: tariff.parent_name.clone(),
+                        kgvp_booking: tariff.kgvp_booking,
+                        kgvp_marketplace: tariff.kgvp_marketplace,
+                        kgvp_pickup: tariff.kgvp_pickup,
+                        kgvp_supplier: tariff.kgvp_supplier,
+                        kgvp_supplier_express: tariff.kgvp_supplier_express,
+                        paid_storage_kgvp: tariff.paid_storage_kgvp,
+                        raw_json: current_json,
+                        payload_version: 1,
+                    };
+
+                crate::projections::p905_wb_commission_history::repository::upsert_entry(&entry)
+                    .await?;
+
+                if latest.is_none() {
+                    new_records += 1;
+                } else {
+                    updated_records += 1;
+                }
+            } else {
+                skipped_records += 1;
+            }
+        }
+
+        tracing::info!(
+            "Commission tariffs sync completed: new={}, updated={}, skipped={}",
+            new_records,
+            updated_records,
+            skipped_records
+        );
+
+        Ok((new_records, updated_records, skipped_records))
     }
 }
 

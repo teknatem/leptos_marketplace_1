@@ -23,6 +23,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_a015, set_import_a015) = signal(false);
     let (import_a012, set_import_a012) = signal(false);
     let (import_p903, set_import_p903) = signal(false);
+    let (import_p905, set_import_p905) = signal(false);
 
     // Даты для импорта (по умолчанию: последние 30 дней)
     let default_date_from = Utc::now().naive_utc().date() - Duration::days(30);
@@ -199,6 +200,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_p903.get() {
                 targets.push("p903_wb_finance_report".to_string());
             }
+            if import_p905.get() {
+                targets.push("p905_wb_commission_history".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -355,6 +359,14 @@ pub fn ImportWidget() -> impl IntoView {
                             on:change=move |ev| { set_import_p903.set(event_target_checked(&ev)); }
                         />
                         " p903_wb_finance_report - Финансовый отчет WB"
+                    </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_p905.get()
+                            on:change=move |ev| { set_import_p905.set(event_target_checked(&ev)); }
+                        />
+                        " p905_wb_commission_history - История комиссий WB"
                     </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">

@@ -90,3 +90,35 @@ pub async fn get_by_posting_number(
     tracing::info!("Found {} transactions for posting_number: {}", transactions.len(), decoded_posting_number);
     Ok(Json(serde_json::json!(transactions)))
 }
+
+/// Handler для проведения документа
+pub async fn post_document(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a014_ozon_transactions::posting::post_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to post document: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({"success": true})))
+}
+
+/// Handler для отмены проведения документа
+pub async fn unpost_document(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a014_ozon_transactions::posting::unpost_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to unpost document: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({"success": true})))
+}

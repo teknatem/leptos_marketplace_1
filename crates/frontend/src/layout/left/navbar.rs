@@ -61,9 +61,22 @@ pub fn Navbar() -> impl IntoView {
     let registers = vec![
         ("p900_sales_register", "Регистр продаж", "database"),
         ("p901_barcodes", "Штрихкоды номенклатуры", "barcode"),
-        ("p902_ozon_finance_realization", "OZON Finance Realization (Postings)", "dollar-sign"),
-        ("p903_wb_finance_report", "WB Finance Report (P903)", "dollar-sign"),
+        (
+            "p902_ozon_finance_realization",
+            "OZON Finance Realization (Postings)",
+            "dollar-sign",
+        ),
+        (
+            "p903_wb_finance_report",
+            "WB Finance Report (P903)",
+            "dollar-sign",
+        ),
         ("p904_sales_data", "Sales Data (P904)", "dollar-sign"),
+        (
+            "p905_commission_history",
+            "WB Commission History (P905)",
+            "percent",
+        ),
     ];
 
     view! {

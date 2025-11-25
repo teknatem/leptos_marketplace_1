@@ -400,8 +400,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             tracing::info!("Adding base_nomenclature_ref column to a004_nomenclature");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE a004_nomenclature ADD COLUMN base_nomenclature_ref TEXT;"
-                    .to_string(),
+                "ALTER TABLE a004_nomenclature ADD COLUMN base_nomenclature_ref TEXT;".to_string(),
             ))
             .await?;
         }
@@ -1792,7 +1791,8 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             tracing::info!("Migrating p903_wb_finance_report: adding ppvz_sales_commission column");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE p903_wb_finance_report ADD COLUMN ppvz_sales_commission REAL;".to_string(),
+                "ALTER TABLE p903_wb_finance_report ADD COLUMN ppvz_sales_commission REAL;"
+                    .to_string(),
             ))
             .await?;
             tracing::info!("Migration of p903_wb_finance_report completed successfully");
@@ -1817,10 +1817,16 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             });
 
             if !has_field {
-                tracing::info!("Migrating p903_wb_finance_report: adding {} column", field_name);
+                tracing::info!(
+                    "Migrating p903_wb_finance_report: adding {} column",
+                    field_name
+                );
                 conn.execute(Statement::from_string(
                     DatabaseBackend::Sqlite,
-                    format!("ALTER TABLE p903_wb_finance_report ADD COLUMN {} {};", field_name, field_type),
+                    format!(
+                        "ALTER TABLE p903_wb_finance_report ADD COLUMN {} {};",
+                        field_name, field_type
+                    ),
                 ))
                 .await?;
             }
@@ -1916,10 +1922,88 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             tracing::info!("Migrating p904_sales_data: adding registrator_type column");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE p904_sales_data ADD COLUMN registrator_type TEXT NOT NULL DEFAULT '';".to_string(),
+                "ALTER TABLE p904_sales_data ADD COLUMN registrator_type TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
             ))
             .await?;
         }
+    }
+
+    // ============================================================
+    // P905: WB Commission History
+    // ============================================================
+    let check_p905_wb_commission = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p905_wb_commission_history';
+    "#;
+    let p905_wb_commission_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_p905_wb_commission.to_string(),
+        ))
+        .await?;
+
+    if p905_wb_commission_exists.is_empty() {
+        tracing::info!("Creating p905_wb_commission_history table");
+        let create_p905_wb_commission_table_sql = r#"
+            CREATE TABLE p905_wb_commission_history (
+                id TEXT PRIMARY KEY NOT NULL,
+                date TEXT NOT NULL,
+                subject_id INTEGER NOT NULL,
+                subject_name TEXT NOT NULL,
+                parent_id INTEGER NOT NULL,
+                parent_name TEXT NOT NULL,
+                kgvp_booking REAL NOT NULL,
+                kgvp_marketplace REAL NOT NULL,
+                kgvp_pickup REAL NOT NULL,
+                kgvp_supplier REAL NOT NULL,
+                kgvp_supplier_express REAL NOT NULL,
+                paid_storage_kgvp REAL NOT NULL,
+                raw_json TEXT NOT NULL,
+                loaded_at_utc TEXT NOT NULL,
+                payload_version INTEGER NOT NULL DEFAULT 1
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p905_wb_commission_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Create unique index to prevent duplicates per date and subject
+        let create_idx_date_subject = r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_p905_date_subject 
+            ON p905_wb_commission_history(date, subject_id);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_date_subject.to_string(),
+        ))
+        .await?;
+
+        // Create index for date range queries
+        let create_idx_date = r#"
+            CREATE INDEX IF NOT EXISTS idx_p905_date 
+            ON p905_wb_commission_history(date);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_date.to_string(),
+        ))
+        .await?;
+
+        // Create index for subject_id lookups
+        let create_idx_subject = r#"
+            CREATE INDEX IF NOT EXISTS idx_p905_subject_id 
+            ON p905_wb_commission_history(subject_id);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_subject.to_string(),
+        ))
+        .await?;
+
+        tracing::info!("Successfully created p905_wb_commission_history table with indexes");
     }
 
     // ============================================================
