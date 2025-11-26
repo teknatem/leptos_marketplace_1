@@ -2,15 +2,13 @@ use chrono::Utc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::projections::p905_wb_commission_history::api;
 use crate::layout::global_context::AppGlobalContext;
+use crate::projections::p905_wb_commission_history::api;
 
 #[component]
-pub fn CommissionHistoryDetails(
-    #[prop(into, optional)] id: Option<String>,
-) -> impl IntoView {
+pub fn CommissionHistoryDetails(#[prop(into, optional)] id: Option<String>) -> impl IntoView {
     let is_new = id.is_none();
-    
+
     // State
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
@@ -38,7 +36,7 @@ pub fn CommissionHistoryDetails(
         Effect::new(move |_| {
             set_loading.set(true);
             let id_for_fetch = id_clone.clone();
-            
+
             spawn_local(async move {
                 match api::get_commission(&id_for_fetch).await {
                     Ok(commission) => {
@@ -65,8 +63,8 @@ pub fn CommissionHistoryDetails(
         });
     }
 
-    let app_context = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext not found");
+    let app_context =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let close_tab = move |_| {
         if let Some(ref commission_id) = id {
             app_context.close_tab(&format!("p905-commission-{}", commission_id));

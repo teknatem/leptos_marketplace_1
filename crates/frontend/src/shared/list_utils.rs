@@ -1,6 +1,6 @@
+use leptos::ev::MouseEvent;
 /// Универсальные утилиты для работы со списками (поиск, сортировка, UI компоненты)
 use leptos::prelude::*;
-use leptos::ev::MouseEvent;
 use std::cmp::Ordering;
 use wasm_bindgen::JsCast;
 
@@ -68,7 +68,11 @@ pub fn highlight_matches(text: &str, filter: &str) -> AnyView {
 pub fn sort_list<T: Sortable>(items: &mut Vec<T>, field: &str, ascending: bool) {
     items.sort_by(|a, b| {
         let cmp = a.compare_by_field(b, field);
-        if ascending { cmp } else { cmp.reverse() }
+        if ascending {
+            cmp
+        } else {
+            cmp.reverse()
+        }
     });
 }
 
@@ -78,9 +82,39 @@ pub fn filter_list<T: Searchable + Clone>(items: Vec<T>, filter: &str) -> Vec<T>
         return items;
     }
 
-    items.into_iter()
+    items
+        .into_iter()
         .filter(|item| item.matches_filter(filter))
         .collect()
+}
+
+/// Форматирует число с разделителем тысяч (пробел) и двумя знаками после запятой
+pub fn format_number(value: f64) -> String {
+    // Форматируем с двумя знаками после запятой
+    let formatted = format!("{:.2}", value);
+
+    // Разделяем целую и дробную части
+    let parts: Vec<&str> = formatted.split('.').collect();
+    let integer_part = parts[0];
+    let decimal_part = parts.get(1).unwrap_or(&"00");
+
+    // Вставляем пробелы каждые 3 цифры с конца целой части
+    let mut result = String::new();
+    let chars: Vec<char> = integer_part.chars().rev().collect();
+
+    for (i, c) in chars.iter().enumerate() {
+        if i > 0 && i % 3 == 0 && *c != '-' {
+            result.push(' ');
+        }
+        result.push(*c);
+    }
+
+    // Переворачиваем обратно и добавляем дробную часть
+    format!(
+        "{}.{}",
+        result.chars().rev().collect::<String>(),
+        decimal_part
+    )
 }
 
 /// Компонент поиска с debounce и кнопкой очистки
@@ -113,8 +147,7 @@ pub fn SearchInput(
 
         // Отменяем предыдущий таймер если есть
         if let Some(timeout_id) = debounce_timeout.get_value() {
-            web_sys::window()
-                .and_then(|w| Some(w.clear_timeout_with_handle(timeout_id)));
+            web_sys::window().and_then(|w| Some(w.clear_timeout_with_handle(timeout_id)));
         }
 
         // Создаем новый таймер
@@ -179,7 +212,11 @@ pub fn SearchInput(
 /// Получить индикатор сортировки для заголовка
 pub fn get_sort_indicator(current_field: &str, field: &str, ascending: bool) -> &'static str {
     if current_field == field {
-        if ascending { " ▲" } else { " ▼" }
+        if ascending {
+            " ▲"
+        } else {
+            " ▼"
+        }
     } else {
         " ⇅"
     }

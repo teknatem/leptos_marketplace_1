@@ -88,3 +88,42 @@ table tr {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Enhanced Table Styles */
+
+/* Zebra Striping */
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.table-striped tbody tr:hover {
+    background-color: var(--color-hover-table);
+}
+
+/* Sticky Columns */
+.sticky-left {
+    position: sticky;
+    left: 0;
+    background: var(--color-bg-body);
+    z-index: 1;
+    border-right: 1px solid var(--color-border-light);
+}
+
+/* Ensure sticky header stays above sticky column */
+thead th.sticky-left {
+    z-index: calc(var(--z-sticky) + 1);
+    background: var(--color-table-header-bg);
+}
+
+/* Alignment Utilities */
+.text-right {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-left {
+    text-align: left;
+}

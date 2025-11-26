@@ -1,0 +1,205 @@
+# Leptos Marketplace - Project Intelligence for AI
+
+## 🎯 Project Overview
+Full-stack Rust marketplace management system integrating with Wildberries and Ozon, powered by 1C:UT11 data.
+
+## 🏗️ Architecture Quick Reference
+
+### Tech Stack
+- **Frontend**: Leptos 0.6 (Rust → WASM)
+- **Backend**: Axum (async Rust)
+- **Database**: SQLite (marketplace.db)
+- **Architecture**: DDD + Vertical Slice Architecture (VSA)
+- **Workspace**: 3 crates (contracts, backend, frontend)
+
+### Critical Structure
+```
+crates/
+├── contracts/    # Shared DTOs & types between frontend/backend
+├── backend/      # Axum server, domain logic, repositories
+└── frontend/     # Leptos UI components
+```
+
+## 📦 Naming System (CRITICAL)
+
+This project uses indexed naming for features:
+
+### Aggregates: `a001-a499` (Domain entities)
+- `a001_connection_1c` - 1C connections
+- `a002_organization` - Organizations  
+- `a003_product` - Products
+- `a004_nomenclature` - Nomenclature
+- `a014_ozon_transactions` - Ozon transactions
+- `a015_wb_orders` - Wildberries orders
+
+### UseCases: `u501-u999` (Operations)
+- `u501_import_from_ut` - Import from 1C:UT11
+- `u504_import_from_wildberries` - WB integration
+- `u505_import_from_ozon` - Ozon integration
+- `u506_import_from_lemanapro` - LemanaPro integration
+
+### Projections: `p901-p999` (Read models/analytics)
+- `p902_sales_register` - Sales register
+- `p903_wb_finance_report` - WB finance report
+- `p904_sales_data` - Sales analytics
+- `p905_wb_commission_history` - WB commissions
+
+**File Structure Example:**
+```
+crates/backend/src/domain/a001_connection_1c/
+├── mod.rs
+├── service.rs       # Business logic orchestration
+└── repository.rs    # Database CRUD operations
+
+crates/frontend/src/domain/a001_connection_1c/ui/
+├── list/           # List view
+└── details/        # Details view
+```
+
+## 🔑 Critical Patterns
+
+### 1. Domain Layer Rules (See: memory-bank/architecture/domain-layer-architecture.md)
+- **repository.rs**: ONLY database CRUD, NO business logic
+- **service.rs**: Orchestrates operations, calls validators, business rules
+- **aggregate.rs**: Data structure + simple instance methods
+- **events.rs**: Complex validation/lifecycle handlers (optional, only if needed)
+
+### 2. Lifecycle Events (1C-style)
+```rust
+// Create/Update flow:
+1. validate()       // Can block operation
+2. before_write()   // Can modify data
+3. service logic    // Business rules
+4. repository::save()
+
+// Delete flow:
+1. before_delete()  // Can block operation
+2. repository::soft_delete()
+```
+
+### 3. Layer Communication
+```
+Handlers → Service → Repository → Database
+         ↘ UseCases (for multi-aggregate operations)
+```
+
+**DON'T**: Call repository directly from handlers
+**DO**: Always go through service layer
+
+## 🚨 Environment-Specific Rules
+
+### Windows Environment
+- **Shell**: PowerShell (NOT bash)
+- **Command chaining**: Use semicolons `;` or separate commands, NEVER use `&&`
+- **Node.js**: Use `pnpm` (not npm/yarn)
+
+### Development Commands
+```powershell
+# Backend
+cargo run --bin backend
+
+# Frontend (development)
+trunk serve --port 8080
+
+# Frontend (production build)
+trunk build --release
+
+# Database migrations
+# Run .sql files manually or via migrate_db.py
+```
+
+## 📊 Database Patterns
+
+### Table Naming
+- Aggregates: `a001_connection_1c_database`
+- UseCases history: `u501_import_history`
+- Projections: `p904_sales_data`
+
+### Common Fields
+```sql
+id TEXT PRIMARY KEY,           -- UUID or auto-increment
+code TEXT,                     -- Business key
+description TEXT,              -- Display name
+created_at TEXT,               -- ISO timestamp
+updated_at TEXT,               -- ISO timestamp
+is_deleted INTEGER DEFAULT 0   -- Soft delete flag
+```
+
+## 🎨 Frontend Patterns
+
+### Component Structure
+```
+domain/{feature}/ui/
+├── list/
+│   └── mod.rs       # List view with table
+└── details/
+    └── mod.rs       # Details/edit form
+```
+
+### Common Utilities
+- `shared/list_utils.rs` - Table sorting, filtering helpers
+- `shared/date_utils.rs` - Date formatting
+- `layout/center/tabs/tabs.rs` - Tab management
+
+### Styling
+- CSS in `frontend/styles/3-components/`
+- Use existing table classes, form patterns
+- Consistent UI: tabs, filters, date pickers
+
+## 🔍 Key Files to Reference
+
+### Architecture
+- `memory-bank/architecture/domain-layer-architecture.md` - Domain layer rules
+- `memory-bank/architecture/naming-conventions.md` - Complete naming guide
+- `memory-bank/architecture/project-structure.md` - Workspace structure
+
+### Active Work
+- `memory-bank/activeContext.md` - Current focus & recent changes
+- `memory-bank/progress.md` - What works, what's left
+
+## 💡 Project Intelligence
+
+### Code Quality Rules
+- Max 2-3 levels of nesting
+- Early return instead of deep conditionals
+- Extract nested logic into separate functions
+- Use `match` and combinators (`map`, `and_then`) over nested if-else
+
+### Common Gotchas
+1. **Aggregates vs Projections**: Aggregates are write models (transactional), Projections are read models (analytics)
+2. **Service vs UseCase**: Service handles single aggregate, UseCase coordinates multiple aggregates
+3. **Repository simplicity**: Keep it dumb - just CRUD, no business rules
+4. **Soft deletes**: Use `is_deleted` flag, don't hard delete aggregates
+
+### Integration Notes
+- **Wildberries API**: Token-based, stored in connection settings
+- **Ozon API**: Client ID + API Key
+- **1C OData**: Basic auth, standard OData v4 protocol
+
+## 📝 Documentation Updates
+
+When updating memory bank (user command: "update memory bank"):
+1. Read ALL 5 core files first
+2. Update `activeContext.md` - current focus
+3. Update `progress.md` - what's done, what's left
+4. Update this `.cursorrules` if discovering new patterns
+5. Update architecture docs only if patterns changed
+
+## 🎯 Current Project Status (2025-11-26)
+
+**Working Features:**
+- ✅ 1C integration (u501)
+- ✅ Wildberries integration (u504)
+- ✅ Ozon integration (u505)
+- ✅ Sales analytics (p904)
+- ✅ WB commission history (p905)
+- ✅ Ozon transactions (a014)
+
+**Known Issues:**
+- Check `memory-bank/progress.md` for active issues
+
+---
+
+**Memory Bank Location**: `memory-bank/`
+**For detailed context**: Always start with 5 core files in memory-bank/
+

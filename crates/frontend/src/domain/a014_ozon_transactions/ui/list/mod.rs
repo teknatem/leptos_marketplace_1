@@ -1,8 +1,8 @@
 use super::details::OzonTransactionsDetail;
+use crate::domain::a014_ozon_transactions::state::get_state;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
-use crate::shared::list_utils::{get_sort_indicator, Sortable};
-use chrono::{Datelike, Utc};
+use crate::shared::list_utils::{format_number, get_sort_indicator, Sortable};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -114,13 +114,14 @@ impl Sortable for OzonTransactionsDto {
 
 #[component]
 pub fn OzonTransactionsList() -> impl IntoView {
-    let (transactions, set_transactions) = signal::<Vec<OzonTransactionsDto>>(Vec::new());
+    let state = get_state();
+    // let (transactions, set_transactions) = signal::<Vec<OzonTransactionsDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (selected_id, set_selected_id) = signal::<Option<String>>(None);
 
     // Множественный выбор для массовых операций
-    let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
+    // let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
 
     // Статус массовых операций
     let (posting_in_progress, set_posting_in_progress) = signal(false);
@@ -128,30 +129,18 @@ pub fn OzonTransactionsList() -> impl IntoView {
     let (_, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
 
     // Сортировка
-    let (sort_field, set_sort_field) = signal::<String>("operation_date".to_string());
-    let (sort_ascending, set_sort_ascending) = signal(false); // По умолчанию - новые сначала
+    // let (sort_field, set_sort_field) = signal::<String>("operation_date".to_string());
+    // let (sort_ascending, set_sort_ascending) = signal(false); // По умолчанию - новые сначала
 
-    // Фильтры - период по умолчанию: текущий месяц
-    let now = Utc::now().date_naive();
-    let year = now.year();
-    let month = now.month();
-    let month_start =
-        chrono::NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-    let month_end = if month == 12 {
-        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-            .map(|d| d - chrono::Duration::days(1))
-            .expect("Invalid month end date")
-    } else {
-        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
-            .map(|d| d - chrono::Duration::days(1))
-            .expect("Invalid month end date")
-    };
+    // Фильтры - берем из глобального стейта, инициализация в state.rs
+    // let now = Utc::now().date_naive();
+    // ... (код инициализации даты перемещен в state.rs) ...
 
-    let (date_from, set_date_from) = signal(month_start.format("%Y-%m-%d").to_string());
-    let (date_to, set_date_to) = signal(month_end.format("%Y-%m-%d").to_string());
-    let (transaction_type_filter, set_transaction_type_filter) = signal("".to_string());
-    let (operation_type_name_filter, set_operation_type_name_filter) = signal("".to_string());
-    let (posting_number_filter, set_posting_number_filter) = signal("".to_string());
+    // let (date_from, set_date_from) = signal(month_start.format("%Y-%m-%d").to_string());
+    // let (date_to, set_date_to) = signal(month_end.format("%Y-%m-%d").to_string());
+    // let (transaction_type_filter, set_transaction_type_filter) = signal("".to_string());
+    // let (operation_type_name_filter, set_operation_type_name_filter) = signal("".to_string());
+    // let (posting_number_filter, set_posting_number_filter) = signal("".to_string());
 
     // State for save settings notification
     let (save_notification, set_save_notification) = signal(None::<String>);
@@ -163,11 +152,11 @@ pub fn OzonTransactionsList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let date_from_val = date_from.get();
-            let date_to_val = date_to.get();
-            let transaction_type_val = transaction_type_filter.get();
-            let operation_type_name_val = operation_type_name_filter.get();
-            let posting_number_val = posting_number_filter.get();
+            let date_from_val = state.with(|s| s.date_from.clone());
+            let date_to_val = state.with(|s| s.date_to.clone());
+            let transaction_type_val = state.with(|s| s.transaction_type_filter.clone());
+            let operation_type_name_val = state.with(|s| s.operation_type_name_filter.clone());
+            let posting_number_val = state.with(|s| s.posting_number_filter.clone());
 
             let mut query_params = format!("?date_from={}&date_to={}", date_from_val, date_to_val);
 
@@ -201,7 +190,10 @@ pub fn OzonTransactionsList() -> impl IntoView {
                                             "Successfully parsed {} OZON transactions",
                                             items.len()
                                         );
-                                        set_transactions.set(items);
+                                        state.update(|s| {
+                                            s.transactions = items;
+                                            s.is_loaded = true;
+                                        });
                                         set_loading.set(false);
                                     }
                                     Err(e) => {
@@ -234,9 +226,9 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
     // Функция для получения отсортированных данных
     let get_sorted_items = move || -> Vec<OzonTransactionsDto> {
-        let mut result = transactions.get();
-        let field = sort_field.get();
-        let ascending = sort_ascending.get();
+        let mut result = state.with(|s| s.transactions.clone());
+        let field = state.with(|s| s.sort_field.clone());
+        let ascending = state.with(|s| s.sort_ascending);
         result.sort_by(|a, b| {
             if ascending {
                 a.compare_by_field(b, &field)
@@ -263,79 +255,91 @@ pub fn OzonTransactionsList() -> impl IntoView {
         )
     };
 
-    // Load saved settings from database on mount
+    // Load saved settings from database on mount IF not already loaded in memory
     Effect::new(move |_| {
-        spawn_local(async move {
-            match load_saved_settings(FORM_KEY).await {
-                Ok(Some(settings)) => {
-                    if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                    {
-                        set_date_from.set(date_from_val.to_string());
+        if !state.with_untracked(|s| s.is_loaded) {
+            spawn_local(async move {
+                match load_saved_settings(FORM_KEY).await {
+                    Ok(Some(settings)) => {
+                        state.update(|s| {
+                            if let Some(date_from_val) =
+                                settings.get("date_from").and_then(|v| v.as_str())
+                            {
+                                s.date_from = date_from_val.to_string();
+                            }
+                            if let Some(date_to_val) =
+                                settings.get("date_to").and_then(|v| v.as_str())
+                            {
+                                s.date_to = date_to_val.to_string();
+                            }
+                            if let Some(transaction_type_val) = settings
+                                .get("transaction_type_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.transaction_type_filter = transaction_type_val.to_string();
+                            }
+                            if let Some(operation_type_name_val) = settings
+                                .get("operation_type_name_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.operation_type_name_filter = operation_type_name_val.to_string();
+                            }
+                            if let Some(posting_number_val) = settings
+                                .get("posting_number_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.posting_number_filter = posting_number_val.to_string();
+                            }
+                        });
+                        log!("Loaded saved settings for A014");
+                        // Загрузка данных после восстановления настроек
+                        load_transactions();
                     }
-                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                        set_date_to.set(date_to_val.to_string());
+                    Ok(None) => {
+                        log!("No saved settings found for A014");
+                        // Загрузка данных с дефолтными настройками
+                        load_transactions();
                     }
-                    if let Some(transaction_type_val) = settings
-                        .get("transaction_type_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_transaction_type_filter.set(transaction_type_val.to_string());
+                    Err(e) => {
+                        log!("Failed to load saved settings: {}", e);
+                        // Загрузка данных даже при ошибке настроек
+                        load_transactions();
                     }
-                    if let Some(operation_type_name_val) = settings
-                        .get("operation_type_name_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_operation_type_name_filter.set(operation_type_name_val.to_string());
-                    }
-                    if let Some(posting_number_val) = settings
-                        .get("posting_number_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_posting_number_filter.set(posting_number_val.to_string());
-                    }
-                    log!("Loaded saved settings for A014");
                 }
-                Ok(None) => {
-                    log!("No saved settings found for A014");
-                }
-                Err(e) => {
-                    log!("Failed to load saved settings: {}", e);
-                }
-            }
-        });
-    });
-
-    // Загрузка при монтировании
-    Effect::new(move || {
-        load_transactions();
+            });
+        } else {
+            log!("Used cached data for A014");
+        }
     });
 
     // Функция для изменения сортировки
     let toggle_sort = move |field: &'static str| {
-        if sort_field.get() == field {
-            set_sort_ascending.update(|asc| *asc = !*asc);
-        } else {
-            set_sort_field.set(field.to_string());
-            set_sort_ascending.set(true);
-        }
+        state.update(|s| {
+            if s.sort_field == field {
+                s.sort_ascending = !s.sort_ascending;
+            } else {
+                s.sort_field = field.to_string();
+                s.sort_ascending = true;
+            }
+        });
     };
 
     // Переключение выбора одного документа
     let toggle_selection = move |id: String| {
-        set_selected_ids.update(|ids| {
-            if ids.contains(&id) {
-                ids.retain(|x| x != &id);
+        state.update(|s| {
+            if s.selected_ids.contains(&id) {
+                s.selected_ids.retain(|x| x != &id);
                 log!(
                     "Deselected transaction: {}, total selected: {}",
                     id,
-                    ids.len()
+                    s.selected_ids.len()
                 );
             } else {
-                ids.push(id.clone());
+                s.selected_ids.push(id.clone());
                 log!(
                     "Selected transaction: {}, total selected: {}",
                     id,
-                    ids.len()
+                    s.selected_ids.len()
                 );
             }
         });
@@ -344,28 +348,29 @@ pub fn OzonTransactionsList() -> impl IntoView {
     // Выбрать все / снять все
     let toggle_all = move |_| {
         let items = get_sorted_items();
-        let selected = selected_ids.get();
-        if selected.len() == items.len() && !items.is_empty() {
-            set_selected_ids.set(Vec::new()); // Снять все
-        } else {
-            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect());
-            // Выбрать все
-        }
+        let all_ids: Vec<String> = items.iter().map(|item| item.id.clone()).collect();
+        state.update(|s| {
+            if s.selected_ids.len() == all_ids.len() && !all_ids.is_empty() {
+                s.selected_ids.clear(); // Снять все
+            } else {
+                s.selected_ids = all_ids; // Выбрать все
+            }
+        });
     };
 
     // Проверка, выбраны ли все
     let all_selected = move || {
         let items = get_sorted_items();
-        let selected = selected_ids.get();
-        !items.is_empty() && selected.len() == items.len()
+        let selected_len = state.with(|s| s.selected_ids.len());
+        !items.is_empty() && selected_len == items.len()
     };
 
     // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| selected_ids.get().contains(&id.to_string());
+    let is_selected = move |id: &str| state.with(|s| s.selected_ids.contains(&id.to_string()));
 
     // Массовое проведение
     let post_selected = move |_| {
-        let ids = selected_ids.get();
+        let ids = state.with(|s| s.selected_ids.clone());
         if ids.is_empty() {
             return;
         }
@@ -405,16 +410,16 @@ pub fn OzonTransactionsList() -> impl IntoView {
             set_operation_results.set(results);
             set_posting_in_progress.set(false);
             set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
+            state.update(|s| s.selected_ids.clear());
 
-            // Перезагрузить список
+            // Перезагрузить список (здесь нужно, так как данные изменились на сервере)
             load_transactions();
         });
     };
 
     // Массовая отмена проведения
     let unpost_selected = move |_| {
-        let ids = selected_ids.get();
+        let ids = state.with(|s| s.selected_ids.clone());
         if ids.is_empty() {
             return;
         }
@@ -454,7 +459,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
             set_operation_results.set(results);
             set_posting_in_progress.set(false);
             set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
+            state.update(|s| s.selected_ids.clear());
 
             // Перезагрузить список
             load_transactions();
@@ -464,11 +469,11 @@ pub fn OzonTransactionsList() -> impl IntoView {
     // Save current settings to database
     let save_settings_to_db = move |_| {
         let settings = json!({
-            "date_from": date_from.get(),
-            "date_to": date_to.get(),
-            "transaction_type_filter": transaction_type_filter.get(),
-            "operation_type_name_filter": operation_type_name_filter.get(),
-            "posting_number_filter": posting_number_filter.get(),
+            "date_from": state.with(|s| s.date_from.clone()),
+            "date_to": state.with(|s| s.date_to.clone()),
+            "transaction_type_filter": state.with(|s| s.transaction_type_filter.clone()),
+            "operation_type_name_filter": state.with(|s| s.operation_type_name_filter.clone()),
+            "posting_number_filter": state.with(|s| s.posting_number_filter.clone()),
         });
 
         spawn_local(async move {
@@ -494,31 +499,35 @@ pub fn OzonTransactionsList() -> impl IntoView {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
-                    if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                    {
-                        set_date_from.set(date_from_val.to_string());
-                    }
-                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                        set_date_to.set(date_to_val.to_string());
-                    }
-                    if let Some(transaction_type_val) = settings
-                        .get("transaction_type_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_transaction_type_filter.set(transaction_type_val.to_string());
-                    }
-                    if let Some(operation_type_name_val) = settings
-                        .get("operation_type_name_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_operation_type_name_filter.set(operation_type_name_val.to_string());
-                    }
-                    if let Some(posting_number_val) = settings
-                        .get("posting_number_filter")
-                        .and_then(|v| v.as_str())
-                    {
-                        set_posting_number_filter.set(posting_number_val.to_string());
-                    }
+                    state.update(|s| {
+                        if let Some(date_from_val) =
+                            settings.get("date_from").and_then(|v| v.as_str())
+                        {
+                            s.date_from = date_from_val.to_string();
+                        }
+                        if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str())
+                        {
+                            s.date_to = date_to_val.to_string();
+                        }
+                        if let Some(transaction_type_val) = settings
+                            .get("transaction_type_filter")
+                            .and_then(|v| v.as_str())
+                        {
+                            s.transaction_type_filter = transaction_type_val.to_string();
+                        }
+                        if let Some(operation_type_name_val) = settings
+                            .get("operation_type_name_filter")
+                            .and_then(|v| v.as_str())
+                        {
+                            s.operation_type_name_filter = operation_type_name_val.to_string();
+                        }
+                        if let Some(posting_number_val) = settings
+                            .get("posting_number_filter")
+                            .and_then(|v| v.as_str())
+                        {
+                            s.posting_number_filter = posting_number_val.to_string();
+                        }
+                    });
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
                     // Clear notification after 3 seconds
                     spawn_local(async move {
@@ -526,6 +535,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                         set_save_notification.set(None);
                     });
                     log!("Restored saved settings for A014");
+                    load_transactions(); // Перезагрузка с новыми настройками
                 }
                 Ok(None) => {
                     set_save_notification.set(Some("ℹ Нет сохраненных настроек".to_string()));
@@ -551,7 +561,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
     // Закрыть детальный просмотр
     let close_detail = move || {
         set_selected_id.set(None);
-        load_transactions(); // Перезагрузить список после закрытия
+        // load_transactions(); // Убрано: Не перезагружаем список после закрытия
     };
 
     view! {
@@ -563,22 +573,22 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
                     // Post/Unpost buttons
                     <button
-                        prop:disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
+                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=post_selected
                         style="height: 32px; padding: 0 16px; background: #48bb78; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
-                        style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                        style:opacity=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "0.5" } else { "1" }
+                        style:cursor=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "not-allowed" } else { "pointer" }
                     >
-                        {move || format!("✓ Post ({})", selected_ids.get().len())}
+                        {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                     <button
-                        prop:disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
+                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=unpost_selected
                         style="height: 32px; padding: 0 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
-                        style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                        style:opacity=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "0.5" } else { "1" }
+                        style:cursor=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "not-allowed" } else { "pointer" }
                     >
-                        {move || format!("✗ Unpost ({})", selected_ids.get().len())}
+                        {move || format!("✗ Unpost ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                 </div>
 
@@ -592,7 +602,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                             }
                         }
                         style="height: 32px; padding: 0 16px; background: #217346; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        disabled=move || loading.get() || transactions.get().is_empty()
+                        disabled=move || loading.get() || state.with(|s| s.transactions.is_empty())
                     >
                         "📊 Excel"
                     </button>
@@ -629,18 +639,20 @@ pub fn OzonTransactionsList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Период:"</label>
                     <DateInput
-                        value=date_from
-                        on_change=move |val| set_date_from.set(val)
+                        value=Signal::derive(move || state.get().date_from)
+                        on_change=move |val| state.update(|s| s.date_from = val)
                     />
                     <span style="color: #6c757d;">"—"</span>
                     <DateInput
-                        value=date_to
-                        on_change=move |val| set_date_to.set(val)
+                        value=Signal::derive(move || state.get().date_to)
+                        on_change=move |val| state.update(|s| s.date_to = val)
                     />
                     <MonthSelector
                         on_select=Callback::new(move |(from, to)| {
-                            set_date_from.set(from);
-                            set_date_to.set(to);
+                            state.update(|s| {
+                                s.date_from = from;
+                                s.date_to = to;
+                            });
                         })
                     />
                 </div>
@@ -649,9 +661,9 @@ pub fn OzonTransactionsList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Тип транзакции:"</label>
                     <select
-                        prop:value=transaction_type_filter
+                        prop:value=move || state.get().transaction_type_filter
                         on:change=move |ev| {
-                            set_transaction_type_filter.set(event_target_value(&ev));
+                            state.update(|s| s.transaction_type_filter = event_target_value(&ev));
                         }
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 120px; background: #fff;"
                     >
@@ -670,9 +682,9 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Тип операции:"</label>
                     <input
                         type="text"
-                        prop:value=operation_type_name_filter
+                        prop:value=move || state.get().operation_type_name_filter
                         on:input=move |ev| {
-                            set_operation_type_name_filter.set(event_target_value(&ev));
+                            state.update(|s| s.operation_type_name_filter = event_target_value(&ev));
                         }
                         placeholder="Введите тип операции"
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 150px;"
@@ -684,9 +696,9 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Posting #:"</label>
                     <input
                         type="text"
-                        prop:value=posting_number_filter
+                        prop:value=move || state.get().posting_number_filter
                         on:input=move |ev| {
-                            set_posting_number_filter.set(event_target_value(&ev));
+                            state.update(|s| s.posting_number_filter = event_target_value(&ev));
                         }
                         placeholder="Поиск по номеру"
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 150px;"
@@ -713,10 +725,10 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     <div style="margin-bottom: 10px; padding: 3px 12px; background: var(--color-background-alt, #f5f5f5); border-radius: 4px;">
                         <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text);">
                             "Total: " {count} " records | "
-                            "Amount: " {format!("{:.2}", total_amount)} " | "
-                            "Accruals: " {format!("{:.2}", total_accruals)} " | "
-                            "Commission: " {format!("{:.2}", total_commission)} " | "
-                            "Delivery: " {format!("{:.2}", total_delivery)}
+                            "Amount: " {format_number(total_amount)} " | "
+                            "Accruals: " {format_number(total_accruals)} " | "
+                            "Commission: " {format_number(total_commission)} " | "
+                            "Delivery: " {format_number(total_delivery)}
                         </span>
                     </div>
                 }.into_any()
@@ -735,9 +747,12 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     }.into_any()
                 } else {
                     let items = get_sorted_items();
+                    let current_sort_field = state.with(|s| s.sort_field.clone());
+                    let current_sort_asc = state.with(|s| s.sort_ascending);
+
                     view! {
                         <div class="table-container" style="overflow-y: auto; max-height: calc(100vh - 240px); border: 1px solid #e0e0e0;">
-                            <table class="transactions-table" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85em;">
+                            <table class="transactions-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85em;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg, #f5f5f5);">
                                     <tr>
                                         <th style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center; font-weight: 600;">
@@ -748,42 +763,42 @@ pub fn OzonTransactionsList() -> impl IntoView {
                                             />
                                         </th>
                                         <th on:click=move |_| toggle_sort("operation_date") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Дата " {move || get_sort_indicator("operation_date", &sort_field.get(), sort_ascending.get())}
+                                            "Дата " {get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("operation_id") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Operation ID " {move || get_sort_indicator("operation_id", &sort_field.get(), sort_ascending.get())}
+                                            "Operation ID " {get_sort_indicator("operation_id", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("operation_type_name") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Тип операции " {move || get_sort_indicator("operation_type_name", &sort_field.get(), sort_ascending.get())}
+                                            "Тип операции " {get_sort_indicator("operation_type_name", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("substatus") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Substatus " {move || get_sort_indicator("substatus", &sort_field.get(), sort_ascending.get())}
+                                            "Substatus " {get_sort_indicator("substatus", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("delivering_date") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600; background-color: #e8f5e9; color: #2e7d32;">
-                                            "Дата Доставки " {move || get_sort_indicator("delivering_date", &sort_field.get(), sort_ascending.get())}
+                                            "Доставка FBS " {get_sort_indicator("delivering_date", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("posting_number") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Posting Number " {move || get_sort_indicator("posting_number", &sort_field.get(), sort_ascending.get())}
+                                            "Posting No " {get_sort_indicator("posting_number", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("transaction_type") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Тип " {move || get_sort_indicator("transaction_type", &sort_field.get(), sort_ascending.get())}
+                                            "Тип " {get_sort_indicator("transaction_type", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("delivery_schema") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Схема доставки " {move || get_sort_indicator("delivery_schema", &sort_field.get(), sort_ascending.get())}
+                                            "Схема " {get_sort_indicator("delivery_schema", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("amount") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Сумма " {move || get_sort_indicator("amount", &sort_field.get(), sort_ascending.get())}
+                                            "Сумма " {get_sort_indicator("amount", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("accruals_for_sale") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Начисления " {move || get_sort_indicator("accruals_for_sale", &sort_field.get(), sort_ascending.get())}
+                                            "Начисления " {get_sort_indicator("accruals_for_sale", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("sale_commission") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Комиссия " {move || get_sort_indicator("sale_commission", &sort_field.get(), sort_ascending.get())}
+                                            "Комиссия " {get_sort_indicator("sale_commission", &current_sort_field, current_sort_asc)}
                                         </th>
                                         <th on:click=move |_| toggle_sort("delivery_charge") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Доставка " {move || get_sort_indicator("delivery_charge", &sort_field.get(), sort_ascending.get())}
+                                            "Доставка " {get_sort_indicator("delivery_charge", &current_sort_field, current_sort_asc)}
                                         </th>
-                                        <th on:click=move |_| toggle_sort("is_posted") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">"Post " {move || get_sort_indicator("is_posted", &sort_field.get(), sort_ascending.get())}</th>
+                                        <th on:click=move |_| toggle_sort("is_posted") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">"Post " {get_sort_indicator("is_posted", &current_sort_field, current_sort_asc)}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -820,10 +835,10 @@ pub fn OzonTransactionsList() -> impl IntoView {
                                                 <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="posting-link" style="border: 1px solid #e0e0e0; padding: 4px 6px; color: #2196F3;">{item.posting_number.clone()}</td>
                                                 <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.transaction_type.clone()}</td>
                                                 <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.delivery_schema.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format!("{:.2}", item.amount)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format!("{:.2}", item.accruals_for_sale)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format!("{:.2}", item.sale_commission)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format!("{:.2}", item.delivery_charge)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.amount)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.accruals_for_sale)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.sale_commission)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.delivery_charge)}</td>
                                                 <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center;">
                                                     {if item.is_posted { "Да" } else { "Нет" }}
                                                 </td>

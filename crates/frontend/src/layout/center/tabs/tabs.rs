@@ -9,24 +9,24 @@ use crate::domain::a005_marketplace::ui::list::MarketplaceList;
 use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
-use crate::domain::a009_ozon_returns::ui::list::OzonReturnsList;
 use crate::domain::a009_ozon_returns::ui::details::OzonReturnsDetail;
+use crate::domain::a009_ozon_returns::ui::list::OzonReturnsList;
 use crate::domain::a010_ozon_fbs_posting::ui::list::OzonFbsPostingList;
 use crate::domain::a011_ozon_fbo_posting::ui::list::OzonFboPostingList;
-use crate::domain::a012_wb_sales::ui::list::WbSalesList;
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
+use crate::domain::a012_wb_sales::ui::list::WbSalesList;
 use crate::domain::a013_ym_order::ui::list::YmOrderList;
-use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
+use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
+use crate::layout::center::tabs::tab::Tab as TabComponent;
+use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
 use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::projections::p904_sales_data::ui::list::SalesDataList;
-use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
-use crate::layout::center::tabs::tab::Tab as TabComponent;
-use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
+use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
 use crate::usecases::u503_import_from_yandex;
@@ -43,7 +43,8 @@ pub fn Tabs() -> impl IntoView {
     let opened = move || tabs_store.opened.get();
     let active_key = move || tabs_store.active.get();
 
-    let render_content = move || match active_key() {
+    let render_content = move || {
+        match active_key() {
         Some(key) if key == "a001_connection_1c" => view! { <Connection1CList /> }.into_any(),
         Some(key) if key == "a002_organization" => view! { <OrganizationList /> }.into_any(),
         Some(key) if key == "a003_counterparty" => {
@@ -155,6 +156,7 @@ pub fn Tabs() -> impl IntoView {
         Some(_) => view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any(),
         None => view! { <div class="placeholder">{"Select a tab from the left navbar"}</div> }
             .into_any(),
+    }
     };
 
     view! {

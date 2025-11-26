@@ -1,10 +1,10 @@
 use chrono::Utc;
+use contracts::projections::p905_wb_commission_history::dto::CommissionHistoryDto;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use contracts::projections::p905_wb_commission_history::dto::CommissionHistoryDto;
 
-use crate::projections::p905_wb_commission_history::api;
 use crate::layout::global_context::AppGlobalContext;
+use crate::projections::p905_wb_commission_history::api;
 
 #[component]
 pub fn CommissionHistoryList() -> impl IntoView {
@@ -106,15 +106,12 @@ pub fn CommissionHistoryList() -> impl IntoView {
         });
     };
 
-    let app_context = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext not found");
+    let app_context =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
     // Открыть форму создания
     let create_new = move |_| {
-        app_context.open_tab(
-            "p905-commission-new",
-            "Новая комиссия",
-        );
+        app_context.open_tab("p905-commission-new", "Новая комиссия");
     };
 
     // Открыть форму редактирования
@@ -270,7 +267,7 @@ pub fn CommissionHistoryList() -> impl IntoView {
                                     {items.into_iter().map(|item| {
                                         let id_for_edit = item.id.clone();
                                         let id_for_delete = item.id.clone();
-                                        
+
                                         view! {
                                             <tr style="border-bottom: 1px solid #dee2e6;">
                                                 <td style="padding: 10px;">{item.date.clone()}</td>
@@ -321,4 +318,3 @@ pub fn CommissionHistoryList() -> impl IntoView {
         </div>
     }
 }
-

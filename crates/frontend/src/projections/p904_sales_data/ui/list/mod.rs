@@ -1,6 +1,7 @@
+use crate::projections::p904_sales_data::state::get_state;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
-use chrono::{Datelike, Utc};
+use crate::shared::list_utils::format_number;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -61,6 +62,55 @@ enum SortColumn {
     Total,
 }
 
+impl SortColumn {
+    fn as_str(&self) -> String {
+        match self {
+            SortColumn::Date => "Date".to_string(),
+            SortColumn::DocumentNo => "DocumentNo".to_string(),
+            SortColumn::Article => "Article".to_string(),
+            SortColumn::Cabinet => "Cabinet".to_string(),
+            SortColumn::CustomerIn => "CustomerIn".to_string(),
+            SortColumn::CustomerOut => "CustomerOut".to_string(),
+            SortColumn::CoinvestIn => "CoinvestIn".to_string(),
+            SortColumn::CommissionOut => "CommissionOut".to_string(),
+            SortColumn::AcquiringOut => "AcquiringOut".to_string(),
+            SortColumn::PenaltyOut => "PenaltyOut".to_string(),
+            SortColumn::LogisticsOut => "LogisticsOut".to_string(),
+            SortColumn::SellerOut => "SellerOut".to_string(),
+            SortColumn::PriceFull => "PriceFull".to_string(),
+            SortColumn::PriceList => "PriceList".to_string(),
+            SortColumn::PriceReturn => "PriceReturn".to_string(),
+            SortColumn::CommissionPercent => "CommissionPercent".to_string(),
+            SortColumn::CoinvestPersent => "CoinvestPersent".to_string(),
+            SortColumn::Total => "Total".to_string(),
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "Date" => Some(SortColumn::Date),
+            "DocumentNo" => Some(SortColumn::DocumentNo),
+            "Article" => Some(SortColumn::Article),
+            "Cabinet" => Some(SortColumn::Cabinet),
+            "CustomerIn" => Some(SortColumn::CustomerIn),
+            "CustomerOut" => Some(SortColumn::CustomerOut),
+            "CoinvestIn" => Some(SortColumn::CoinvestIn),
+            "CommissionOut" => Some(SortColumn::CommissionOut),
+            "AcquiringOut" => Some(SortColumn::AcquiringOut),
+            "PenaltyOut" => Some(SortColumn::PenaltyOut),
+            "LogisticsOut" => Some(SortColumn::LogisticsOut),
+            "SellerOut" => Some(SortColumn::SellerOut),
+            "PriceFull" => Some(SortColumn::PriceFull),
+            "PriceList" => Some(SortColumn::PriceList),
+            "PriceReturn" => Some(SortColumn::PriceReturn),
+            "CommissionPercent" => Some(SortColumn::CommissionPercent),
+            "CoinvestPersent" => Some(SortColumn::CoinvestPersent),
+            "Total" => Some(SortColumn::Total),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum SortDirection {
     Asc,
@@ -100,7 +150,7 @@ async fn fetch_connections_mp() -> Result<Vec<ConnectionMP>, String> {
 
 #[component]
 pub fn SalesDataList() -> impl IntoView {
-    let (sales, set_sales) = signal(Vec::<SalesDataDto>::new());
+    let state = get_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
 
@@ -110,215 +160,22 @@ pub fn SalesDataList() -> impl IntoView {
 
     const FORM_KEY: &str = "p904_sales_data";
 
-    // Try to restore state from AppGlobalContext
-    let restored_state = tabs_store.get_form_state(FORM_KEY);
-
-    // Default period - current month
-    let now = Utc::now().date_naive();
-    let year = now.year();
-    let month = now.month();
-    let month_start =
-        chrono::NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-    let month_end = if month == 12 {
-        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-            .map(|d| d - chrono::Duration::days(1))
-            .expect("Invalid month end date")
-    } else {
-        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
-            .map(|d| d - chrono::Duration::days(1))
-            .expect("Invalid month end date")
-    };
-
-    // Initialize filters from restored state or defaults
-    let default_date_from = month_start.format("%Y-%m-%d").to_string();
-    let default_date_to = month_end.format("%Y-%m-%d").to_string();
-
-    let init_date_from = restored_state
-        .as_ref()
-        .and_then(|s| s.get("date_from").and_then(|v| v.as_str()))
-        .unwrap_or(&default_date_from)
-        .to_string();
-    let init_date_to = restored_state
-        .as_ref()
-        .and_then(|s| s.get("date_to").and_then(|v| v.as_str()))
-        .unwrap_or(&default_date_to)
-        .to_string();
-    let init_cabinet = restored_state
-        .as_ref()
-        .and_then(|s| s.get("cabinet_filter").and_then(|v| v.as_str()))
-        .unwrap_or("")
-        .to_string();
-
-    // Sorting state
-    let (sort_column, set_sort_column) = signal::<Option<SortColumn>>(None);
-    let (sort_direction, set_sort_direction) = signal(SortDirection::Asc);
-
-    // Filter state
-    let (date_from, set_date_from) = signal(init_date_from);
-    let (date_to, set_date_to) = signal(init_date_to);
-    let (cabinet_filter, set_cabinet_filter) = signal(init_cabinet);
-
-    // Save state to AppGlobalContext whenever filters change
-    let save_state = move || {
-        let state = json!({
-            "date_from": date_from.get(),
-            "date_to": date_to.get(),
-            "cabinet_filter": cabinet_filter.get(),
-        });
-        tabs_store.set_form_state(FORM_KEY.to_string(), state);
-    };
-
-    // Watch for filter changes and update state
-    Effect::new(move |_| {
-        let _ = date_from.get();
-        let _ = date_to.get();
-        let _ = cabinet_filter.get();
-        save_state();
-    });
-
-    // Handle column click for sorting
-    let handle_column_click = move |column: SortColumn| {
-        if sort_column.get() == Some(column.clone()) {
-            set_sort_direction.set(match sort_direction.get() {
-                SortDirection::Asc => SortDirection::Desc,
-                SortDirection::Desc => SortDirection::Asc,
-            });
-        } else {
-            set_sort_column.set(Some(column));
-            set_sort_direction.set(SortDirection::Asc);
-        }
-    };
-
-    // Sorted sales data
-    let sorted_sales = move || {
-        let mut data = sales.get();
-        if let Some(col) = sort_column.get() {
-            let direction = sort_direction.get();
-            data.sort_by(|a, b| {
-                let cmp = match col {
-                    SortColumn::Date => a.date.cmp(&b.date),
-                    SortColumn::DocumentNo => a.document_no.cmp(&b.document_no),
-                    SortColumn::Article => a.article.cmp(&b.article),
-                    SortColumn::Cabinet => {
-                        let a_cab = a.connection_mp_name.as_deref().unwrap_or("");
-                        let b_cab = b.connection_mp_name.as_deref().unwrap_or("");
-                        a_cab.cmp(b_cab)
-                    }
-                    SortColumn::CustomerIn => a
-                        .customer_in
-                        .partial_cmp(&b.customer_in)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::CustomerOut => a
-                        .customer_out
-                        .partial_cmp(&b.customer_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::CoinvestIn => a
-                        .coinvest_in
-                        .partial_cmp(&b.coinvest_in)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::CommissionOut => a
-                        .commission_out
-                        .partial_cmp(&b.commission_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::AcquiringOut => a
-                        .acquiring_out
-                        .partial_cmp(&b.acquiring_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::PenaltyOut => a
-                        .penalty_out
-                        .partial_cmp(&b.penalty_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::LogisticsOut => a
-                        .logistics_out
-                        .partial_cmp(&b.logistics_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::SellerOut => a
-                        .seller_out
-                        .partial_cmp(&b.seller_out)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::PriceFull => a
-                        .price_full
-                        .partial_cmp(&b.price_full)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::PriceList => a
-                        .price_list
-                        .partial_cmp(&b.price_list)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::PriceReturn => a
-                        .price_return
-                        .partial_cmp(&b.price_return)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::CommissionPercent => a
-                        .commission_percent
-                        .partial_cmp(&b.commission_percent)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::CoinvestPersent => a
-                        .coinvest_persent
-                        .partial_cmp(&b.coinvest_persent)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    SortColumn::Total => a
-                        .total
-                        .partial_cmp(&b.total)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                };
-                match direction {
-                    SortDirection::Asc => cmp,
-                    SortDirection::Desc => cmp.reverse(),
-                }
-            });
-        }
-        data
-    };
-
-    // Calculate totals
-    let totals = move || {
-        let data = sorted_sales();
-        let count = data.len();
-        let customer_in: f64 = data.iter().map(|s| s.customer_in).sum();
-        let customer_out: f64 = data.iter().map(|s| s.customer_out).sum();
-        let coinvest_in: f64 = data.iter().map(|s| s.coinvest_in).sum();
-        let commission_out: f64 = data.iter().map(|s| s.commission_out).sum();
-        let acquiring_out: f64 = data.iter().map(|s| s.acquiring_out).sum();
-        let penalty_out: f64 = data.iter().map(|s| s.penalty_out).sum();
-        let logistics_out: f64 = data.iter().map(|s| s.logistics_out).sum();
-        let seller_out: f64 = data.iter().map(|s| s.seller_out).sum();
-        let price_full: f64 = data.iter().map(|s| s.price_full).sum();
-        let price_list: f64 = data.iter().map(|s| s.price_list).sum();
-        let price_return: f64 = data.iter().map(|s| s.price_return).sum();
-        let commission_percent: f64 = data.iter().map(|s| s.commission_percent).sum();
-        let coinvest_persent: f64 = data.iter().map(|s| s.coinvest_persent).sum();
-        let total: f64 = data.iter().map(|s| s.total).sum();
-
-        (
-            count,
-            customer_in,
-            customer_out,
-            coinvest_in,
-            commission_out,
-            acquiring_out,
-            penalty_out,
-            logistics_out,
-            seller_out,
-            price_full,
-            price_list,
-            price_return,
-            commission_percent,
-            coinvest_persent,
-            total,
-        )
-    };
+    // Note: We no longer read from tabs_store/localStorage on init for filter defaults
+    // because the state is now persistent in memory (state.rs).
+    // However, we still support saving/loading settings to DB which overwrites state.
 
     let load_sales = move || {
         set_loading.set(true);
         set_error.set(None);
 
-        let date_from_val = date_from.get();
-        let date_to_val = date_to.get();
-        let cabinet_val = cabinet_filter.get();
+        let date_from_val = state.with(|s| s.date_from.clone());
+        let date_to_val = state.with(|s| s.date_to.clone());
+        let cabinet_val = state.with(|s| s.cabinet_filter.clone());
+        let limit_val = state.with(|s| s.limit.clone());
 
         let mut query_params = format!(
-            "?limit=10000&date_from={}&date_to={}",
-            date_from_val, date_to_val
+            "?limit={}&date_from={}&date_to={}",
+            limit_val, date_from_val, date_to_val
         );
 
         if !cabinet_val.is_empty() {
@@ -328,7 +185,10 @@ pub fn SalesDataList() -> impl IntoView {
         spawn_local(async move {
             match fetch_sales(&query_params).await {
                 Ok(data) => {
-                    set_sales.set(data);
+                    state.update(|s| {
+                        s.sales = data;
+                        s.is_loaded = true;
+                    });
                     set_loading.set(false);
                 }
                 Err(e) => {
@@ -373,52 +233,198 @@ pub fn SalesDataList() -> impl IntoView {
         });
     });
 
-    // Load saved settings from database on mount - AFTER cabinets are loaded
+    // Load saved settings from database on mount IF not already loaded in memory
+    // and AFTER cabinets are loaded
     Effect::new(move |_| {
         // Wait for cabinets to be loaded first
         if !cabinets_loaded.get() {
             return;
         }
 
-        spawn_local(async move {
-            match load_saved_settings(FORM_KEY).await {
-                Ok(Some(settings)) => {
-                    if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                    {
-                        set_date_from.set(date_from_val.to_string());
+        if !state.with_untracked(|s| s.is_loaded) {
+             spawn_local(async move {
+                match load_saved_settings(FORM_KEY).await {
+                    Ok(Some(settings)) => {
+                        state.update(|s| {
+                            if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
+                            {
+                                s.date_from = date_from_val.to_string();
+                            }
+                            if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
+                                s.date_to = date_to_val.to_string();
+                            }
+                            if let Some(cabinet_val) =
+                                settings.get("cabinet_filter").and_then(|v| v.as_str())
+                            {
+                                s.cabinet_filter = cabinet_val.to_string();
+                                log!("Restored cabinet filter: {}", cabinet_val);
+                            }
+                            if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
+                                s.limit = limit_val.to_string();
+                            }
+                        });
+                        log!("Loaded saved settings for P904");
+                        load_sales();
                     }
-                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                        set_date_to.set(date_to_val.to_string());
+                    Ok(None) => {
+                        log!("No saved settings found for P904");
+                        load_sales();
                     }
-                    if let Some(cabinet_val) =
-                        settings.get("cabinet_filter").and_then(|v| v.as_str())
-                    {
-                        set_cabinet_filter.set(cabinet_val.to_string());
-                        log!("Restored cabinet filter: {}", cabinet_val);
+                    Err(e) => {
+                        log!("Failed to load saved settings: {}", e);
+                        load_sales();
                     }
-                    log!("Loaded saved settings for P904");
                 }
-                Ok(None) => {
-                    log!("No saved settings found for P904");
-                }
-                Err(e) => {
-                    log!("Failed to load saved settings: {}", e);
-                }
-            }
-        });
+            });
+        } else {
+             log!("Used cached data for P904");
+        }
     });
 
-    // Load data on mount (after settings are loaded)
-    Effect::new(move |_| {
-        load_sales();
-    });
+    // Handle column click for sorting
+    let handle_column_click = move |column: SortColumn| {
+        let col_str = column.as_str();
+        state.update(|s| {
+            if s.sort_column.as_ref() == Some(&col_str) {
+                s.sort_ascending = !s.sort_ascending;
+            } else {
+                s.sort_column = Some(col_str);
+                s.sort_ascending = true;
+            }
+        });
+    };
+
+    // Sorted sales data
+    let sorted_sales = move || {
+        let mut data = state.with(|s| s.sales.clone());
+        let sort_col_opt = state.with(|s| s.sort_column.clone());
+        let sort_asc = state.with(|s| s.sort_ascending);
+
+        if let Some(col_str) = sort_col_opt {
+             if let Some(col) = SortColumn::from_str(&col_str) {
+                let direction = if sort_asc { SortDirection::Asc } else { SortDirection::Desc };
+                data.sort_by(|a, b| {
+                    let cmp = match col {
+                        SortColumn::Date => a.date.cmp(&b.date),
+                        SortColumn::DocumentNo => a.document_no.cmp(&b.document_no),
+                        SortColumn::Article => a.article.cmp(&b.article),
+                        SortColumn::Cabinet => {
+                            let a_cab = a.connection_mp_name.as_deref().unwrap_or("");
+                            let b_cab = b.connection_mp_name.as_deref().unwrap_or("");
+                            a_cab.cmp(b_cab)
+                        }
+                        SortColumn::CustomerIn => a
+                            .customer_in
+                            .partial_cmp(&b.customer_in)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::CustomerOut => a
+                            .customer_out
+                            .partial_cmp(&b.customer_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::CoinvestIn => a
+                            .coinvest_in
+                            .partial_cmp(&b.coinvest_in)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::CommissionOut => a
+                            .commission_out
+                            .partial_cmp(&b.commission_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::AcquiringOut => a
+                            .acquiring_out
+                            .partial_cmp(&b.acquiring_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::PenaltyOut => a
+                            .penalty_out
+                            .partial_cmp(&b.penalty_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::LogisticsOut => a
+                            .logistics_out
+                            .partial_cmp(&b.logistics_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::SellerOut => a
+                            .seller_out
+                            .partial_cmp(&b.seller_out)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::PriceFull => a
+                            .price_full
+                            .partial_cmp(&b.price_full)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::PriceList => a
+                            .price_list
+                            .partial_cmp(&b.price_list)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::PriceReturn => a
+                            .price_return
+                            .partial_cmp(&b.price_return)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::CommissionPercent => a
+                            .commission_percent
+                            .partial_cmp(&b.commission_percent)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::CoinvestPersent => a
+                            .coinvest_persent
+                            .partial_cmp(&b.coinvest_persent)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::Total => a
+                            .total
+                            .partial_cmp(&b.total)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                    };
+                    match direction {
+                        SortDirection::Asc => cmp,
+                        SortDirection::Desc => cmp.reverse(),
+                    }
+                });
+            }
+        }
+        data
+    };
+
+    // Calculate totals
+    let totals = move || {
+        let data = sorted_sales();
+        let count = data.len();
+        let customer_in: f64 = data.iter().map(|s| s.customer_in).sum();
+        let customer_out: f64 = data.iter().map(|s| s.customer_out).sum();
+        let coinvest_in: f64 = data.iter().map(|s| s.coinvest_in).sum();
+        let commission_out: f64 = data.iter().map(|s| s.commission_out).sum();
+        let acquiring_out: f64 = data.iter().map(|s| s.acquiring_out).sum();
+        let penalty_out: f64 = data.iter().map(|s| s.penalty_out).sum();
+        let logistics_out: f64 = data.iter().map(|s| s.logistics_out).sum();
+        let seller_out: f64 = data.iter().map(|s| s.seller_out).sum();
+        let price_full: f64 = data.iter().map(|s| s.price_full).sum();
+        let price_list: f64 = data.iter().map(|s| s.price_list).sum();
+        let price_return: f64 = data.iter().map(|s| s.price_return).sum();
+        let commission_percent: f64 = data.iter().map(|s| s.commission_percent).sum();
+        let coinvest_persent: f64 = data.iter().map(|s| s.coinvest_persent).sum();
+        let total: f64 = data.iter().map(|s| s.total).sum();
+
+        (
+            count,
+            customer_in,
+            customer_out,
+            coinvest_in,
+            commission_out,
+            acquiring_out,
+            penalty_out,
+            logistics_out,
+            seller_out,
+            price_full,
+            price_list,
+            price_return,
+            commission_percent,
+            coinvest_persent,
+            total,
+        )
+    };
 
     // Save current settings to database
     let save_settings_to_db = move |_| {
         let settings = json!({
-            "date_from": date_from.get(),
-            "date_to": date_to.get(),
-            "cabinet_filter": cabinet_filter.get(),
+            "date_from": state.with(|s| s.date_from.clone()),
+            "date_to": state.with(|s| s.date_to.clone()),
+            "cabinet_filter": state.with(|s| s.cabinet_filter.clone()),
+            "limit": state.with(|s| s.limit.clone()),
         });
 
         spawn_local(async move {
@@ -459,18 +465,23 @@ pub fn SalesDataList() -> impl IntoView {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
-                    if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                    {
-                        set_date_from.set(date_from_val.to_string());
-                    }
-                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                        set_date_to.set(date_to_val.to_string());
-                    }
-                    if let Some(cabinet_val) =
-                        settings.get("cabinet_filter").and_then(|v| v.as_str())
-                    {
-                        set_cabinet_filter.set(cabinet_val.to_string());
-                    }
+                    state.update(|s| {
+                        if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
+                        {
+                            s.date_from = date_from_val.to_string();
+                        }
+                        if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
+                            s.date_to = date_to_val.to_string();
+                        }
+                        if let Some(cabinet_val) =
+                            settings.get("cabinet_filter").and_then(|v| v.as_str())
+                        {
+                            s.cabinet_filter = cabinet_val.to_string();
+                        }
+                        if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
+                            s.limit = limit_val.to_string();
+                        }
+                    });
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
                     // Clear notification after 3 seconds
                     spawn_local(async move {
@@ -478,6 +489,7 @@ pub fn SalesDataList() -> impl IntoView {
                         set_save_notification.set(None);
                     });
                     log!("Restored saved settings for P904");
+                    load_sales(); // Reload data with new settings
                 }
                 Ok(None) => {
                     set_save_notification.set(Some("ℹ Нет сохраненных настроек".to_string()));
@@ -493,6 +505,19 @@ pub fn SalesDataList() -> impl IntoView {
                 }
             }
         });
+    };
+
+    // Helper for sort indicators
+    let get_sort_indicator = move |column: SortColumn| {
+        let col_str = column.as_str();
+        let current_col = state.with(|s| s.sort_column.clone());
+        let current_asc = state.with(|s| s.sort_ascending);
+
+        if current_col == Some(col_str) {
+            if current_asc { "↑" } else { "↓" }
+        } else {
+            ""
+        }
     };
 
     view! {
@@ -533,18 +558,20 @@ pub fn SalesDataList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Период:"</label>
                     <DateInput
-                        value=date_from
-                        on_change=move |val| set_date_from.set(val)
+                        value=Signal::derive(move || state.get().date_from)
+                        on_change=move |val| state.update(|s| s.date_from = val)
                     />
                     <span style="color: #6c757d;">"—"</span>
                     <DateInput
-                        value=date_to
-                        on_change=move |val| set_date_to.set(val)
+                        value=Signal::derive(move || state.get().date_to)
+                        on_change=move |val| state.update(|s| s.date_to = val)
                     />
                     <MonthSelector
                         on_select=Callback::new(move |(from, to)| {
-                            set_date_from.set(from);
-                            set_date_to.set(to);
+                            state.update(|s| {
+                                s.date_from = from;
+                                s.date_to = to;
+                            });
                         })
                     />
                 </div>
@@ -553,9 +580,9 @@ pub fn SalesDataList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Кабинет:"</label>
                     <select
-                        prop:value=cabinet_filter
+                        prop:value=move || state.get().cabinet_filter
                         on:change=move |ev| {
-                            set_cabinet_filter.set(event_target_value(&ev));
+                            state.update(|s| s.cabinet_filter = event_target_value(&ev));
                         }
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 150px; background: #fff;"
                     >
@@ -565,6 +592,24 @@ pub fn SalesDataList() -> impl IntoView {
                                 <option value=ref_id>{name}</option>
                             }
                         }).collect_view()}
+                    </select>
+                </div>
+
+                // Limit selector
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Лимит:"</label>
+                    <select
+                        prop:value=move || state.get().limit
+                        on:change=move |ev| {
+                            state.update(|s| s.limit = event_target_value(&ev));
+                            load_sales();
+                        }
+                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 80px; background: #fff;"
+                    >
+                        <option value="1000">"1000"</option>
+                        <option value="5000">"5000"</option>
+                        <option value="10000">"10000"</option>
+                        <option value="50000">"50000"</option>
                     </select>
                 </div>
 
@@ -589,7 +634,7 @@ pub fn SalesDataList() -> impl IntoView {
                         }
                         class="action-button action-button-primary"
                         style="height: 32px; padding: 0 16px; background: #217346; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        disabled=move || loading.get() || sales.get().is_empty()
+                        disabled=move || loading.get() || state.with(|s| s.sales.is_empty())
                     >
                         "📑 Excel"
                     </button>
@@ -609,137 +654,102 @@ pub fn SalesDataList() -> impl IntoView {
 
                     view! {
                         <div style="overflow-y: auto; max-height: calc(100vh - 180px); border: 1px solid #e0e0e0;">
-                            <table class="data-table" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.8em;">
+                            <table class="data-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.8em;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg);">
                                     <tr>
-                                        <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
+                                        <th class="sticky-left" style="min-width: 85px; width: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::Date)>
-                                            "Date " {move || if sort_column.get() == Some(SortColumn::Date) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Date " {get_sort_indicator(SortColumn::Date)}
                                         </th>
-                                        <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
+                                        <th class="sticky-left" style="left: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::DocumentNo)>
-                                            "Doc No " {move || if sort_column.get() == Some(SortColumn::DocumentNo) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Doc No " {get_sort_indicator(SortColumn::DocumentNo)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::Article)>
-                                            "Article " {move || if sort_column.get() == Some(SortColumn::Article) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Article " {get_sort_indicator(SortColumn::Article)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::Cabinet)>
-                                            "Cabinet " {move || if sort_column.get() == Some(SortColumn::Cabinet) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Cabinet " {get_sort_indicator(SortColumn::Cabinet)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CustomerIn)>
-                                            "Cust In " {move || if sort_column.get() == Some(SortColumn::CustomerIn) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Cust In " {get_sort_indicator(SortColumn::CustomerIn)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CustomerOut)>
-                                            "Cust Out " {move || if sort_column.get() == Some(SortColumn::CustomerOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Cust Out " {get_sort_indicator(SortColumn::CustomerOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CoinvestIn)>
-                                            "Coinv In " {move || if sort_column.get() == Some(SortColumn::CoinvestIn) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Coinv In " {get_sort_indicator(SortColumn::CoinvestIn)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CommissionOut)>
-                                            "Comm Out " {move || if sort_column.get() == Some(SortColumn::CommissionOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Comm Out " {get_sort_indicator(SortColumn::CommissionOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::AcquiringOut)>
-                                            "Acq Out " {move || if sort_column.get() == Some(SortColumn::AcquiringOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Acq Out " {get_sort_indicator(SortColumn::AcquiringOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::PenaltyOut)>
-                                            "Pen Out " {move || if sort_column.get() == Some(SortColumn::PenaltyOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Pen Out " {get_sort_indicator(SortColumn::PenaltyOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::LogisticsOut)>
-                                            "Log Out " {move || if sort_column.get() == Some(SortColumn::LogisticsOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Log Out " {get_sort_indicator(SortColumn::LogisticsOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::SellerOut)>
-                                            "Sell Out " {move || if sort_column.get() == Some(SortColumn::SellerOut) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Sell Out " {get_sort_indicator(SortColumn::SellerOut)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::PriceFull)>
-                                            "Price Full " {move || if sort_column.get() == Some(SortColumn::PriceFull) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Price Full " {get_sort_indicator(SortColumn::PriceFull)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::PriceList)>
-                                            "Price List " {move || if sort_column.get() == Some(SortColumn::PriceList) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Price List " {get_sort_indicator(SortColumn::PriceList)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::PriceReturn)>
-                                            "Price Ret " {move || if sort_column.get() == Some(SortColumn::PriceReturn) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Price Ret " {get_sort_indicator(SortColumn::PriceReturn)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CommissionPercent)>
-                                            "Comm %" {move || if sort_column.get() == Some(SortColumn::CommissionPercent) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Comm %" {get_sort_indicator(SortColumn::CommissionPercent)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::CoinvestPersent)>
-                                            "Coinv %" {move || if sort_column.get() == Some(SortColumn::CoinvestPersent) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Coinv %" {get_sort_indicator(SortColumn::CoinvestPersent)}
                                         </th>
                                         <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::Total)>
-                                            "Total " {move || if sort_column.get() == Some(SortColumn::Total) {
-                                                match sort_direction.get() { SortDirection::Asc => "↑", SortDirection::Desc => "↓" }
-                                            } else { "" }}
+                                            "Total " {get_sort_indicator(SortColumn::Total)}
                                         </th>
                                     </tr>
                                     // Totals row - compact design
                                     <tr>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em; font-weight: 600; color: #2d3748;" colspan="4">
+                                        <td class="sticky-left" style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em; font-weight: 600; color: #2d3748;" colspan="2">
                                             {format!("📋 Итого: {} строк", count)}
                                         </td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_customer_in)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_customer_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_coinvest_in)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_commission_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_acquiring_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_penalty_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_logistics_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_seller_out)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_price_full)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_price_list)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_price_return)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_commission_percent)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format!("{:.2}", t_coinvest_persent)}</td>
-                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.8em; font-weight: 700; color: #2d3748;">{format!("{:.2}", t_total)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em;" colspan="2"></td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_customer_in)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_customer_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_coinvest_in)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_commission_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_acquiring_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_penalty_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_logistics_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_seller_out)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_price_full)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_price_list)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_price_return)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_commission_percent)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.75em; font-weight: 500;">{format_number(t_coinvest_persent)}</td>
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; text-align: right; font-size: 0.8em; font-weight: 700; color: #2d3748;">{format_number(t_total)}</td>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -754,8 +764,8 @@ pub fn SalesDataList() -> impl IntoView {
                                         };
                                         view! {
                                             <tr>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px;">{date_only}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px;">
+                                                <td class="sticky-left" style="min-width: 85px; width: 85px; border: 1px solid #e0e0e0; padding: 2px 3px;">{date_only}</td>
+                                                <td class="sticky-left" style="left: 85px; border: 1px solid #e0e0e0; padding: 2px 3px;">
                                                     <a
                                                         href="#"
                                                         on:click=move |ev| {
@@ -769,20 +779,20 @@ pub fn SalesDataList() -> impl IntoView {
                                                 </td>
                                                 <td style="border: 1px solid #e0e0e0; padding: 2px 3px;">{item.article.clone()}</td>
                                                 <td style="border: 1px solid #e0e0e0; padding: 2px 3px;">{item.connection_mp_name.clone().unwrap_or_default()}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.customer_in)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.customer_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.coinvest_in)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.commission_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.acquiring_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.penalty_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.logistics_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.seller_out)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.price_full)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.price_list)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.price_return)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.commission_percent)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format!("{:.2}", item.coinvest_persent)}</td>
-                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right; font-weight: bold;">{format!("{:.2}", item.total)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.customer_in)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.customer_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.coinvest_in)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.commission_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.acquiring_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.penalty_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.logistics_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.seller_out)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.price_full)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.price_list)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.price_return)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.commission_percent)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right;">{format_number(item.coinvest_persent)}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px; text-align: right; font-weight: bold;">{format_number(item.total)}</td>
                                             </tr>
                                         }
                                     }).collect_view()}

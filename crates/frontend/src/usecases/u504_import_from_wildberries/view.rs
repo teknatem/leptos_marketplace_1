@@ -1,11 +1,11 @@
 use super::api;
-use chrono::{NaiveDate, Utc, Duration};
+use chrono::{Duration, NaiveDate, Utc};
+use contracts::domain::common::AggregateId;
+use contracts::enums::marketplace_type::MarketplaceType;
 use contracts::usecases::u504_import_from_wildberries::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
-use contracts::enums::marketplace_type::MarketplaceType;
-use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
@@ -73,15 +73,16 @@ pub fn ImportWidget() -> impl IntoView {
             match api::get_marketplaces().await {
                 Ok(marketplaces) => {
                     // Создаем маппинг marketplace_id -> marketplace_type
-                    let marketplace_type_map: HashMap<String, Option<MarketplaceType>> = marketplaces
-                        .into_iter()
-                        .map(|mp| {
-                            let id = mp.base.id.as_string();
-                            let mp_type = mp.marketplace_type;
-                            (id, mp_type)
-                        })
-                        .collect();
-                    
+                    let marketplace_type_map: HashMap<String, Option<MarketplaceType>> =
+                        marketplaces
+                            .into_iter()
+                            .map(|mp| {
+                                let id = mp.base.id.as_string();
+                                let mp_type = mp.marketplace_type;
+                                (id, mp_type)
+                            })
+                            .collect();
+
                     // Затем загружаем подключения
                     match api::get_connections().await {
                         Ok(conns) => {
@@ -96,7 +97,7 @@ pub fn ImportWidget() -> impl IntoView {
                                         .unwrap_or(false)
                                 })
                                 .collect();
-                            
+
                             if let Some(first) = filtered_conns.first() {
                                 set_selected_connection.set(first.to_string_id());
                             }
@@ -389,7 +390,7 @@ pub fn ImportWidget() -> impl IntoView {
                         "Запустить импорт"
                     }}
                 </button>
-                
+
                 {move || {
                     if let Some(prog) = progress.get() {
                         let is_finished = matches!(
