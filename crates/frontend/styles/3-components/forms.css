@@ -130,3 +130,141 @@
     padding-top: var(--space-2xl);
     border-top: 1px solid var(--color-border-lighter);
 }
+
+/* ============================================
+   Detail Form Layout (Modal/Panel style)
+   ============================================ */
+
+.detail-form {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-body);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.detail-form-header {
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+    padding: var(--space-md) var(--space-xl);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.detail-form-header h2 {
+    margin: 0;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-white);
+}
+
+.detail-form-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+}
+
+.detail-form-header-right {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.detail-form-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding: var(--space-lg);
+    background: var(--color-bg-body);
+}
+
+/* ============================================
+   Status Badge (Posted/Not Posted)
+   ============================================ */
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 3px var(--space-md);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    cursor: default;
+}
+
+.status-badge-posted {
+    background: rgba(22, 202, 6, 0.2);
+    color: var(--color-success);
+    border: 1px solid rgba(7, 244, 15, 0.5);
+    width: 120px;
+    height: 20px;
+}
+
+.status-badge-not-posted {
+    background: rgba(232, 236, 7, 0.2);
+    color: var(--color-warning);
+    border: 1px solid rgba(224, 244, 6, 0.5);
+    width: 120px;
+    height: 20px;
+}
+
+.status-badge-icon {
+    font-size: var(--font-size-sm);
+}
+
+/* Alternative inline status badges for tables/lists */
+.status-inline {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-xs);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.status-inline-posted {
+    background: #c8e6c9;
+    color: #2e7d32;
+}
+
+.status-inline-not-posted {
+    background: #f5f5f5;
+    color: #999;
+}
+
+/* ============================================
+   Detail Form Field Values
+   ============================================ */
+
+.field-value {
+    font-size: var(--font-size-sm);
+}
+
+.field-value-nowrap {
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.field-value-mono {
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.field-value-mono-sm {
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.field-label-tech {
+    color: var(--color-text-muted);
+    font-weight: var(--font-weight-normal);
+}

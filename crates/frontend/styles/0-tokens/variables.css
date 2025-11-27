@@ -24,6 +24,7 @@
   --color-bg-panel: rgba(255, 255, 255, 0.6);
   --color-bg-header: #f0f0f0;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-secondary: #f5f5f5;
 
   /* Text colors */
   --color-text-primary: #333;

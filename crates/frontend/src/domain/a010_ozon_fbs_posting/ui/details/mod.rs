@@ -279,14 +279,14 @@ pub fn OzonFbsPostingDetail(
     });
 
     view! {
-        <div class="posting-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                <h2 style="margin: 0;">"OZON FBS Posting Details"</h2>
+        <div class="posting-detail" style="padding: var(--space-xl); height: 100%; display: flex; flex-direction: column; background: var(--color-bg-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
+            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+                <h2 style="margin: 0; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--color-text-white);">"OZON FBS Posting Details"</h2>
                 <button
+                    class="btn-close"
                     on:click=move |_| on_close.run(())
-                    style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
                 >
-                    "✕ Close"
+                    "✕ Закрыть"
                 </button>
             </div>
 
@@ -308,71 +308,41 @@ pub fn OzonFbsPostingDetail(
                         view! {
                             <div style="height: 100%; display: flex; flex-direction: column;">
                                 // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                                <div class="detail-tabs">
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "general"
                                         on:click=move |_| set_active_tab.set("general")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "general" { 
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;" 
-                                            } else { 
-                                                "background: #f5f5f5; color: #666;" 
-                                            }
-                                        )
                                     >
-                                        "📋 General"
+                                        "Общие данные"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "lines"
                                         on:click=move |_| set_active_tab.set("lines")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "lines" { 
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;" 
-                                            } else { 
-                                                "background: #f5f5f5; color: #666;" 
-                                            }
-                                        )
                                     >
-                                        {format!("📦 Lines ({})", post.lines.len())}
+                                        "Строки (" {post.lines.len()} ")"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "projections"
                                         on:click=move |_| set_active_tab.set("projections")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "projections" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        {move || format!("📊 Проекции ({})", projections.get().len())}
+                                        {move || format!("Проекции ({})", projections.get().len())}
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "transactions"
                                         on:click=move |_| set_active_tab.set("transactions")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "transactions" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        {move || format!("💳 Транзакции ({})", transactions.get().len())}
+                                        {move || format!("Транзакции ({})", transactions.get().len())}
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "json"
                                         on:click=move |_| set_active_tab.set("json")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                                            if active_tab.get() == "json" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "📄 Raw JSON"
+                                        "Raw JSON"
                                     </button>
                                 </div>
 

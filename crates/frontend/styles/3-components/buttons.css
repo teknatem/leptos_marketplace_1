@@ -191,3 +191,72 @@
 .action-button-primary:hover:not(:disabled) {
     box-shadow: 0 4px 8px rgba(33,150,243,0.3);
 }
+
+/* ============================================
+   Detail View Header Buttons
+   ============================================ */
+
+.btn-close {
+    height: var(--header-height);
+    padding: 0 var(--space-3xl);
+    background: var(--color-secondary);
+    color: var(--color-text-white);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-fast);
+}
+
+.btn-close:hover {
+    background: var(--color-secondary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-close:active {
+    transform: translateY(0);
+}
+
+.btn-header-action {
+    height: var(--header-height);
+    padding: 0 var(--space-3xl);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-fast);
+}
+
+.btn-header-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-header-action:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn-header-action:disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+}
+
+.btn-header-success {
+    background: var(--color-success);
+    color: var(--color-text-white);
+}
+
+.btn-header-success:hover:not(:disabled) {
+    background: #218838;
+}
+
+.btn-header-warning {
+    background: var(--color-warning);
+    color: var(--color-text-dark);
+}
+
+.btn-header-warning:hover:not(:disabled) {
+    background: #e0a800;
+}
