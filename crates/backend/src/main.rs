@@ -1024,6 +1024,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/a014/ozon-transactions/:id/unpost",
             post(handlers::a014_ozon_transactions::unpost_document),
         )
+        .route(
+            "/api/a014/ozon-transactions/:id/projections",
+            get(handlers::a014_ozon_transactions::get_projections),
+        )
         // UseCase u501: Import from UT
         .route("/api/u501/import/start", post(start_import_handler))
         .route(

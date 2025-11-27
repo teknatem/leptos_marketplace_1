@@ -36,6 +36,9 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         // Оставляем posting_ref и posting_ref_type как None
     }
 
+    // Обогатить items данными из постинга
+    super::service_enrichment::enrich_items_from_posting(&mut document).await?;
+
     // Установить флаг is_posted
     document.is_posted = true;
     document.before_write();

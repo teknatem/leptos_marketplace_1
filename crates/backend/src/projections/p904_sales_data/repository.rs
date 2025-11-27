@@ -10,17 +10,17 @@ use crate::shared::data::db::get_connection;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    
+
     // Technical fields
     pub registrator_ref: String,
     pub registrator_type: String,
-    
+
     // Dimensions
     pub date: String,
     pub connection_mp_ref: String,
     pub nomenclature_ref: String,
     pub marketplace_product_ref: String,
-    
+
     // Sums
     pub customer_in: f64,
     pub customer_out: f64,
@@ -36,7 +36,7 @@ pub struct Model {
     pub commission_percent: f64,
     pub coinvest_persent: f64,
     pub total: f64,
-    
+
     // Info fields
     pub document_no: String,
     pub article: String,
@@ -81,13 +81,21 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
     };
 
     // Using insert with on_conflict would be better, but for now simple insert/update logic
-    // Since we generate UUIDs for ID, we can just insert. 
+    // Since we generate UUIDs for ID, we can just insert.
     // If we want idempotency based on business keys, we should check first.
     // For now, let's assume we delete by registrator before inserting, so insert is safe.
-    
+
     Entity::insert(active).exec(conn()).await?;
-    
+
     Ok(())
+}
+
+pub async fn get_by_registrator(registrator_ref: &str) -> Result<Vec<Model>> {
+    let items = Entity::find()
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .all(conn())
+        .await?;
+    Ok(items)
 }
 
 pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
@@ -98,14 +106,13 @@ pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
     Ok(result.rows_affected)
 }
 
-
 pub async fn list(limit: Option<u64>) -> Result<Vec<Model>> {
     let mut query = Entity::find().order_by_desc(Column::Date);
-    
+
     if let Some(lim) = limit {
         query = query.limit(lim);
     }
-    
+
     let items = query.all(conn()).await?;
     Ok(items)
 }
@@ -126,7 +133,7 @@ pub async fn list_with_filters(
     limit: Option<u64>,
 ) -> Result<Vec<ModelWithCabinet>> {
     use sea_orm::{FromQueryResult, Statement};
-    
+
     // Build SQL query manually for better control
     let mut sql = r#"
         SELECT 
@@ -158,10 +165,11 @@ pub async fn list_with_filters(
         FROM p904_sales_data p904
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
         WHERE 1=1
-    "#.to_string();
+    "#
+    .to_string();
 
     let mut params: Vec<sea_orm::Value> = vec![];
-    
+
     // Add date filters
     if let Some(from) = &date_from {
         sql.push_str(&format!(" AND p904.date >= ?"));
@@ -171,17 +179,20 @@ pub async fn list_with_filters(
         sql.push_str(&format!(" AND p904.date <= ?"));
         params.push(to.clone().into());
     }
-    
+
     // Add connection_mp filter
     if let Some(conn_ref) = &connection_mp_ref {
         sql.push_str(&format!(" AND p904.connection_mp_ref = ?"));
         params.push(conn_ref.clone().into());
     }
-    
+
     // Add ordering and limit
     sql.push_str(" ORDER BY p904.date DESC");
     if let Some(lim) = limit {
+        tracing::info!("P904 repository: applying LIMIT {}", lim);
         sql.push_str(&format!(" LIMIT {}", lim));
+    } else {
+        tracing::warn!("P904 repository: NO LIMIT specified, this could return ALL records");
     }
 
     // Define a struct for query results
@@ -214,18 +225,13 @@ pub async fn list_with_filters(
         connection_mp_name: Option<String>,
     }
 
-    let stmt = Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        &sql,
-        params,
-    );
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, &sql, params);
 
-    let results = QueryResult::find_by_statement(stmt)
-        .all(conn())
-        .await?;
+    let results = QueryResult::find_by_statement(stmt).all(conn()).await?;
 
-    let items = results.into_iter().map(|r| {
-        ModelWithCabinet {
+    let items = results
+        .into_iter()
+        .map(|r| ModelWithCabinet {
             base: Model {
                 id: r.id,
                 registrator_ref: r.registrator_ref,
@@ -253,9 +259,8 @@ pub async fn list_with_filters(
                 posted_at: r.posted_at,
             },
             connection_mp_name: r.connection_mp_name,
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(items)
 }
-

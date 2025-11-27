@@ -28,8 +28,7 @@ fn MainLayout() -> impl IntoView {
 
 #[component]
 pub fn AppRoutes() -> impl IntoView {
-    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext context not found");
-    tabs_store.init_router_integration();
+    // AppGlobalContext is provided in App component
+    // Router integration is initialized in MainLayout component
     view! { <MainLayout /> }
 }

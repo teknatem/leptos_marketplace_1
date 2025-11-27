@@ -129,7 +129,7 @@ pub async fn get_by_document_nos(document_nos: &[String]) -> Result<Vec<OzonFboP
     if document_nos.is_empty() {
         return Ok(Vec::new());
     }
-    
+
     let items: Vec<OzonFboPosting> = Entity::find()
         .filter(Column::DocumentNo.is_in(document_nos.iter().map(|s| s.as_str())))
         .filter(Column::IsDeleted.eq(false))
@@ -138,7 +138,7 @@ pub async fn get_by_document_nos(document_nos: &[String]) -> Result<Vec<OzonFboP
         .into_iter()
         .map(Into::into)
         .collect();
-    
+
     Ok(items)
 }
 

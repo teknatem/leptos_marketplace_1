@@ -1,7 +1,8 @@
-use crate::projections::p904_sales_data::state::get_state;
+use crate::projections::p904_sales_data::state::create_state;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::list_utils::format_number;
+use chrono::Datelike;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -150,7 +151,7 @@ async fn fetch_connections_mp() -> Result<Vec<ConnectionMP>, String> {
 
 #[component]
 pub fn SalesDataList() -> impl IntoView {
-    let state = get_state();
+    let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
 
@@ -160,6 +161,65 @@ pub fn SalesDataList() -> impl IntoView {
 
     const FORM_KEY: &str = "p904_sales_data";
 
+    // Create local RwSignals for form fields to avoid disposed signal issues
+    // Use try_with_untracked to safely handle potentially disposed signals
+    let date_from = RwSignal::new(
+        state.try_with_untracked(|s| s.date_from.clone())
+            .unwrap_or_else(|| {
+                let now = chrono::Utc::now().date_naive();
+                let year = now.year();
+                let month = now.month();
+                chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                    .expect("Invalid date")
+                    .format("%Y-%m-%d")
+                    .to_string()
+            })
+    );
+    let date_to = RwSignal::new(
+        state.try_with_untracked(|s| s.date_to.clone())
+            .unwrap_or_else(|| {
+                let now = chrono::Utc::now().date_naive();
+                let year = now.year();
+                let month = now.month();
+                if month == 12 {
+                    chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                        .map(|d| d - chrono::Duration::days(1))
+                } else {
+                    chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+                        .map(|d| d - chrono::Duration::days(1))
+                }
+                .expect("Invalid date")
+                .format("%Y-%m-%d")
+                .to_string()
+            })
+    );
+    let limit = RwSignal::new(
+        state.try_with_untracked(|s| s.limit.clone())
+            .unwrap_or_else(|| "1000".to_string())
+    );
+    let cabinet_filter = RwSignal::new(
+        state.try_with_untracked(|s| s.cabinet_filter.clone())
+            .unwrap_or_else(|| "".to_string())
+    );
+
+    // Sync local signals with global state (safely handle disposed state)
+    Effect::new(move |_| {
+        let from = date_from.get();
+        let _ = state.try_update(|s| s.date_from = from);
+    });
+    Effect::new(move |_| {
+        let to = date_to.get();
+        let _ = state.try_update(|s| s.date_to = to);
+    });
+    Effect::new(move |_| {
+        let lim = limit.get();
+        let _ = state.try_update(|s| s.limit = lim);
+    });
+    Effect::new(move |_| {
+        let cab = cabinet_filter.get();
+        let _ = state.try_update(|s| s.cabinet_filter = cab);
+    });
+
     // Note: We no longer read from tabs_store/localStorage on init for filter defaults
     // because the state is now persistent in memory (state.rs).
     // However, we still support saving/loading settings to DB which overwrites state.
@@ -168,10 +228,10 @@ pub fn SalesDataList() -> impl IntoView {
         set_loading.set(true);
         set_error.set(None);
 
-        let date_from_val = state.with(|s| s.date_from.clone());
-        let date_to_val = state.with(|s| s.date_to.clone());
-        let cabinet_val = state.with(|s| s.cabinet_filter.clone());
-        let limit_val = state.with(|s| s.limit.clone());
+        let date_from_val = date_from.get_untracked();
+        let date_to_val = date_to.get_untracked();
+        let cabinet_val = cabinet_filter.get_untracked();
+        let limit_val = limit.get_untracked();
 
         let mut query_params = format!(
             "?limit={}&date_from={}&date_to={}",
@@ -185,7 +245,7 @@ pub fn SalesDataList() -> impl IntoView {
         spawn_local(async move {
             match fetch_sales(&query_params).await {
                 Ok(data) => {
-                    state.update(|s| {
+                    let _ = state.try_update(|s| {
                         s.sales = data;
                         s.is_loaded = true;
                     });
@@ -241,28 +301,37 @@ pub fn SalesDataList() -> impl IntoView {
             return;
         }
 
-        if !state.with_untracked(|s| s.is_loaded) {
-             spawn_local(async move {
+        if !state.try_with_untracked(|s| s.is_loaded).unwrap_or(true) {
+            spawn_local(async move {
                 match load_saved_settings(FORM_KEY).await {
                     Ok(Some(settings)) => {
-                        state.update(|s| {
-                            if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                            {
-                                s.date_from = date_from_val.to_string();
+                        if let Some(date_from_val) =
+                            settings.get("date_from").and_then(|v| v.as_str())
+                        {
+                            date_from.set(date_from_val.to_string());
+                        }
+                        if let Some(date_to_val) =
+                            settings.get("date_to").and_then(|v| v.as_str())
+                        {
+                            date_to.set(date_to_val.to_string());
+                        }
+                        if let Some(cabinet_val) =
+                            settings.get("cabinet_filter").and_then(|v| v.as_str())
+                        {
+                            cabinet_filter.set(cabinet_val.to_string());
+                            log!("Restored cabinet filter: {}", cabinet_val);
+                        }
+                        if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str())
+                        {
+                            // Валидация лимита: минимум 100, по умолчанию 1000
+                            let limit_num = limit_val.parse::<u32>().unwrap_or(1000);
+                            if limit_num < 100 {
+                                log!("WARNING: Invalid limit {} from saved settings, using default 1000", limit_val);
+                                limit.set("1000".to_string());
+                            } else {
+                                limit.set(limit_val.to_string());
                             }
-                            if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                                s.date_to = date_to_val.to_string();
-                            }
-                            if let Some(cabinet_val) =
-                                settings.get("cabinet_filter").and_then(|v| v.as_str())
-                            {
-                                s.cabinet_filter = cabinet_val.to_string();
-                                log!("Restored cabinet filter: {}", cabinet_val);
-                            }
-                            if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
-                                s.limit = limit_val.to_string();
-                            }
-                        });
+                        }
                         log!("Loaded saved settings for P904");
                         load_sales();
                     }
@@ -277,14 +346,14 @@ pub fn SalesDataList() -> impl IntoView {
                 }
             });
         } else {
-             log!("Used cached data for P904");
+            log!("Used cached data for P904");
         }
     });
 
     // Handle column click for sorting
     let handle_column_click = move |column: SortColumn| {
         let col_str = column.as_str();
-        state.update(|s| {
+        let _ = state.try_update(|s| {
             if s.sort_column.as_ref() == Some(&col_str) {
                 s.sort_ascending = !s.sort_ascending;
             } else {
@@ -301,8 +370,12 @@ pub fn SalesDataList() -> impl IntoView {
         let sort_asc = state.with(|s| s.sort_ascending);
 
         if let Some(col_str) = sort_col_opt {
-             if let Some(col) = SortColumn::from_str(&col_str) {
-                let direction = if sort_asc { SortDirection::Asc } else { SortDirection::Desc };
+            if let Some(col) = SortColumn::from_str(&col_str) {
+                let direction = if sort_asc {
+                    SortDirection::Asc
+                } else {
+                    SortDirection::Desc
+                };
                 data.sort_by(|a, b| {
                     let cmp = match col {
                         SortColumn::Date => a.date.cmp(&b.date),
@@ -421,10 +494,10 @@ pub fn SalesDataList() -> impl IntoView {
     // Save current settings to database
     let save_settings_to_db = move |_| {
         let settings = json!({
-            "date_from": state.with(|s| s.date_from.clone()),
-            "date_to": state.with(|s| s.date_to.clone()),
-            "cabinet_filter": state.with(|s| s.cabinet_filter.clone()),
-            "limit": state.with(|s| s.limit.clone()),
+            "date_from": date_from.get_untracked(),
+            "date_to": date_to.get_untracked(),
+            "cabinet_filter": cabinet_filter.get_untracked(),
+            "limit": limit.get_untracked(),
         });
 
         spawn_local(async move {
@@ -454,8 +527,19 @@ pub fn SalesDataList() -> impl IntoView {
                         &format!("WB Sales {}", document_no),
                     );
                 }
+                "OZON_Transactions" => {
+                    tabs_store.open_tab(
+                        &format!("a014_ozon_transactions_detail_{}", registrator_ref),
+                        &format!("OZON Txn {}", document_no),
+                    );
+                }
                 _ => {
-                    log!("Unknown registrator type: {}", registrator_type);
+                    log!(
+                        "Unknown registrator type: {}, registrator_ref: {}, document_no: {}",
+                        registrator_type,
+                        registrator_ref,
+                        document_no
+                    );
                 }
             }
         };
@@ -465,23 +549,30 @@ pub fn SalesDataList() -> impl IntoView {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
-                    state.update(|s| {
-                        if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
-                        {
-                            s.date_from = date_from_val.to_string();
+                    if let Some(date_from_val) =
+                        settings.get("date_from").and_then(|v| v.as_str())
+                    {
+                        date_from.set(date_from_val.to_string());
+                    }
+                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str())
+                    {
+                        date_to.set(date_to_val.to_string());
+                    }
+                    if let Some(cabinet_val) =
+                        settings.get("cabinet_filter").and_then(|v| v.as_str())
+                    {
+                        cabinet_filter.set(cabinet_val.to_string());
+                    }
+                    if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
+                        // Валидация лимита: минимум 100, по умолчанию 1000
+                        let limit_num = limit_val.parse::<u32>().unwrap_or(1000);
+                        if limit_num < 100 {
+                            log!("WARNING: Invalid limit {} from saved settings, using default 1000", limit_val);
+                            limit.set("1000".to_string());
+                        } else {
+                            limit.set(limit_val.to_string());
                         }
-                        if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
-                            s.date_to = date_to_val.to_string();
-                        }
-                        if let Some(cabinet_val) =
-                            settings.get("cabinet_filter").and_then(|v| v.as_str())
-                        {
-                            s.cabinet_filter = cabinet_val.to_string();
-                        }
-                        if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
-                            s.limit = limit_val.to_string();
-                        }
-                    });
+                    }
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
                     // Clear notification after 3 seconds
                     spawn_local(async move {
@@ -514,7 +605,11 @@ pub fn SalesDataList() -> impl IntoView {
         let current_asc = state.with(|s| s.sort_ascending);
 
         if current_col == Some(col_str) {
-            if current_asc { "↑" } else { "↓" }
+            if current_asc {
+                "↑"
+            } else {
+                "↓"
+            }
         } else {
             ""
         }
@@ -558,20 +653,18 @@ pub fn SalesDataList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Период:"</label>
                     <DateInput
-                        value=Signal::derive(move || state.get().date_from)
-                        on_change=move |val| state.update(|s| s.date_from = val)
+                        value=date_from
+                        on_change=move |val| date_from.set(val)
                     />
                     <span style="color: #6c757d;">"—"</span>
                     <DateInput
-                        value=Signal::derive(move || state.get().date_to)
-                        on_change=move |val| state.update(|s| s.date_to = val)
+                        value=date_to
+                        on_change=move |val| date_to.set(val)
                     />
                     <MonthSelector
                         on_select=Callback::new(move |(from, to)| {
-                            state.update(|s| {
-                                s.date_from = from;
-                                s.date_to = to;
-                            });
+                            date_from.set(from);
+                            date_to.set(to);
                         })
                     />
                 </div>
@@ -580,9 +673,9 @@ pub fn SalesDataList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Кабинет:"</label>
                     <select
-                        prop:value=move || state.get().cabinet_filter
+                        prop:value=move || cabinet_filter.get()
                         on:change=move |ev| {
-                            state.update(|s| s.cabinet_filter = event_target_value(&ev));
+                            cabinet_filter.set(event_target_value(&ev));
                         }
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 150px; background: #fff;"
                     >
@@ -599,9 +692,9 @@ pub fn SalesDataList() -> impl IntoView {
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Лимит:"</label>
                     <select
-                        prop:value=move || state.get().limit
+                        prop:value=move || limit.get()
                         on:change=move |ev| {
-                            state.update(|s| s.limit = event_target_value(&ev));
+                            limit.set(event_target_value(&ev));
                             load_sales();
                         }
                         style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 80px; background: #fff;"
@@ -657,11 +750,11 @@ pub fn SalesDataList() -> impl IntoView {
                             <table class="data-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.8em;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg);">
                                     <tr>
-                                        <th class="sticky-left" style="min-width: 85px; width: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
+                                        <th style="min-width: 85px; width: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::Date)>
                                             "Date " {get_sort_indicator(SortColumn::Date)}
                                         </th>
-                                        <th class="sticky-left" style="left: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
+                                        <th style="border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"
                                             on:click=move |_| handle_column_click(SortColumn::DocumentNo)>
                                             "Doc No " {get_sort_indicator(SortColumn::DocumentNo)}
                                         </th>
@@ -732,7 +825,7 @@ pub fn SalesDataList() -> impl IntoView {
                                     </tr>
                                     // Totals row - compact design
                                     <tr>
-                                        <td class="sticky-left" style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em; font-weight: 600; color: #2d3748;" colspan="2">
+                                        <td style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em; font-weight: 600; color: #2d3748;" colspan="2">
                                             {format!("📋 Итого: {} строк", count)}
                                         </td>
                                         <td style="border: 1px solid #e0e0e0; padding: 1px 2px; font-size: 0.75em;" colspan="2"></td>
@@ -764,8 +857,8 @@ pub fn SalesDataList() -> impl IntoView {
                                         };
                                         view! {
                                             <tr>
-                                                <td class="sticky-left" style="min-width: 85px; width: 85px; border: 1px solid #e0e0e0; padding: 2px 3px;">{date_only}</td>
-                                                <td class="sticky-left" style="left: 85px; border: 1px solid #e0e0e0; padding: 2px 3px;">
+                                                <td style="min-width: 85px; width: 85px; border: 1px solid #e0e0e0; padding: 2px 3px;">{date_only}</td>
+                                                <td style="border: 1px solid #e0e0e0; padding: 2px 3px;">
                                                     <a
                                                         href="#"
                                                         on:click=move |ev| {

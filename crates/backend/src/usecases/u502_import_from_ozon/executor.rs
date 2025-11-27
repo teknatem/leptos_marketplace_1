@@ -385,7 +385,9 @@ impl ImportExecutor {
             );
 
             // Автоматический поиск номенклатуры по артикулу
-            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
+            let _ =
+                a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
+                    .await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)
@@ -523,7 +525,10 @@ impl ImportExecutor {
                                 Some("auto-created from finance operation".to_string()),
                             );
                             // Автоматический поиск номенклатуры по артикулу
-                            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new).await;
+                            let _ = a007_marketplace_product::service::search_and_set_nomenclature(
+                                &mut new,
+                            )
+                            .await;
                             let id = a007_marketplace_product::repository::insert(&new).await?;
                             id.to_string()
                         };
@@ -1688,13 +1693,17 @@ impl ImportExecutor {
                     warehouse_id: operation.posting.warehouse_id,
                 };
 
-                // Собираем items
+                // Собираем items (при импорте поля заполняются как None, обогащение происходит при проведении)
                 let items: Vec<OzonTransactionsItem> = operation
                     .items
                     .into_iter()
                     .map(|item| OzonTransactionsItem {
                         name: item.name,
                         sku: item.sku,
+                        price: None,
+                        ratio: None,
+                        marketplace_product_ref: None,
+                        nomenclature_ref: None,
                     })
                     .collect();
 

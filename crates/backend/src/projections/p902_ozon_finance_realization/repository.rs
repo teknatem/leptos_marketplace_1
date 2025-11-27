@@ -460,6 +460,15 @@ pub struct StatsData {
     pub linked_postings: i32,
 }
 
+/// Получить все записи проекции для документа-регистратора
+pub async fn get_by_registrator(registrator_ref: &str) -> Result<Vec<Model>> {
+    let items = Entity::find()
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .all(conn())
+        .await?;
+    Ok(items)
+}
+
 /// Удалить все записи проекции для документа-регистратора
 pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
     let result = Entity::delete_many()

@@ -84,6 +84,18 @@ pub struct OzonTransactionsItem {
     pub name: String,
     /// SKU товара
     pub sku: i64,
+    /// Цена товара (из постинга FBO/FBS)
+    #[serde(default)]
+    pub price: Option<f64>,
+    /// Пропорция стоимости (для распределения сумм)
+    #[serde(default)]
+    pub ratio: Option<f64>,
+    /// Ссылка на продукт маркетплейса (a003)
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
+    /// Ссылка на номенклатуру (a004)
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
 }
 
 /// Элемент сервиса из массива services

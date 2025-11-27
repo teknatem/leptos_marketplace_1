@@ -1,5 +1,5 @@
-use super::details::OzonTransactionsDetail;
-use crate::domain::a014_ozon_transactions::state::get_state;
+use crate::domain::a014_ozon_transactions::state::create_state;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::list_utils::{format_number, get_sort_indicator, Sortable};
@@ -114,11 +114,13 @@ impl Sortable for OzonTransactionsDto {
 
 #[component]
 pub fn OzonTransactionsList() -> impl IntoView {
-    let state = get_state();
+    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
+        .expect("AppGlobalContext context not found");
+    
+    let state = create_state();
     // let (transactions, set_transactions) = signal::<Vec<OzonTransactionsDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
 
     // Множественный выбор для массовых операций
     // let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
@@ -554,14 +556,11 @@ pub fn OzonTransactionsList() -> impl IntoView {
     };
 
     // Открыть детальный просмотр
-    let open_detail = move |id: String| {
-        set_selected_id.set(Some(id));
-    };
-
-    // Закрыть детальный просмотр
-    let close_detail = move || {
-        set_selected_id.set(None);
-        // load_transactions(); // Убрано: Не перезагружаем список после закрытия
+    let open_detail = move |id: String, operation_id: i64| {
+        tabs_store.open_tab(
+            &format!("a014_ozon_transactions_detail_{}", id),
+            &format!("OZON Txn {}", operation_id),
+        );
     };
 
     view! {
@@ -806,6 +805,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                                         let item_id = item.id.clone();
                                         let item_id_for_checkbox = item.id.clone();
                                         let item_id_for_checked = item.id.clone();
+                                        let item_operation_id = item.operation_id;
                                         let substatus_display = item.substatus.clone().unwrap_or_default();
                                         view! {
                                             <tr class="transaction-row" style="cursor: pointer;">
@@ -823,23 +823,23 @@ pub fn OzonTransactionsList() -> impl IntoView {
                                                         }
                                                     />
                                                 </td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{format_date(&item.operation_date)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.operation_id}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.operation_type_name.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{format_date(&item.operation_date)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.operation_id}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.operation_type_name.clone()}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">
                                                     {substatus_display}
                                                 </td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px; color: #2e7d32;">
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px; color: #2e7d32;">
                                                     {item.delivering_date.as_ref().map(|d| format_date(d)).unwrap_or_default()}
                                                 </td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="posting-link" style="border: 1px solid #e0e0e0; padding: 4px 6px; color: #2196F3;">{item.posting_number.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.transaction_type.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.delivery_schema.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.amount)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.accruals_for_sale)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.sale_commission)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.delivery_charge)}</td>
-                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center;">
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} class="posting-link" style="border: 1px solid #e0e0e0; padding: 4px 6px; color: #2196F3;">{item.posting_number.clone()}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.transaction_type.clone()}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.delivery_schema.clone()}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.amount)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.accruals_for_sale)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.sale_commission)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{format_number(item.delivery_charge)}</td>
+                                                <td on:click={let id = item_id.clone(); move |_| open_detail(id.clone(), item_operation_id)} style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center;">
                                                     {if item.is_posted { "Да" } else { "Нет" }}
                                                 </td>
                                             </tr>
@@ -852,13 +852,6 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     }.into_any()
                 }
             }}
-
-            {move || selected_id.get().map(|id| view! {
-                <OzonTransactionsDetail
-                    transaction_id=id
-                    on_close=close_detail
-                />
-            })}
         </div>
     }
 }

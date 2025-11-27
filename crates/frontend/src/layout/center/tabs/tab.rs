@@ -12,7 +12,10 @@ pub fn Tab(tab: TabData) -> impl IntoView {
         Memo::new(move |_| tabs_store.active.get().as_deref() == Some(&tab_for_active.key));
 
     let tab_for_click = tab.clone();
-    let on_click = move |_| tabs_store.activate_tab(&tab_for_click.key);
+    let on_click = move |ev: ev::MouseEvent| {
+        ev.prevent_default();
+        tabs_store.activate_tab(&tab_for_click.key);
+    };
 
     let tab_for_close = tab.clone();
     let on_close = move |ev: ev::MouseEvent| {

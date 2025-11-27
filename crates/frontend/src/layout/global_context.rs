@@ -57,16 +57,27 @@ impl AppGlobalContext {
             if let Some(active_key) = this.active.get() {
                 let query_string = serde_qs::to_string(&std::collections::HashMap::from([(
                     "active".to_string(),
-                    active_key,
+                    active_key.clone(),
                 )]))
                 .unwrap_or_default();
-                if let Some(w) = window() {
-                    if let Ok(history) = w.history() {
-                        let _ = history.replace_state_with_url(
-                            &wasm_bindgen::JsValue::NULL,
-                            "",
-                            Some(&format!("?{}", query_string)),
-                        );
+                
+                let new_url = format!("?{}", query_string);
+                
+                // Use untracked to avoid creating unnecessary reactive dependencies
+                let current_search = window()
+                    .and_then(|w| w.location().search().ok())
+                    .unwrap_or_default();
+                
+                // Only update URL if it actually changed
+                if current_search != new_url {
+                    if let Some(w) = window() {
+                        if let Ok(history) = w.history() {
+                            let _ = history.replace_state_with_url(
+                                &wasm_bindgen::JsValue::NULL,
+                                "",
+                                Some(&new_url),
+                            );
+                        }
                     }
                 }
             }
@@ -74,6 +85,7 @@ impl AppGlobalContext {
     }
 
     pub fn open_tab(&self, key: &str, title: &str) {
+        leptos::logging::log!("🔷 open_tab: key='{}', title='{}'", key, title);
         let exists = self
             .opened
             .with_untracked(|tabs| tabs.iter().any(|tab| tab.key == key));
@@ -84,12 +96,18 @@ impl AppGlobalContext {
                 dirty: false,
                 pinned: false,
             };
-            self.opened.update(|tabs| tabs.push(tab));
+            self.opened.update(|tabs| {
+                tabs.push(tab);
+                leptos::logging::log!("✅ Tab added. Total tabs: {}", tabs.len());
+            });
+        } else {
+            leptos::logging::log!("ℹ️ Tab already exists, just activating");
         }
         self.activate_tab(key);
     }
 
     pub fn activate_tab(&self, key: &str) {
+        leptos::logging::log!("🔶 activate_tab: key='{}'", key);
         self.active.set(Some(key.to_string()));
     }
 
@@ -102,7 +120,13 @@ impl AppGlobalContext {
     }
 
     pub fn close_tab(&self, key: &str) {
-        self.opened.update(|tabs| tabs.retain(|tab| tab.key != key));
+        leptos::logging::log!("🔴 close_tab: key='{}'", key);
+        self.opened.update(|tabs| {
+            let before = tabs.len();
+            tabs.retain(|tab| tab.key != key);
+            let after = tabs.len();
+            leptos::logging::log!("📊 Tabs before: {}, after: {}", before, after);
+        });
         if self
             .active
             .with_untracked(|active| active.as_deref() == Some(key))
@@ -110,6 +134,7 @@ impl AppGlobalContext {
             let next_active = self
                 .opened
                 .with_untracked(|tabs| tabs.last().map(|t| t.key.clone()));
+            leptos::logging::log!("➡️ Next active tab: {:?}", next_active);
             self.active.set(next_active);
         }
     }

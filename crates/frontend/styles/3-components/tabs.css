@@ -40,6 +40,19 @@
     flex-grow: 1;
     overflow: auto;
     min-height: 0;
+    position: relative;
+}
+
+/* Individual tab page container */
+.tab-page {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+
+/* Hidden tab pages */
+.tab-page.hidden {
+    display: none !important;
 }
 
 /* Close button for tabs */

@@ -6,8 +6,9 @@ use uuid::Uuid;
 
 /// Проецировать WB Sales в Sales Data (P904)
 pub async fn project_wb_sales(document: &WbSales, document_id: Uuid) -> Result<()> {
-    let entries = projection_builder::from_wb_sales_lines(document, &document_id.to_string()).await?;
-    
+    let entries =
+        projection_builder::from_wb_sales_lines(document, &document_id.to_string()).await?;
+
     for entry in entries {
         repository::upsert_entry(&entry).await?;
     }
@@ -19,7 +20,6 @@ pub async fn project_wb_sales(document: &WbSales, document_id: Uuid) -> Result<(
 
     Ok(())
 }
-
 
 pub async fn list(limit: Option<u64>) -> Result<Vec<repository::Model>> {
     repository::list(limit).await
@@ -35,9 +35,13 @@ pub async fn list_with_filters(
 }
 
 /// Проецировать OZON Transactions в Sales Data (P904)
-pub async fn project_ozon_transactions(document: &OzonTransactions, document_id: Uuid) -> Result<()> {
-    let entries = projection_builder::from_ozon_transactions(document, &document_id.to_string()).await?;
-    
+pub async fn project_ozon_transactions(
+    document: &OzonTransactions,
+    document_id: Uuid,
+) -> Result<()> {
+    let entries =
+        projection_builder::from_ozon_transactions(document, &document_id.to_string()).await?;
+
     for entry in entries {
         repository::upsert_entry(&entry).await?;
     }
@@ -49,4 +53,3 @@ pub async fn project_ozon_transactions(document: &OzonTransactions, document_id:
 
     Ok(())
 }
-

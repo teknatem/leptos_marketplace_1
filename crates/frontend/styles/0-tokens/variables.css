@@ -63,7 +63,7 @@
 
   /* Hover states */
   --color-hover-bg: #f5f5f5;
-  --color-hover-table: #f8f9fa;
+  --color-hover-table: #e3f2fd;
 
   /* Tab colors */
   --color-tab-bg: #eee;
@@ -83,8 +83,8 @@
   --panel-resizer-width: 6px;
 
   /* Table dimensions */
-  --table-row-height: 32px;
-  --table-header-height: 40px;
+  --table-row-height: 26px;
+  --table-header-height: 32px;
   --table-max-height: calc(100vh - 220px);
 
 

@@ -1,7 +1,7 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
 // Import posting detail components
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
@@ -55,6 +55,14 @@ pub struct PostingDto {
 pub struct ItemDto {
     pub name: String,
     pub sku: i64,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub ratio: Option<f64>,
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,21 +93,25 @@ pub fn OzonTransactionsDetail(
     transaction_id: String,
     #[prop(into)] on_close: Callback<()>,
 ) -> impl IntoView {
-    let (transaction_data, set_transaction_data) = signal::<Option<OzonTransactionsDetailDto>>(None);
+    let (transaction_data, set_transaction_data) =
+        signal::<Option<OzonTransactionsDetailDto>>(None);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
     let (posting, set_posting) = signal(false);
-    
+    let (projections, set_projections) = signal::<Option<serde_json::Value>>(None);
+    let (projections_loading, set_projections_loading) = signal(false);
+
     // Signal for selected posting document (type, id)
     let (selected_posting, set_selected_posting) = signal::<Option<(String, String)>>(None);
 
     // Store transaction ID for use in handlers
     let stored_id = StoredValue::new(transaction_id.clone());
     let transaction_id_for_effect = transaction_id.clone();
-    
+
     // Memo for posting status
-    let is_posted = Memo::new(move |_| transaction_data.get().map(|s| s.is_posted).unwrap_or(false));
+    let is_posted =
+        Memo::new(move |_| transaction_data.get().map(|s| s.is_posted).unwrap_or(false));
 
     // Загрузить детальные данные
     Effect::new(move || {
@@ -118,8 +130,32 @@ pub fn OzonTransactionsDetail(
                             Ok(text) => {
                                 match serde_json::from_str::<OzonTransactionsDetailDto>(&text) {
                                     Ok(data) => {
+                                        let transaction_id = data.id.clone();
                                         set_transaction_data.set(Some(data));
                                         set_loading.set(false);
+
+                                        // Асинхронная загрузка проекций
+                                        let set_projections = set_projections.clone();
+                                        let set_projections_loading = set_projections_loading.clone();
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            set_projections_loading.set(true);
+                                            let projections_url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/projections", transaction_id);
+                                            match Request::get(&projections_url).send().await {
+                                                Ok(resp) => {
+                                                    if resp.status() == 200 {
+                                                        if let Ok(text) = resp.text().await {
+                                                            if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                                set_projections.set(Some(proj_data));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to load projections: {:?}", e);
+                                                }
+                                            }
+                                            set_projections_loading.set(false);
+                                        });
                                     }
                                     Err(e) => {
                                         log!("Failed to parse transaction detail: {:?}", e);
@@ -149,9 +185,8 @@ pub fn OzonTransactionsDetail(
     });
 
     view! {
-        <div class="modal-overlay" on:click=move |_| on_close.run(())>
-            <div class="modal-content-wide" on:click=move |e| e.stop_propagation() style="display: flex; flex-direction: column; max-height: 90vh; padding: var(--space-xl); background: var(--color-hover-table); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
-                <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+        <div class="transaction-detail" style="padding: var(--space-xl); height: 100%; display: flex; flex-direction: column; background: var(--color-hover-table); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
+            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
                     <div style="display: flex; align-items: center; gap: var(--space-xl);">
                         <h2 style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-white); letter-spacing: 0.5px;">"💳 Детали транзакции OZON"</h2>
                         <Show when=move || transaction_data.get().is_some()>
@@ -269,7 +304,7 @@ pub fn OzonTransactionsDetail(
                     </div>
                 </div>
 
-                <div style="flex: 1; overflow-y: auto; min-height: 0;">
+                <div style="flex: 1; overflow-y: auto; min-height: 0; max-height: calc(90vh - 120px);">
                     {move || {
                         if loading.get() {
                             view! {
@@ -325,6 +360,27 @@ pub fn OzonTransactionsDetail(
                                             )
                                         >
                                             "Сервисы (" {data.services.len()} ")"
+                                        </button>
+                                        <button
+                                            on:click=move |_| set_active_tab.set("projections")
+                                            style=move || format!(
+                                                "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
+                                                if active_tab.get() == "projections" {
+                                                    "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
+                                                } else {
+                                                    "background: #f5f5f5; color: #666;"
+                                                }
+                                            )
+                                        >
+                                            {move || {
+                                                let count = projections.get().as_ref().map(|p| {
+                                                    let p900_len = p["p900_sales_register"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                    let p902_len = p["p902_ozon_finance"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                    let p904_len = p["p904_sales_data"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                    p900_len + p902_len + p904_len
+                                                }).unwrap_or(0);
+                                                format!("📊 Проекции ({})", count)
+                                            }}
                                         </button>
                                     </div>
 
@@ -443,11 +499,15 @@ pub fn OzonTransactionsDetail(
                                                             }.into_any()
                                                         } else {
                                                             view! {
-                                                                <table style="width: 100%; border-collapse: collapse;">
+                                                                <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
                                                                     <thead>
                                                                         <tr style="background: #f5f5f5;">
                                                                             <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"SKU"</th>
                                                                             <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"Название"</th>
+                                                                            <th style="padding: 12px; text-align: right; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"Цена"</th>
+                                                                            <th style="padding: 12px; text-align: right; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"Пропорция"</th>
+                                                                            <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"Продукт MP"</th>
+                                                                            <th style="padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; color: #555;">"Номенклатура"</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
@@ -455,6 +515,18 @@ pub fn OzonTransactionsDetail(
                                                                             <tr style="border-bottom: 1px solid #eee;">
                                                                                 <td style="padding: 12px; font-family: 'Courier New', monospace; color: #333;">{item.sku}</td>
                                                                                 <td style="padding: 12px; color: #333;">{item.name.clone()}</td>
+                                                                                <td style="padding: 12px; text-align: right; color: #333;">
+                                                                                    {item.price.map(|p| format!("{:.2} ₽", p)).unwrap_or("—".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 12px; text-align: right; color: #666;">
+                                                                                    {item.ratio.map(|r| format!("{:.1}%", r * 100.0)).unwrap_or("—".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85em; color: #666;">
+                                                                                    {item.marketplace_product_ref.as_ref().map(|r| format!("{}...", r.chars().take(8).collect::<String>())).unwrap_or("—".to_string())}
+                                                                                </td>
+                                                                                <td style="padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85em; color: #666;">
+                                                                                    {item.nomenclature_ref.as_ref().map(|r| format!("{}...", r.chars().take(8).collect::<String>())).unwrap_or("—".to_string())}
+                                                                                </td>
                                                                             </tr>
                                                                         }).collect::<Vec<_>>()}
                                                                     </tbody>
@@ -492,6 +564,168 @@ pub fn OzonTransactionsDetail(
                                                         }}
                                                     </div>
                                                 }.into_any(),
+                                                "projections" => view! {
+                                                    <div class="projections-info">
+                                                        {move || {
+                                                            if projections_loading.get() {
+                                                                view! {
+                                                                    <div style="padding: 20px; text-align: center; color: #999;">
+                                                                        "Загрузка проекций..."
+                                                                    </div>
+                                                                }.into_any()
+                                                            } else if let Some(proj_data) = projections.get() {
+                                                                let p900_items = proj_data["p900_sales_register"].as_array().cloned().unwrap_or_default();
+                                                                let p902_items = proj_data["p902_ozon_finance"].as_array().cloned().unwrap_or_default();
+                                                                let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+
+                                                                view! {
+                                                                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                                                                        // P900 Sales Register
+                                                                        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                                                            <h3 style="margin: 0 0 15px 0; color: #333; font-size: 16px; font-weight: 600; border-bottom: 2px solid #ff9800; padding-bottom: 8px;">
+                                                                                {format!("📊 Sales Register (p900) - {} записей", p900_items.len())}
+                                                                            </h3>
+                                                                            {if !p900_items.is_empty() {
+                                                                                view! {
+                                                                                    <div style="overflow-x: auto;">
+                                                                                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                                                                                            <thead>
+                                                                                                <tr style="background: #f5f5f5;">
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"MP"</th>
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"SKU"</th>
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"Title"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Qty"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Amount"</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                {p900_items.iter().map(|item| {
+                                                                                                    let mp = item["marketplace"].as_str().unwrap_or("—");
+                                                                                                    let sku = item["seller_sku"].as_str().unwrap_or("—");
+                                                                                                    let title = item["title"].as_str().unwrap_or("—");
+                                                                                                    let qty = item["qty"].as_f64().unwrap_or(0.0);
+                                                                                                    let amount = item["amount_line"].as_f64().unwrap_or(0.0);
+                                                                                                    
+                                                                                                    view! {
+                                                                                                        <tr style="border-bottom: 1px solid #eee;">
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd;">{mp}</td>
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd; font-family: monospace;">{sku}</td>
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd;">{title}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd;">{qty}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd; font-weight: 600;">{format!("{:.2}", amount)}</td>
+                                                                                                        </tr>
+                                                                                                    }
+                                                                                                }).collect::<Vec<_>>()}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <p style="text-align: center; padding: 20px; color: #999;">"Нет записей"</p>
+                                                                                }.into_any()
+                                                                            }}
+                                                                        </div>
+
+                                                                        // P902 OZON Finance
+                                                                        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                                                            <h3 style="margin: 0 0 15px 0; color: #333; font-size: 16px; font-weight: 600; border-bottom: 2px solid #4caf50; padding-bottom: 8px;">
+                                                                                {format!("💰 OZON Finance (p902) - {} записей", p902_items.len())}
+                                                                            </h3>
+                                                                            {if !p902_items.is_empty() {
+                                                                                view! {
+                                                                                    <div style="overflow-x: auto;">
+                                                                                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                                                                                            <thead>
+                                                                                                <tr style="background: #f5f5f5;">
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"Posting"</th>
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"SKU"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Qty"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Amount"</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                {p902_items.iter().map(|item| {
+                                                                                                    let posting = item["posting_number"].as_str().unwrap_or("—");
+                                                                                                    let sku = item["sku"].as_str().unwrap_or("—");
+                                                                                                    let qty = item["quantity"].as_f64().unwrap_or(0.0);
+                                                                                                    let amount = item["amount"].as_f64().unwrap_or(0.0);
+                                                                                                    
+                                                                                                    view! {
+                                                                                                        <tr style="border-bottom: 1px solid #eee;">
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd; font-family: monospace;">{posting}</td>
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd; font-family: monospace;">{sku}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd;">{qty}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd; font-weight: 600;">{format!("{:.2}", amount)}</td>
+                                                                                                        </tr>
+                                                                                                    }
+                                                                                                }).collect::<Vec<_>>()}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <p style="text-align: center; padding: 20px; color: #999;">"Нет записей"</p>
+                                                                                }.into_any()
+                                                                            }}
+                                                                        </div>
+
+                                                                        // P904 Sales Data
+                                                                        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                                                            <h3 style="margin: 0 0 15px 0; color: #333; font-size: 16px; font-weight: 600; border-bottom: 2px solid #2196F3; padding-bottom: 8px;">
+                                                                                {format!("📈 Sales Data (p904) - {} записей", p904_items.len())}
+                                                                            </h3>
+                                                                            {if !p904_items.is_empty() {
+                                                                                view! {
+                                                                                    <div style="overflow-x: auto;">
+                                                                                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                                                                                            <thead>
+                                                                                                <tr style="background: #f5f5f5;">
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"Date"</th>
+                                                                                                    <th style="padding: 8px; text-align: left; border: 1px solid #ddd;">"Article"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Customer In"</th>
+                                                                                                    <th style="padding: 8px; text-align: right; border: 1px solid #ddd;">"Total"</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                {p904_items.iter().map(|item| {
+                                                                                                    let date = item["date"].as_str().unwrap_or("—");
+                                                                                                    let article = item["article"].as_str().unwrap_or("—");
+                                                                                                    let customer_in = item["customer_in"].as_f64().unwrap_or(0.0);
+                                                                                                    let total = item["total"].as_f64().unwrap_or(0.0);
+                                                                                                    
+                                                                                                    view! {
+                                                                                                        <tr style="border-bottom: 1px solid #eee;">
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd;">{date}</td>
+                                                                                                            <td style="padding: 8px; border: 1px solid #ddd; font-family: monospace;">{article}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd;">{format!("{:.2}", customer_in)}</td>
+                                                                                                            <td style="padding: 8px; text-align: right; border: 1px solid #ddd; font-weight: 600;">{format!("{:.2}", total)}</td>
+                                                                                                        </tr>
+                                                                                                    }
+                                                                                                }).collect::<Vec<_>>()}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <p style="text-align: center; padding: 20px; color: #999;">"Нет записей"</p>
+                                                                                }.into_any()
+                                                                            }}
+                                                                        </div>
+                                                                    </div>
+                                                                }.into_any()
+                                                            } else {
+                                                                view! {
+                                                                    <div style="padding: 20px; text-align: center; color: #999;">
+                                                                        "Нет данных проекций"
+                                                                    </div>
+                                                                }.into_any()
+                                                            }
+                                                        }}
+                                                    </div>
+                                                }.into_any(),
                                                 _ => view! {
                                                     <div>"Unknown tab"</div>
                                                 }.into_any()
@@ -507,7 +741,6 @@ pub fn OzonTransactionsDetail(
                         }
                     }}
                 </div>
-            </div>
 
             // Modal for posting document details (A010 or A011)
             {move || {

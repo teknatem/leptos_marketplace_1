@@ -49,12 +49,8 @@ impl Default for TransactionsState {
     }
 }
 
-// Thread-local storage for global state
-thread_local! {
-    static STATE: RwSignal<TransactionsState> = RwSignal::new(TransactionsState::default());
+// Create state within component scope instead of thread-local
+// This ensures state is properly disposed when component unmounts
+pub fn create_state() -> RwSignal<TransactionsState> {
+    RwSignal::new(TransactionsState::default())
 }
-
-pub fn get_state() -> RwSignal<TransactionsState> {
-    STATE.with(|s| *s)
-}
-
