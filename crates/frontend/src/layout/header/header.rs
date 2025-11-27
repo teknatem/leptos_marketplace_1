@@ -1,4 +1,5 @@
 use crate::layout::global_context::AppGlobalContext;
+use crate::layout::header::mega_menu::MegaMenuBar;
 use leptos::prelude::*;
 
 #[component]
@@ -10,6 +11,9 @@ pub fn Header() -> impl IntoView {
         <header data-zone="header" class="header">
             <div class="header-left">
                 <span class="header-title">"Integrator"</span>
+            </div>
+            <div class="header-center">
+                <MegaMenuBar />
             </div>
             <div class="header-actions">
                 <button class="icon-btn" aria-label="Toggle Left" on:click=move |_| tabs_store.toggle_left()>{"◀"}</button>
