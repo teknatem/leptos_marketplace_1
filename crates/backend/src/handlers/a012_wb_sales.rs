@@ -449,3 +449,31 @@ pub async fn batch_unpost_documents(
         "total": total
     })))
 }
+
+/// Handler для получения проекций по registrator_ref
+pub async fn get_projections(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    // Получаем данные из проекций p900 и p904 (WB Sales использует только эти)
+    let p900_items = crate::projections::p900_mp_sales_register::repository::get_by_registrator(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p900 projections: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p904 projections: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Объединяем результаты
+    let result = serde_json::json!({
+        "p900_sales_register": p900_items,
+        "p904_sales_data": p904_items,
+    });
+
+    Ok(Json(result))
+}

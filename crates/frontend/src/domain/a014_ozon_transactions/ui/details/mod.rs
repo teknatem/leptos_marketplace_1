@@ -222,7 +222,7 @@ pub fn OzonTransactionsDetail(
                                 fallback=move || {
                                     view! {
                                         <button
-                                            class="btn-header-action btn-header-warning"
+                                            class="btn btn-warning"
                                             on:click=move |_| {
                                                 let doc_id = stored_id.get_value();
                                                 set_posting.set(true);
@@ -264,7 +264,7 @@ pub fn OzonTransactionsDetail(
                                                     set_posting.set(false);
                                                 });
                                             }
-                                            disabled=move || posting.get()
+                                            prop:disabled=move || posting.get()
                                         >
                                             {move || if posting.get() { "Отмена..." } else { "✗ Отменить" }}
                                         </button>
@@ -274,7 +274,7 @@ pub fn OzonTransactionsDetail(
                                 {
                                     view! {
                                         <button
-                                            class="btn-header-action btn-header-success"
+                                            class="btn btn-success"
                                             on:click=move |_| {
                                                 let doc_id = stored_id.get_value();
                                                 set_posting.set(true);
@@ -316,7 +316,7 @@ pub fn OzonTransactionsDetail(
                                                     set_posting.set(false);
                                                 });
                                             }
-                                            disabled=move || posting.get()
+                                            prop:disabled=move || posting.get()
                                         >
                                             {move || if posting.get() { "Проведение..." } else { "✓ Провести" }}
                                         </button>
@@ -325,7 +325,7 @@ pub fn OzonTransactionsDetail(
                             </Show>
                         </Show>
                         <button
-                            class="btn-close"
+                            class="btn btn-secondary"
                             on:click=move |_| on_close.run(())
                         >
                             "✕ Закрыть"
@@ -349,7 +349,7 @@ pub fn OzonTransactionsDetail(
                             }.into_any()
                         } else if let Some(data) = transaction_data.get() {
                                 view! {
-                                <div style="height: 100%; display: flex; flex-direction: column;">
+                                <div>
                                     <div class="detail-tabs">
                                         <button
                                             class="detail-tab"
@@ -389,7 +389,7 @@ pub fn OzonTransactionsDetail(
                                         </button>
                                     </div>
 
-                                    <div style="flex: 1; overflow-y: auto; padding: var(--space-lg) 0;">
+                                    <div style="padding-top: var(--space-lg);">
                                         {move || {
                                             let data = transaction_data.get().unwrap();
                                             let tab = active_tab.get();
@@ -748,7 +748,7 @@ pub fn OzonTransactionsDetail(
                                                                                                     let date = item["date"].as_str().unwrap_or("—");
                                                                                                     let document_no = item["document_no"].as_str().unwrap_or("—");
                                                                                                     let article = item["article"].as_str().unwrap_or("—");
-                                                                                                    let connection_mp_name = item["connection_mp_name"].as_str().unwrap_or("—");
+                                                                                                    let connection_mp_ref = item["connection_mp_ref"].as_str().unwrap_or("—");
                                                                                                     let customer_in = item["customer_in"].as_f64().unwrap_or(0.0);
                                                                                                     let customer_out = item["customer_out"].as_f64().unwrap_or(0.0);
                                                                                                     let coinvest_in = item["coinvest_in"].as_f64().unwrap_or(0.0);
@@ -769,7 +769,7 @@ pub fn OzonTransactionsDetail(
                                                                                                             <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border); white-space: nowrap;">{date}</td>
                                                                                                             <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{document_no}</td>
                                                                                                             <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{article}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{connection_mp_name}</td>
+                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{connection_mp_ref}</td>
                                                                                                             <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_in)}</td>
                                                                                                             <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_out)}</td>
                                                                                                             <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", coinvest_in)}</td>

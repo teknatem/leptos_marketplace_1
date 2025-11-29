@@ -123,6 +123,10 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         signal::<Option<String>>(None);
     let (selected_nomenclature_id, set_selected_nomenclature_id) = signal::<Option<String>>(None);
 
+    // Projections
+    let (projections, set_projections) = signal::<Option<serde_json::Value>>(None);
+    let (projections_loading, set_projections_loading) = signal(false);
+
     let is_posted = Memo::new(move |_| sale.get().map(|s| s.metadata.is_posted).unwrap_or(false));
 
     // Сохраняем id в StoredValue для использования в обработчиках
@@ -229,6 +233,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         // Загружаем raw JSON от WB
                                         let raw_payload_ref =
                                             data.source_meta.raw_payload_ref.clone();
+                                        let sale_id = data.id.clone();
 
                                         // Загружаем связанные данные
                                         load_related_data(&data);
@@ -273,6 +278,37 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     );
                                                 }
                                             }
+                                        });
+
+                                        // Асинхронная загрузка проекций
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            set_projections_loading.set(true);
+                                            let projections_url = format!(
+                                                "http://localhost:3000/api/a012/wb-sales/{}/projections",
+                                                sale_id
+                                            );
+                                            match Request::get(&projections_url).send().await {
+                                                Ok(resp) => {
+                                                    if resp.status() == 200 {
+                                                        if let Ok(text) = resp.text().await {
+                                                            if let Ok(proj_data) =
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
+                                                                )
+                                                            {
+                                                                set_projections
+                                                                    .set(Some(proj_data));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to load projections: {:?}", e);
+                                                }
+                                            }
+                                            set_projections_loading.set(false);
                                         });
                                     }
                                     Err(e) => {
@@ -375,36 +411,36 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     };
 
     view! {
-        <div class="sale-detail" style="padding: var(--space-xl); height: 100%; display: flex; flex-direction: column; background: var(--color-hover-table); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
-            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: var(--space-xl);">
-                    <h2 style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-white); letter-spacing: 0.5px;">"📋 Wildberries Sales Details"</h2>
+        <div class="detail-form">
+            <div class="detail-form-header">
+                <div class="detail-form-header-left">
+                    <h2>
+                        {move || {
+                            sale.get()
+                                .map(|d| format!("WB Sales #{}", d.header.document_no))
+                                .unwrap_or_else(|| "Wildberries Sales Details".to_string())
+                        }}
+                    </h2>
                     <Show when=move || sale.get().is_some()>
                         {move || {
                             let posted = is_posted.get();
                             view! {
-                                <div style=move || format!(
-                                    "display: flex; align-items: center; gap: var(--space-xs); padding: 3px var(--space-md); border-radius: var(--radius-sm); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); {}",
-                                    if posted {
-                                        "background: rgba(255,255,255,0.2); color: var(--color-success); border: 1px solid rgba(76,175,80,0.5);"
-                                    } else {
-                                        "background: rgba(255,255,255,0.2); color: var(--color-warning); border: 1px solid rgba(255,152,0,0.5);"
-                                    }
-                                )>
-                                    <span style="font-size: var(--font-size-sm);">{if posted { "✓" } else { "○" }}</span>
+                                <div class=move || if posted { "status-badge status-badge-posted" } else { "status-badge status-badge-not-posted" }>
+                                    <span class="status-badge-icon">{if posted { "✓" } else { "○" }}</span>
                                     <span>{if posted { "Проведен" } else { "Не проведен" }}</span>
                                 </div>
                             }
                         }}
                     </Show>
                 </div>
-                <div style="display: flex; gap: var(--space-md);">
+                <div class="detail-form-header-right">
                     <Show when=move || sale.get().is_some()>
                         <Show
                             when=move || !is_posted.get()
                             fallback=move || {
                                 view! {
                                     <button
+                                        class="btn btn-warning"
                                         on:click=move |_| {
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
@@ -414,7 +450,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document unposted successfully");
-                                                            // Перезагрузить только данные документа
+                                                            // Перезагрузить данные документа
                                                             let reload_url = format!("http://localhost:3000/api/a012/wb-sales/{}", doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
@@ -422,6 +458,17 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                         log!("Reloaded document, is_posted: {}", data.metadata.is_posted);
                                                                         load_related_data(&data);
                                                                         set_sale.set(Some(data));
+                                                                    }
+                                                                }
+                                                            }
+                                                            // Перезагрузить проекции
+                                                            let projections_url = format!("http://localhost:3000/api/a012/wb-sales/{}/projections", doc_id);
+                                                            if let Ok(resp) = Request::get(&projections_url).send().await {
+                                                                if resp.status() == 200 {
+                                                                    if let Ok(text) = resp.text().await {
+                                                                        if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                                            set_projections.set(Some(proj_data));
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -436,10 +483,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 set_posting.set(false);
                                             });
                                         }
-                                        disabled=move || posting.get()
-                                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-warning); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
+                                        prop:disabled=move || posting.get()
                                     >
-                                        {move || if posting.get() { "Unposting..." } else { "✗ Unpost" }}
+                                        {move || if posting.get() { "Отмена..." } else { "✗ Отменить" }}
                                     </button>
                                 }
                             }
@@ -447,6 +493,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             {
                                 view! {
                                     <button
+                                        class="btn btn-success"
                                         on:click=move |_| {
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
@@ -456,7 +503,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document posted successfully");
-                                                            // Перезагрузить только данные документа
+                                                            // Перезагрузить данные документа
                                                             let reload_url = format!("http://localhost:3000/api/a012/wb-sales/{}", doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
@@ -464,6 +511,17 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                                         log!("Reloaded document, is_posted: {}", data.metadata.is_posted);
                                                                         load_related_data(&data);
                                                                         set_sale.set(Some(data));
+                                                                    }
+                                                                }
+                                                            }
+                                                            // Перезагрузить проекции
+                                                            let projections_url = format!("http://localhost:3000/api/a012/wb-sales/{}/projections", doc_id);
+                                                            if let Ok(resp) = Request::get(&projections_url).send().await {
+                                                                if resp.status() == 200 {
+                                                                    if let Ok(text) = resp.text().await {
+                                                                        if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                                            set_projections.set(Some(proj_data));
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -478,99 +536,86 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 set_posting.set(false);
                                             });
                                         }
-                                        disabled=move || posting.get()
-                                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-success); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
+                                        prop:disabled=move || posting.get()
                                     >
-                                        {move || if posting.get() { "Posting..." } else { "✓ Post" }}
+                                        {move || if posting.get() { "Проведение..." } else { "✓ Провести" }}
                                     </button>
                                 }
                             }
                         </Show>
                     </Show>
                     <button
+                        class="btn btn-secondary"
                         on:click=move |_| on_close.run(())
-                        style="height: var(--header-height); padding: 0 var(--space-3xl); background: var(--color-danger); color: var(--color-text-white); border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); transition: var(--transition-fast);"
                     >
-                        "✕ Close"
+                        "✕ Закрыть"
                     </button>
                 </div>
             </div>
 
-            <div style="flex: 1; overflow-y: auto; min-height: 0;">
+            <div class="detail-form-content">
                 {move || {
                     if loading.get() {
                         view! {
-                            <div style="text-align: center; padding: 40px;">
-                                <p>"Loading..."</p>
+                            <div style="text-align: center; padding: var(--space-2xl);">
+                                <p style="font-size: var(--font-size-sm);">"Загрузка..."</p>
                             </div>
                         }.into_any()
                     } else if let Some(err) = error.get() {
                         view! {
-                            <div style="padding: 20px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828;">
-                                <strong>"Error: "</strong>{err}
+                            <div style="padding: var(--space-lg); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); color: var(--color-error); margin: var(--space-lg); font-size: var(--font-size-sm);">
+                                <strong>"Ошибка: "</strong>{err}
                             </div>
                         }.into_any()
                     } else if let Some(sale_data) = sale.get() {
                         view! {
-                            <div style="height: 100%; display: flex; flex-direction: column;">
-                                // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid var(--color-border-light); margin-bottom: var(--space-lg); flex-shrink: 0; background: var(--color-bg-body); position: sticky; top: 0; z-index: var(--z-sticky);">
+                            <div>
+                                <div class="detail-tabs">
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "general"
                                         on:click=move |_| set_active_tab.set("general")
-                                        style=move || format!(
-                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
-                                            if active_tab.get() == "general" {
-                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
-                                            } else {
-                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
-                                            }
-                                        )
                                     >
-                                        "📋 General"
+                                        "Общие данные"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "line"
                                         on:click=move |_| set_active_tab.set("line")
-                                        style=move || format!(
-                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
-                                            if active_tab.get() == "line" {
-                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
-                                            } else {
-                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
-                                            }
-                                        )
                                     >
-                                        "📦 Line Details"
+                                        "Детали строки"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "json"
                                         on:click=move |_| set_active_tab.set("json")
-                                        style=move || format!(
-                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-right: var(--space-xs); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
-                                            if active_tab.get() == "json" {
-                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
-                                            } else {
-                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
-                                            }
-                                        )
                                     >
-                                        "📄 Raw JSON"
+                                        "Raw JSON"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "links"
                                         on:click=move |_| set_active_tab.set("links")
-                                        style=move || format!(
-                                            "padding: var(--space-md) var(--space-3xl); border: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); {}",
-                                            if active_tab.get() == "links" {
-                                                "background: var(--color-primary); color: var(--color-text-white); border-bottom: 2px solid var(--color-primary);"
-                                            } else {
-                                                "background: var(--color-hover-bg); color: var(--color-text-muted);"
-                                            }
-                                        )
                                     >
-                                        "🔗 Links"
+                                        "Связи"
+                                    </button>
+                                    <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "projections"
+                                        on:click=move |_| set_active_tab.set("projections")
+                                    >
+                                        {move || {
+                                            let count = projections.get().as_ref().map(|p| {
+                                                let p900_len = p["p900_sales_register"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                let p904_len = p["p904_sales_data"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                p900_len + p904_len
+                                            }).unwrap_or(0);
+                                            format!("Проекции ({})", count)
+                                        }}
                                     </button>
                                 </div>
 
-                                // Контент вкладок
-                                <div style="flex: 1; overflow-y: auto; padding: var(--space-md) 0;">
+                                <div style="padding-top: var(--space-lg);">
                                     {move || {
                                 let tab = active_tab.get();
                                 match tab.as_ref() {
@@ -746,7 +791,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 // UUID section at bottom
                                                 <div style="background: #fafafa; padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
                                                     <h4 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-muted); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);">"Technical IDs"</h4>
-                                                    <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--space-md); align-items: center; font-size: var(--font-size-xs);">
+                                                    <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--space-md); align-items: center; font-size: var(--font-size-sm);">
 
                                                         <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);">"Connection ID:"</div>
                                                         <div style="display: flex; align-items: center; gap: var(--space-md);">
@@ -1170,8 +1215,149 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             }
                                         }
                                     },
-                                        _ => view! { <div>"Unknown tab"</div> }.into_any()
-                                    }
+                                    "projections" => view! {
+                                        <div class="projections-info">
+                                            {move || {
+                                                if projections_loading.get() {
+                                                    view! {
+                                                        <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                            "Загрузка проекций..."
+                                                        </div>
+                                                    }.into_any()
+                                                } else if let Some(proj_data) = projections.get() {
+                                                    let p900_items = proj_data["p900_sales_register"].as_array().cloned().unwrap_or_default();
+                                                    let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+
+                                                    view! {
+                                                        <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                                                            // P900 Sales Register
+                                                            <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-warning); padding-bottom: var(--space-xs);">
+                                                                    {format!("📊 Sales Register (p900) - {} записей", p900_items.len())}
+                                                                </h3>
+                                                                {if !p900_items.is_empty() {
+                                                                    view! {
+                                                                        <div style="overflow-x: auto;">
+                                                                            <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
+                                                                                <thead>
+                                                                                    <tr style="background: var(--color-bg-secondary);">
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"MP"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Title"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {p900_items.iter().map(|item| {
+                                                                                        let mp = item["marketplace"].as_str().unwrap_or("—");
+                                                                                        let sku = item["seller_sku"].as_str().unwrap_or("—");
+                                                                                        let title = item["title"].as_str().unwrap_or("—");
+                                                                                        let qty = item["qty"].as_f64().unwrap_or(0.0);
+                                                                                        let amount = item["amount_line"].as_f64().unwrap_or(0.0);
+
+                                                                                        view! {
+                                                                                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{mp}</td>
+                                                                                                <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{sku}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{title}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
+                                                                                            </tr>
+                                                                                        }
+                                                                                    }).collect::<Vec<_>>()}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! {
+                                                                        <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                    }.into_any()
+                                                                }}
+                                                            </div>
+
+                                                            // P904 Sales Data
+                                                            <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-xs);">
+                                                                    {format!("📈 Sales Data (p904) - {} записей", p904_items.len())}
+                                                                </h3>
+                                                                {if !p904_items.is_empty() {
+                                                                    view! {
+                                                                        <div style="overflow-x: auto;">
+                                                                            <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-xs);">
+                                                                                <thead>
+                                                                                    <tr style="background: var(--color-bg-secondary);">
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Article"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="total_price">"Price Full"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="price_list">"Price List"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); background: #e8f5e9;" title="finished_price (если price_effective > 0)">"Cust In"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); background: #ffebee;" title="finished_price (если price_effective <= 0)">"Cust Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="amount_line - price_effective">"Comm Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="spp → coinvest_persent">"Coinv%"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="commission_out / price_effective * 100">"Comm%"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="finished_price * -1.9%">"Acq Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="amount_line - finished_price (если > 0)">"Coinv In"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="amount_line + acquiring_out + commission_out">"Total"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); background: #e3f2fd;" title="(cust_out + cust_in) - (acq_out + coinv_in + comm_out)">"Sell Out"</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {p904_items.iter().map(|item| {
+                                                                                        let article = item["article"].as_str().unwrap_or("—");
+                                                                                        let price_full = item["price_full"].as_f64().unwrap_or(0.0);
+                                                                                        let price_list = item["price_list"].as_f64().unwrap_or(0.0);
+                                                                                        let customer_in = item["customer_in"].as_f64().unwrap_or(0.0);
+                                                                                        let customer_out = item["customer_out"].as_f64().unwrap_or(0.0);
+                                                                                        let commission_out = item["commission_out"].as_f64().unwrap_or(0.0);
+                                                                                        let coinvest_persent = item["coinvest_persent"].as_f64().unwrap_or(0.0);
+                                                                                        let commission_percent = item["commission_percent"].as_f64().unwrap_or(0.0);
+                                                                                        let acquiring_out = item["acquiring_out"].as_f64().unwrap_or(0.0);
+                                                                                        let coinvest_in = item["coinvest_in"].as_f64().unwrap_or(0.0);
+                                                                                        let total = item["total"].as_f64().unwrap_or(0.0);
+                                                                                        let seller_out = item["seller_out"].as_f64().unwrap_or(0.0);
+
+                                                                                        view! {
+                                                                                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                                                                                <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{article}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_full)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_list)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: #2e7d32; background: #e8f5e9;">{format!("{:.2}", customer_in)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: #c62828; background: #ffebee;">{format!("{:.2}", customer_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: #c62828;">{format!("{:.2}", commission_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.1}%", coinvest_persent)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}%", commission_percent)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: #c62828;">{format!("{:.2}", acquiring_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: #2e7d32;">{format!("{:.2}", coinvest_in)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", total)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-bold); background: #e3f2fd;">{format!("{:.2}", seller_out)}</td>
+                                                                                            </tr>
+                                                                                        }
+                                                                                    }).collect::<Vec<_>>()}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! {
+                                                                        <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                    }.into_any()
+                                                                }}
+                                                            </div>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {
+                                                        <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                            "Нет данных проекций"
+                                                        </div>
+                                                    }.into_any()
+                                                }
+                                            }}
+                                        </div>
+                                    }.into_any(),
+                                    _ => view! { <div style="font-size: var(--font-size-sm);">"Unknown tab"</div> }.into_any()
+                                }
                                     }}
                                 </div>
                             </div>

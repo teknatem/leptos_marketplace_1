@@ -774,7 +774,8 @@ pub struct OzonPosting {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonPostingProduct {
-    #[serde(default)]
+    /// SKU товара (числовой ID в OZON) - API возвращает поле "sku"
+    #[serde(rename = "sku", default)]
     pub product_id: Option<i64>,
     pub offer_id: String,
     pub name: String,

@@ -6,9 +6,77 @@ use uuid::Uuid;
 
 use super::repository::Model;
 
+/// Константа эквайринга ПРОДАЖИ (1.9%)
+const ACQUIRING_RATE: f64 = 0.019;
+
+/// Константа эквайринга ВОЗВРАТА (0.53%)
+const ACQUIRING_RETURN_RATE: f64 = 0.0053;
+
 pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Result<Vec<Model>> {
     let now = Utc::now().to_rfc3339();
     let id = Uuid::new_v4().to_string();
+
+    // Получаем значения из строки документа
+    let total_price = document.line.total_price.unwrap_or(0.0);
+    let price_list = document.line.price_list.unwrap_or(0.0);
+    let finished_price = document.line.finished_price.unwrap_or(0.0);
+    let amount_line = document.line.amount_line.unwrap_or(0.0);
+    let price_effective = document.line.price_effective.unwrap_or(0.0);
+    let spp = document.line.spp.unwrap_or(0.0);
+
+    // Расчёт сумм по формулам:
+    // 1. total_price -> price_full
+    let price_full = total_price;
+
+    // 2. price_list -> price_list (без изменений)
+    // let price_list = price_list;
+
+    // 3. Если price_effective > 0, то customer_in = finished_price, иначе customer_out = finished_price
+    let (customer_in, customer_out, price_return) = if price_effective > 0.0 {
+        (finished_price, 0.0, 0.0)
+    } else {
+        (0.0, finished_price, price_list)
+    };
+
+    // 4. amount_line - price_effective -> commission_out
+    let commission_out = amount_line - price_effective;
+
+    // 5. spp -> coinvest_persent
+    let coinvest_persent = spp;
+
+    // 6. commission_out / price_effective * 100 -> commission_percent (округляем до 2 знаков)
+    let commission_percent = if finished_price != 0.0 {
+        ((commission_out / price_effective * 100.0) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+
+    // 7. finished_price * ACQUIRING_RATE * -1 -> acquiring_out (со знаком минус)
+    let acquiring_out = if finished_price > 0.0 {
+        // ПРОДАЖА
+        -(finished_price * ACQUIRING_RATE)
+    } else {
+        // ВОЗВРАТ
+        finished_price * ACQUIRING_RETURN_RATE
+    };
+
+    // 8. amount_line - finished_price -> если > 0, то coinvest_in, иначе 0
+    let diff = amount_line - finished_price;
+    let coinvest_in = if diff > 0.0 && price_effective > 0.0 {
+        diff
+    } else if diff < 0.0 && price_effective < 0.0 {
+        diff
+    } else {
+        0.0
+    };
+
+    // 9. total = amount_line + acquiring_out + commission_out
+    // Разобраться
+    let discount_spp = price_effective - finished_price;
+    let total = amount_line + acquiring_out + commission_out + discount_spp;
+
+    // 10. seller_out = (customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out)
+    let seller_out = -(customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out);
 
     let entry = Model {
         id,
@@ -19,21 +87,21 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
         nomenclature_ref: document.nomenclature_ref.clone().unwrap_or_default(),
         marketplace_product_ref: document.marketplace_product_ref.clone().unwrap_or_default(),
 
-        // Sums - map from WbSalesLine
-        customer_in: 0.0,
-        customer_out: 0.0,
-        coinvest_in: 0.0,
-        commission_out: 0.0,
-        acquiring_out: document.line.payment_sale_amount.unwrap_or(0.0),
+        // Sums - рассчитанные по формулам
+        customer_in,
+        customer_out,
+        coinvest_in,
+        commission_out,
+        acquiring_out,
         penalty_out: 0.0,
         logistics_out: 0.0,
-        seller_out: 0.0,
-        price_full: document.line.total_price.unwrap_or(0.0),
-        price_list: document.line.price_list.unwrap_or(0.0),
-        price_return: 0.0,
-        commission_percent: 0.0,
-        coinvest_persent: document.line.spp.unwrap_or(0.0),
-        total: 0.0,
+        seller_out,
+        price_full,
+        price_list,
+        price_return,
+        commission_percent,
+        coinvest_persent,
+        total,
 
         document_no: document.header.document_no.clone(),
         article: document.line.supplier_article.clone(),
@@ -60,6 +128,13 @@ pub async fn from_ozon_transactions(
         return Ok(entries);
     }
 
+    // Вычисляем logistics_total как сумму ВСЕХ сервисов
+    let logistics_total: f64 = document.services.iter().map(|s| s.price).sum();
+
+    // Получаем значения из header для распределения
+    let sale_commission = document.header.sale_commission;
+    let amount = document.header.amount;
+
     // Пытаемся найти документ отгрузки по posting_number
     let posting_number = &document.posting.posting_number;
 
@@ -82,9 +157,10 @@ pub async fn from_ozon_transactions(
             posting_number
         );
 
-        // Создаем базовые записи без детализации
-        let accruals_per_item = if !document.items.is_empty() {
-            document.header.accruals_for_sale / document.items.len() as f64
+        // Создаем базовые записи - распределяем равномерно по items
+        let items_count = document.items.len() as f64;
+        let proportion = if items_count > 0.0 {
+            1.0 / items_count
         } else {
             0.0
         };
@@ -115,6 +191,13 @@ pub async fn from_ozon_transactions(
                 String::new()
             };
 
+            // Вычисляем суммы пропорционально
+            let customer_in = document.header.accruals_for_sale * proportion;
+            let commission_out = sale_commission * proportion;
+            let logistics_out = logistics_total * proportion;
+            let seller_out = -amount * proportion;
+            let total = customer_in + commission_out + logistics_out;
+
             let entry = Model {
                 id: Uuid::new_v4().to_string(),
                 registrator_ref: document_id.to_string(),
@@ -124,21 +207,21 @@ pub async fn from_ozon_transactions(
                 nomenclature_ref,
                 marketplace_product_ref: marketplace_product_ref.to_string(),
 
-                // Sums - только customer_in из accruals_for_sale
-                customer_in: accruals_per_item,
+                // Sums
+                customer_in,
                 customer_out: 0.0,
                 coinvest_in: 0.0,
-                commission_out: 0.0,
+                commission_out,
                 acquiring_out: 0.0,
                 penalty_out: 0.0,
-                logistics_out: 0.0,
-                seller_out: 0.0,
+                logistics_out,
+                seller_out,
                 price_full: 0.0,
                 price_list: 0.0,
                 price_return: 0.0,
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
-                total: 0.0,
+                total,
 
                 document_no: posting_number.clone(),
                 article: sku_str,
@@ -160,13 +243,19 @@ pub async fn from_ozon_transactions(
             .sum();
 
         for line in &fbs_doc.lines {
-            // Вычисляем пропорциональную долю accruals_for_sale
+            // Вычисляем пропорциональную долю
             let proportion = if total_amount > 0.0 {
                 line.amount_line.unwrap_or(0.0) / total_amount
             } else {
                 1.0 / fbs_doc.lines.len() as f64
             };
+
+            // Вычисляем суммы пропорционально
             let customer_in = document.header.accruals_for_sale * proportion;
+            let commission_out = sale_commission * proportion;
+            let logistics_out = logistics_total * proportion;
+            let seller_out = -amount * proportion;
+            let total = customer_in + commission_out + logistics_out;
 
             // Найти/создать a007_marketplace_product
             let marketplace_product_ref =
@@ -204,17 +293,17 @@ pub async fn from_ozon_transactions(
                 customer_in,
                 customer_out: 0.0,
                 coinvest_in: 0.0,
-                commission_out: 0.0,
+                commission_out,
                 acquiring_out: 0.0,
                 penalty_out: 0.0,
-                logistics_out: 0.0,
-                seller_out: 0.0,
+                logistics_out,
+                seller_out,
                 price_full: line.price_list.unwrap_or(0.0) * line.qty as f64,
                 price_list: line.price_list.unwrap_or(0.0),
                 price_return: 0.0,
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
-                total: 0.0,
+                total,
 
                 document_no: posting_number.clone(),
                 article: line.offer_id.clone(),
@@ -231,13 +320,19 @@ pub async fn from_ozon_transactions(
             .sum();
 
         for line in &fbo_doc.lines {
-            // Вычисляем пропорциональную долю accruals_for_sale
+            // Вычисляем пропорциональную долю
             let proportion = if total_amount > 0.0 {
                 line.amount_line.unwrap_or(0.0) / total_amount
             } else {
                 1.0 / fbo_doc.lines.len() as f64
             };
+
+            // Вычисляем суммы пропорционально
             let customer_in = document.header.accruals_for_sale * proportion;
+            let commission_out = sale_commission * proportion;
+            let logistics_out = logistics_total * proportion;
+            let seller_out = -amount * proportion;
+            let total = customer_in + commission_out + logistics_out;
 
             // Найти/создать a007_marketplace_product
             let marketplace_product_ref =
@@ -275,17 +370,17 @@ pub async fn from_ozon_transactions(
                 customer_in,
                 customer_out: 0.0,
                 coinvest_in: 0.0,
-                commission_out: 0.0,
+                commission_out,
                 acquiring_out: 0.0,
                 penalty_out: 0.0,
-                logistics_out: 0.0,
-                seller_out: 0.0,
+                logistics_out,
+                seller_out,
                 price_full: line.price_list.unwrap_or(0.0) * line.qty as f64,
                 price_list: line.price_list.unwrap_or(0.0),
                 price_return: 0.0,
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
-                total: 0.0,
+                total,
 
                 document_no: posting_number.clone(),
                 article: line.offer_id.clone(),

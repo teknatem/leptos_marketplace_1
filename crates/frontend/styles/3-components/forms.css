@@ -142,7 +142,7 @@
     background: var(--color-bg-body);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    overflow: hidden;
+    min-height: 0;
 }
 
 .detail-form-header {

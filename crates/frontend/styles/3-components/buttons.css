@@ -98,16 +98,44 @@
     border-color: #bd2130;
 }
 
-.btn-danger svg {
+.btn-warning {
+    background: #FF9800;
     color: var(--color-text-white);
-    stroke: currentColor;
+    border-color: #FF9800;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background: #f57c00;
+    border-color: #ef6c00;
+}
+
+.btn-excel {
+    background: #217346;
+    color: var(--color-text-white);
+    border-color: #217346;
+}
+
+.btn-excel:hover:not(:disabled) {
+    background: #1a5a35;
+    border-color: #154028;
+}
+
+.btn-icon-transparent {
+    background: rgba(255,255,255,0.2);
+    color: var(--color-text-white);
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.btn-icon-transparent:hover:not(:disabled) {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.4);
 }
 
 /* Icon-only buttons */
 .btn-icon {
     padding: var(--space-md);
-    min-width: 32px;
-    min-height: 32px;
+    min-width: 30px;
+    min-height: 30px;
 }
 
 .btn-icon svg {
@@ -149,54 +177,14 @@
     stroke: currentColor;
 }
 
-/* Action buttons for modern interfaces (P904, etc.) */
-.action-button {
-    padding: 6px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: white;
-    transition: all 0.2s ease;
-}
-
-.action-button:hover:not(:disabled) {
-    transform: translateY(-1px);
-}
-
-.action-button:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.action-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.action-button-success {
-    background: linear-gradient(135deg, #4CAF50, #45a049);
-    box-shadow: 0 2px 4px rgba(76,175,80,0.2);
-}
-
-.action-button-success:hover:not(:disabled) {
-    box-shadow: 0 4px 8px rgba(76,175,80,0.3);
-}
-
-.action-button-primary {
-    background: linear-gradient(135deg, #2196F3, #1976D2);
-    box-shadow: 0 2px 4px rgba(33,150,243,0.2);
-}
-
-.action-button-primary:hover:not(:disabled) {
-    box-shadow: 0 4px 8px rgba(33,150,243,0.3);
-}
-
 /* ============================================
-   Detail View Header Buttons
+   Legacy styles (for backward compatibility)
    ============================================ */
 
 .btn-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     height: var(--header-height);
     padding: 0 var(--space-3xl);
     background: var(--color-secondary);
@@ -214,49 +202,30 @@
     transform: translateY(-1px);
 }
 
-.btn-close:active {
-    transform: translateY(0);
-}
-
-.btn-header-action {
-    height: var(--header-height);
-    padding: 0 var(--space-3xl);
+.action-button {
+    padding: 6px 16px;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
     cursor: pointer;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    transition: all var(--transition-fast);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: white;
+    transition: all 0.2s ease;
 }
 
-.btn-header-action:hover:not(:disabled) {
+.action-button:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
 }
 
-.btn-header-action:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.btn-header-action:disabled {
-    opacity: var(--opacity-disabled);
+.action-button:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
 }
 
-.btn-header-success {
-    background: var(--color-success);
-    color: var(--color-text-white);
+.action-button-success {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
 }
 
-.btn-header-success:hover:not(:disabled) {
-    background: #218838;
-}
-
-.btn-header-warning {
-    background: var(--color-warning);
-    color: var(--color-text-dark);
-}
-
-.btn-header-warning:hover:not(:disabled) {
-    background: #e0a800;
+.action-button-primary {
+    background: linear-gradient(135deg, #2196F3, #1976D2);
 }

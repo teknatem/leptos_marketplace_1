@@ -116,7 +116,7 @@ impl Sortable for OzonTransactionsDto {
 pub fn OzonTransactionsList() -> impl IntoView {
     let tabs_store = leptos::context::use_context::<AppGlobalContext>()
         .expect("AppGlobalContext context not found");
-    
+
     let state = create_state();
     // let (transactions, set_transactions) = signal::<Vec<OzonTransactionsDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
@@ -572,20 +572,16 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
                     // Post/Unpost buttons
                     <button
+                        class="btn btn-success"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=post_selected
-                        style="height: 32px; padding: 0 16px; background: #48bb78; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        style:opacity=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "0.5" } else { "1" }
-                        style:cursor=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "not-allowed" } else { "pointer" }
                     >
                         {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                     <button
+                        class="btn btn-warning"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=unpost_selected
-                        style="height: 32px; padding: 0 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        style:opacity=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "0.5" } else { "1" }
-                        style:cursor=move || if state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get() { "not-allowed" } else { "pointer" }
                     >
                         {move || format!("✗ Unpost ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
@@ -594,14 +590,14 @@ pub fn OzonTransactionsList() -> impl IntoView {
                 <div style="display: flex; gap: 8px; align-items: center;">
                     // Excel export button
                     <button
+                        class="btn btn-excel"
                         on:click=move |_| {
                             let data = get_sorted_items();
                             if let Err(e) = export_to_csv(&data) {
                                 log!("Failed to export: {}", e);
                             }
                         }
-                        style="height: 32px; padding: 0 16px; background: #217346; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                        disabled=move || loading.get() || state.with(|s| s.transactions.is_empty())
+                        prop:disabled=move || loading.get() || state.with(|s| s.transactions.is_empty())
                     >
                         "📊 Excel"
                     </button>
@@ -616,15 +612,15 @@ pub fn OzonTransactionsList() -> impl IntoView {
                         }
                     }}
                     <button
+                        class="btn btn-icon btn-icon-transparent"
                         on:click=restore_settings
-                        style="width: 32px; height: 32px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; cursor: pointer; font-size: 1rem; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; padding: 0;"
                         title="Восстановить настройки из базы данных"
                     >
                         "🔄"
                     </button>
                     <button
+                        class="btn btn-icon btn-icon-transparent"
                         on:click=save_settings_to_db
-                        style="width: 32px; height: 32px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; cursor: pointer; font-size: 1rem; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; padding: 0;"
                         title="Сохранить настройки в базу данных"
                     >
                         "💾"
@@ -706,12 +702,11 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
                 // Update button
                 <button
+                    class="btn btn-success"
                     on:click=move |_| {
                         load_transactions();
                     }
-                    class="action-button action-button-success"
-                    style="height: 32px; padding: 0 16px; background: #48bb78; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
-                    disabled=move || loading.get()
+                    prop:disabled=move || loading.get()
                 >
                     "↻ Обновить"
                 </button>

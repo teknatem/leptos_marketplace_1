@@ -1292,6 +1292,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/a012/wb-sales/batch-unpost",
             post(handlers::a012_wb_sales::batch_unpost_documents),
         )
+        .route(
+            "/api/a012/wb-sales/:id/projections",
+            get(handlers::a012_wb_sales::get_projections),
+        )
         // A013 YM Order handlers
         .route(
             "/api/a013/ym-order",
