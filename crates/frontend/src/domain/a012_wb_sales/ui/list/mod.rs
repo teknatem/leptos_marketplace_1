@@ -2,7 +2,7 @@ use crate::domain::a012_wb_sales::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
-use crate::shared::list_utils::{format_number, get_sort_indicator, Sortable};
+use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -10,15 +10,28 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use std::cell::RefCell;
+use std::rc::Rc;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlElement, MouseEvent as WebMouseEvent, Url};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub id: String,
     pub code: String,
     pub description: String,
+}
+
+/// Paginated response from backend API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedResponse {
+    pub items: Vec<serde_json::Value>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
 }
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
@@ -32,6 +45,208 @@ fn format_date(iso_date: &str) -> String {
         }
     }
     iso_date.to_string() // fallback
+}
+
+/// Parse a single WbSales item from JSON value (compact DTO format)
+fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> {
+    // All fields are now at top level in compact DTO
+    let result = Some(WbSalesDto {
+        id: v.get("id")?.as_str()?.to_string(),
+        document_no: v.get("document_no")?.as_str()?.to_string(),
+        sale_date: v.get("sale_date")?.as_str()?.to_string(),
+        supplier_article: v.get("supplier_article")?.as_str()?.to_string(),
+        name: v.get("name")?.as_str()?.to_string(),
+        qty: v.get("qty")?.as_f64()?,
+        amount_line: v.get("amount_line").and_then(|a| a.as_f64()),
+        total_price: v.get("total_price").and_then(|a| a.as_f64()),
+        finished_price: v.get("finished_price").and_then(|a| a.as_f64()),
+        event_type: v.get("event_type")?.as_str()?.to_string(),
+        organization_name: v.get("organization_name").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        marketplace_article: v.get("marketplace_article").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        nomenclature_code: v.get("nomenclature_code").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        nomenclature_article: v.get("nomenclature_article").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        operation_date: v.get("operation_date").and_then(|a| a.as_str()).map(|s| s.to_string()),
+    });
+
+    if result.is_none() {
+        log!("Failed to parse item {}", idx);
+    }
+
+    result
+}
+
+/// Check if resize just happened (to block sort click)
+fn was_just_resizing() -> bool {
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.body())
+        .map(|b| b.get_attribute("data-was-resizing").as_deref() == Some("true"))
+        .unwrap_or(false)
+}
+
+/// Clear the resize flag
+fn clear_resize_flag() {
+    if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+        let _ = body.remove_attribute("data-was-resizing");
+    }
+}
+
+const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_column_widths";
+
+/// Save column widths to localStorage
+fn save_column_widths(table_id: &str) {
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    let Some(storage) = window.local_storage().ok().flatten() else { return };
+    let Some(table) = document.get_element_by_id(table_id) else { return };
+    
+    let headers = table.query_selector_all("th.resizable").ok();
+    let Some(headers) = headers else { return };
+    
+    let mut widths: Vec<i32> = Vec::new();
+    for i in 0..headers.length() {
+        if let Some(th) = headers.get(i) {
+            if let Ok(th) = th.dyn_into::<HtmlElement>() {
+                widths.push(th.offset_width());
+            }
+        }
+    }
+    
+    if let Ok(json) = serde_json::to_string(&widths) {
+        let _ = storage.set_item(COLUMN_WIDTHS_KEY, &json);
+    }
+}
+
+/// Restore column widths from localStorage
+fn restore_column_widths(table_id: &str) {
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    let Some(storage) = window.local_storage().ok().flatten() else { return };
+    let Some(table) = document.get_element_by_id(table_id) else { return };
+    
+    let Some(json) = storage.get_item(COLUMN_WIDTHS_KEY).ok().flatten() else { return };
+    let Ok(widths): Result<Vec<i32>, _> = serde_json::from_str(&json) else { return };
+    
+    let headers = table.query_selector_all("th.resizable").ok();
+    let Some(headers) = headers else { return };
+    
+    for (i, width) in widths.iter().enumerate() {
+        if let Some(th) = headers.get(i as u32) {
+            if let Ok(th) = th.dyn_into::<HtmlElement>() {
+                let _ = th.style().set_property("width", &format!("{}px", width));
+                let _ = th.style().set_property("min-width", &format!("{}px", width));
+            }
+        }
+    }
+}
+
+/// Initialize column resize for all resizable headers in a table
+fn init_column_resize(table_id: &str) {
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    let Some(table) = document.get_element_by_id(table_id) else { return };
+    
+    // First restore saved widths
+    restore_column_widths(table_id);
+    
+    let headers = table.query_selector_all("th.resizable").ok();
+    let Some(headers) = headers else { return };
+    
+    let table_id_owned = table_id.to_string();
+    
+    for i in 0..headers.length() {
+        let Some(th) = headers.get(i) else { continue };
+        let Ok(th) = th.dyn_into::<HtmlElement>() else { continue };
+        
+        // Skip if already has resize handle
+        if th.query_selector(".resize-handle").ok().flatten().is_some() {
+            continue;
+        }
+        
+        // Create resize handle
+        let Ok(handle) = document.create_element("div") else { continue };
+        handle.set_class_name("resize-handle");
+        
+        // State for this column
+        let resizing = Rc::new(RefCell::new(false));
+        let did_resize = Rc::new(RefCell::new(false));
+        let start_x = Rc::new(RefCell::new(0i32));
+        let start_width = Rc::new(RefCell::new(0i32));
+        let th_ref = Rc::new(RefCell::new(th.clone()));
+        let table_id_for_save = table_id_owned.clone();
+        
+        // Mousedown on handle
+        let resizing_md = resizing.clone();
+        let did_resize_md = did_resize.clone();
+        let start_x_md = start_x.clone();
+        let start_width_md = start_width.clone();
+        let th_md = th_ref.clone();
+        
+        let mousedown = Closure::wrap(Box::new(move |e: WebMouseEvent| {
+            e.prevent_default();
+            e.stop_propagation();
+            *resizing_md.borrow_mut() = true;
+            *did_resize_md.borrow_mut() = false;
+            *start_x_md.borrow_mut() = e.client_x();
+            *start_width_md.borrow_mut() = th_md.borrow().offset_width();
+            
+            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+                let _ = body.class_list().add_1("resizing-column");
+            }
+        }) as Box<dyn FnMut(WebMouseEvent)>);
+        
+        let _ = handle.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref());
+        mousedown.forget();
+        
+        // Mousemove on document
+        let resizing_mm = resizing.clone();
+        let did_resize_mm = did_resize.clone();
+        let start_x_mm = start_x.clone();
+        let start_width_mm = start_width.clone();
+        let th_mm = th_ref.clone();
+        
+        let mousemove = Closure::wrap(Box::new(move |e: WebMouseEvent| {
+            if !*resizing_mm.borrow() { return; }
+            *did_resize_mm.borrow_mut() = true;
+            let diff = e.client_x() - *start_x_mm.borrow();
+            let new_width = (*start_width_mm.borrow() + diff).max(40);
+            let _ = th_mm.borrow().style().set_property("width", &format!("{}px", new_width));
+            let _ = th_mm.borrow().style().set_property("min-width", &format!("{}px", new_width));
+        }) as Box<dyn FnMut(WebMouseEvent)>);
+        
+        let _ = document.add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
+        mousemove.forget();
+        
+        // Mouseup on document
+        let resizing_mu = resizing.clone();
+        let did_resize_mu = did_resize.clone();
+        let table_id_mu = table_id_for_save.clone();
+        
+        let mouseup = Closure::wrap(Box::new(move |_: WebMouseEvent| {
+            if !*resizing_mu.borrow() { return; }
+            let was_resizing = *did_resize_mu.borrow();
+            *resizing_mu.borrow_mut() = false;
+            *did_resize_mu.borrow_mut() = false;
+            
+            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+                let _ = body.class_list().remove_1("resizing-column");
+                if was_resizing {
+                    // Save column widths to localStorage
+                    save_column_widths(&table_id_mu);
+                    let _ = body.set_attribute("data-was-resizing", "true");
+                    spawn_local(async {
+                        gloo_timers::future::TimeoutFuture::new(50).await;
+                        clear_resize_flag();
+                    });
+                }
+            }
+        }) as Box<dyn FnMut(WebMouseEvent)>);
+        
+        let _ = document.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
+        mouseup.forget();
+        
+        let _ = th.append_child(&handle);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,14 +373,19 @@ pub fn WbSalesList() -> impl IntoView {
             let date_from_val = state.with(|s| s.date_from.clone());
             let date_to_val = state.with(|s| s.date_to.clone());
             let org_id = state.with(|s| s.selected_organization_id.clone());
+            let page = state.with(|s| s.page);
+            let page_size = state.with(|s| s.page_size);
+            let sort_field = state.with(|s| s.sort_field.clone());
+            let sort_ascending = state.with(|s| s.sort_ascending);
+            let offset = page * page_size;
 
-            // Ограничиваем количество записей для оптимизации
+            // Build URL with pagination parameters
             let mut url = format!(
-                "http://localhost:3000/api/a012/wb-sales?date_from={}&date_to={}&limit=20000",
-                date_from_val, date_to_val
+                "http://localhost:3000/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset={}&sort_by={}&sort_desc={}",
+                date_from_val, date_to_val, page_size, offset, sort_field, !sort_ascending
             );
 
-            // Добавляем фильтр по организации, если выбрана
+            // Add organization filter if selected
             if let Some(org_id) = org_id {
                 url.push_str(&format!("&organization_id={}", org_id));
             }
@@ -178,124 +398,33 @@ pub fn WbSalesList() -> impl IntoView {
                     if status == 200 {
                         match response.text().await {
                             Ok(text) => {
-                                log!(
-                                    "Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>()
-                                );
+                                // Parse paginated response
+                                match serde_json::from_str::<PaginatedResponse>(&text) {
+                                    Ok(paginated) => {
+                                        log!("Parsed paginated response: total={}, page={}, page_size={}, total_pages={}", 
+                                            paginated.total, paginated.page, paginated.page_size, paginated.total_pages);
 
-                                match serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                                    Ok(data) => {
-                                        let total_count = data.len();
-                                        log!("Parsed {} items from JSON", total_count);
-
-                                        // Упрощенная десериализация - берем только нужные поля
-                                        let items: Vec<WbSalesDto> = data
+                                        // Parse items from the response
+                                        let items: Vec<WbSalesDto> = paginated.items
                                             .into_iter()
                                             .enumerate()
                                             .filter_map(|(idx, v)| {
-                                                // Organization name из верхнего уровня
-                                                let organization_name = v
-                                                    .get("organization_name")
-                                                    .and_then(|o| o.as_str())
-                                                    .map(|s| s.to_string());
-
-                                                // Дата продажи из state.sale_dt
-                                                let sale_date = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("sale_dt"))
-                                                    .and_then(|d| d.as_str())
-                                                    .unwrap_or("")
-                                                    .to_string();
-
-                                                // Данные из line
-                                                let line = v.get("line")?;
-                                                let supplier_article = line
-                                                    .get("supplier_article")?
-                                                    .as_str()?
-                                                    .to_string();
-                                                let name = line.get("name")?.as_str()?.to_string();
-                                                let qty = line.get("qty")?.as_f64()?;
-                                                let amount_line = line
-                                                    .get("amount_line")
-                                                    .and_then(|a| a.as_f64());
-                                                let total_price = line
-                                                    .get("total_price")
-                                                    .and_then(|a| a.as_f64());
-                                                let finished_price = line
-                                                    .get("finished_price")
-                                                    .and_then(|a| a.as_f64());
-
-                                                // Event type из state
-                                                let event_type = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("event_type"))
-                                                    .and_then(|e| e.as_str())
-                                                    .unwrap_or("unknown")
-                                                    .to_string();
-
-                                                // Новые поля из БД
-                                                let marketplace_article = v
-                                                    .get("marketplace_article")
-                                                    .and_then(|a| a.as_str())
-                                                    .map(|s| s.to_string());
-                                                let nomenclature_code = v
-                                                    .get("nomenclature_code")
-                                                    .and_then(|a| a.as_str())
-                                                    .map(|s| s.to_string());
-                                                let nomenclature_article = v
-                                                    .get("nomenclature_article")
-                                                    .and_then(|a| a.as_str())
-                                                    .map(|s| s.to_string());
-                                                let operation_date = v
-                                                    .get("operation_date")
-                                                    .and_then(|a| a.as_str())
-                                                    .map(|s| s.to_string());
-
-                                                let result = Some(WbSalesDto {
-                                                    id: v.get("id")?.as_str()?.to_string(),
-                                                    document_no: v
-                                                        .get("header")?
-                                                        .get("document_no")?
-                                                        .as_str()?
-                                                        .to_string(),
-                                                    sale_date,
-                                                    supplier_article,
-                                                    name,
-                                                    qty,
-                                                    amount_line,
-                                                    total_price,
-                                                    finished_price,
-                                                    event_type,
-                                                    organization_name,
-                                                    marketplace_article,
-                                                    nomenclature_code,
-                                                    nomenclature_article,
-                                                    operation_date,
-                                                });
-
-                                                if result.is_none() {
-                                                    log!("Failed to parse item {}", idx);
-                                                }
-
-                                                result
+                                                parse_wb_sales_item(&v, idx)
                                             })
                                             .collect();
 
-                                        log!(
-                                            "Successfully parsed {} sales out of {}",
-                                            items.len(),
-                                            total_count
-                                        );
+                                        log!("Successfully parsed {} sales", items.len());
                                         state.update(|s| {
                                             s.sales = items;
+                                            s.total_count = paginated.total;
+                                            s.total_pages = paginated.total_pages;
                                             s.is_loaded = true;
                                         });
                                         set_loading.set(false);
                                     }
                                     Err(e) => {
-                                        log!("Failed to parse response: {:?}", e);
-                                        set_error
-                                            .set(Some(format!("Failed to parse response: {}", e)));
+                                        log!("Failed to parse paginated response: {:?}", e);
+                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
                                         set_loading.set(false);
                                     }
                                 }
@@ -320,36 +449,27 @@ pub fn WbSalesList() -> impl IntoView {
         });
     };
 
-    // Функция для получения отсортированных данных
-    let get_sorted_items = move || -> Vec<WbSalesDto> {
-        let mut result = state.with(|s| s.sales.clone());
-        let field = state.with(|s| s.sort_field.clone());
-        let ascending = state.with(|s| s.sort_ascending);
-        result.sort_by(|a, b| {
-            if ascending {
-                a.compare_by_field(b, &field)
-            } else {
-                b.compare_by_field(a, &field)
-            }
-        });
-        result
+    // Get items (sorting is now done on server) - no clone, returns reference via signal
+    let get_items = move || -> Vec<WbSalesDto> {
+        state.with(|s| s.sales.clone())
     };
 
-    // Вычисление итогов
-    let totals = move || {
-        let data = get_sorted_items();
-        let total_qty: f64 = data.iter().map(|s| s.qty).sum();
-        let total_amount: f64 = data.iter().filter_map(|s| s.amount_line).sum();
-        let total_price: f64 = data.iter().filter_map(|s| s.total_price).sum();
-        let total_finished: f64 = data.iter().filter_map(|s| s.finished_price).sum();
-        (
-            data.len(),
-            total_qty,
-            total_amount,
-            total_price,
-            total_finished,
-        )
-    };
+    // Мемоизированные итоги - вычисляются только при изменении sales
+    let totals = Memo::new(move |_| {
+        state.with(|s| {
+            let total_qty: f64 = s.sales.iter().map(|item| item.qty).sum();
+            let total_amount: f64 = s.sales.iter().filter_map(|item| item.amount_line).sum();
+            let total_price: f64 = s.sales.iter().filter_map(|item| item.total_price).sum();
+            let total_finished: f64 = s.sales.iter().filter_map(|item| item.finished_price).sum();
+            (
+                s.sales.len(),
+                total_qty,
+                total_amount,
+                total_price,
+                total_finished,
+            )
+        })
+    });
 
     // Load saved settings from database on mount IF not already loaded in memory
     Effect::new(move |_| {
@@ -407,8 +527,15 @@ pub fn WbSalesList() -> impl IntoView {
         }
     });
 
-    // Функция для изменения сортировки
+
+    // Функция для изменения сортировки (сбрасывает на первую страницу)
     let toggle_sort = move |field: &'static str| {
+        // Skip sort if we just finished resizing column
+        if was_just_resizing() {
+            clear_resize_flag();
+            return;
+        }
+        
         state.update(|s| {
             if s.sort_field == field {
                 s.sort_ascending = !s.sort_ascending;
@@ -416,7 +543,24 @@ pub fn WbSalesList() -> impl IntoView {
                 s.sort_field = field.to_string();
                 s.sort_ascending = true;
             }
+            s.page = 0; // Reset to first page on sort change
         });
+        load_sales();
+    };
+
+    // Pagination: go to specific page
+    let go_to_page = move |new_page: usize| {
+        state.update(|s| s.page = new_page);
+        load_sales();
+    };
+
+    // Pagination: change page size
+    let change_page_size = move |new_size: usize| {
+        state.update(|s| {
+            s.page_size = new_size;
+            s.page = 0; // Reset to first page
+        });
+        load_sales();
     };
 
     // Переключение выбора одного документа
@@ -432,7 +576,7 @@ pub fn WbSalesList() -> impl IntoView {
 
     // Выбрать все / снять все
     let toggle_all = move |_| {
-        let items = get_sorted_items();
+        let items = get_items();
         let all_ids: Vec<String> = items.iter().map(|item| item.id.clone()).collect();
         state.update(|s| {
             if s.selected_ids.len() == all_ids.len() && !all_ids.is_empty() {
@@ -445,7 +589,7 @@ pub fn WbSalesList() -> impl IntoView {
 
     // Проверка, выбраны ли все
     let all_selected = move || {
-        let items = get_sorted_items();
+        let items = get_items();
         let selected_len = state.with(|s| s.selected_ids.len());
         !items.is_empty() && selected_len == items.len()
     };
@@ -670,10 +814,98 @@ pub fn WbSalesList() -> impl IntoView {
 
     view! {
         <div class="wb-sales-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            // Header - Row 1: Title with Post/Unpost and Settings Buttons
+            // Header - Row 1: Title with Pagination, Post/Unpost and Settings Buttons
             <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">"📋 Wildberries Sales (A012)"</h2>
+                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">"📋 WB Sales"</h2>
+
+                    // === PAGINATION CONTROLS ===
+                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px;">
+                        // First page button
+                        <button
+                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
+                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
+                            on:click=move |_| go_to_page(0)
+                            title="Первая страница"
+                        >
+                            "⏮"
+                        </button>
+
+                        // Previous page button
+                        <button
+                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
+                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
+                            on:click=move |_| {
+                                let current = state.with(|s| s.page);
+                                if current > 0 {
+                                    go_to_page(current - 1);
+                                }
+                            }
+                            title="Предыдущая страница"
+                        >
+                            "◀"
+                        </button>
+
+                        // Page info
+                        <span style="color: white; font-size: 12px; font-weight: 500; min-width: 100px; text-align: center;">
+                            {move || {
+                                let page = state.with(|s| s.page);
+                                let total_pages = state.with(|s| s.total_pages);
+                                let total = state.with(|s| s.total_count);
+                                format!("{} / {} ({})", page + 1, total_pages.max(1), total)
+                            }}
+                        </span>
+
+                        // Next page button
+                        <button
+                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
+                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
+                            on:click=move |_| {
+                                let current = state.with(|s| s.page);
+                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
+                                if current < max_page {
+                                    go_to_page(current + 1);
+                                }
+                            }
+                            title="Следующая страница"
+                        >
+                            "▶"
+                        </button>
+
+                        // Last page button
+                        <button
+                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
+                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
+                            on:click=move |_| {
+                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
+                                go_to_page(max_page);
+                            }
+                            title="Последняя страница"
+                        >
+                            "⏭"
+                        </button>
+
+                        // Divider
+                        <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
+
+                        // Page size selector
+                        <select
+                            style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer;"
+                            prop:value=move || state.with(|s| s.page_size.to_string())
+                            on:change=move |ev| {
+                                if let Ok(size) = event_target_value(&ev).parse::<usize>() {
+                                    change_page_size(size);
+                                }
+                            }
+                        >
+                            <option value="50" style="color: black;">"50"</option>
+                            <option value="100" style="color: black;">"100"</option>
+                            <option value="200" style="color: black;">"200"</option>
+                            <option value="500" style="color: black;">"500"</option>
+                        </select>
+                        <span style="color: rgba(255,255,255,0.8); font-size: 10px;">"на стр."</span>
+                    </div>
+                    // === END PAGINATION ===
 
                     // Post/Unpost buttons
                     <button
@@ -697,7 +929,7 @@ pub fn WbSalesList() -> impl IntoView {
                     <button
                         class="btn btn-excel"
                         on:click=move |_| {
-                            let data = get_sorted_items();
+                            let data = get_items();
                             if let Err(e) = export_to_csv(&data) {
                                 log!("Failed to export: {}", e);
                             }
@@ -802,28 +1034,19 @@ pub fn WbSalesList() -> impl IntoView {
                 </button>
             </div>
 
-            // Totals display
+            // Totals display (for current page)
             {move || if !loading.get() {
-                let (count, total_qty, total_amount, total_price, total_finished) = totals();
-                let limit_warning = if count >= 20000 {
-                    view! {
-                        <span style="margin-left: 8px; padding: 4px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 0.75rem;">
-                            "⚠️ Показаны первые 20000 записей"
-                        </span>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                };
+                let (count, total_qty, total_amount, total_price, total_finished) = totals.get();
+                let total_count = state.with(|s| s.total_count);
                 view! {
                     <div style="margin-bottom: 10px; padding: 3px 12px; background: var(--color-background-alt, #f5f5f5); border-radius: 4px; display: flex; align-items: center; flex-wrap: wrap;">
                         <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text);">
-                            "Total: " {format_number(count as f64)} " records | "
+                            "На странице: " {format_number(count as f64)} " из " {format_number(total_count as f64)} " | "
                             "Кол-во: " {format_number(total_qty)} " | "
                             "К выплате: " {format_number(total_amount)} " | "
                             "Полная цена: " {format_number(total_price)} " | "
                             "Итоговая: " {format_number(total_finished)}
                         </span>
-                        {limit_warning}
                     </div>
                 }.into_any()
             } else {
@@ -838,7 +1061,7 @@ pub fn WbSalesList() -> impl IntoView {
                 if selected_count > 0 || is_processing {
                     let selected_totals = move || {
                         let sel_ids = state.with(|s| s.selected_ids.clone());
-                        let all_items = get_sorted_items();
+                        let all_items = get_items();
                         let selected_items: Vec<_> = all_items.into_iter()
                             .filter(|item| sel_ids.contains(&item.id))
                             .collect();
@@ -913,117 +1136,125 @@ pub fn WbSalesList() -> impl IntoView {
                         <div class="loading-spinner" style="text-align: center; padding: 40px;">"Загрузка продаж..."</div>
                     }.into_any()
                 } else {
-                    let items = get_sorted_items();
+                    let items = get_items();
                     let current_sort_field = state.with(|s| s.sort_field.clone());
                     let current_sort_asc = state.with(|s| s.sort_ascending);
 
+                    // Initialize column resize after each render
+                    spawn_local(async {
+                        gloo_timers::future::TimeoutFuture::new(50).await;
+                        init_column_resize("wb-sales-table");
+                    });
+
                     view! {
-                        <div class="table-container" style="overflow-y: auto; max-height: calc(100vh - 240px); border: 1px solid #e0e0e0;">
-                            <table class="data-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85em;">
-                                <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg, #f5f5f5);">
+                        <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
+                            <table id="wb-sales-table" class="data-table table-striped" style="min-width: 1600px; table-layout: fixed;">
+                                <thead>
                                     <tr>
-                                        <th style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center; font-weight: 600;">
+                                        <th class="checkbox-cell" style="width: 40px; min-width: 40px;">
                                             <input
                                                 type="checkbox"
                                                 on:change=toggle_all
                                                 prop:checked=move || all_selected()
                                             />
                                         </th>
-                                        <th on:click=move |_| toggle_sort("document_no") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Document № " {get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 130px; min-width: 80px;" on:click=move |_| toggle_sort("document_no")>
+                                            <span class="sortable-header">"Document №" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("sale_date") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Дата продажи " {get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("sale_date")>
+                                            <span class="sortable-header">"Дата" <span class={get_sort_class("sale_date", &current_sort_field)}>{get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("operation_date") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Дата операции " {get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("operation_date")>
+                                            <span class="sortable-header">"Операция" <span class={get_sort_class("operation_date", &current_sort_field)}>{get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("organization_name") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Организация " {get_sort_indicator("organization_name", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 140px; min-width: 80px;" on:click=move |_| toggle_sort("organization_name")>
+                                            <span class="sortable-header">"Организация" <span class={get_sort_class("organization_name", &current_sort_field)}>{get_sort_indicator("organization_name", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("supplier_article") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Артикул " {get_sort_indicator("supplier_article", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 100px; min-width: 60px;" on:click=move |_| toggle_sort("supplier_article")>
+                                            <span class="sortable-header">"Артикул" <span class={get_sort_class("supplier_article", &current_sort_field)}>{get_sort_indicator("supplier_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("marketplace_article") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Артикул МП " {get_sort_indicator("marketplace_article", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("marketplace_article")>
+                                            <span class="sortable-header">"Арт. МП" <span class={get_sort_class("marketplace_article", &current_sort_field)}>{get_sort_indicator("marketplace_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("nomenclature_article") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Артикул 1С " {get_sort_indicator("nomenclature_article", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("nomenclature_article")>
+                                            <span class="sortable-header">"Арт. 1С" <span class={get_sort_class("nomenclature_article", &current_sort_field)}>{get_sort_indicator("nomenclature_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("nomenclature_code") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Код 1С " {get_sort_indicator("nomenclature_code", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("nomenclature_code")>
+                                            <span class="sortable-header">"Код" <span class={get_sort_class("nomenclature_code", &current_sort_field)}>{get_sort_indicator("nomenclature_code", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("name") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Название " {get_sort_indicator("name", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="min-width: 150px;" on:click=move |_| toggle_sort("name")>
+                                            <span class="sortable-header">"Название" <span class={get_sort_class("name", &current_sort_field)}>{get_sort_indicator("name", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("qty") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600; text-align: right;">
-                                            "Кол-во " {get_sort_indicator("qty", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable text-right" style="width: 55px; min-width: 45px;" on:click=move |_| toggle_sort("qty")>
+                                            <span class="sortable-header" style="justify-content: flex-end;">"Кол" <span class={get_sort_class("qty", &current_sort_field)}>{get_sort_indicator("qty", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("amount_line") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600; text-align: right;">
-                                            "К выплате " {get_sort_indicator("amount_line", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable text-right" style="width: 90px; min-width: 70px;" on:click=move |_| toggle_sort("amount_line")>
+                                            <span class="sortable-header" style="justify-content: flex-end;">"К выплате" <span class={get_sort_class("amount_line", &current_sort_field)}>{get_sort_indicator("amount_line", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("total_price") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600; text-align: right;">
-                                            "Полная цена " {get_sort_indicator("total_price", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable text-right" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("total_price")>
+                                            <span class="sortable-header" style="justify-content: flex-end;">"Полная" <span class={get_sort_class("total_price", &current_sort_field)}>{get_sort_indicator("total_price", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("finished_price") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600; text-align: right;">
-                                            "Итоговая " {get_sort_indicator("finished_price", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable text-right" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("finished_price")>
+                                            <span class="sortable-header" style="justify-content: flex-end;">"Итог" <span class={get_sort_class("finished_price", &current_sort_field)}>{get_sort_indicator("finished_price", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th on:click=move |_| toggle_sort("event_type") style="border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;">
-                                            "Тип " {get_sort_indicator("event_type", &current_sort_field, current_sort_asc)}
+                                        <th class="resizable" style="width: 60px; min-width: 45px;" on:click=move |_| toggle_sort("event_type")>
+                                            <span class="sortable-header">"Тип" <span class={get_sort_class("event_type", &current_sort_field)}>{get_sort_indicator("event_type", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {items.into_iter().map(|item| {
-                                        let item_id = item.id.clone();
-                                        let item_id_for_checkbox = item.id.clone();
-                                        let item_id_for_checked = item.id.clone();
-                                        let item_document_no = item.document_no.clone();
-                                        let formatted_date = format_date(&item.sale_date);
-                                        let formatted_amount = item.amount_line
-                                            .map(|a| format!("{:.2}", a))
-                                            .unwrap_or_else(|| "—".to_string());
-                                        let formatted_total_price = item.total_price
-                                            .map(|a| format!("{:.2}", a))
-                                            .unwrap_or_else(|| "—".to_string());
-                                        let formatted_finished_price = item.finished_price
-                                            .map(|a| format!("{:.2}", a))
-                                            .unwrap_or_else(|| "—".to_string());
-                                        let formatted_qty = format!("{:.0}", item.qty);
+                                        // Pre-compute all values once
+                                        let id = item.id.clone();
+                                        let doc_no = item.document_no.clone();
+                                        let date = format_date(&item.sale_date);
+                                        let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
+                                        let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
+                                        let supplier_art = item.supplier_article;
+                                        let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
+                                        let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
+                                        let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
+                                        let name = item.name;
+                                        let qty = format!("{:.0}", item.qty);
+                                        let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                        let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                        let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                        let event = item.event_type;
+                                        
+                                        // Clone once for closures
+                                        let id_check = id.clone();
+                                        let id_toggle = id.clone();
+                                        let id_row = id.clone();
+                                        let doc_row = doc_no.clone();
+                                        
+                                        // Single click handler for entire row
+                                        let on_row_click = move |_| {
+                                            open_detail(id_row.clone(), doc_row.clone());
+                                        };
+                                        
                                         view! {
-                                            <tr class="sales-row" style="cursor: pointer;">
-                                                <td
-                                                    style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: center;"
-                                                >
+                                            <tr on:click=on_row_click.clone()>
+                                                <td class="checkbox-cell" on:click=move |e| e.stop_propagation()>
                                                     <input
                                                         type="checkbox"
-                                                        prop:checked=move || is_selected(&item_id_for_checked)
-                                                        on:change=move |_| {
-                                                            toggle_selection(item_id_for_checkbox.clone());
-                                                        }
-                                                        on:click=move |e| {
-                                                            e.stop_propagation();
-                                                        }
+                                                        prop:checked=move || is_selected(&id_check)
+                                                        on:change=move |_| toggle_selection(id_toggle.clone())
                                                     />
                                                 </td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.document_no.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{formatted_date}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">
-                                                    <span style="color: #d32f2f; font-weight: 600;">
-                                                        {item.operation_date.clone().unwrap_or_else(|| "—".to_string())}
-                                                    </span>
-                                                </td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.organization_name.clone().unwrap_or_else(|| "—".to_string())}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.supplier_article.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;"><span style="color: #1976d2; font-weight: 600;">{item.marketplace_article.clone().unwrap_or_else(|| "—".to_string())}</span></td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;"><span style="color: #2e7d32; font-weight: 600;">{item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string())}</span></td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;"><span style="color: #2e7d32; font-weight: 600;">{item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string())}</span></td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.name.clone()}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{formatted_qty}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{formatted_amount}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{formatted_total_price}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} class="amount" style="border: 1px solid #e0e0e0; padding: 4px 6px; text-align: right;">{formatted_finished_price}</td>
-                                                <td on:click={let id = item_id.clone(); let doc = item_document_no.clone(); move |_| open_detail(id.clone(), doc.clone())} style="border: 1px solid #e0e0e0; padding: 4px 6px;">{item.event_type.clone()}</td>
+                                                <td class="cell-truncate">{doc_no}</td>
+                                                <td>{date}</td>
+                                                <td style="color: #c62828; font-weight: 500;">{op_date}</td>
+                                                <td class="cell-truncate">{org_name}</td>
+                                                <td class="cell-truncate">{supplier_art}</td>
+                                                <td class="cell-truncate" style="color: #1565c0;">{mp_art}</td>
+                                                <td class="cell-truncate" style="color: #2e7d32;">{nom_art}</td>
+                                                <td class="cell-truncate" style="color: #2e7d32;">{nom_code}</td>
+                                                <td class="cell-truncate">{name}</td>
+                                                <td class="text-right">{qty}</td>
+                                                <td class="text-right">{amount}</td>
+                                                <td class="text-right">{total}</td>
+                                                <td class="text-right">{finished}</td>
+                                                <td>{event}</td>
                                             </tr>
                                         }
                                     }).collect::<Vec<_>>()}

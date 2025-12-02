@@ -4,6 +4,7 @@ use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use tokio::join;
 
 use crate::domain::a002_organization;
 use crate::domain::a012_wb_sales;
@@ -11,6 +12,82 @@ use crate::shared::data::db::get_connection;
 use crate::shared::data::raw_storage;
 use sea_orm::{ConnectionTrait, Statement};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+use tokio::sync::RwLock;
+
+// Cache for reference data (refreshed periodically)
+static ORG_CACHE: OnceLock<RwLock<(HashMap<String, String>, std::time::Instant)>> = OnceLock::new();
+static MP_CACHE: OnceLock<RwLock<(HashMap<String, (String, Option<String>)>, std::time::Instant)>> = OnceLock::new();
+static NOM_CACHE: OnceLock<RwLock<(HashMap<String, (String, String)>, std::time::Instant)>> = OnceLock::new();
+
+const CACHE_TTL_SECS: u64 = 300; // 5 minutes
+
+async fn get_org_map() -> HashMap<String, String> {
+    let cache = ORG_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
+    
+    {
+        let read = cache.read().await;
+        if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
+            return read.0.clone();
+        }
+    }
+    
+    // Refresh cache
+    let mut write = cache.write().await;
+    if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
+        return write.0.clone();
+    }
+    
+    if let Ok(orgs) = a002_organization::service::list_all().await {
+        write.0 = orgs.into_iter().map(|org| (org.base.id.as_string(), org.base.description.clone())).collect();
+        write.1 = std::time::Instant::now();
+    }
+    write.0.clone()
+}
+
+async fn get_mp_map() -> HashMap<String, (String, Option<String>)> {
+    let cache = MP_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
+    
+    {
+        let read = cache.read().await;
+        if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
+            return read.0.clone();
+        }
+    }
+    
+    let mut write = cache.write().await;
+    if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
+        return write.0.clone();
+    }
+    
+    if let Ok(mps) = crate::domain::a007_marketplace_product::service::list_all().await {
+        write.0 = mps.into_iter().map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone()))).collect();
+        write.1 = std::time::Instant::now();
+    }
+    write.0.clone()
+}
+
+async fn get_nom_map() -> HashMap<String, (String, String)> {
+    let cache = NOM_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
+    
+    {
+        let read = cache.read().await;
+        if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
+            return read.0.clone();
+        }
+    }
+    
+    let mut write = cache.write().await;
+    if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
+        return write.0.clone();
+    }
+    
+    if let Ok(noms) = crate::domain::a004_nomenclature::service::list_all().await {
+        write.0 = noms.into_iter().map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone()))).collect();
+        write.1 = std::time::Instant::now();
+    }
+    write.0.clone()
+}
 
 /// Получить минимальные даты операций (rr_dt) из P903 по SRID
 /// Возвращает две HashMap: (sales_dates, return_dates)
@@ -69,15 +146,63 @@ async fn get_operation_dates_from_p903(
     Ok((sales_dates, return_dates))
 }
 
+/// Compact DTO for list view (only essential fields)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesListItemDto {
-    #[serde(flatten)]
-    pub sales: WbSales,
+    pub id: String,
+    pub document_no: String,
+    pub sale_date: String,
+    pub supplier_article: String,
+    pub name: String,
+    pub qty: f64,
+    pub amount_line: Option<f64>,
+    pub total_price: Option<f64>,
+    pub finished_price: Option<f64>,
+    pub event_type: String,
     pub organization_name: Option<String>,
     pub marketplace_article: Option<String>,
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
+}
+
+impl WbSalesListItemDto {
+    pub fn from_wb_sales(
+        sale: &WbSales,
+        organization_name: Option<String>,
+        marketplace_article: Option<String>,
+        nomenclature_code: Option<String>,
+        nomenclature_article: Option<String>,
+        operation_date: Option<String>,
+    ) -> Self {
+        Self {
+            id: sale.base.id.as_string(),
+            document_no: sale.header.document_no.clone(),
+            sale_date: sale.state.sale_dt.to_rfc3339(),
+            supplier_article: sale.line.supplier_article.clone(),
+            name: sale.line.name.clone(),
+            qty: sale.line.qty,
+            amount_line: sale.line.amount_line,
+            total_price: sale.line.total_price,
+            finished_price: sale.line.finished_price,
+            event_type: sale.state.event_type.clone(),
+            organization_name,
+            marketplace_article,
+            nomenclature_code,
+            nomenclature_article,
+            operation_date,
+        }
+    }
+}
+
+/// Paginated response for WB Sales list
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginatedWbSalesResponse {
+    pub items: Vec<WbSalesListItemDto>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,12 +212,14 @@ pub struct ListSalesQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub organization_id: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
 }
 
-/// Handler для получения списка Wildberries Sales
+/// Handler для получения списка Wildberries Sales с пагинацией
 pub async fn list_sales(
     Query(query): Query<ListSalesQuery>,
-) -> Result<Json<Vec<WbSalesListItemDto>>, axum::http::StatusCode> {
+) -> Result<Json<PaginatedWbSalesResponse>, axum::http::StatusCode> {
     // Парсим даты
     let date_from = query
         .date_from
@@ -104,8 +231,11 @@ pub async fn list_sales(
         .as_ref()
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 
-    let limit = query.limit.unwrap_or(20000); // По умолчанию максимум 20000 записей
+    let page_size = query.limit.unwrap_or(100); // По умолчанию 100 записей на страницу
     let offset = query.offset.unwrap_or(0);
+    let page = if page_size > 0 { offset / page_size } else { 0 };
+    let sort_by = query.sort_by.clone().unwrap_or_else(|| "sale_date".to_string());
+    let sort_desc = query.sort_desc.unwrap_or(true);
 
     let mut items = if date_from.is_some() || date_to.is_some() {
         a012_wb_sales::service::list_by_date_range(date_from, date_to)
@@ -122,66 +252,42 @@ pub async fn list_sales(
     };
 
     // Фильтруем по organization_id, если указан
-    if let Some(org_id) = query.organization_id {
-        items.retain(|sale| sale.header.organization_id == org_id);
+    if let Some(ref org_id) = query.organization_id {
+        items.retain(|sale| sale.header.organization_id == *org_id);
     }
 
-    // Сортируем по дате (новые сначала) перед применением пагинации
-    items.sort_by(|a, b| b.state.sale_dt.cmp(&a.state.sale_dt));
+    // Серверная сортировка по выбранному полю
+    items.sort_by(|a, b| {
+        let cmp = match sort_by.as_str() {
+            "document_no" => a.header.document_no.cmp(&b.header.document_no),
+            "sale_date" => a.state.sale_dt.cmp(&b.state.sale_dt),
+            "supplier_article" => a.line.supplier_article.cmp(&b.line.supplier_article),
+            "name" => a.line.name.cmp(&b.line.name),
+            "qty" => a.line.qty.partial_cmp(&b.line.qty).unwrap_or(std::cmp::Ordering::Equal),
+            "amount_line" => a.line.amount_line.partial_cmp(&b.line.amount_line).unwrap_or(std::cmp::Ordering::Equal),
+            "total_price" => a.line.total_price.partial_cmp(&b.line.total_price).unwrap_or(std::cmp::Ordering::Equal),
+            "finished_price" => a.line.finished_price.partial_cmp(&b.line.finished_price).unwrap_or(std::cmp::Ordering::Equal),
+            _ => a.state.sale_dt.cmp(&b.state.sale_dt), // По умолчанию по дате
+        };
+        if sort_desc { cmp.reverse() } else { cmp }
+    });
+
+    // Сохраняем общее количество ДО пагинации
+    let total = items.len();
+    let total_pages = if page_size > 0 { (total + page_size - 1) / page_size } else { 0 };
 
     // Применяем пагинацию
-    let items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
+    let items: Vec<_> = items.into_iter().skip(offset).take(page_size).collect();
 
-    // ОПТИМИЗАЦИЯ: Загружаем все организации одним запросом
-    let organizations = a002_organization::service::list_all().await.map_err(|e| {
-        tracing::error!("Failed to load organizations: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    // Создаем map для быстрого поиска
-    let org_map: std::collections::HashMap<String, String> = organizations
-        .into_iter()
-        .map(|org| (org.base.id.as_string(), org.base.description.clone()))
-        .collect();
-
-    // Загружаем все товары маркетплейса
-    let marketplace_products = crate::domain::a007_marketplace_product::service::list_all()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to load marketplace products: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let mp_map: std::collections::HashMap<String, (String, Option<String>)> = marketplace_products
-        .into_iter()
-        .map(|mp| {
-            (
-                mp.base.id.as_string(),
-                (mp.article.clone(), mp.nomenclature_ref.clone()),
-            )
-        })
-        .collect();
-
-    // Загружаем всю номенклатуру
-    let nomenclature_items = crate::domain::a004_nomenclature::service::list_all()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to load nomenclature: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let nom_map: std::collections::HashMap<String, (String, String)> = nomenclature_items
-        .into_iter()
-        .map(|nom| {
-            (
-                nom.base.id.as_string(),
-                (nom.base.code.clone(), nom.article.clone()),
-            )
-        })
-        .collect();
-
-    // Загружаем даты операций из P903 (для продаж и возвратов отдельно)
-    let (sales_dates, return_dates) = get_operation_dates_from_p903().await.unwrap_or_default();
+    // ОПТИМИЗАЦИЯ: Загружаем справочники параллельно из кэша
+    let (org_map, mp_map, nom_map, operation_dates) = join!(
+        get_org_map(),
+        get_mp_map(),
+        get_nom_map(),
+        get_operation_dates_from_p903()
+    );
+    
+    let (sales_dates, return_dates) = operation_dates.unwrap_or_default();
 
     // Формируем результат с дополнительными полями
     let result: Vec<WbSalesListItemDto> = items
@@ -222,18 +328,25 @@ pub async fn list_sales(
                 }
             };
 
-            WbSalesListItemDto {
-                sales: sale,
+            // Use compact DTO with only essential fields
+            WbSalesListItemDto::from_wb_sales(
+                &sale,
                 organization_name,
-                marketplace_article: Some(marketplace_article),
-                nomenclature_code: Some(nomenclature_code),
-                nomenclature_article: Some(nomenclature_article),
+                if marketplace_article.is_empty() { None } else { Some(marketplace_article) },
+                if nomenclature_code.is_empty() { None } else { Some(nomenclature_code) },
+                if nomenclature_article.is_empty() { None } else { Some(nomenclature_article) },
                 operation_date,
-            }
+            )
         })
         .collect();
 
-    Ok(Json(result))
+    Ok(Json(PaginatedWbSalesResponse {
+        items: result,
+        total,
+        page,
+        page_size,
+        total_pages,
+    }))
 }
 
 /// Handler для получения детальной информации о Wildberries Sale

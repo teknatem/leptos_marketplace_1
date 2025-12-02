@@ -12,6 +12,11 @@ pub struct WbSalesState {
     pub sort_ascending: bool,
     pub selected_ids: Vec<String>,
     pub is_loaded: bool,
+    // Pagination fields
+    pub page: usize,
+    pub page_size: usize,
+    pub total_count: usize,
+    pub total_pages: usize,
 }
 
 impl Default for WbSalesState {
@@ -41,6 +46,11 @@ impl Default for WbSalesState {
             sort_ascending: false,
             selected_ids: Vec::new(),
             is_loaded: false,
+            // Pagination defaults
+            page: 0,
+            page_size: 100,
+            total_count: 0,
+            total_pages: 0,
         }
     }
 }

@@ -2,12 +2,29 @@
    Table Component Styles
    ============================================ */
 
+/* Table theme colors */
+:root {
+    --table-header-bg: hsl(210, 15%, 55%);
+    --table-header-fg: hsl(0, 0%, 100%);
+    --table-row-odd: hsl(0, 0%, 100%);
+    --table-row-even: hsl(210, 20%, 97%);
+    --table-row-hover: hsl(210, 30%, 94%);
+    --table-row-selected: hsl(45, 100%, 90%);
+}
+
 /* Generic container for tables to enable scrolling and sticky headers */
 .table-container {
     background: var(--color-bg-panel);
     border-radius: var(--radius-md);
     max-height: var(--table-max-height);
-    overflow-y: auto;
+    overflow: auto;
+    position: relative;
+}
+
+/* Ensure sticky works within scrollable container */
+.table-container table {
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 /* Base table styles */
@@ -16,6 +33,7 @@ table {
     border-collapse: collapse;
     background: var(--color-bg-body);
     overflow: visible;
+    table-layout: fixed;
 }
 
 /* Table header cell styles */
@@ -25,6 +43,9 @@ table th {
     font-weight: var(--font-weight-semibold);
     border-bottom: 1px solid var(--color-border-light);
     font-size: var(--font-size-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Globally sticky table headers */
@@ -32,10 +53,69 @@ thead th {
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
-    background: var(--color-table-header-bg);
+    background: var(--table-header-bg);
+    color: var(--table-header-fg);
     backdrop-filter: blur(4px);
     height: var(--table-header-height);
-    border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+    border-bottom: 2px solid rgba(0, 0, 0, 0.2);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Sortable header styles */
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.sortable-header:hover {
+    opacity: 0.85;
+}
+
+.sort-icon {
+    font-size: 11px;
+    opacity: 0.6;
+    flex-shrink: 0;
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.5;
+    letter-spacing: -2px;
+}
+
+.sort-icon.active {
+    opacity: 1;
+}
+
+/* Resizable columns - position is inherited from thead th (sticky) */
+/* Resize handle uses the sticky positioning context */
+.resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 2;
+    transition: background 0.15s;
+}
+
+.resize-handle:hover,
+.resize-handle.resizing {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* During resize: prevent text selection */
+body.resizing-column {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+body.resizing-column * {
+    cursor: col-resize !important;
 }
 
 /* Table data cell styles */
@@ -43,6 +123,10 @@ table td {
     padding: var(--space-md) var(--space-xl);
     border-bottom: 1px solid var(--color-border-lighter);
     font-size: var(--font-size-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0; /* Forces cell to respect column width */
 }
 
 /* Table row height - applies to all rows */
@@ -127,4 +211,39 @@ thead th.sticky-left {
 
 .text-left {
     text-align: left;
+}
+
+/* Checkbox column */
+.checkbox-cell {
+    width: 40px;
+    text-align: center;
+    padding: 4px !important;
+}
+
+/* Table body row styles */
+.data-table tbody tr {
+    transition: background-color 0.15s ease;
+    cursor: pointer;
+}
+
+.data-table tbody tr:nth-child(odd) {
+    background-color: var(--table-row-odd);
+}
+
+.data-table tbody tr:nth-child(even) {
+    background-color: var(--table-row-even);
+}
+
+.data-table tbody tr:hover {
+    background-color: var(--table-row-hover);
+}
+
+.data-table tbody tr.selected {
+    background-color: var(--table-row-selected) !important;
+}
+
+/* Compact cell padding for data tables */
+.data-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }

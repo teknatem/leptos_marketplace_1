@@ -209,16 +209,25 @@ pub fn SearchInput(
     }
 }
 
-/// Получить индикатор сортировки для заголовка
+/// Получить индикатор сортировки для заголовка (ромб для неактивной)
 pub fn get_sort_indicator(current_field: &str, field: &str, ascending: bool) -> &'static str {
     if current_field == field {
         if ascending {
-            " ▲"
+            "▲"
         } else {
-            " ▼"
+            "▼"
         }
     } else {
-        " ⇅"
+        "◆"
+    }
+}
+
+/// Получить CSS класс для индикатора сортировки
+pub fn get_sort_class(current_field: &str, field: &str) -> &'static str {
+    if current_field == field {
+        "sort-icon active"
+    } else {
+        "sort-icon"
     }
 }
 
@@ -238,3 +247,4 @@ pub fn create_sort_toggle(
         }
     }
 }
+
