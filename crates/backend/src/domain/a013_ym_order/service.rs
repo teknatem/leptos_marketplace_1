@@ -1,8 +1,10 @@
 use super::repository;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductDto;
 use contracts::domain::a013_ym_order::aggregate::{YmOrder, YmOrderLine};
 use contracts::domain::common::AggregateId;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Автозаполнение marketplace_product_ref и nomenclature_ref для одной строки
@@ -25,6 +27,9 @@ async fn fill_line_references(
     } else {
         &line.shop_sku
     };
+
+    // Используем shop_sku для поиска в p901 (артикул YM)
+    let ym_article = &line.shop_sku;
 
     let marketplace_product =
         crate::domain::a007_marketplace_product::service::get_by_connection_and_sku(
@@ -71,11 +76,30 @@ async fn fill_line_references(
     // Получаем nomenclature_ref из marketplace_product
     if updated_line.nomenclature_ref.is_none() {
         if let Ok(mp_uuid) = Uuid::parse_str(&mp_id) {
+            // Сначала пробуем получить из существующего a007
             if let Ok(Some(mp)) =
                 crate::domain::a007_marketplace_product::service::get_by_id(mp_uuid).await
             {
                 if let Some(nom_ref) = mp.nomenclature_ref {
                     updated_line.nomenclature_ref = Some(nom_ref);
+                }
+            }
+
+            // Если nomenclature_ref всё ещё не заполнен - пробуем найти через p901 по YM штрихкоду
+            if updated_line.nomenclature_ref.is_none() && !ym_article.is_empty() {
+                if let Ok(Some(nom_ref)) =
+                    crate::domain::a007_marketplace_product::service::try_fill_nomenclature_from_ym_barcode(
+                        mp_uuid,
+                        ym_article,
+                    )
+                    .await
+                {
+                    updated_line.nomenclature_ref = Some(nom_ref);
+                    tracing::info!(
+                        "Filled nomenclature_ref for YM Order line {} via p901 barcode search (article: '{}')",
+                        line.line_id,
+                        ym_article
+                    );
                 }
             }
         }
@@ -174,5 +198,191 @@ pub async fn list_all() -> Result<Vec<YmOrder>> {
 
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
+}
+
+/// Структуры для парсинга YM Order из raw JSON
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct YmOrderJson {
+    #[serde(rename = "creationDate", default)]
+    pub creation_date: Option<String>,
+    #[serde(rename = "statusUpdateDate", default)]
+    pub status_update_date: Option<String>,
+    #[serde(default)]
+    pub delivery: Option<YmOrderDeliveryJson>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct YmOrderDeliveryJson {
+    #[serde(default)]
+    pub dates: Option<YmOrderDeliveryDatesJson>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct YmOrderDeliveryDatesJson {
+    #[serde(rename = "realDeliveryDate", default)]
+    pub real_delivery_date: Option<String>,
+}
+
+/// Парсинг даты из YM в разных форматах
+fn parse_ym_date(date_str: &str) -> Option<DateTime<Utc>> {
+    // Try RFC3339 first (e.g., "2024-01-15T10:30:00Z")
+    if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
+        return Some(dt.with_timezone(&Utc));
+    }
+
+    // Try format "DD-MM-YYYY HH:MM:SS" (Yandex Market format with time)
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%d-%m-%Y %H:%M:%S") {
+        return Some(DateTime::from_naive_utc_and_offset(
+            naive,
+            Utc,
+        ));
+    }
+
+    // Try format "DD-MM-YYYY" (Yandex Market format without time)
+    if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%d-%m-%Y") {
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
+        return Some(DateTime::from_naive_utc_and_offset(
+            naive_datetime,
+            Utc,
+        ));
+    }
+
+    // Try format "YYYY-MM-DD HH:MM:SS"
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+        return Some(DateTime::from_naive_utc_and_offset(
+            naive,
+            Utc,
+        ));
+    }
+
+    // Try format "YYYY-MM-DD"
+    if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
+        return Some(DateTime::from_naive_utc_and_offset(
+            naive_datetime,
+            Utc,
+        ));
+    }
+
+    tracing::warn!("Failed to parse YM date: {}", date_str);
+    None
+}
+
+/// Заполнить отсутствующие поля из raw JSON
+/// Используется для восстановления данных в старых документах при проведении
+pub async fn refill_from_raw_json(document: &mut YmOrder) -> Result<bool> {
+    // Проверяем, нужно ли заполнять (если creation_date отсутствует)
+    if document.state.creation_date.is_some() {
+        return Ok(false); // Ничего не заполняли
+    }
+
+    // Получаем raw JSON из хранилища
+    let raw_ref = &document.source_meta.raw_payload_ref;
+    if raw_ref.is_empty() {
+        tracing::warn!(
+            "Document {} has no raw_payload_ref, cannot refill",
+            document.header.document_no
+        );
+        return Ok(false);
+    }
+
+    let raw_json_str = crate::shared::data::raw_storage::get_by_ref(raw_ref)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Raw JSON not found for ref: {}", raw_ref))?;
+
+    // Парсим JSON
+    let ym_order_json: YmOrderJson = serde_json::from_str(&raw_json_str)
+        .map_err(|e| anyhow::anyhow!("Failed to parse raw JSON: {}", e))?;
+
+    let mut fields_updated = false;
+
+    // Заполняем creation_date
+    if document.state.creation_date.is_none() {
+        if let Some(ref creation_date_str) = ym_order_json.creation_date {
+            if let Some(parsed_date) = parse_ym_date(creation_date_str) {
+                document.state.creation_date = Some(parsed_date);
+                fields_updated = true;
+                tracing::info!(
+                    "Refilled creation_date for document {}: {}",
+                    document.header.document_no,
+                    creation_date_str
+                );
+            }
+        }
+    }
+
+    // Заполняем status_changed_at
+    if document.state.status_changed_at.is_none() {
+        if let Some(ref status_update_date_str) = ym_order_json.status_update_date {
+            if let Some(parsed_date) = parse_ym_date(status_update_date_str) {
+                document.state.status_changed_at = Some(parsed_date);
+                fields_updated = true;
+                tracing::info!(
+                    "Refilled status_changed_at for document {}: {}",
+                    document.header.document_no,
+                    status_update_date_str
+                );
+            }
+        }
+    }
+
+    // Заполняем delivery_date из delivery.dates.realDeliveryDate
+    if document.state.delivery_date.is_none() {
+        if let Some(ref delivery) = ym_order_json.delivery {
+            if let Some(ref dates) = delivery.dates {
+                if let Some(ref real_delivery_date_str) = dates.real_delivery_date {
+                    if let Some(parsed_date) = parse_ym_date(real_delivery_date_str) {
+                        document.state.delivery_date = Some(parsed_date);
+                        fields_updated = true;
+                        tracing::info!(
+                            "Refilled delivery_date for document {}: {}",
+                            document.header.document_no,
+                            real_delivery_date_str
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Обновляем status_raw и status_norm если они пустые
+    if document.state.status_raw.is_empty() {
+        if let Some(ref status) = ym_order_json.status {
+            document.state.status_raw = status.clone();
+            document.state.status_norm = normalize_ym_status(status);
+            fields_updated = true;
+            tracing::info!(
+                "Refilled status for document {}: {}",
+                document.header.document_no,
+                status
+            );
+        }
+    }
+
+    if fields_updated {
+        tracing::info!(
+            "Successfully refilled fields from raw JSON for document {}",
+            document.header.document_no
+        );
+    }
+
+    Ok(fields_updated)
+}
+
+/// Normalize Yandex Market order status
+fn normalize_ym_status(status: &str) -> String {
+    match status.to_uppercase().as_str() {
+        "DELIVERED" => "DELIVERED".to_string(),
+        "PICKUP" => "DELIVERED".to_string(),
+        "PROCESSING" => "PROCESSING".to_string(),
+        "DELIVERY" => "PROCESSING".to_string(),
+        "CANCELLED" => "CANCELLED".to_string(),
+        "CANCELLED_BEFORE_PROCESSING" => "CANCELLED".to_string(),
+        "RETURNED" => "PARTIALLY_RETURNED".to_string(),
+        "PARTIALLY_RETURNED" => "PARTIALLY_RETURNED".to_string(),
+        _ => status.to_uppercase(),
+    }
 }
 

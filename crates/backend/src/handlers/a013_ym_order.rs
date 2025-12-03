@@ -202,6 +202,11 @@ pub struct PostPeriodRequest {
     pub to: String,
 }
 
+#[derive(Deserialize)]
+pub struct BatchOperationRequest {
+    pub ids: Vec<String>,
+}
+
 /// Handler для проведения документов за период
 pub async fn post_period(
     Query(req): Query<PostPeriodRequest>,
@@ -245,6 +250,82 @@ pub async fn post_period(
         "success": true,
         "posted_count": posted_count,
         "failed_count": failed_count
+    })))
+}
+
+/// Handler для пакетного проведения документов (до 100 документов за раз)
+pub async fn batch_post_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a013_ym_order::posting::post_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch posted {} YM Order documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
+    })))
+}
+
+/// Handler для пакетной отмены проведения документов (до 100 документов за раз)
+pub async fn batch_unpost_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a013_ym_order::posting::unpost_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch unposted {} YM Order documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
     })))
 }
 

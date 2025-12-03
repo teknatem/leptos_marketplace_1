@@ -127,3 +127,59 @@ pub async fn find_nomenclature_ref_by_barcode_from_marketplace(
     // Если не нашли или nomenclature_ref=NULL, пробуем 1C
     find_nomenclature_ref_by_barcode_from_1c(barcode).await
 }
+
+/// Найти nomenclature_ref по артикулу YM (shop_sku)
+/// Алгоритм:
+/// 1. Ищем в p901 по source="YM" и article=shop_sku
+/// 2. Если в YM записи уже есть nomenclature_ref → возвращаем его
+/// 3. Если нет, по barcode ищем в p901 с source="1C" → получаем nomenclature_ref
+pub async fn find_nomenclature_ref_by_ym_article(article: &str) -> Result<Option<String>> {
+    use super::repository;
+
+    if article.is_empty() {
+        return Ok(None);
+    }
+
+    // Шаг 1: Ищем запись YM по артикулу
+    let ym_record = match repository::get_by_article_and_source(article, "YM").await? {
+        Some(record) => record,
+        None => {
+            tracing::debug!(
+                "No YM barcode found in p901 for article '{}'",
+                article
+            );
+            return Ok(None);
+        }
+    };
+
+    // Шаг 2: Если в YM записи уже есть nomenclature_ref - возвращаем его
+    if let Some(ref nom_ref) = ym_record.nomenclature_ref {
+        tracing::info!(
+            "Found nomenclature directly from YM record: article='{}' -> nomenclature_ref='{}'",
+            article,
+            nom_ref
+        );
+        return Ok(Some(nom_ref.clone()));
+    }
+
+    // Шаг 3: По найденному штрихкоду ищем запись 1C
+    let barcode = &ym_record.barcode;
+    let nomenclature_ref = find_nomenclature_ref_by_barcode_from_1c(barcode).await?;
+
+    if nomenclature_ref.is_some() {
+        tracing::info!(
+            "Found nomenclature via 1C barcode: article='{}', barcode='{}' -> nomenclature_ref='{:?}'",
+            article,
+            barcode,
+            nomenclature_ref
+        );
+    } else {
+        tracing::debug!(
+            "No 1C nomenclature found for barcode '{}' (YM article '{}')",
+            barcode,
+            article
+        );
+    }
+
+    Ok(nomenclature_ref)
+}

@@ -1,7 +1,25 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// Details components for linked aggregates
+use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
+use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
+use crate::layout::global_context::AppGlobalContext;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NomenclatureInfo {
+    pub description: String,
+    pub article: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceProductInfo {
+    pub description: String,
+    pub article: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmOrderDetailDto {
@@ -92,19 +110,68 @@ pub struct MetadataDto {
 }
 
 #[component]
-pub fn YmOrderDetail(
-    id: String,
-    #[prop(into)] on_close: Callback<()>,
-) -> impl IntoView {
+pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (order, set_order) = signal::<Option<YmOrderDetailDto>>(None);
     let (raw_json_from_ym, set_raw_json_from_ym) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
+    let (posting, set_posting) = signal(false);
+
+    // Информация о номенклатуре для каждой строки (ключ - line_id)
+    let (nomenclatures_info, set_nomenclatures_info) =
+        signal::<HashMap<String, NomenclatureInfo>>(HashMap::new());
+    let (selected_nomenclature_id, set_selected_nomenclature_id) = signal::<Option<String>>(None);
+    let (selected_marketplace_product_id, set_selected_marketplace_product_id) =
+        signal::<Option<String>>(None);
+
+    let is_posted = Memo::new(move |_| order.get().map(|o| o.metadata.is_posted).unwrap_or(false));
+
+    // Сохраняем id для использования в разных местах
+    let id_stored = StoredValue::new(id.clone());
+
+    // Получаем tabs_store для обновления названия вкладки
+    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
+        .expect("AppGlobalContext должен быть доступен");
+
+    // Функция для загрузки информации о номенклатуре для всех строк
+    let load_nomenclatures = move |lines: Vec<LineDto>| {
+        for line in lines {
+            if let Some(nom_ref) = line.nomenclature_ref.clone() {
+                let line_id = line.line_id.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let url = format!("http://localhost:3000/api/nomenclature/{}", nom_ref);
+                    if let Ok(response) = Request::get(&url).send().await {
+                        if response.status() == 200 {
+                            if let Ok(text) = response.text().await {
+                                if let Ok(nom) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    let info = NomenclatureInfo {
+                                        description: nom
+                                            .get("description")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        article: nom
+                                            .get("article")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    };
+                                    set_nomenclatures_info.update(|map| {
+                                        map.insert(line_id, info);
+                                    });
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    };
 
     // Загрузить детальные данные
     Effect::new(move || {
-        let id = id.clone();
+        let id = id_stored.get_value();
         wasm_bindgen_futures::spawn_local(async move {
             set_loading.set(true);
             set_error.set(None);
@@ -121,28 +188,57 @@ pub fn YmOrderDetail(
                                 match serde_json::from_str::<YmOrderDetailDto>(&text) {
                                     Ok(data) => {
                                         // Загружаем raw JSON от YM
-                                        let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
+                                        let raw_payload_ref =
+                                            data.source_meta.raw_payload_ref.clone();
+
+                                        // Загружаем информацию о номенклатуре для всех строк
+                                        load_nomenclatures(data.lines.clone());
+
+                                        // Обновляем заголовок вкладки
+                                        let doc_no = data.header.document_no.clone();
+                                        tabs_store.update_tab_title(
+                                            &format!("a013_ym_order_detail_{}", id),
+                                            &format!("YM Order: {}", doc_no),
+                                        );
+
                                         set_order.set(Some(data));
                                         set_loading.set(false);
 
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
-                                            let raw_url = format!("http://localhost:3000/api/a013/raw/{}", raw_payload_ref);
+                                            let raw_url = format!(
+                                                "http://localhost:3000/api/a013/raw/{}",
+                                                raw_payload_ref
+                                            );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             // Форматируем JSON
-                                                            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&text) {
-                                                                if let Ok(formatted) = serde_json::to_string_pretty(&json_value) {
-                                                                    set_raw_json_from_ym.set(Some(formatted));
+                                                            if let Ok(json_value) =
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
+                                                                )
+                                                            {
+                                                                if let Ok(formatted) =
+                                                                    serde_json::to_string_pretty(
+                                                                        &json_value,
+                                                                    )
+                                                                {
+                                                                    set_raw_json_from_ym
+                                                                        .set(Some(formatted));
                                                                 }
                                                             }
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    log!("Failed to load raw JSON from YM: {:?}", e);
+                                                    log!(
+                                                        "Failed to load raw JSON from YM: {:?}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         });
@@ -174,93 +270,188 @@ pub fn YmOrderDetail(
         });
     });
 
+    // Обработчики для Post/Unpost
+    let handle_post = move |_| {
+        let id = id_stored.get_value();
+        set_posting.set(true);
+        wasm_bindgen_futures::spawn_local(async move {
+            let url = format!("http://localhost:3000/api/a013/ym-order/{}/post", id);
+            match Request::post(&url).send().await {
+                Ok(resp) => {
+                    if resp.status() == 200 {
+                        log!("Document posted successfully");
+                        // Перезагрузить документ
+                        set_loading.set(true);
+                        let reload_url = format!("http://localhost:3000/api/a013/ym-order/{}", id);
+                        if let Ok(response) = Request::get(&reload_url).send().await {
+                            if response.status() == 200 {
+                                if let Ok(text) = response.text().await {
+                                    if let Ok(data) =
+                                        serde_json::from_str::<YmOrderDetailDto>(&text)
+                                    {
+                                        set_order.set(Some(data));
+                                    }
+                                }
+                            }
+                        }
+                        set_loading.set(false);
+                    } else {
+                        log!("Failed to post document: HTTP {}", resp.status());
+                    }
+                }
+                Err(e) => {
+                    log!("Failed to post document: {:?}", e);
+                }
+            }
+            set_posting.set(false);
+        });
+    };
+
+    let handle_unpost = move |_| {
+        let id = id_stored.get_value();
+        set_posting.set(true);
+        wasm_bindgen_futures::spawn_local(async move {
+            let url = format!("http://localhost:3000/api/a013/ym-order/{}/unpost", id);
+            match Request::post(&url).send().await {
+                Ok(resp) => {
+                    if resp.status() == 200 {
+                        log!("Document unposted successfully");
+                        // Перезагрузить документ
+                        set_loading.set(true);
+                        let reload_url = format!("http://localhost:3000/api/a013/ym-order/{}", id);
+                        if let Ok(response) = Request::get(&reload_url).send().await {
+                            if response.status() == 200 {
+                                if let Ok(text) = response.text().await {
+                                    if let Ok(data) =
+                                        serde_json::from_str::<YmOrderDetailDto>(&text)
+                                    {
+                                        set_order.set(Some(data));
+                                    }
+                                }
+                            }
+                        }
+                        set_loading.set(false);
+                    } else {
+                        log!("Failed to unpost document: HTTP {}", resp.status());
+                    }
+                }
+                Err(e) => {
+                    log!("Failed to unpost document: {:?}", e);
+                }
+            }
+            set_posting.set(false);
+        });
+    };
+
     view! {
-        <div class="order-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                <h2 style="margin: 0;">"Yandex Market Order Details"</h2>
-                <button
-                    on:click=move |_| on_close.run(())
-                    style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                >
-                    "✕ Close"
-                </button>
+        <div class="detail-form">
+            <div class="detail-form-header">
+                <div class="detail-form-header-left">
+                    <h2>
+                        {move || {
+                            order.get()
+                                .map(|d| format!("YM Order #{}", d.header.document_no))
+                                .unwrap_or_else(|| "Yandex Market Order Details".to_string())
+                        }}
+                    </h2>
+                    <Show when=move || order.get().is_some()>
+                        {move || {
+                            let posted = is_posted.get();
+                            view! {
+                                <div class=move || if posted { "status-badge status-badge-posted" } else { "status-badge status-badge-not-posted" }>
+                                    <span class="status-badge-icon">{if posted { "✓" } else { "○" }}</span>
+                                    <span>{if posted { "Проведен" } else { "Не проведен" }}</span>
+                                </div>
+                            }
+                        }}
+                    </Show>
+                </div>
+                <div class="detail-form-header-right">
+                    <Show when=move || order.get().is_some()>
+                        <Show
+                            when=move || !is_posted.get()
+                            fallback=move || {
+                                view! {
+                                    <button
+                                        class="btn btn-warning"
+                                        on:click=handle_unpost
+                                        prop:disabled=move || posting.get()
+                                    >
+                                        {move || if posting.get() { "Отмена..." } else { "✗ Отменить" }}
+                                    </button>
+                                }
+                            }
+                        >
+                            {
+                                view! {
+                                    <button
+                                        class="btn btn-success"
+                                        on:click=handle_post
+                                        prop:disabled=move || posting.get()
+                                    >
+                                        {move || if posting.get() { "Проведение..." } else { "✓ Провести" }}
+                                    </button>
+                                }
+                            }
+                        </Show>
+                    </Show>
+                    <button
+                        class="btn btn-secondary"
+                        on:click=move |_| on_close.run(())
+                    >
+                        "Закрыть"
+                    </button>
+                </div>
             </div>
 
-            <div style="flex: 1; overflow-y: auto; min-height: 0;">
+            <div class="detail-form-content">
                 {move || {
                     if loading.get() {
                         view! {
-                            <div style="text-align: center; padding: 40px;">
-                                <p>"Loading..."</p>
+                            <div class="loading-placeholder">
+                                <div class="loading-spinner"></div>
+                                <p>"Загрузка данных..."</p>
                             </div>
                         }.into_any()
                     } else if let Some(err) = error.get() {
                         view! {
-                            <div style="padding: 20px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828;">
-                                <strong>"Error: "</strong>{err}
+                            <div class="error-message">
+                                <strong>"Ошибка: "</strong>{err}
                             </div>
                         }.into_any()
                     } else if let Some(order_data) = order.get() {
                         view! {
-                            <div style="height: 100%; display: flex; flex-direction: column;">
+                            <div>
                                 // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                                <div class="detail-tabs">
                                     <button
+                                        class=move || if active_tab.get() == "general" { "detail-tab active" } else { "detail-tab" }
                                         on:click=move |_| set_active_tab.set("general")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "general" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "📋 General"
+                                        "📋 Общее"
                                     </button>
                                     <button
+                                        class=move || if active_tab.get() == "lines" { "detail-tab active" } else { "detail-tab" }
                                         on:click=move |_| set_active_tab.set("lines")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "lines" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "📦 Lines"
+                                        "📦 Строки"
                                     </button>
                                     <button
+                                        class=move || if active_tab.get() == "campaign" { "detail-tab active" } else { "detail-tab" }
                                         on:click=move |_| set_active_tab.set("campaign")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "campaign" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "🏢 Campaign"
+                                        "🏢 Кампания"
                                     </button>
                                     <button
+                                        class=move || if active_tab.get() == "json" { "detail-tab active" } else { "detail-tab" }
                                         on:click=move |_| set_active_tab.set("json")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                                            if active_tab.get() == "json" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
                                         "📄 Raw JSON"
                                     </button>
                                 </div>
 
                                 // Контент вкладок
-                                <div style="flex: 1; overflow-y: auto; padding: 10px 0;">
+                                <div class="detail-tab-content">
                                     {move || {
                                 let tab = active_tab.get();
                                 match tab.as_ref() {
@@ -271,25 +462,31 @@ pub fn YmOrderDetail(
                                         let mp_id = order_data.header.marketplace_id.clone();
 
                                         view! {
-                                            <div class="general-info">
-                                                <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
-                                                    <div style="font-weight: 600; color: #555;">"Order №:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.header.document_no.clone()}</div>
+                                            <div class="detail-fields">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Order №:"</div>
+                                                    <div class="field-value">{order_data.header.document_no.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Code:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.code.clone()}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Код:"</div>
+                                                    <div class="field-value">{order_data.code.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Description:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.description.clone()}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Описание:"</div>
+                                                    <div class="field-value">{order_data.description.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Status:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; display: flex; gap: 8px;">
-                                                        <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Статус:"</div>
+                                                    <div class="field-value">
+                                                        <span class="badge badge-success">
                                                             {order_data.state.status_norm.clone()}
                                                         </span>
                                                         {if order_data.is_error {
                                                             view! {
-                                                                <span style="padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;" title="Есть строки без сопоставленной номенклатуры">
+                                                                <span class="badge badge-error" title="Есть строки без сопоставленной номенклатуры">
                                                                     "⚠️ Ошибка сопоставления"
                                                                 </span>
                                                             }.into_any()
@@ -297,35 +494,50 @@ pub fn YmOrderDetail(
                                                             view! { <span></span> }.into_any()
                                                         }}
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Raw Status:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
-                                                        <span style="padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-weight: 500;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Исходный статус:"</div>
+                                                    <div class="field-value">
+                                                        <span class="badge badge-info">
                                                             {order_data.state.status_raw.clone()}
                                                         </span>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Substatus:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Substatus:"</div>
+                                                    <div class="field-value">
                                                         {order_data.state.substatus_raw.clone().unwrap_or("—".to_string())}
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Status Changed At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.state.status_changed_at.clone().unwrap_or("—".to_string())}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Дата изменения статуса:"</div>
+                                                    <div class="field-value">{order_data.state.status_changed_at.clone().unwrap_or("—".to_string())}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Updated At Source:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.state.updated_at_source.clone().unwrap_or("—".to_string())}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Обновлено в источнике:"</div>
+                                                    <div class="field-value">{order_data.state.updated_at_source.clone().unwrap_or("—".to_string())}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Creation Date:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 500; color: #1976d2;">{order_data.state.creation_date.clone().unwrap_or("—".to_string())}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Дата создания:"</div>
+                                                    <div class="field-value field-value-highlight-primary">{order_data.state.creation_date.clone().unwrap_or("—".to_string())}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Delivery Date:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 500; color: #2e7d32;">{order_data.state.delivery_date.clone().unwrap_or("—".to_string())}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Дата доставки:"</div>
+                                                    <div class="field-value field-value-highlight-success">{order_data.state.delivery_date.clone().unwrap_or("—".to_string())}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Connection ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
-                                                        <span style="color: #666;" title=conn_id.clone()>{format!("{}...", conn_id.chars().take(8).collect::<String>())}</span>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Connection ID:"</div>
+                                                    <div class="field-value field-value-uuid">
+                                                        <span class="uuid-short" title=conn_id.clone()>{format!("{}...", conn_id.chars().take(8).collect::<String>())}</span>
                                                         <button
+                                                            class="btn-copy-uuid"
                                                             on:click=move |_| {
                                                                 let uuid_copy = conn_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -335,17 +547,19 @@ pub fn YmOrderDetail(
                                                                     }
                                                                 });
                                                             }
-                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
-                                                            title="Copy to clipboard"
+                                                            title="Копировать"
                                                         >
                                                             "📋"
                                                         </button>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Organization ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
-                                                        <span style="color: #666;" title=org_id.clone()>{format!("{}...", org_id.chars().take(8).collect::<String>())}</span>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Organization ID:"</div>
+                                                    <div class="field-value field-value-uuid">
+                                                        <span class="uuid-short" title=org_id.clone()>{format!("{}...", org_id.chars().take(8).collect::<String>())}</span>
                                                         <button
+                                                            class="btn-copy-uuid"
                                                             on:click=move |_| {
                                                                 let uuid_copy = org_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -355,17 +569,19 @@ pub fn YmOrderDetail(
                                                                     }
                                                                 });
                                                             }
-                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
-                                                            title="Copy to clipboard"
+                                                            title="Копировать"
                                                         >
                                                             "📋"
                                                         </button>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Marketplace ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
-                                                        <span style="color: #666;" title=mp_id.clone()>{format!("{}...", mp_id.chars().take(8).collect::<String>())}</span>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Marketplace ID:"</div>
+                                                    <div class="field-value field-value-uuid">
+                                                        <span class="uuid-short" title=mp_id.clone()>{format!("{}...", mp_id.chars().take(8).collect::<String>())}</span>
                                                         <button
+                                                            class="btn-copy-uuid"
                                                             on:click=move |_| {
                                                                 let uuid_copy = mp_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -375,21 +591,26 @@ pub fn YmOrderDetail(
                                                                     }
                                                                 });
                                                             }
-                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
-                                                            title="Copy to clipboard"
+                                                            title="Копировать"
                                                         >
                                                             "📋"
                                                         </button>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Created At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.metadata.created_at.clone()}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Создан:"</div>
+                                                    <div class="field-value">{order_data.metadata.created_at.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Updated At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.metadata.updated_at.clone()}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Обновлен:"</div>
+                                                    <div class="field-value">{order_data.metadata.updated_at.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Version:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.metadata.version}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Версия:"</div>
+                                                    <div class="field-value">{order_data.metadata.version}</div>
                                                 </div>
                                             </div>
                                         }.into_any()
@@ -401,11 +622,11 @@ pub fn YmOrderDetail(
                                         let lines_without_nomenclature = lines.iter().filter(|l| l.nomenclature_ref.is_none()).count();
 
                                         view! {
-                                            <div class="lines-info">
-                                                <div style="margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                                            <div class="detail-lines">
+                                                <div class="lines-summary">
                                                     <div>
-                                                        <strong>"Order Summary: "</strong>
-                                                        {format!("{} lines, {} items total, {:.2} total amount",
+                                                        <strong>"Итого: "</strong>
+                                                        {format!("{} строк, {} шт., {:.2} руб.",
                                                             lines.len(),
                                                             total_qty,
                                                             total_amount
@@ -413,88 +634,111 @@ pub fn YmOrderDetail(
                                                     </div>
                                                     {if lines_without_nomenclature > 0 {
                                                         view! {
-                                                            <span style="background: #ffebee; color: #c62828; padding: 4px 10px; border-radius: 4px; font-weight: 500;">
+                                                            <span class="badge badge-error">
                                                                 {"⚠️ Без номенклатуры: "}{lines_without_nomenclature}
                                                             </span>
                                                         }.into_any()
                                                     } else {
                                                         view! {
-                                                            <span style="background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 4px; font-weight: 500;">
+                                                            <span class="badge badge-success">
                                                                 "✓ Все строки сопоставлены"
                                                             </span>
                                                         }.into_any()
                                                     }}
                                                 </div>
 
-                                                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                                                <table class="data-table">
                                                     <thead>
-                                                        <tr style="background: #f5f5f5;">
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Shop SKU"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Name"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Qty"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Price"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Amount"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Номенклатура"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Status"</th>
+                                                        <tr>
+                                                            <th>"Shop SKU"</th>
+                                                            <th>"Название"</th>
+                                                            <th class="text-right">"Кол-во"</th>
+                                                            <th class="text-right">"Цена"</th>
+                                                            <th class="text-right">"Сумма"</th>
+                                                            <th>"Номенклатура"</th>
+                                                            <th class="text-center">"Статус"</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {lines.iter().map(|line| {
                                                             let has_nomenclature = line.nomenclature_ref.is_some();
-                                                            let row_style = if has_nomenclature {
+                                                            let row_class = if !has_nomenclature {
+                                                                "row-warning"
+                                                            } else {
                                                                 ""
-                                                            } else {
-                                                                "background: #fff8e1;"
                                                             };
-                                                            let status_style = match line.status.as_deref().unwrap_or("") {
-                                                                "DELIVERED" => "background: #e8f5e9; color: #2e7d32;",
-                                                                "CANCELLED" => "background: #ffebee; color: #c62828;",
-                                                                "PROCESSING" => "background: #e3f2fd; color: #1565c0;",
-                                                                _ => "background: #f5f5f5; color: #666;",
-                                                            };
-                                                            let nomenclature_display = line.nomenclature_ref.clone()
-                                                                .map(|r| format!("{}...", r.chars().take(8).collect::<String>()))
-                                                                .unwrap_or_else(|| "⚠️ Не задано".to_string());
-                                                            let nomenclature_style = if has_nomenclature {
-                                                                "color: #2e7d32; font-family: monospace; font-size: 0.85em;"
-                                                            } else {
-                                                                "color: #f57c00; font-weight: 500;"
-                                                            };
+                                                            let line_id = line.line_id.clone();
+                                                            let nom_ref = line.nomenclature_ref.clone();
 
                                                             view! {
-                                                                <tr style={row_style}>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                        <code style="font-size: 0.85em;">{line.shop_sku.clone()}</code>
+                                                                <tr class={row_class}>
+                                                                    <td>
+                                                                        <code>{line.shop_sku.clone()}</code>
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={line.name.clone()}>
+                                                                    <td class="cell-truncate" title={line.name.clone()}>
                                                                         {line.name.clone()}
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                    <td class="text-right">
                                                                         <strong>{format!("{:.0}", line.qty)}</strong>
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                    <td class="text-right">
                                                                         {line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold; color: #2e7d32;">
+                                                                    <td class="text-right" style="font-weight: bold; color: #2e7d32;">
                                                                         {line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                                     </td>
-                                                                    <td style={format!("border: 1px solid #ddd; padding: 8px; {}", nomenclature_style)} title={line.nomenclature_ref.clone().unwrap_or_default()}>
-                                                                        {nomenclature_display}
+                                                                    <td>
+                                                                        {move || {
+                                                                            let nom_info_map = nomenclatures_info.get();
+                                                                            if let Some(info) = nom_info_map.get(&line_id) {
+                                                                                let nom_ref_for_click = nom_ref.clone().unwrap_or_default();
+                                                                                view! {
+                                                                                    <div
+                                                                                        style="color: #1976d2; cursor: pointer; text-decoration: underline;"
+                                                                                        on:click=move |_| {
+                                                                                            set_selected_nomenclature_id.set(Some(nom_ref_for_click.clone()));
+                                                                                        }
+                                                                                    >
+                                                                                        {info.description.clone()}
+                                                                                    </div>
+                                                                                }.into_any()
+                                                                            } else if has_nomenclature {
+                                                                                view! {
+                                                                                    <span style="color: #757575;">"Загрузка..."</span>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <span class="text-warning">"⚠️ Не задано"</span>
+                                                                                }.into_any()
+                                                                            }
+                                                                        }}
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
-                                                                        <span style={format!("padding: 2px 6px; border-radius: 3px; font-size: 0.8em; {}", status_style)}>
-                                                                            {line.status.clone().unwrap_or("—".to_string())}
-                                                                        </span>
+                                                                    <td class="text-center">
+                                                                        {
+                                                                            let status_str = line.status.clone().unwrap_or("—".to_string());
+                                                                            let badge_class = match status_str.as_str() {
+                                                                                "DELIVERED" => "badge badge-success",
+                                                                                "CANCELLED" => "badge badge-error",
+                                                                                "PROCESSING" => "badge badge-info",
+                                                                                "—" => "",
+                                                                                _ => "badge badge-secondary",
+                                                                            };
+                                                                            if badge_class.is_empty() {
+                                                                                view! { <span>"—"</span> }.into_any()
+                                                                            } else {
+                                                                                view! { <span class={badge_class}>{status_str}</span> }.into_any()
+                                                                            }
+                                                                        }
                                                                     </td>
                                                                 </tr>
                                                             }
                                                         }).collect_view()}
-                                                        <tr style="background: #f5f5f5; font-weight: bold;">
-                                                            <td colspan="2" style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Total:"</td>
-                                                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{format!("{:.0}", total_qty)}</td>
-                                                            <td style="border: 1px solid #ddd; padding: 8px;"></td>
-                                                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right; color: #2e7d32;">{format!("{:.2}", total_amount)}</td>
-                                                            <td colspan="2" style="border: 1px solid #ddd; padding: 8px;"></td>
+                                                        <tr class="totals-row">
+                                                            <td colspan="2" class="text-right"><strong>"Итого:"</strong></td>
+                                                            <td class="text-right"><strong>{format!("{:.0}", total_qty)}</strong></td>
+                                                            <td></td>
+                                                            <td class="text-right" style="color: #2e7d32;"><strong>{format!("{:.2}", total_amount)}</strong></td>
+                                                            <td colspan="2"></td>
                                                         </tr>
                                                     </tbody>
                                                 </table>
@@ -509,12 +753,13 @@ pub fn YmOrderDetail(
                                             .unwrap_or("—".to_string());
 
                                         view! {
-                                            <div class="campaign-info">
-                                                <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
-                                                    <div style="font-weight: 600; color: #555;">"Campaign ID:"</div>
-                                                    <div style="display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 14px;">
-                                                        <span style="color: #666;" title=campaign_id.clone()>{campaign_id.clone()}</span>
+                                            <div class="detail-fields">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Campaign ID:"</div>
+                                                    <div class="field-value field-value-uuid">
+                                                        <span class="uuid-short" title=campaign_id.clone()>{campaign_id.clone()}</span>
                                                         <button
+                                                            class="btn-copy-uuid"
                                                             on:click=move |_| {
                                                                 let id_copy = campaign_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -524,68 +769,81 @@ pub fn YmOrderDetail(
                                                                     }
                                                                 });
                                                             }
-                                                            style="padding: 2px 6px; font-size: 11px; border: 1px solid #ddd; background: white; border-radius: 3px; cursor: pointer;"
                                                             title="Copy to clipboard"
                                                         >
                                                             "📋"
                                                         </button>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Marketplace:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
-                                                        <span style="padding: 2px 8px; background: #fff3e0; color: #e65100; border-radius: 3px; font-weight: 500;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Маркетплейс:"</div>
+                                                    <div class="field-value">
+                                                        <span class="badge badge-warning">
                                                             "Yandex Market"
                                                         </span>
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Fetched At:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.source_meta.fetched_at.clone()}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Загружено:"</div>
+                                                    <div class="field-value">{order_data.source_meta.fetched_at.clone()}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Document Version:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.source_meta.document_version}</div>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Версия документа:"</div>
+                                                    <div class="field-value">{order_data.source_meta.document_version}</div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Total Amount (API):"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: bold; color: #2e7d32;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Сумма заказа (API):"</div>
+                                                    <div class="field-value field-value-highlight-success" style="font-size: 16px;">
                                                         {order_data.header.total_amount.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                         {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Items Total:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: #1565c0;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Сумма товаров:"</div>
+                                                    <div class="field-value field-value-highlight-primary">
                                                         {order_data.header.items_total.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                         {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Delivery Total:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: #7b1fa2;">
+                                                <div class="field-row">
+                                                    <div class="field-label">"Доставка:"</div>
+                                                    <div class="field-value" style="color: #7b1fa2;">
                                                         {order_data.header.delivery_total.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                         {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
                                                     </div>
+                                                </div>
 
-                                                    <div style="font-weight: 600; color: #555;">"Subsidies (Market):"</div>
-                                                    <div style="font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">
-                                                        <pre style="margin: 0; white-space: pre-wrap;">{subsidies_display}</pre>
+                                                <div class="field-row">
+                                                    <div class="field-label">"Субсидии от Маркета:"</div>
+                                                    <div class="field-value">
+                                                        <pre class="json-preview">{subsidies_display}</pre>
                                                     </div>
                                                 </div>
                                             </div>
                                         }.into_any()
                                     },
                                     "json" => view! {
-                                        <div class="json-info">
-                                            <div style="margin-bottom: 10px;">
-                                                <strong>"Raw JSON from Yandex Market API:"</strong>
+                                        <div class="detail-raw-json">
+                                            <div class="raw-json-header">
+                                                <strong>"Raw JSON от Yandex Market API:"</strong>
                                             </div>
                                             {move || {
                                                 if let Some(json) = raw_json_from_ym.get() {
                                                     view! {
-                                                        <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">
+                                                        <pre class="raw-json-content">
                                                             {json}
                                                         </pre>
                                                     }.into_any()
                                                 } else {
                                                     view! {
-                                                        <div style="padding: 20px; text-align: center; color: #999;">
-                                                            "Loading raw JSON from Yandex Market..."
+                                                        <div class="loading-placeholder">
+                                                            "Загрузка Raw JSON от Yandex Market..."
                                                         </div>
                                                     }.into_any()
                                                 }
@@ -603,6 +861,46 @@ pub fn YmOrderDetail(
                     }
                 }}
             </div>
+
+            // Modals for linked aggregates
+            {move || selected_nomenclature_id.get().map(|nom_id| {
+                let on_close_modal = {
+                    let set_selected = set_selected_nomenclature_id.clone();
+                    move || set_selected.set(None)
+                };
+                view! {
+                    <div class="modal-overlay">
+                        <div class="modal-content">
+                            <NomenclatureDetails
+                                id=Some(nom_id)
+                                on_saved=Callback::new(move |_| on_close_modal())
+                                on_cancel=Callback::new(move |_| on_close_modal())
+                            />
+                        </div>
+                    </div>
+                }
+            })}
+
+            {move || selected_marketplace_product_id.get().map(|mp_id| {
+                let on_close_modal = {
+                    let set_selected = set_selected_marketplace_product_id.clone();
+                    move || set_selected.set(None)
+                };
+                view! {
+                    <div class="modal-overlay">
+                        <div class="modal-content">
+                            <MarketplaceProductDetails
+                                id=Some(mp_id)
+                                on_saved=std::rc::Rc::new({
+                                    let on_close_modal = on_close_modal.clone();
+                                    move |_| on_close_modal()
+                                })
+                                on_cancel=std::rc::Rc::new(move |_| on_close_modal())
+                            />
+                        </div>
+                    </div>
+                }
+            })}
         </div>
     }
 }

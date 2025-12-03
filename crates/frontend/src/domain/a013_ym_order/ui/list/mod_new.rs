@@ -12,7 +12,6 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
-use wasm_bindgen::JsCast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -90,7 +89,6 @@ impl Sortable for YmOrderDto {
                 .status_norm
                 .to_lowercase()
                 .cmp(&other.status_norm.to_lowercase()),
-            "is_error" => self.is_error.cmp(&other.is_error),
             "total_qty" => self
                 .total_qty
                 .partial_cmp(&other.total_qty)
@@ -193,10 +191,7 @@ pub fn YmOrderList() -> impl IntoView {
                                 // Parse paginated response
                                 match serde_json::from_str::<PaginatedResponse>(&text) {
                                     Ok(paginated) => {
-                                        log!(
-                                            "Parsed paginated response: total={}",
-                                            paginated.total
-                                        );
+                                        log!("Parsed paginated response: total={}", paginated.total);
 
                                         let total = paginated.total;
                                         let total_pages = if page_size > 0 {
@@ -251,13 +246,7 @@ pub fn YmOrderList() -> impl IntoView {
             let total_qty: f64 = s.orders.iter().map(|item| item.total_qty).sum();
             let total_delivery: f64 = s.orders.iter().filter_map(|item| item.delivery_total).sum();
             let total_subsidies: f64 = s.orders.iter().map(|item| item.subsidies_total).sum();
-            (
-                s.orders.len(),
-                total_amount,
-                total_qty,
-                total_delivery,
-                total_subsidies,
-            )
+            (s.orders.len(), total_amount, total_qty, total_delivery, total_subsidies)
         })
     });
 
@@ -969,9 +958,6 @@ pub fn YmOrderList() -> impl IntoView {
                                         <th style="width: 130px; min-width: 100px; cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
                                             <span class="sortable-header">"Статус" <span class={get_sort_class("status_norm", &current_sort_field)}>{get_sort_indicator("status_norm", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th style="width: 70px; min-width: 60px; text-align: center; cursor: pointer;" on:click=move |_| toggle_sort("is_error")>
-                                            <span class="sortable-header" style="justify-content: center;">"Ошибка" <span class={get_sort_class("is_error", &current_sort_field)}>{get_sort_indicator("is_error", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
                                         <th style="width: 60px; min-width: 50px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
                                             <span class="sortable-header" style="justify-content: flex-end;">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
@@ -1014,7 +1000,7 @@ pub fn YmOrderList() -> impl IntoView {
                                         } else {
                                             "—".to_string()
                                         };
-
+                                        
                                         let is_posted_flag = item.is_posted;
                                         let is_error_flag = item.is_error;
 
@@ -1062,21 +1048,6 @@ pub fn YmOrderList() -> impl IntoView {
                                                     <span style={format!("padding: 3px 10px; border-radius: 4px; font-size: 0.85em; font-weight: 500; {}", status_style)}>
                                                         {status}
                                                     </span>
-                                                </td>
-                                                <td class="text-center">
-                                                    {if is_error_flag {
-                                                        view! {
-                                                            <span style="padding: 3px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; background: #ffebee; color: #c62828;">
-                                                                "Да"
-                                                            </span>
-                                                        }.into_any()
-                                                    } else {
-                                                        view! {
-                                                            <span style="color: #999;">
-                                                                "—"
-                                                            </span>
-                                                        }.into_any()
-                                                    }}
                                                 </td>
                                                 <td class="text-right">{lines_count}</td>
                                                 <td class="text-right">{qty}</td>
@@ -1218,3 +1189,4 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     let data: Vec<Organization> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }
+

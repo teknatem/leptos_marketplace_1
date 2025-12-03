@@ -18,7 +18,7 @@ pub async fn search_and_set_nomenclature(aggregate: &mut MarketplaceProduct) -> 
         return Ok(false);
     }
 
-    // Ищем по артикулу
+    // Шаг 1: Ищем по артикулу в a004_nomenclature
     let found_items = crate::domain::a004_nomenclature::repository::find_by_article(article).await?;
 
     // Если найдено ровно 1 - устанавливаем
@@ -31,6 +31,24 @@ pub async fn search_and_set_nomenclature(aggregate: &mut MarketplaceProduct) -> 
             found_items[0].base.description
         );
         return Ok(true);
+    }
+
+    // Шаг 2: Если не нашли по артикулу и это YM товар - ищем через p901 по штрихкоду
+    let is_ym_product = aggregate.marketplace_ref.to_lowercase().contains("ym")
+        || aggregate.marketplace_ref.to_lowercase().contains("yandex");
+
+    if is_ym_product {
+        if let Some(nomenclature_ref) =
+            crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_ref_by_ym_article(article).await?
+        {
+            aggregate.nomenclature_ref = Some(nomenclature_ref.clone());
+            tracing::info!(
+                "Auto-matched YM article '{}' to nomenclature via p901 barcode: '{}'",
+                article,
+                nomenclature_ref
+            );
+            return Ok(true);
+        }
     }
 
     // В остальных случаях (0 или N) оставляем пустым
@@ -140,6 +158,45 @@ pub async fn get_by_connection_and_sku(
 /// Получение товаров по штрихкоду
 pub async fn get_by_barcode(barcode: &str) -> anyhow::Result<Vec<MarketplaceProduct>> {
     repository::get_by_barcode(barcode).await
+}
+
+/// Попытка найти и установить nomenclature_ref для YM товара через p901
+/// Если найден, обновляет a007 в базе данных
+/// Возвращает Some(nomenclature_ref) если найден и установлен, None если нет
+pub async fn try_fill_nomenclature_from_ym_barcode(
+    mp_id: Uuid,
+    ym_article: &str,
+) -> anyhow::Result<Option<String>> {
+    // Загружаем a007
+    let mut aggregate = match repository::get_by_id(mp_id).await? {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+
+    // Если уже есть nomenclature_ref - возвращаем его
+    if let Some(ref nom_ref) = aggregate.nomenclature_ref {
+        return Ok(Some(nom_ref.clone()));
+    }
+
+    // Ищем через p901 по YM артикулу
+    let nomenclature_ref =
+        crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_ref_by_ym_article(ym_article).await?;
+
+    if let Some(ref nom_ref) = nomenclature_ref {
+        // Устанавливаем и сохраняем
+        aggregate.nomenclature_ref = Some(nom_ref.clone());
+        aggregate.before_write();
+        repository::update(&aggregate).await?;
+
+        tracing::info!(
+            "Updated a007 {} with nomenclature_ref '{}' via YM barcode search (article: '{}')",
+            mp_id,
+            nom_ref,
+            ym_article
+        );
+    }
+
+    Ok(nomenclature_ref)
 }
 
 /// Получение товаров маркетплейса

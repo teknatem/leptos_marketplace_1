@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a013_ym_order::aggregate::{
-    YmOrder, YmOrderId, YmOrderHeader, YmOrderLine, YmOrderState, YmOrderSourceMeta,
+    YmOrder, YmOrderHeader, YmOrderId, YmOrderLine, YmOrderSourceMeta, YmOrderState,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -136,17 +136,29 @@ impl From<Model> for YmOrder {
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
 
         let header: YmOrderHeader = serde_json::from_str(&m.header_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize header_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize header_json for document_no: {}",
+                m.document_no
+            )
         });
         let lines: Vec<YmOrderLine> = serde_json::from_str(&m.lines_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize lines_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize lines_json for document_no: {}",
+                m.document_no
+            )
         });
         let state: YmOrderState = serde_json::from_str(&m.state_json).unwrap_or_else(|_| {
-            panic!("Failed to deserialize state_json for document_no: {}", m.document_no)
+            panic!(
+                "Failed to deserialize state_json for document_no: {}",
+                m.document_no
+            )
         });
-        let source_meta: YmOrderSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize source_meta_json for document_no: {}", m.document_no)
+        let source_meta: YmOrderSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize source_meta_json for document_no: {}",
+                    m.document_no
+                )
             });
 
         YmOrder {
@@ -203,7 +215,7 @@ fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
     let mut total_qty = 0.0;
     let mut total_amount = 0.0;
     let mut subsidies_total = 0.0;
-    
+
     for line in &aggregate.lines {
         total_qty += line.qty;
         if let Some(amount) = line.amount_line {
@@ -223,7 +235,8 @@ fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
 
     // Parse header subsidies
     if let Some(ref header_subsidies_json) = aggregate.header.subsidies_json {
-        if let Ok(subsidies) = serde_json::from_str::<Vec<serde_json::Value>>(header_subsidies_json) {
+        if let Ok(subsidies) = serde_json::from_str::<Vec<serde_json::Value>>(header_subsidies_json)
+        {
             for sub in subsidies {
                 if let Some(amount) = sub.get("amount").and_then(|a| a.as_f64()) {
                     subsidies_total += amount;
@@ -268,7 +281,7 @@ struct DenormalizedFields {
 pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let existing = get_by_document_no(&aggregate.header.document_no).await?;
-    
+
     let header_json = serde_json::to_string(&aggregate.header)?;
     let lines_json = serde_json::to_string(&aggregate.lines)?;
     let state_json = serde_json::to_string(&aggregate.state)?;
@@ -427,7 +440,7 @@ pub async fn delete_items(order_id: &str) -> Result<()> {
 /// (вместо строк из lines_json загружает из a013_ym_order_items)
 pub async fn get_by_id_with_items(id: Uuid) -> Result<Option<YmOrder>> {
     let result = Entity::find_by_id(id.to_string()).one(conn()).await?;
-    
+
     if let Some(model) = result {
         let mut order: YmOrder = model.into();
         // Заменяем строки из JSON на строки из табличной части
@@ -494,7 +507,7 @@ pub struct YmOrderListResult {
 /// Получение списка заказов через SQL (без парсинга JSON)
 pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
     use sea_orm::{ConnectionTrait, Statement};
-    
+
     let db = conn();
 
     // Build WHERE clause
@@ -555,6 +568,7 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
         "delivery_date" => "delivery_date",
         "campaign_id" => "campaign_id",
         "status_norm" => "status_norm",
+        "is_error" => "is_error",
         "total_qty" => "total_qty",
         "total_amount" => "total_amount",
         "lines_count" => "lines_count",
@@ -615,4 +629,3 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
 
     Ok(YmOrderListResult { items, total })
 }
-

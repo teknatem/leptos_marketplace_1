@@ -2,6 +2,7 @@
    Main CSS Entry Point
    CSS Cascade Layers Architecture
    ============================================ */
+/* Updated: Added details.css support */
 
 /* Define layer order (lower layers have lower priority) */
 @layer tokens, reset, base, layout, components, utilities;
@@ -26,3 +27,4 @@
 @import url('./3-components/tables.css') layer(components);
 @import url('./3-components/tabs.css') layer(components);
 @import url('./3-components/modals.css') layer(components);
+@import url('./3-components/details.css') layer(components);

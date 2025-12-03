@@ -121,6 +121,21 @@ pub async fn get_by_barcode_and_source(barcode: &str, source: &str) -> Result<Op
     Ok(result)
 }
 
+/// Получить запись по артикулу и источнику
+/// Используется для поиска штрихкода YM по shop_sku
+pub async fn get_by_article_and_source(article: &str, source: &str) -> Result<Option<Model>> {
+    let db = conn();
+
+    let result = Entity::find()
+        .filter(Column::Article.eq(article))
+        .filter(Column::Source.eq(source))
+        .filter(Column::IsActive.eq(true))
+        .one(db)
+        .await?;
+
+    Ok(result)
+}
+
 /// Получить все записи для штрихкода (всех источников)
 pub async fn get_all_by_barcode(barcode: &str) -> Result<Vec<Model>> {
     let db = conn();

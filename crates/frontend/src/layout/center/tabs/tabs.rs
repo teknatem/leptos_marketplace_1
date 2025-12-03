@@ -15,6 +15,7 @@ use crate::domain::a010_ozon_fbs_posting::ui::list::OzonFbsPostingList;
 use crate::domain::a011_ozon_fbo_posting::ui::list::OzonFboPostingList;
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::domain::a012_wb_sales::ui::list::WbSalesList;
+use crate::domain::a013_ym_order::ui::details::YmOrderDetail;
 use crate::domain::a013_ym_order::ui::list::YmOrderList;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
 use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
@@ -130,6 +131,18 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "a013_ym_order" => {
                 view! { <YmOrderList /> }.into_any()
+            }
+            k if k.starts_with("a013_ym_order_detail_") => {
+                let id = k.strip_prefix("a013_ym_order_detail_").unwrap().to_string();
+                log!("✅ Creating YmOrderDetail with id: {}", id);
+                view! {
+                    <YmOrderDetail
+                        id=id
+                        on_close=Callback::new(move |_| {
+                            tabs_store_for_details.close_tab(&key_for_close);
+                        })
+                    />
+                }.into_any()
             }
             "a016_ym_returns" => {
                 view! { <YmReturnsList /> }.into_any()

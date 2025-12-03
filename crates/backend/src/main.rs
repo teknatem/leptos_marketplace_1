@@ -1329,6 +1329,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/a013/ym-order/post-period",
             post(handlers::a013_ym_order::post_period),
         )
+        .route(
+            "/api/a013/ym-order/batch-post",
+            post(handlers::a013_ym_order::batch_post_documents),
+        )
+        .route(
+            "/api/a013/ym-order/batch-unpost",
+            post(handlers::a013_ym_order::batch_unpost_documents),
+        )
         // A016 YM Returns handlers
         .route(
             "/api/a016/ym-returns",
