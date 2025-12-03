@@ -1296,10 +1296,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/a012/wb-sales/:id/projections",
             get(handlers::a012_wb_sales::get_projections),
         )
+        .route(
+            "/api/a012/wb-sales/migrate-sale-id",
+            post(handlers::a012_wb_sales::migrate_fill_sale_id),
+        )
         // A013 YM Order handlers
         .route(
             "/api/a013/ym-order",
             get(handlers::a013_ym_order::list_orders),
+        )
+        .route(
+            "/api/a013/ym-order/list",
+            get(handlers::a013_ym_order::list_orders_fast),
         )
         .route(
             "/api/a013/ym-order/:id",
@@ -1320,6 +1328,31 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/a013/ym-order/post-period",
             post(handlers::a013_ym_order::post_period),
+        )
+        // A016 YM Returns handlers
+        .route(
+            "/api/a016/ym-returns",
+            get(handlers::a016_ym_returns::list_returns),
+        )
+        .route(
+            "/api/a016/ym-returns/:id",
+            get(handlers::a016_ym_returns::get_return_detail),
+        )
+        .route(
+            "/api/a016/raw/:ref_id",
+            get(handlers::a016_ym_returns::get_raw_json),
+        )
+        .route(
+            "/api/a016/ym-returns/:id/post",
+            post(handlers::a016_ym_returns::post_document),
+        )
+        .route(
+            "/api/a016/ym-returns/:id/unpost",
+            post(handlers::a016_ym_returns::unpost_document),
+        )
+        .route(
+            "/api/a016/ym-returns/post-period",
+            post(handlers::a016_ym_returns::post_period),
         )
         // A015 WB Orders handlers
         .route(

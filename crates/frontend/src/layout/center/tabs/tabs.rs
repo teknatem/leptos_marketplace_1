@@ -19,6 +19,7 @@ use crate::domain::a013_ym_order::ui::list::YmOrderList;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
 use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
 use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
+use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
@@ -129,6 +130,9 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "a013_ym_order" => {
                 view! { <YmOrderList /> }.into_any()
+            }
+            "a016_ym_returns" => {
+                view! { <YmReturnsList /> }.into_any()
             }
             "a014_ozon_transactions" => {
                 view! { <OzonTransactionsList /> }.into_any()

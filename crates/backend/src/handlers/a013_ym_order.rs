@@ -2,13 +2,13 @@ use axum::{extract::Query, Json};
 use chrono::NaiveDate;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::common::AggregateId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a013_ym_order;
 use crate::shared::data::raw_storage;
 
-/// Handler для получения списка Yandex Market Orders
+/// Handler для получения списка Yandex Market Orders (full - с JSON parsing)
 pub async fn list_orders() -> Result<Json<Vec<YmOrder>>, axum::http::StatusCode> {
     let items = a013_ym_order::service::list_all().await.map_err(|e| {
         tracing::error!("Failed to list Yandex Market orders: {}", e);
@@ -16,6 +16,114 @@ pub async fn list_orders() -> Result<Json<Vec<YmOrder>>, axum::http::StatusCode>
     })?;
 
     Ok(Json(items))
+}
+
+/// Query parameters для быстрого списка
+#[derive(Debug, Deserialize)]
+pub struct ListQueryParams {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub organization_id: Option<String>,
+    pub search_document_no: Option<String>,
+    pub status_norm: Option<String>,
+    #[serde(default = "default_sort_by")]
+    pub sort_by: String,
+    #[serde(default = "default_sort_desc")]
+    pub sort_desc: bool,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_sort_by() -> String {
+    "delivery_date".to_string()
+}
+
+fn default_sort_desc() -> bool {
+    true
+}
+
+fn default_limit() -> usize {
+    1000
+}
+
+/// DTO для быстрого списка (frontend)
+#[derive(Debug, Serialize)]
+pub struct YmOrderListDto {
+    pub id: String,
+    pub document_no: String,
+    pub status_changed_at: String,
+    pub creation_date: String,
+    pub delivery_date: String,
+    pub campaign_id: String,
+    pub status_norm: String,
+    pub total_qty: f64,
+    pub total_amount: f64,
+    pub total_amount_api: Option<f64>,
+    pub lines_count: usize,
+    pub delivery_total: Option<f64>,
+    pub subsidies_total: f64,
+    pub is_posted: bool,
+    pub is_error: bool,
+}
+
+/// Response для быстрого списка
+#[derive(Debug, Serialize)]
+pub struct ListResponse {
+    pub items: Vec<YmOrderListDto>,
+    pub total: usize,
+}
+
+/// Handler для быстрого получения списка (использует денормализованные колонки)
+pub async fn list_orders_fast(
+    Query(params): Query<ListQueryParams>,
+) -> Result<Json<ListResponse>, axum::http::StatusCode> {
+    let query = a013_ym_order::repository::YmOrderListQuery {
+        date_from: params.date_from,
+        date_to: params.date_to,
+        organization_id: params.organization_id,
+        search_document_no: params.search_document_no,
+        status_norm: params.status_norm,
+        sort_by: params.sort_by,
+        sort_desc: params.sort_desc,
+        limit: params.limit,
+        offset: params.offset,
+    };
+
+    let result = a013_ym_order::repository::list_sql(query)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list Yandex Market orders (fast): {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let items: Vec<YmOrderListDto> = result
+        .items
+        .into_iter()
+        .map(|row| YmOrderListDto {
+            id: row.id,
+            document_no: row.document_no,
+            status_changed_at: row.status_changed_at.unwrap_or_default(),
+            creation_date: row.creation_date.unwrap_or_default(),
+            delivery_date: row.delivery_date.unwrap_or_default(),
+            campaign_id: row.campaign_id.unwrap_or_default(),
+            status_norm: row.status_norm.unwrap_or_default(),
+            total_qty: row.total_qty.unwrap_or(0.0),
+            total_amount: row.total_amount.unwrap_or(0.0),
+            total_amount_api: row.total_amount_api,
+            lines_count: row.lines_count.unwrap_or(0) as usize,
+            delivery_total: row.delivery_total,
+            subsidies_total: row.subsidies_total.unwrap_or(0.0),
+            is_posted: row.is_posted,
+            is_error: row.is_error,
+        })
+        .collect();
+
+    Ok(Json(ListResponse {
+        items,
+        total: result.total,
+    }))
 }
 
 /// Handler для получения детальной информации о Yandex Market Order

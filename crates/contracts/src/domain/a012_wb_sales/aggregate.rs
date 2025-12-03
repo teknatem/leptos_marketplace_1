@@ -37,6 +37,9 @@ impl AggregateId for WbSalesId {
 pub struct WbSalesHeader {
     /// Номер документа (srid из WB API - уникальный ID строки события)
     pub document_no: String,
+    /// ID продажи (saleID из WB API - используется для дедупликации)
+    #[serde(default)]
+    pub sale_id: Option<String>,
     /// ID подключения маркетплейса
     pub connection_id: String,
     /// ID организации

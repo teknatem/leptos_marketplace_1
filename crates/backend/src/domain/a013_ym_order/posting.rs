@@ -1,19 +1,27 @@
 use super::repository;
+use super::service::auto_fill_references;
 use anyhow::Result;
 use uuid::Uuid;
 
 /// Провести документ (установить is_posted = true и создать проекции)
+/// При проведении автоматически заполняются:
+/// - marketplace_product_ref (поиск или создание в a007_marketplace_product)
+/// - nomenclature_ref (из соответствия в a007_marketplace_product)
+/// - is_error (ненулевой если есть строки без nomenclature_ref)
 pub async fn post_document(id: Uuid) -> Result<()> {
-    // Загрузить документ
-    let mut document = repository::get_by_id(id)
+    // Загрузить документ (с полными строками из items table)
+    let mut document = repository::get_by_id_with_items(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    // Автозаполнение ссылок для всех строк
+    auto_fill_references(&mut document).await?;
 
     // Установить флаг is_posted
     document.is_posted = true;
     document.before_write();
 
-    // Сохранить документ
+    // Сохранить документ (включая обновлённые строки в items table)
     repository::upsert_document(&document).await?;
 
     // Удалить старые проекции (если были)
@@ -25,7 +33,11 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Создать новые проекции
     crate::projections::p900_mp_sales_register::service::project_ym_order(&document, id).await?;
 
-    tracing::info!("Posted document a013: {}", id);
+    tracing::info!(
+        "Posted document a013: {}, is_error: {}",
+        id,
+        document.is_error
+    );
     Ok(())
 }
 

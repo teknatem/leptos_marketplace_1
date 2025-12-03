@@ -152,6 +152,11 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "file-text",
         },
         MegaMenuItem {
+            key: "a016_ym_returns",
+            title: "YM Returns",
+            icon_name: "package-x",
+        },
+        MegaMenuItem {
             key: "a014_ozon_transactions",
             title: "Транзакции OZON",
             icon_name: "credit-card",

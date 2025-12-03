@@ -88,6 +88,11 @@ pub fn filter_list<T: Searchable + Clone>(items: Vec<T>, filter: &str) -> Vec<T>
         .collect()
 }
 
+/// Форматирует целое число
+pub fn format_number_int(value: f64) -> String {
+    format!("{:.0}", value)
+}
+
 /// Форматирует число с разделителем тысяч (пробел) и двумя знаками после запятой
 pub fn format_number(value: f64) -> String {
     // Форматируем с двумя знаками после запятой
@@ -247,4 +252,3 @@ pub fn create_sort_toggle(
         }
     }
 }
-

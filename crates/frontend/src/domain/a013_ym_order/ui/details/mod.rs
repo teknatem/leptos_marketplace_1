@@ -13,6 +13,9 @@ pub struct YmOrderDetailDto {
     pub state: StateDto,
     pub source_meta: SourceMetaDto,
     pub metadata: MetadataDto,
+    /// Флаг ошибки (ненулевой при отсутствии сопоставления номенклатуры в строках)
+    #[serde(default)]
+    pub is_error: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +27,12 @@ pub struct HeaderDto {
     pub campaign_id: String,
     pub total_amount: Option<f64>,
     pub currency: Option<String>,
+    #[serde(default)]
+    pub items_total: Option<f64>,
+    #[serde(default)]
+    pub delivery_total: Option<f64>,
+    #[serde(default)]
+    pub subsidies_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +47,21 @@ pub struct LineDto {
     pub price_effective: Option<f64>,
     pub amount_line: Option<f64>,
     pub currency_code: Option<String>,
+    #[serde(default)]
+    pub buyer_price: Option<f64>,
+    #[serde(default)]
+    pub subsidies_json: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Плановая цена (пока константа = 0)
+    #[serde(default)]
+    pub price_plan: Option<f64>,
+    /// Ссылка на товар маркетплейса (a007_marketplace_product)
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
+    /// Ссылка на номенклатуру 1С (a004_nomenclature)
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,10 +283,19 @@ pub fn YmOrderDetail(
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">{order_data.description.clone()}</div>
 
                                                     <div style="font-weight: 600; color: #555;">"Status:"</div>
-                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;">
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; display: flex; gap: 8px;">
                                                         <span style="padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;">
                                                             {order_data.state.status_norm.clone()}
                                                         </span>
+                                                        {if order_data.is_error {
+                                                            view! {
+                                                                <span style="padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;" title="Есть строки без сопоставленной номенклатуры">
+                                                                    "⚠️ Ошибка сопоставления"
+                                                                </span>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! { <span></span> }.into_any()
+                                                        }}
                                                     </div>
 
                                                     <div style="font-weight: 600; color: #555;">"Raw Status:"</div>
@@ -365,50 +398,79 @@ pub fn YmOrderDetail(
                                         let lines = &order_data.lines;
                                         let total_qty: f64 = lines.iter().map(|l| l.qty).sum();
                                         let total_amount: f64 = lines.iter().filter_map(|l| l.amount_line).sum();
+                                        let lines_without_nomenclature = lines.iter().filter(|l| l.nomenclature_ref.is_none()).count();
 
                                         view! {
                                             <div class="lines-info">
-                                                <div style="margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 4px;">
-                                                    <strong>"Order Summary: "</strong>
-                                                    {format!("{} lines, {} items total, {:.2} total amount",
-                                                        lines.len(),
-                                                        total_qty,
-                                                        total_amount
-                                                    )}
+                                                <div style="margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                                                    <div>
+                                                        <strong>"Order Summary: "</strong>
+                                                        {format!("{} lines, {} items total, {:.2} total amount",
+                                                            lines.len(),
+                                                            total_qty,
+                                                            total_amount
+                                                        )}
+                                                    </div>
+                                                    {if lines_without_nomenclature > 0 {
+                                                        view! {
+                                                            <span style="background: #ffebee; color: #c62828; padding: 4px 10px; border-radius: 4px; font-weight: 500;">
+                                                                {"⚠️ Без номенклатуры: "}{lines_without_nomenclature}
+                                                            </span>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! {
+                                                            <span style="background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 4px; font-weight: 500;">
+                                                                "✓ Все строки сопоставлены"
+                                                            </span>
+                                                        }.into_any()
+                                                    }}
                                                 </div>
 
                                                 <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                                                     <thead>
                                                         <tr style="background: #f5f5f5;">
                                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Shop SKU"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Offer ID"</th>
                                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Name"</th>
                                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Qty"</th>
                                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Price"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Discount"</th>
-                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Effective"</th>
                                                             <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Amount"</th>
+                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Номенклатура"</th>
+                                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Status"</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {lines.iter().map(|line| {
+                                                            let has_nomenclature = line.nomenclature_ref.is_some();
+                                                            let row_style = if has_nomenclature {
+                                                                ""
+                                                            } else {
+                                                                "background: #fff8e1;"
+                                                            };
+                                                            let status_style = match line.status.as_deref().unwrap_or("") {
+                                                                "DELIVERED" => "background: #e8f5e9; color: #2e7d32;",
+                                                                "CANCELLED" => "background: #ffebee; color: #c62828;",
+                                                                "PROCESSING" => "background: #e3f2fd; color: #1565c0;",
+                                                                _ => "background: #f5f5f5; color: #666;",
+                                                            };
+                                                            let nomenclature_display = line.nomenclature_ref.clone()
+                                                                .map(|r| format!("{}...", r.chars().take(8).collect::<String>()))
+                                                                .unwrap_or_else(|| "⚠️ Не задано".to_string());
+                                                            let nomenclature_style = if has_nomenclature {
+                                                                "color: #2e7d32; font-family: monospace; font-size: 0.85em;"
+                                                            } else {
+                                                                "color: #f57c00; font-weight: 500;"
+                                                            };
+
                                                             view! {
-                                                                <tr>
+                                                                <tr style={row_style}>
                                                                     <td style="border: 1px solid #ddd; padding: 8px;">
                                                                         <code style="font-size: 0.85em;">{line.shop_sku.clone()}</code>
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                        <code style="font-size: 0.85em;">{line.offer_id.clone()}</code>
+                                                                    <td style="border: 1px solid #ddd; padding: 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={line.name.clone()}>
+                                                                        {line.name.clone()}
                                                                     </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px;">{line.name.clone()}</td>
                                                                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
                                                                         <strong>{format!("{:.0}", line.qty)}</strong>
-                                                                    </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
-                                                                        {line.price_list.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
-                                                                    </td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
-                                                                        {line.discount_total.map(|d| format!("{:.2}", d)).unwrap_or("—".to_string())}
                                                                     </td>
                                                                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
                                                                         {line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
@@ -416,14 +478,23 @@ pub fn YmOrderDetail(
                                                                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold; color: #2e7d32;">
                                                                         {line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                                     </td>
+                                                                    <td style={format!("border: 1px solid #ddd; padding: 8px; {}", nomenclature_style)} title={line.nomenclature_ref.clone().unwrap_or_default()}>
+                                                                        {nomenclature_display}
+                                                                    </td>
+                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
+                                                                        <span style={format!("padding: 2px 6px; border-radius: 3px; font-size: 0.8em; {}", status_style)}>
+                                                                            {line.status.clone().unwrap_or("—".to_string())}
+                                                                        </span>
+                                                                    </td>
                                                                 </tr>
                                                             }
                                                         }).collect_view()}
                                                         <tr style="background: #f5f5f5; font-weight: bold;">
-                                                            <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Total:"</td>
+                                                            <td colspan="2" style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Total:"</td>
                                                             <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{format!("{:.0}", total_qty)}</td>
-                                                            <td colspan="3" style="border: 1px solid #ddd; padding: 8px;"></td>
+                                                            <td style="border: 1px solid #ddd; padding: 8px;"></td>
                                                             <td style="border: 1px solid #ddd; padding: 8px; text-align: right; color: #2e7d32;">{format!("{:.2}", total_amount)}</td>
+                                                            <td colspan="2" style="border: 1px solid #ddd; padding: 8px;"></td>
                                                         </tr>
                                                     </tbody>
                                                 </table>
@@ -432,6 +503,10 @@ pub fn YmOrderDetail(
                                     },
                                     "campaign" => {
                                         let campaign_id = order_data.header.campaign_id.clone();
+                                        let subsidies_display = order_data.header.subsidies_json.clone()
+                                            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                                            .map(|v| serde_json::to_string_pretty(&v).unwrap_or("—".to_string()))
+                                            .unwrap_or("—".to_string());
 
                                         view! {
                                             <div class="campaign-info">
@@ -473,6 +548,23 @@ pub fn YmOrderDetail(
                                                     <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: bold; color: #2e7d32;">
                                                         {order_data.header.total_amount.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
                                                         {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                    </div>
+
+                                                    <div style="font-weight: 600; color: #555;">"Items Total:"</div>
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: #1565c0;">
+                                                        {order_data.header.items_total.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
+                                                        {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                    </div>
+
+                                                    <div style="font-weight: 600; color: #555;">"Delivery Total:"</div>
+                                                    <div style="font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: #7b1fa2;">
+                                                        {order_data.header.delivery_total.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
+                                                        {order_data.header.currency.as_ref().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                    </div>
+
+                                                    <div style="font-weight: 600; color: #555;">"Subsidies (Market):"</div>
+                                                    <div style="font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">
+                                                        <pre style="margin: 0; white-space: pre-wrap;">{subsidies_display}</pre>
                                                     </div>
                                                 </div>
                                             </div>

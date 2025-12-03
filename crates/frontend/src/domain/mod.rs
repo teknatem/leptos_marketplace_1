@@ -13,3 +13,4 @@ pub mod a012_wb_sales;
 pub mod a013_ym_order;
 pub mod a014_ozon_transactions;
 pub mod a015_wb_orders;
+pub mod a016_ym_returns;

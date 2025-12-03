@@ -21,6 +21,7 @@ pub fn ImportWidget() -> impl IntoView {
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (import_a007, set_import_a007) = signal(true);
     let (import_a013, set_import_a013) = signal(true);
+    let (import_a016, set_import_a016) = signal(true);
 
     // Даты периода (по умолчанию вчера)
     let now = Utc::now().date_naive();
@@ -183,6 +184,9 @@ pub fn ImportWidget() -> impl IntoView {
             if import_a013.get() {
                 targets.push("a013_ym_order".to_string());
             }
+            if import_a016.get() {
+                targets.push("a016_ym_returns".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -257,7 +261,7 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a007_marketplace_product - Товары маркетплейса"
                     </label>
-                    <label style="display: block;">
+                    <label style="display: block; margin-bottom: 8px;">
                         <input
                             type="checkbox"
                             prop:checked=move || import_a013.get()
@@ -265,9 +269,17 @@ pub fn ImportWidget() -> impl IntoView {
                         />
                         " a013_ym_order - Заказы Yandex Market (→ P900)"
                     </label>
+                    <label style="display: block;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_a016.get()
+                            on:change=move |ev| { set_import_a016.set(event_target_checked(&ev)); }
+                        />
+                        " a016_ym_returns - Возвраты и невыкупы Yandex Market"
+                    </label>
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: GET /campaigns/{campaignId}/orders"
+                    "API: GET /campaigns/{campaignId}/orders, GET /campaigns/{campaignId}/returns"
                 </div>
             </div>
 

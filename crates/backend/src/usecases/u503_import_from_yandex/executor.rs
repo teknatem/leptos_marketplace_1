@@ -44,6 +44,7 @@ impl ImportExecutor {
             let aggregate_name = match aggregate_index.as_str() {
                 "a007_marketplace_product" => "Товары маркетплейса",
                 "a013_ym_order" => "Заказы Yandex Market",
+                "a016_ym_returns" => "Возвраты Yandex Market",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -110,6 +111,16 @@ impl ImportExecutor {
                 "a013_ym_order" => {
                     // Import YM orders with date period
                     self.import_ym_orders(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a016_ym_returns" => {
+                    // Import YM returns with date period
+                    self.import_ym_returns(
                         session_id,
                         connection,
                         request.date_from,
@@ -597,6 +608,12 @@ impl ImportExecutor {
                     // Calculate amount_line as price * count
                     let amount_line = price_list.map(|p| p * item.count as f64);
 
+                    // Serialize item subsidies to JSON if present
+                    let subsidies_json = item
+                        .subsidies
+                        .as_ref()
+                        .and_then(|s| serde_json::to_string(s).ok());
+
                     YmOrderLine {
                         line_id: item.id.to_string(),
                         shop_sku: item.shop_sku.clone().unwrap_or_default(),
@@ -608,6 +625,12 @@ impl ImportExecutor {
                         price_effective,
                         amount_line,
                         currency_code: order_details.currency.clone(),
+                        buyer_price: item.buyer_price,
+                        subsidies_json,
+                        status: item.status.clone(),
+                        price_plan: Some(0.0),
+                        marketplace_product_ref: None,
+                        nomenclature_ref: None,
                     }
                 })
                 .collect();
@@ -638,6 +661,12 @@ impl ImportExecutor {
             let status_raw = order_details.status.clone().unwrap_or_else(|| "UNKNOWN".to_string());
             let status_norm = normalize_ym_status(&status_raw);
 
+            // Serialize order-level subsidies to JSON if present
+            let subsidies_json = order_details
+                .subsidies
+                .as_ref()
+                .and_then(|s| serde_json::to_string(s).ok());
+
             // Create aggregate
             let header = YmOrderHeader {
                 document_no: order_id_str.clone(),
@@ -650,6 +679,9 @@ impl ImportExecutor {
                     .unwrap_or_else(|| "unknown".to_string()),
                 total_amount: order_details.total,
                 currency: order_details.currency.clone(),
+                items_total: order_details.items_total,
+                delivery_total: order_details.delivery_total,
+                subsidies_json,
             };
 
             let state = YmOrderState {
@@ -714,6 +746,224 @@ impl ImportExecutor {
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
             "YM orders import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Импорт возвратов Yandex Market
+    async fn import_ym_returns(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a016_ym_returns;
+        use contracts::domain::a016_ym_returns::aggregate::{
+            YmReturn, YmReturnDecision, YmReturnHeader, YmReturnLine, YmReturnSourceMeta,
+            YmReturnState,
+        };
+
+        tracing::info!(
+            "Importing Yandex Market returns for session: {}",
+            session_id
+        );
+
+        let aggregate_index = "a016_ym_returns";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        // 1. Resolve organization
+        let organization_id = match a002_organization::repository::get_by_description(
+            &connection.organization,
+        )
+        .await?
+        {
+            Some(org) => org.base.id.as_string(),
+            None => {
+                let msg = format!("Organization '{}' not found", connection.organization);
+                tracing::error!("{}", msg);
+                anyhow::bail!("{}", msg);
+            }
+        };
+
+        // 2. Fetch returns from API with date period
+        tracing::info!(
+            "Fetching YM returns for period {} to {}",
+            date_from.format("%Y-%m-%d"),
+            date_to.format("%Y-%m-%d")
+        );
+
+        let returns = self
+            .api_client
+            .fetch_returns(connection, date_from, date_to)
+            .await?;
+
+        tracing::info!("Received {} returns from YM API", returns.len());
+
+        // 3. Process each return
+        for return_item in returns {
+            let return_id = return_item.id;
+            let return_id_str = return_id.to_string();
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("YM Return {}", return_id_str)),
+            );
+
+            // Check if exists
+            let existing = a016_ym_returns::service::get_by_return_id(return_id).await?;
+            let is_new = existing.is_none();
+
+            // Map lines (items in return)
+            let lines: Vec<YmReturnLine> = return_item
+                .items
+                .iter()
+                .map(|item| {
+                    // Map decisions
+                    let decisions: Vec<YmReturnDecision> = item
+                        .decisions
+                        .iter()
+                        .map(|d| YmReturnDecision {
+                            decision_type: d.decision_type.clone().unwrap_or_default(),
+                            amount: d.amount.as_ref().and_then(|a| a.value),
+                            currency: d.amount.as_ref().and_then(|a| a.currency_id.clone()),
+                            partner_compensation_amount: d
+                                .partner_compensation_amount
+                                .as_ref()
+                                .and_then(|a| a.value),
+                            comment: d.comment.clone(),
+                        })
+                        .collect();
+
+                    // Map photos URLs
+                    let photos: Vec<String> = item
+                        .photos
+                        .iter()
+                        .filter_map(|p| p.url.clone())
+                        .collect();
+
+                    YmReturnLine {
+                        item_id: item.id,
+                        shop_sku: item.shop_sku.clone().unwrap_or_default(),
+                        offer_id: item.offer_id.clone().unwrap_or_default(),
+                        name: item.offer_name.clone().unwrap_or_default(),
+                        count: item.count,
+                        price: item.price,
+                        return_reason: item.return_reason.clone(),
+                        decisions,
+                        photos,
+                    }
+                })
+                .collect();
+
+            // Skip returns with no items
+            if lines.is_empty() {
+                tracing::warn!("Return {} has no items, skipping", return_id_str);
+                continue;
+            }
+
+            // Parse dates
+            let created_at_source = return_item
+                .created_at
+                .as_ref()
+                .and_then(|s| parse_ym_date(s));
+            let updated_at_source = return_item
+                .updated_at
+                .as_ref()
+                .and_then(|s| parse_ym_date(s));
+
+            // Create aggregate
+            let header = YmReturnHeader {
+                return_id,
+                order_id: return_item.order_id,
+                connection_id: connection.base.id.as_string(),
+                organization_id: organization_id.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                campaign_id: connection
+                    .supplier_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                return_type: return_item.return_type.clone().unwrap_or_default(),
+                amount: return_item.amount.as_ref().and_then(|a| a.value),
+                currency: return_item.amount.as_ref().and_then(|a| a.currency_id.clone()),
+            };
+
+            let state = YmReturnState {
+                refund_status: return_item.refund_status.clone().unwrap_or_default(),
+                created_at_source,
+                updated_at_source,
+                refund_date: None, // API doesn't provide this directly
+            };
+
+            let source_meta = YmReturnSourceMeta {
+                raw_payload_ref: String::new(), // Will be filled by service
+                fetched_at: chrono::Utc::now(),
+                document_version: 1,
+            };
+
+            let return_type_display = return_item.return_type.clone().unwrap_or_default();
+            let document = YmReturn::new_for_insert(
+                return_id_str.clone(),
+                format!(
+                    "YM {} {} (Order {})",
+                    if return_type_display == "UNREDEEMED" {
+                        "Невыкуп"
+                    } else {
+                        "Возврат"
+                    },
+                    return_id_str,
+                    return_item.order_id
+                ),
+                header,
+                lines,
+                state,
+                source_meta,
+                true, // is_posted = true при загрузке через API
+            );
+
+            // Save with raw JSON
+            let raw_json = serde_json::to_string(&return_item)?;
+            match a016_ym_returns::service::store_document_with_raw(document, &raw_json).await {
+                Ok(_) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process YM return {}: {}", return_id_str, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process return {}", return_id_str),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "YM returns import completed: processed={}, inserted={}, updated={}",
             total_processed,
             total_inserted,
             total_updated

@@ -49,6 +49,15 @@ pub struct YmOrderHeader {
     pub total_amount: Option<f64>,
     /// Валюта заказа
     pub currency: Option<String>,
+    /// Платеж покупателя (itemsTotal) - общая стоимость товаров включая НДС, без доставки
+    #[serde(default)]
+    pub items_total: Option<f64>,
+    /// Стоимость доставки (deliveryTotal)
+    #[serde(default)]
+    pub delivery_total: Option<f64>,
+    /// Субсидии от Маркета (JSON массив OrderSubsidyDTO)
+    #[serde(default)]
+    pub subsidies_json: Option<String>,
 }
 
 /// Строка документа (позиция)
@@ -74,6 +83,24 @@ pub struct YmOrderLine {
     pub amount_line: Option<f64>,
     /// Код валюты
     pub currency_code: Option<String>,
+    /// Цена товара после всех скидок (buyerPrice)
+    #[serde(default)]
+    pub buyer_price: Option<f64>,
+    /// Субсидии на уровне товара (JSON массив OrderItemSubsidyDTO)
+    #[serde(default)]
+    pub subsidies_json: Option<String>,
+    /// Статус товара в заказе
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Плановая цена (пока константа = 0)
+    #[serde(default)]
+    pub price_plan: Option<f64>,
+    /// Ссылка на товар маркетплейса (a007_marketplace_product)
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
+    /// Ссылка на номенклатуру 1С (a004_nomenclature)
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
 }
 
 /// Статусы и временные метки
@@ -126,6 +153,10 @@ pub struct YmOrder {
 
     /// Флаг проведения документа (для формирования проекций)
     pub is_posted: bool,
+
+    /// Флаг ошибки (ненулевой при отсутствии сопоставления номенклатуры в строках)
+    #[serde(default)]
+    pub is_error: bool,
 }
 
 impl YmOrder {
@@ -146,6 +177,7 @@ impl YmOrder {
             state,
             source_meta,
             is_posted,
+            is_error: false,
         }
     }
 
@@ -167,7 +199,32 @@ impl YmOrder {
             state,
             source_meta,
             is_posted,
+            is_error: false,
         }
+    }
+
+    /// Обновление флага is_error на основе строк документа
+    /// Ошибкой считается отсутствие nomenclature_ref в любой строке
+    pub fn update_is_error(&mut self) {
+        self.is_error = self.lines.iter().any(|line| line.nomenclature_ref.is_none());
+    }
+
+    /// Пересчет итогов по строкам документа
+    pub fn recalculate_totals(&mut self) {
+        let mut _total_qty = 0.0;
+        let mut total_amount = 0.0;
+
+        for line in &self.lines {
+            _total_qty += line.qty;
+            if let Some(amount) = line.amount_line {
+                total_amount += amount;
+            }
+        }
+
+        self.header.items_total = Some(total_amount);
+        // total_qty пока не используется, но может пригодиться для валидации
+        // total_amount в header.total_amount может содержать другую сумму (из API),
+        // поэтому не перезаписываем её
     }
 
     pub fn to_string_id(&self) -> String {

@@ -1325,22 +1325,98 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 description TEXT NOT NULL,
                 comment TEXT,
                 document_no TEXT NOT NULL UNIQUE,
+                sale_id TEXT,
+                -- Denormalized fields from JSON for fast queries
+                sale_date TEXT,
+                organization_id TEXT,
+                connection_id TEXT,
+                supplier_article TEXT,
+                nm_id INTEGER,
+                barcode TEXT,
+                product_name TEXT,
+                qty REAL,
+                amount_line REAL,
+                total_price REAL,
+                finished_price REAL,
+                event_type TEXT,
+                -- JSON storage (kept for backward compatibility and full data)
                 header_json TEXT NOT NULL,
                 line_json TEXT NOT NULL,
                 state_json TEXT NOT NULL,
+                warehouse_json TEXT,
                 source_meta_json TEXT NOT NULL,
+                marketplace_product_ref TEXT,
+                nomenclature_ref TEXT,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
                 updated_at TEXT,
                 version INTEGER NOT NULL DEFAULT 0
             );
+            CREATE INDEX IF NOT EXISTS idx_a012_sale_date ON a012_wb_sales(sale_date);
+            CREATE INDEX IF NOT EXISTS idx_a012_organization ON a012_wb_sales(organization_id);
+            CREATE INDEX IF NOT EXISTS idx_a012_sale_id ON a012_wb_sales(sale_id);
         "#;
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Migration: add new denormalized columns if not exist
+        let new_columns = vec![
+            ("sale_id", "TEXT"),
+            ("sale_date", "TEXT"),
+            ("organization_id", "TEXT"),
+            ("connection_id", "TEXT"),
+            ("supplier_article", "TEXT"),
+            ("nm_id", "INTEGER"),
+            ("barcode", "TEXT"),
+            ("product_name", "TEXT"),
+            ("qty", "REAL"),
+            ("amount_line", "REAL"),
+            ("total_price", "REAL"),
+            ("finished_price", "REAL"),
+            ("event_type", "TEXT"),
+            ("warehouse_json", "TEXT"),
+        ];
+
+        for (col_name, col_type) in new_columns {
+            let check_sql = format!(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('a012_wb_sales') WHERE name='{}';",
+                col_name
+            );
+            let has_column = conn
+                .query_one(Statement::from_string(DatabaseBackend::Sqlite, check_sql))
+                .await?
+                .map(|row| row.try_get::<i32>("", "cnt").unwrap_or(0) > 0)
+                .unwrap_or(false);
+
+            if !has_column {
+                tracing::info!("Adding {} column to a012_wb_sales", col_name);
+                let alter_sql = format!(
+                    "ALTER TABLE a012_wb_sales ADD COLUMN {} {};",
+                    col_name, col_type
+                );
+                conn.execute(Statement::from_string(DatabaseBackend::Sqlite, alter_sql))
+                    .await?;
+            }
+        }
+
+        // Create indexes if not exist
+        let indexes = vec![
+            "CREATE INDEX IF NOT EXISTS idx_a012_sale_date ON a012_wb_sales(sale_date);",
+            "CREATE INDEX IF NOT EXISTS idx_a012_organization ON a012_wb_sales(organization_id);",
+            "CREATE INDEX IF NOT EXISTS idx_a012_sale_id ON a012_wb_sales(sale_id);",
+        ];
+        for idx_sql in indexes {
+            let _ = conn
+                .execute(Statement::from_string(
+                    DatabaseBackend::Sqlite,
+                    idx_sql.to_string(),
+                ))
+                .await;
+        }
     }
 
     // a013_ym_order table - документы Yandex Market Orders
@@ -1370,14 +1446,125 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 source_meta_json TEXT NOT NULL,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
+                is_error INTEGER NOT NULL DEFAULT 0,
+                -- Денормализованные поля для быстрых запросов списка
+                status_changed_at TEXT,
+                creation_date TEXT,
+                delivery_date TEXT,
+                campaign_id TEXT,
+                status_norm TEXT,
+                total_qty REAL DEFAULT 0,
+                total_amount REAL DEFAULT 0,
+                total_amount_api REAL,
+                lines_count INTEGER DEFAULT 0,
+                delivery_total REAL,
+                subsidies_total REAL DEFAULT 0,
+                organization_id TEXT,
+                connection_id TEXT,
                 created_at TEXT,
                 updated_at TEXT,
                 version INTEGER NOT NULL DEFAULT 0
             );
+            CREATE INDEX idx_a013_delivery_date ON a013_ym_order(delivery_date);
+            CREATE INDEX idx_a013_status_norm ON a013_ym_order(status_norm);
+            CREATE INDEX idx_a013_organization_id ON a013_ym_order(organization_id);
         "#;
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_table_sql.to_string(),
+        ))
+        .await?;
+    } else {
+        // Миграция: добавляем денормализованные колонки если их нет
+        let columns_to_add = vec![
+            ("is_error", "INTEGER NOT NULL DEFAULT 0"),
+            ("status_changed_at", "TEXT"),
+            ("creation_date", "TEXT"),
+            ("delivery_date", "TEXT"),
+            ("campaign_id", "TEXT"),
+            ("status_norm", "TEXT"),
+            ("total_qty", "REAL DEFAULT 0"),
+            ("total_amount", "REAL DEFAULT 0"),
+            ("total_amount_api", "REAL"),
+            ("lines_count", "INTEGER DEFAULT 0"),
+            ("delivery_total", "REAL"),
+            ("subsidies_total", "REAL DEFAULT 0"),
+            ("organization_id", "TEXT"),
+            ("connection_id", "TEXT"),
+        ];
+
+        for (col_name, col_type) in columns_to_add {
+            let check_col = format!(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('a013_ym_order') WHERE name='{}'",
+                col_name
+            );
+            let col_exists = conn
+                .query_one(Statement::from_string(
+                    DatabaseBackend::Sqlite,
+                    check_col,
+                ))
+                .await?;
+            if let Some(row) = col_exists {
+                let cnt: i32 = row.try_get("", "cnt").unwrap_or(0);
+                if cnt == 0 {
+                    tracing::info!("Adding {} column to a013_ym_order", col_name);
+                    let alter_sql = format!(
+                        "ALTER TABLE a013_ym_order ADD COLUMN {} {}",
+                        col_name, col_type
+                    );
+                    conn.execute(Statement::from_string(
+                        DatabaseBackend::Sqlite,
+                        alter_sql,
+                    ))
+                    .await?;
+                }
+            }
+        }
+    }
+
+    // a013_ym_order_items table - табличная часть заказов YM
+    let check_ym_order_items = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a013_ym_order_items';
+    "#;
+    let ym_order_items_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ym_order_items.to_string(),
+        ))
+        .await?;
+
+    if ym_order_items_exists.is_empty() {
+        tracing::info!("Creating a013_ym_order_items table");
+        let create_items_sql = r#"
+            CREATE TABLE a013_ym_order_items (
+                id TEXT PRIMARY KEY NOT NULL,
+                order_id TEXT NOT NULL,
+                line_id TEXT NOT NULL,
+                shop_sku TEXT NOT NULL,
+                offer_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                qty REAL NOT NULL DEFAULT 1.0,
+                price_list REAL,
+                discount_total REAL,
+                price_effective REAL,
+                amount_line REAL,
+                price_plan REAL DEFAULT 0,
+                marketplace_product_ref TEXT,
+                nomenclature_ref TEXT,
+                currency_code TEXT,
+                buyer_price REAL,
+                subsidies_json TEXT,
+                status TEXT,
+                FOREIGN KEY (order_id) REFERENCES a013_ym_order(id)
+            );
+            CREATE INDEX idx_a013_items_order_id ON a013_ym_order_items(order_id);
+            CREATE INDEX idx_a013_items_shop_sku ON a013_ym_order_items(shop_sku);
+            CREATE INDEX idx_a013_items_nomenclature_ref ON a013_ym_order_items(nomenclature_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_items_sql.to_string(),
         ))
         .await?;
     }
@@ -1419,6 +1606,56 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
             create_table_sql.to_string(),
+        ))
+        .await?;
+    }
+
+    // a016_ym_returns table - возвраты и невыкупы Yandex Market
+    let check_ym_returns = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a016_ym_returns';
+    "#;
+    let ym_returns_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_ym_returns.to_string(),
+        ))
+        .await?;
+
+    if ym_returns_exists.is_empty() {
+        tracing::info!("Creating a016_ym_returns table");
+        let create_table_sql = r#"
+            CREATE TABLE a016_ym_returns (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                return_id INTEGER NOT NULL UNIQUE,
+                order_id INTEGER NOT NULL,
+                header_json TEXT NOT NULL,
+                lines_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Index on order_id for queries by order
+        let create_idx_order = r#"
+            CREATE INDEX IF NOT EXISTS idx_a016_order_id ON a016_ym_returns(order_id);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_order.to_string(),
         ))
         .await?;
     }
@@ -2043,4 +2280,198 @@ pub fn get_connection() -> &'static DatabaseConnection {
     DB_CONN
         .get()
         .expect("Database connection has not been initialized")
+}
+
+/// Migrate existing WB Sales documents to fill denormalized columns from JSON
+/// This function should be called once to backfill all denormalized fields
+pub async fn migrate_wb_sales_denormalize() -> anyhow::Result<u64> {
+    let conn = get_connection();
+
+    // Get all WB Sales documents that need migration (sale_date is null means not migrated)
+    let sql = r#"
+        SELECT id, header_json, line_json, state_json, source_meta_json 
+        FROM a012_wb_sales 
+        WHERE sale_date IS NULL
+    "#;
+
+    let rows = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_string(),
+        ))
+        .await?;
+
+    let total = rows.len();
+    if total == 0 {
+        tracing::info!("No WB Sales documents need denormalization migration");
+        return Ok(0);
+    }
+
+    tracing::info!(
+        "Found {} WB Sales documents to denormalize, starting migration...",
+        total
+    );
+
+    let mut updated = 0u64;
+    for row in rows {
+        let id: String = row.try_get("", "id")?;
+        let header_json: String = row.try_get("", "header_json")?;
+        let line_json: String = row.try_get("", "line_json")?;
+        let state_json: String = row.try_get("", "state_json")?;
+        let source_meta_json: String = row.try_get("", "source_meta_json")?;
+
+        // Parse JSON fields
+        let header: serde_json::Value = serde_json::from_str(&header_json).unwrap_or_default();
+        let line: serde_json::Value = serde_json::from_str(&line_json).unwrap_or_default();
+        let state: serde_json::Value = serde_json::from_str(&state_json).unwrap_or_default();
+        let source_meta: serde_json::Value =
+            serde_json::from_str(&source_meta_json).unwrap_or_default();
+
+        // Extract values
+        let sale_id = header
+            .get("sale_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let organization_id = header
+            .get("organization_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let connection_id = header
+            .get("connection_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+
+        let supplier_article = line
+            .get("supplier_article")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let nm_id = line.get("nm_id").and_then(|v| v.as_i64());
+        let barcode = line
+            .get("barcode")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let product_name = line
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let qty = line.get("qty").and_then(|v| v.as_f64());
+        let amount_line = line.get("amount_line").and_then(|v| v.as_f64());
+        let total_price = line.get("total_price").and_then(|v| v.as_f64());
+        let finished_price = line.get("finished_price").and_then(|v| v.as_f64());
+
+        let event_type = state
+            .get("event_type")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace("'", "''"));
+        let sale_dt = state
+            .get("sale_dt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Try to get sale_id from raw JSON if not in header
+        let sale_id = if sale_id.is_none() {
+            let raw_payload_ref = source_meta.get("raw_payload_ref").and_then(|v| v.as_str());
+            if let Some(ref_id) = raw_payload_ref {
+                let raw_sql = format!(
+                    "SELECT raw_json FROM document_raw_storage WHERE id = '{}'",
+                    ref_id
+                );
+                let raw_result = conn
+                    .query_one(Statement::from_string(DatabaseBackend::Sqlite, raw_sql))
+                    .await
+                    .ok()
+                    .flatten();
+
+                if let Some(raw_row) = raw_result {
+                    if let Ok(raw_json_str) = raw_row.try_get::<String>("", "raw_json") {
+                        let raw: serde_json::Value =
+                            serde_json::from_str(&raw_json_str).unwrap_or_default();
+                        raw.get("saleID")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.replace("'", "''"))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            sale_id
+        };
+
+        // Build UPDATE statement
+        let mut sets = Vec::new();
+
+        if let Some(v) = sale_id {
+            sets.push(format!("sale_id = '{}'", v));
+        }
+        if let Some(v) = sale_dt {
+            sets.push(format!("sale_date = '{}'", v));
+        }
+        if let Some(v) = organization_id {
+            sets.push(format!("organization_id = '{}'", v));
+        }
+        if let Some(v) = connection_id {
+            sets.push(format!("connection_id = '{}'", v));
+        }
+        if let Some(v) = supplier_article {
+            sets.push(format!("supplier_article = '{}'", v));
+        }
+        if let Some(v) = nm_id {
+            sets.push(format!("nm_id = {}", v));
+        }
+        if let Some(v) = barcode {
+            sets.push(format!("barcode = '{}'", v));
+        }
+        if let Some(v) = product_name {
+            sets.push(format!("product_name = '{}'", v));
+        }
+        if let Some(v) = qty {
+            sets.push(format!("qty = {}", v));
+        }
+        if let Some(v) = amount_line {
+            sets.push(format!("amount_line = {}", v));
+        }
+        if let Some(v) = total_price {
+            sets.push(format!("total_price = {}", v));
+        }
+        if let Some(v) = finished_price {
+            sets.push(format!("finished_price = {}", v));
+        }
+        if let Some(v) = event_type {
+            sets.push(format!("event_type = '{}'", v));
+        }
+
+        if sets.is_empty() {
+            continue;
+        }
+
+        let update_sql = format!(
+            "UPDATE a012_wb_sales SET {} WHERE id = '{}'",
+            sets.join(", "),
+            id
+        );
+
+        conn.execute(Statement::from_string(DatabaseBackend::Sqlite, update_sql))
+            .await?;
+
+        updated += 1;
+
+        if updated % 100 == 0 {
+            tracing::info!(
+                "Denormalization progress: {}/{} documents updated",
+                updated,
+                total
+            );
+        }
+    }
+
+    tracing::info!(
+        "WB Sales denormalization completed: {} documents updated",
+        updated
+    );
+    Ok(updated)
 }

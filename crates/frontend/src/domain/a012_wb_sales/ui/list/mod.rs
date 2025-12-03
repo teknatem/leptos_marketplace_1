@@ -2,20 +2,24 @@ use crate::domain::a012_wb_sales::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
-use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::list_utils::{
+    format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
+};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::cmp::Ordering;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, HtmlElement, MouseEvent as WebMouseEvent, Url};
+use web_sys::{
+    Blob, BlobPropertyBag, HtmlAnchorElement, HtmlElement, MouseEvent as WebMouseEvent, Url,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -53,6 +57,10 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
     let result = Some(WbSalesDto {
         id: v.get("id")?.as_str()?.to_string(),
         document_no: v.get("document_no")?.as_str()?.to_string(),
+        sale_id: v
+            .get("sale_id")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
         sale_date: v.get("sale_date")?.as_str()?.to_string(),
         supplier_article: v.get("supplier_article")?.as_str()?.to_string(),
         name: v.get("name")?.as_str()?.to_string(),
@@ -61,11 +69,26 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
         total_price: v.get("total_price").and_then(|a| a.as_f64()),
         finished_price: v.get("finished_price").and_then(|a| a.as_f64()),
         event_type: v.get("event_type")?.as_str()?.to_string(),
-        organization_name: v.get("organization_name").and_then(|a| a.as_str()).map(|s| s.to_string()),
-        marketplace_article: v.get("marketplace_article").and_then(|a| a.as_str()).map(|s| s.to_string()),
-        nomenclature_code: v.get("nomenclature_code").and_then(|a| a.as_str()).map(|s| s.to_string()),
-        nomenclature_article: v.get("nomenclature_article").and_then(|a| a.as_str()).map(|s| s.to_string()),
-        operation_date: v.get("operation_date").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        organization_name: v
+            .get("organization_name")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        marketplace_article: v
+            .get("marketplace_article")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        nomenclature_code: v
+            .get("nomenclature_code")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        nomenclature_article: v
+            .get("nomenclature_article")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        operation_date: v
+            .get("operation_date")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
     });
 
     if result.is_none() {
@@ -86,7 +109,10 @@ fn was_just_resizing() -> bool {
 
 /// Clear the resize flag
 fn clear_resize_flag() {
-    if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+    if let Some(body) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.body())
+    {
         let _ = body.remove_attribute("data-was-resizing");
     }
 }
@@ -95,14 +121,22 @@ const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_column_widths";
 
 /// Save column widths to localStorage
 fn save_column_widths(table_id: &str) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Some(storage) = window.local_storage().ok().flatten() else { return };
-    let Some(table) = document.get_element_by_id(table_id) else { return };
-    
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(storage) = window.local_storage().ok().flatten() else {
+        return;
+    };
+    let Some(table) = document.get_element_by_id(table_id) else {
+        return;
+    };
+
     let headers = table.query_selector_all("th.resizable").ok();
     let Some(headers) = headers else { return };
-    
+
     let mut widths: Vec<i32> = Vec::new();
     for i in 0..headers.length() {
         if let Some(th) = headers.get(i) {
@@ -111,7 +145,7 @@ fn save_column_widths(table_id: &str) {
             }
         }
     }
-    
+
     if let Ok(json) = serde_json::to_string(&widths) {
         let _ = storage.set_item(COLUMN_WIDTHS_KEY, &json);
     }
@@ -119,22 +153,36 @@ fn save_column_widths(table_id: &str) {
 
 /// Restore column widths from localStorage
 fn restore_column_widths(table_id: &str) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Some(storage) = window.local_storage().ok().flatten() else { return };
-    let Some(table) = document.get_element_by_id(table_id) else { return };
-    
-    let Some(json) = storage.get_item(COLUMN_WIDTHS_KEY).ok().flatten() else { return };
-    let Ok(widths): Result<Vec<i32>, _> = serde_json::from_str(&json) else { return };
-    
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(storage) = window.local_storage().ok().flatten() else {
+        return;
+    };
+    let Some(table) = document.get_element_by_id(table_id) else {
+        return;
+    };
+
+    let Some(json) = storage.get_item(COLUMN_WIDTHS_KEY).ok().flatten() else {
+        return;
+    };
+    let Ok(widths): Result<Vec<i32>, _> = serde_json::from_str(&json) else {
+        return;
+    };
+
     let headers = table.query_selector_all("th.resizable").ok();
     let Some(headers) = headers else { return };
-    
+
     for (i, width) in widths.iter().enumerate() {
         if let Some(th) = headers.get(i as u32) {
             if let Ok(th) = th.dyn_into::<HtmlElement>() {
                 let _ = th.style().set_property("width", &format!("{}px", width));
-                let _ = th.style().set_property("min-width", &format!("{}px", width));
+                let _ = th
+                    .style()
+                    .set_property("min-width", &format!("{}px", width));
             }
         }
     }
@@ -142,31 +190,41 @@ fn restore_column_widths(table_id: &str) {
 
 /// Initialize column resize for all resizable headers in a table
 fn init_column_resize(table_id: &str) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Some(table) = document.get_element_by_id(table_id) else { return };
-    
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(table) = document.get_element_by_id(table_id) else {
+        return;
+    };
+
     // First restore saved widths
     restore_column_widths(table_id);
-    
+
     let headers = table.query_selector_all("th.resizable").ok();
     let Some(headers) = headers else { return };
-    
+
     let table_id_owned = table_id.to_string();
-    
+
     for i in 0..headers.length() {
         let Some(th) = headers.get(i) else { continue };
-        let Ok(th) = th.dyn_into::<HtmlElement>() else { continue };
-        
+        let Ok(th) = th.dyn_into::<HtmlElement>() else {
+            continue;
+        };
+
         // Skip if already has resize handle
         if th.query_selector(".resize-handle").ok().flatten().is_some() {
             continue;
         }
-        
+
         // Create resize handle
-        let Ok(handle) = document.create_element("div") else { continue };
+        let Ok(handle) = document.create_element("div") else {
+            continue;
+        };
         handle.set_class_name("resize-handle");
-        
+
         // State for this column
         let resizing = Rc::new(RefCell::new(false));
         let did_resize = Rc::new(RefCell::new(false));
@@ -174,14 +232,14 @@ fn init_column_resize(table_id: &str) {
         let start_width = Rc::new(RefCell::new(0i32));
         let th_ref = Rc::new(RefCell::new(th.clone()));
         let table_id_for_save = table_id_owned.clone();
-        
+
         // Mousedown on handle
         let resizing_md = resizing.clone();
         let did_resize_md = did_resize.clone();
         let start_x_md = start_x.clone();
         let start_width_md = start_width.clone();
         let th_md = th_ref.clone();
-        
+
         let mousedown = Closure::wrap(Box::new(move |e: WebMouseEvent| {
             e.prevent_default();
             e.stop_propagation();
@@ -189,46 +247,64 @@ fn init_column_resize(table_id: &str) {
             *did_resize_md.borrow_mut() = false;
             *start_x_md.borrow_mut() = e.client_x();
             *start_width_md.borrow_mut() = th_md.borrow().offset_width();
-            
-            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+
+            if let Some(body) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.body())
+            {
                 let _ = body.class_list().add_1("resizing-column");
             }
         }) as Box<dyn FnMut(WebMouseEvent)>);
-        
-        let _ = handle.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref());
+
+        let _ = handle
+            .add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref());
         mousedown.forget();
-        
+
         // Mousemove on document
         let resizing_mm = resizing.clone();
         let did_resize_mm = did_resize.clone();
         let start_x_mm = start_x.clone();
         let start_width_mm = start_width.clone();
         let th_mm = th_ref.clone();
-        
+
         let mousemove = Closure::wrap(Box::new(move |e: WebMouseEvent| {
-            if !*resizing_mm.borrow() { return; }
+            if !*resizing_mm.borrow() {
+                return;
+            }
             *did_resize_mm.borrow_mut() = true;
             let diff = e.client_x() - *start_x_mm.borrow();
             let new_width = (*start_width_mm.borrow() + diff).max(40);
-            let _ = th_mm.borrow().style().set_property("width", &format!("{}px", new_width));
-            let _ = th_mm.borrow().style().set_property("min-width", &format!("{}px", new_width));
+            let _ = th_mm
+                .borrow()
+                .style()
+                .set_property("width", &format!("{}px", new_width));
+            let _ = th_mm
+                .borrow()
+                .style()
+                .set_property("min-width", &format!("{}px", new_width));
         }) as Box<dyn FnMut(WebMouseEvent)>);
-        
-        let _ = document.add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
+
+        let _ = document
+            .add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
         mousemove.forget();
-        
+
         // Mouseup on document
         let resizing_mu = resizing.clone();
         let did_resize_mu = did_resize.clone();
         let table_id_mu = table_id_for_save.clone();
-        
+
         let mouseup = Closure::wrap(Box::new(move |_: WebMouseEvent| {
-            if !*resizing_mu.borrow() { return; }
+            if !*resizing_mu.borrow() {
+                return;
+            }
             let was_resizing = *did_resize_mu.borrow();
             *resizing_mu.borrow_mut() = false;
             *did_resize_mu.borrow_mut() = false;
-            
-            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+
+            if let Some(body) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.body())
+            {
                 let _ = body.class_list().remove_1("resizing-column");
                 if was_resizing {
                     // Save column widths to localStorage
@@ -241,10 +317,11 @@ fn init_column_resize(table_id: &str) {
                 }
             }
         }) as Box<dyn FnMut(WebMouseEvent)>);
-        
-        let _ = document.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
+
+        let _ =
+            document.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
         mouseup.forget();
-        
+
         let _ = th.append_child(&handle);
     }
 }
@@ -253,6 +330,7 @@ fn init_column_resize(table_id: &str) {
 pub struct WbSalesDto {
     pub id: String,
     pub document_no: String,
+    pub sale_id: Option<String>,
     pub sale_date: String,
     pub supplier_article: String,
     pub name: String,
@@ -275,6 +353,12 @@ impl Sortable for WbSalesDto {
                 .document_no
                 .to_lowercase()
                 .cmp(&other.document_no.to_lowercase()),
+            "sale_id" => match (&self.sale_id, &other.sale_id) {
+                (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             "sale_date" => self.sale_date.cmp(&other.sale_date),
             "supplier_article" => self
                 .supplier_article
@@ -377,6 +461,8 @@ pub fn WbSalesList() -> impl IntoView {
             let page_size = state.with(|s| s.page_size);
             let sort_field = state.with(|s| s.sort_field.clone());
             let sort_ascending = state.with(|s| s.sort_ascending);
+            let search_sale_id = state.with(|s| s.search_sale_id.clone());
+            let search_srid = state.with(|s| s.search_srid.clone());
             let offset = page * page_size;
 
             // Build URL with pagination parameters
@@ -388,6 +474,14 @@ pub fn WbSalesList() -> impl IntoView {
             // Add organization filter if selected
             if let Some(org_id) = org_id {
                 url.push_str(&format!("&organization_id={}", org_id));
+            }
+
+            // Add search filters
+            if !search_sale_id.is_empty() {
+                url.push_str(&format!("&search_sale_id={}", search_sale_id));
+            }
+            if !search_srid.is_empty() {
+                url.push_str(&format!("&search_srid={}", search_srid));
             }
 
             log!("Loading WB sales with URL: {}", url);
@@ -405,12 +499,11 @@ pub fn WbSalesList() -> impl IntoView {
                                             paginated.total, paginated.page, paginated.page_size, paginated.total_pages);
 
                                         // Parse items from the response
-                                        let items: Vec<WbSalesDto> = paginated.items
+                                        let items: Vec<WbSalesDto> = paginated
+                                            .items
                                             .into_iter()
                                             .enumerate()
-                                            .filter_map(|(idx, v)| {
-                                                parse_wb_sales_item(&v, idx)
-                                            })
+                                            .filter_map(|(idx, v)| parse_wb_sales_item(&v, idx))
                                             .collect();
 
                                         log!("Successfully parsed {} sales", items.len());
@@ -424,7 +517,8 @@ pub fn WbSalesList() -> impl IntoView {
                                     }
                                     Err(e) => {
                                         log!("Failed to parse paginated response: {:?}", e);
-                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                        set_error
+                                            .set(Some(format!("Failed to parse response: {}", e)));
                                         set_loading.set(false);
                                     }
                                 }
@@ -450,24 +544,15 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Get items (sorting is now done on server) - no clone, returns reference via signal
-    let get_items = move || -> Vec<WbSalesDto> {
-        state.with(|s| s.sales.clone())
-    };
+    let get_items = move || -> Vec<WbSalesDto> { state.with(|s| s.sales.clone()) };
 
     // Мемоизированные итоги - вычисляются только при изменении sales
     let totals = Memo::new(move |_| {
         state.with(|s| {
-            let total_qty: f64 = s.sales.iter().map(|item| item.qty).sum();
             let total_amount: f64 = s.sales.iter().filter_map(|item| item.amount_line).sum();
             let total_price: f64 = s.sales.iter().filter_map(|item| item.total_price).sum();
             let total_finished: f64 = s.sales.iter().filter_map(|item| item.finished_price).sum();
-            (
-                s.sales.len(),
-                total_qty,
-                total_amount,
-                total_price,
-                total_finished,
-            )
+            (s.sales.len(), total_amount, total_price, total_finished)
         })
     });
 
@@ -527,7 +612,6 @@ pub fn WbSalesList() -> impl IntoView {
         }
     });
 
-
     // Функция для изменения сортировки (сбрасывает на первую страницу)
     let toggle_sort = move |field: &'static str| {
         // Skip sort if we just finished resizing column
@@ -535,7 +619,7 @@ pub fn WbSalesList() -> impl IntoView {
             clear_resize_flag();
             return;
         }
-        
+
         state.update(|s| {
             if s.sort_field == field {
                 s.sort_ascending = !s.sort_ascending;
@@ -683,10 +767,11 @@ pub fn WbSalesList() -> impl IntoView {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
-                let response = Request::post("http://localhost:3000/api/a012/wb-sales/batch-unpost")
-                    .header("Content-Type", "application/json")
-                    .body(serde_json::to_string(&payload).unwrap_or_default())
-                    .map(|req| req.send());
+                let response =
+                    Request::post("http://localhost:3000/api/a012/wb-sales/batch-unpost")
+                        .header("Content-Type", "application/json")
+                        .body(serde_json::to_string(&payload).unwrap_or_default())
+                        .map(|req| req.send());
 
                 match response {
                     Ok(future) => match future.await {
@@ -902,6 +987,7 @@ pub fn WbSalesList() -> impl IntoView {
                             <option value="100" style="color: black;">"100"</option>
                             <option value="200" style="color: black;">"200"</option>
                             <option value="500" style="color: black;">"500"</option>
+                            <option value="10000" style="color: black;">"10000"</option>
                         </select>
                         <span style="color: rgba(255,255,255,0.8); font-size: 10px;">"на стр."</span>
                     </div>
@@ -1022,6 +1108,36 @@ pub fn WbSalesList() -> impl IntoView {
                     </select>
                 </div>
 
+                // Search by Sale ID
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Sale ID:"</label>
+                    <input
+                        type="text"
+                        placeholder="S9100426422573"
+                        prop:value=move || state.get().search_sale_id
+                        on:input=move |ev| {
+                            let value = event_target_value(&ev);
+                            state.update(|s| s.search_sale_id = value);
+                        }
+                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; width: 150px; background: #fff;"
+                    />
+                </div>
+
+                // Search by SRID
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"SRID:"</label>
+                    <input
+                        type="text"
+                        placeholder="Document №"
+                        prop:value=move || state.get().search_srid
+                        on:input=move |ev| {
+                            let value = event_target_value(&ev);
+                            state.update(|s| s.search_srid = value);
+                        }
+                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; width: 150px; background: #fff;"
+                    />
+                </div>
+
                 // Update button
                 <button
                     class="btn btn-success"
@@ -1036,13 +1152,12 @@ pub fn WbSalesList() -> impl IntoView {
 
             // Totals display (for current page)
             {move || if !loading.get() {
-                let (count, total_qty, total_amount, total_price, total_finished) = totals.get();
+                let (count, total_amount, total_price, total_finished) = totals.get();
                 let total_count = state.with(|s| s.total_count);
                 view! {
                     <div style="margin-bottom: 10px; padding: 3px 12px; background: var(--color-background-alt, #f5f5f5); border-radius: 4px; display: flex; align-items: center; flex-wrap: wrap;">
                         <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text);">
-                            "На странице: " {format_number(count as f64)} " из " {format_number(total_count as f64)} " | "
-                            "Кол-во: " {format_number(total_qty)} " | "
+                            "На странице: " {format_number_int(count as f64)} " из " {format_number_int(total_count as f64)} " | "
                             "К выплате: " {format_number(total_amount)} " | "
                             "Полная цена: " {format_number(total_price)} " | "
                             "Итоговая: " {format_number(total_finished)}
@@ -1148,7 +1263,7 @@ pub fn WbSalesList() -> impl IntoView {
 
                     view! {
                         <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
-                            <table id="wb-sales-table" class="data-table table-striped" style="min-width: 1600px; table-layout: fixed;">
+                            <table id="wb-sales-table" class="data-table table-striped" style="min-width: 1740px; table-layout: fixed;">
                                 <thead>
                                     <tr>
                                         <th class="checkbox-cell" style="width: 40px; min-width: 40px;">
@@ -1159,7 +1274,10 @@ pub fn WbSalesList() -> impl IntoView {
                                             />
                                         </th>
                                         <th class="resizable" style="width: 130px; min-width: 80px;" on:click=move |_| toggle_sort("document_no")>
-                                            <span class="sortable-header">"Document №" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="sortable-header">"SRID" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
+                                        </th>
+                                        <th class="resizable" style="width: 140px; min-width: 100px;" on:click=move |_| toggle_sort("sale_id")>
+                                            <span class="sortable-header">"Sale ID" <span class={get_sort_class("sale_id", &current_sort_field)}>{get_sort_indicator("sale_id", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("sale_date")>
                                             <span class="sortable-header">"Дата" <span class={get_sort_class("sale_date", &current_sort_field)}>{get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}</span></span>
@@ -1207,6 +1325,7 @@ pub fn WbSalesList() -> impl IntoView {
                                         // Pre-compute all values once
                                         let id = item.id.clone();
                                         let doc_no = item.document_no.clone();
+                                        let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
                                         let date = format_date(&item.sale_date);
                                         let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
                                         let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
@@ -1220,18 +1339,18 @@ pub fn WbSalesList() -> impl IntoView {
                                         let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
                                         let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
                                         let event = item.event_type;
-                                        
+
                                         // Clone once for closures
                                         let id_check = id.clone();
                                         let id_toggle = id.clone();
                                         let id_row = id.clone();
                                         let doc_row = doc_no.clone();
-                                        
+
                                         // Single click handler for entire row
                                         let on_row_click = move |_| {
                                             open_detail(id_row.clone(), doc_row.clone());
                                         };
-                                        
+
                                         view! {
                                             <tr on:click=on_row_click.clone()>
                                                 <td class="checkbox-cell" on:click=move |e| e.stop_propagation()>
@@ -1242,6 +1361,7 @@ pub fn WbSalesList() -> impl IntoView {
                                                     />
                                                 </td>
                                                 <td class="cell-truncate">{doc_no}</td>
+                                                <td class="cell-truncate" style="color: #6a1b9a;">{sale_id}</td>
                                                 <td>{date}</td>
                                                 <td style="color: #c62828; font-weight: 500;">{op_date}</td>
                                                 <td class="cell-truncate">{org_name}</td>

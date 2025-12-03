@@ -17,6 +17,9 @@ pub struct WbSalesState {
     pub page_size: usize,
     pub total_count: usize,
     pub total_pages: usize,
+    // Search fields
+    pub search_sale_id: String,
+    pub search_srid: String,
 }
 
 impl Default for WbSalesState {
@@ -51,6 +54,9 @@ impl Default for WbSalesState {
             page_size: 100,
             total_count: 0,
             total_pages: 0,
+            // Search defaults
+            search_sale_id: String::new(),
+            search_srid: String::new(),
         }
     }
 }
@@ -60,4 +66,3 @@ impl Default for WbSalesState {
 pub fn create_state() -> RwSignal<WbSalesState> {
     RwSignal::new(WbSalesState::default())
 }
-

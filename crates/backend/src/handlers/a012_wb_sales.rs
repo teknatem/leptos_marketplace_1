@@ -3,12 +3,21 @@ use chrono::NaiveDate;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use tokio::join;
+use uuid::Uuid;
 
 use crate::domain::a002_organization;
 use crate::domain::a012_wb_sales;
 use crate::shared::data::db::get_connection;
+
+/// Convert empty string to None
+fn non_empty(s: String) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
 use crate::shared::data::raw_storage;
 use sea_orm::{ConnectionTrait, Statement};
 use std::collections::HashMap;
@@ -17,73 +26,113 @@ use tokio::sync::RwLock;
 
 // Cache for reference data (refreshed periodically)
 static ORG_CACHE: OnceLock<RwLock<(HashMap<String, String>, std::time::Instant)>> = OnceLock::new();
-static MP_CACHE: OnceLock<RwLock<(HashMap<String, (String, Option<String>)>, std::time::Instant)>> = OnceLock::new();
-static NOM_CACHE: OnceLock<RwLock<(HashMap<String, (String, String)>, std::time::Instant)>> = OnceLock::new();
+static MP_CACHE: OnceLock<
+    RwLock<(
+        HashMap<String, (String, Option<String>)>,
+        std::time::Instant,
+    )>,
+> = OnceLock::new();
+static NOM_CACHE: OnceLock<RwLock<(HashMap<String, (String, String)>, std::time::Instant)>> =
+    OnceLock::new();
 
 const CACHE_TTL_SECS: u64 = 300; // 5 minutes
 
 async fn get_org_map() -> HashMap<String, String> {
-    let cache = ORG_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
-    
+    let cache = ORG_CACHE.get_or_init(|| {
+        RwLock::new((
+            HashMap::new(),
+            std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1),
+        ))
+    });
+
     {
         let read = cache.read().await;
         if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
             return read.0.clone();
         }
     }
-    
+
     // Refresh cache
     let mut write = cache.write().await;
     if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
         return write.0.clone();
     }
-    
+
     if let Ok(orgs) = a002_organization::service::list_all().await {
-        write.0 = orgs.into_iter().map(|org| (org.base.id.as_string(), org.base.description.clone())).collect();
+        write.0 = orgs
+            .into_iter()
+            .map(|org| (org.base.id.as_string(), org.base.description.clone()))
+            .collect();
         write.1 = std::time::Instant::now();
     }
     write.0.clone()
 }
 
 async fn get_mp_map() -> HashMap<String, (String, Option<String>)> {
-    let cache = MP_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
-    
+    let cache = MP_CACHE.get_or_init(|| {
+        RwLock::new((
+            HashMap::new(),
+            std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1),
+        ))
+    });
+
     {
         let read = cache.read().await;
         if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
             return read.0.clone();
         }
     }
-    
+
     let mut write = cache.write().await;
     if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
         return write.0.clone();
     }
-    
+
     if let Ok(mps) = crate::domain::a007_marketplace_product::service::list_all().await {
-        write.0 = mps.into_iter().map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone()))).collect();
+        write.0 = mps
+            .into_iter()
+            .map(|mp| {
+                (
+                    mp.base.id.as_string(),
+                    (mp.article.clone(), mp.nomenclature_ref.clone()),
+                )
+            })
+            .collect();
         write.1 = std::time::Instant::now();
     }
     write.0.clone()
 }
 
 async fn get_nom_map() -> HashMap<String, (String, String)> {
-    let cache = NOM_CACHE.get_or_init(|| RwLock::new((HashMap::new(), std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1))));
-    
+    let cache = NOM_CACHE.get_or_init(|| {
+        RwLock::new((
+            HashMap::new(),
+            std::time::Instant::now() - std::time::Duration::from_secs(CACHE_TTL_SECS + 1),
+        ))
+    });
+
     {
         let read = cache.read().await;
         if read.1.elapsed().as_secs() < CACHE_TTL_SECS {
             return read.0.clone();
         }
     }
-    
+
     let mut write = cache.write().await;
     if write.1.elapsed().as_secs() < CACHE_TTL_SECS {
         return write.0.clone();
     }
-    
+
     if let Ok(noms) = crate::domain::a004_nomenclature::service::list_all().await {
-        write.0 = noms.into_iter().map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone()))).collect();
+        write.0 = noms
+            .into_iter()
+            .map(|nom| {
+                (
+                    nom.base.id.as_string(),
+                    (nom.base.code.clone(), nom.article.clone()),
+                )
+            })
+            .collect();
         write.1 = std::time::Instant::now();
     }
     write.0.clone()
@@ -151,6 +200,7 @@ async fn get_operation_dates_from_p903(
 pub struct WbSalesListItemDto {
     pub id: String,
     pub document_no: String,
+    pub sale_id: Option<String>,
     pub sale_date: String,
     pub supplier_article: String,
     pub name: String,
@@ -164,35 +214,6 @@ pub struct WbSalesListItemDto {
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
-}
-
-impl WbSalesListItemDto {
-    pub fn from_wb_sales(
-        sale: &WbSales,
-        organization_name: Option<String>,
-        marketplace_article: Option<String>,
-        nomenclature_code: Option<String>,
-        nomenclature_article: Option<String>,
-        operation_date: Option<String>,
-    ) -> Self {
-        Self {
-            id: sale.base.id.as_string(),
-            document_no: sale.header.document_no.clone(),
-            sale_date: sale.state.sale_dt.to_rfc3339(),
-            supplier_article: sale.line.supplier_article.clone(),
-            name: sale.line.name.clone(),
-            qty: sale.line.qty,
-            amount_line: sale.line.amount_line,
-            total_price: sale.line.total_price,
-            finished_price: sale.line.finished_price,
-            event_type: sale.state.event_type.clone(),
-            organization_name,
-            marketplace_article,
-            nomenclature_code,
-            nomenclature_article,
-            operation_date,
-        }
-    }
 }
 
 /// Paginated response for WB Sales list
@@ -214,134 +235,121 @@ pub struct ListSalesQuery {
     pub organization_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_desc: Option<bool>,
+    /// Search by sale_id (saleID from WB API)
+    pub search_sale_id: Option<String>,
+    /// Search by srid (document_no)
+    pub search_srid: Option<String>,
 }
 
 /// Handler для получения списка Wildberries Sales с пагинацией
+/// Использует прямой SQL запрос с денормализованными полями (без JSON парсинга)
 pub async fn list_sales(
     Query(query): Query<ListSalesQuery>,
 ) -> Result<Json<PaginatedWbSalesResponse>, axum::http::StatusCode> {
-    // Парсим даты
-    let date_from = query
-        .date_from
-        .as_ref()
-        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    use a012_wb_sales::repository::{list_sql, WbSalesListQuery};
 
-    let date_to = query
-        .date_to
-        .as_ref()
-        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-
-    let page_size = query.limit.unwrap_or(100); // По умолчанию 100 записей на страницу
+    let page_size = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
     let page = if page_size > 0 { offset / page_size } else { 0 };
-    let sort_by = query.sort_by.clone().unwrap_or_else(|| "sale_date".to_string());
+    let sort_by = query
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "sale_date".to_string());
     let sort_desc = query.sort_desc.unwrap_or(true);
 
-    let mut items = if date_from.is_some() || date_to.is_some() {
-        a012_wb_sales::service::list_by_date_range(date_from, date_to)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to list Wildberries sales: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    } else {
-        a012_wb_sales::service::list_all().await.map_err(|e| {
-            tracing::error!("Failed to list Wildberries sales: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?
+    // Build query for SQL-based list
+    let list_query = WbSalesListQuery {
+        date_from: query.date_from.clone(),
+        date_to: query.date_to.clone(),
+        organization_id: query.organization_id.clone(),
+        search_sale_id: query.search_sale_id.clone(),
+        search_srid: query.search_srid.clone(),
+        sort_by: sort_by.clone(),
+        sort_desc,
+        limit: page_size,
+        offset,
     };
 
-    // Фильтруем по organization_id, если указан
-    if let Some(ref org_id) = query.organization_id {
-        items.retain(|sale| sale.header.organization_id == *org_id);
-    }
+    // Execute SQL query (no caching, direct DB query)
+    let result = list_sql(list_query).await.map_err(|e| {
+        tracing::error!("Failed to list Wildberries sales: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    // Серверная сортировка по выбранному полю
-    items.sort_by(|a, b| {
-        let cmp = match sort_by.as_str() {
-            "document_no" => a.header.document_no.cmp(&b.header.document_no),
-            "sale_date" => a.state.sale_dt.cmp(&b.state.sale_dt),
-            "supplier_article" => a.line.supplier_article.cmp(&b.line.supplier_article),
-            "name" => a.line.name.cmp(&b.line.name),
-            "qty" => a.line.qty.partial_cmp(&b.line.qty).unwrap_or(std::cmp::Ordering::Equal),
-            "amount_line" => a.line.amount_line.partial_cmp(&b.line.amount_line).unwrap_or(std::cmp::Ordering::Equal),
-            "total_price" => a.line.total_price.partial_cmp(&b.line.total_price).unwrap_or(std::cmp::Ordering::Equal),
-            "finished_price" => a.line.finished_price.partial_cmp(&b.line.finished_price).unwrap_or(std::cmp::Ordering::Equal),
-            _ => a.state.sale_dt.cmp(&b.state.sale_dt), // По умолчанию по дате
-        };
-        if sort_desc { cmp.reverse() } else { cmp }
-    });
+    let total = result.total;
+    let total_pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
 
-    // Сохраняем общее количество ДО пагинации
-    let total = items.len();
-    let total_pages = if page_size > 0 { (total + page_size - 1) / page_size } else { 0 };
-
-    // Применяем пагинацию
-    let items: Vec<_> = items.into_iter().skip(offset).take(page_size).collect();
-
-    // ОПТИМИЗАЦИЯ: Загружаем справочники параллельно из кэша
+    // Load reference data in parallel (still use caching for these)
     let (org_map, mp_map, nom_map, operation_dates) = join!(
         get_org_map(),
         get_mp_map(),
         get_nom_map(),
         get_operation_dates_from_p903()
     );
-    
+
     let (sales_dates, return_dates) = operation_dates.unwrap_or_default();
 
-    // Формируем результат с дополнительными полями
-    let result: Vec<WbSalesListItemDto> = items
+    // Build response DTOs with reference data
+    let items: Vec<WbSalesListItemDto> = result
+        .items
         .into_iter()
-        .map(|sale| {
-            let organization_name = org_map.get(&sale.header.organization_id).cloned();
+        .map(|row| {
+            // Get organization name from cache
+            let organization_name = row
+                .organization_id
+                .as_ref()
+                .and_then(|org_id| org_map.get(org_id).cloned());
 
-            // Получаем данные из marketplace_product
-            let (marketplace_article, nomenclature_ref_from_mp) = sale
+            // Get marketplace article and nomenclature_ref from marketplace_product
+            let (marketplace_article, nomenclature_ref_from_mp) = row
                 .marketplace_product_ref
                 .as_ref()
                 .and_then(|mp_ref| mp_map.get(mp_ref).cloned())
                 .unwrap_or((String::new(), None));
 
-            // Получаем данные из nomenclature (приоритет отдаем прямой ссылке из sale)
-            let nom_ref = sale
+            // Get nomenclature data
+            let nom_ref = row
                 .nomenclature_ref
                 .as_ref()
                 .or(nomenclature_ref_from_mp.as_ref());
             let (nomenclature_code, nomenclature_article) = nom_ref
-                .and_then(|nom_ref| nom_map.get(nom_ref).cloned())
+                .and_then(|nr| nom_map.get(nr).cloned())
                 .unwrap_or((String::new(), String::new()));
 
-            // Получаем дату операции из P903 по document_no (SRID)
-            // Выбираем дату в зависимости от знака finished_price
-            let operation_date = match sale.line.finished_price {
-                Some(price) if price > 0.0 => {
-                    // Положительная цена - ищем среди продаж
-                    sales_dates.get(&sale.header.document_no).cloned()
-                }
-                Some(price) if price < 0.0 => {
-                    // Отрицательная цена - ищем среди возвратов
-                    return_dates.get(&sale.header.document_no).cloned()
-                }
-                _ => {
-                    // None или 0 - не устанавливаем дату
-                    None
-                }
+            // Get operation date from P903
+            let operation_date = match row.finished_price {
+                Some(price) if price > 0.0 => sales_dates.get(&row.document_no).cloned(),
+                Some(price) if price < 0.0 => return_dates.get(&row.document_no).cloned(),
+                _ => None,
             };
 
-            // Use compact DTO with only essential fields
-            WbSalesListItemDto::from_wb_sales(
-                &sale,
+            WbSalesListItemDto {
+                id: row.id,
+                document_no: row.document_no,
+                sale_id: row.sale_id,
+                sale_date: row.sale_date.unwrap_or_default(),
+                supplier_article: row.supplier_article.unwrap_or_default(),
+                name: row.product_name.unwrap_or_default(),
+                qty: row.qty.unwrap_or(0.0),
+                amount_line: row.amount_line,
+                total_price: row.total_price,
+                finished_price: row.finished_price,
+                event_type: row.event_type.unwrap_or_default(),
                 organization_name,
-                if marketplace_article.is_empty() { None } else { Some(marketplace_article) },
-                if nomenclature_code.is_empty() { None } else { Some(nomenclature_code) },
-                if nomenclature_article.is_empty() { None } else { Some(nomenclature_article) },
+                marketplace_article: non_empty(marketplace_article),
+                nomenclature_code: non_empty(nomenclature_code),
+                nomenclature_article: non_empty(nomenclature_article),
                 operation_date,
-            )
+            }
         })
         .collect();
 
     Ok(Json(PaginatedWbSalesResponse {
-        items: result,
+        items,
         total,
         page,
         page_size,
@@ -563,17 +571,34 @@ pub async fn batch_unpost_documents(
     })))
 }
 
+/// Handler для миграции старых документов: денормализация всех полей из JSON
+pub async fn migrate_fill_sale_id() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let updated = crate::shared::data::db::migrate_wb_sales_denormalize()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to migrate WB Sales: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "updated": updated,
+        "message": format!("Denormalization completed: {} documents updated", updated)
+    })))
+}
+
 /// Handler для получения проекций по registrator_ref
 pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     // Получаем данные из проекций p900 и p904 (WB Sales использует только эти)
-    let p900_items = crate::projections::p900_mp_sales_register::repository::get_by_registrator(&id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get p900 projections: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let p900_items =
+        crate::projections::p900_mp_sales_register::repository::get_by_registrator(&id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get p900 projections: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
         .await

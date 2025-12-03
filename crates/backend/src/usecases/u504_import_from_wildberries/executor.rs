@@ -645,8 +645,9 @@ impl ImportExecutor {
         // Логируем первую запись для диагностики
         if let Some(first) = sales_rows.first() {
             tracing::info!(
-                "Sample sale row - srid: {:?}, date (sale_dt): {:?}, lastChangeDate: {:?}",
+                "Sample sale row - srid: {:?}, saleID: {:?}, date (sale_dt): {:?}, lastChangeDate: {:?}",
                 first.srid,
+                first.sale_id,
                 first.sale_dt,
                 first.last_change_date
             );
@@ -654,25 +655,33 @@ impl ImportExecutor {
 
         // Обрабатываем каждую продажу
         for sale_row in sales_rows {
-            // SRID - уникальный идентификатор строки продажи (используем как document_no)
+            // SRID - уникальный идентификатор строки продажи (используем как document_no для информации)
             let document_no = sale_row
                 .srid
                 .clone()
                 .unwrap_or_else(|| format!("WB_{}", chrono::Utc::now().timestamp()));
 
+            // saleID - используем для дедупликации
+            let sale_id = sale_row.sale_id.clone();
+
             self.progress_tracker.set_current_item(
                 session_id,
                 aggregate_index,
-                Some(format!("WB Sale {}", document_no)),
+                Some(format!("WB Sale {} ({})", sale_id.as_deref().unwrap_or("-"), document_no)),
             );
 
-            // Проверяем, существует ли документ
-            let existing = a012_wb_sales::service::get_by_document_no(&document_no).await?;
+            // Проверяем, существует ли документ по sale_id (если есть), иначе по srid
+            let existing = if let Some(ref sid) = sale_id {
+                a012_wb_sales::service::get_by_sale_id(sid).await?
+            } else {
+                a012_wb_sales::service::get_by_document_no(&document_no).await?
+            };
             let is_new = existing.is_none();
 
             // Создаем header
             let header = WbSalesHeader {
                 document_no: document_no.clone(),
+                sale_id: sale_id.clone(),
                 connection_id: connection.base.id.as_string(),
                 organization_id: organization_id.clone(),
                 marketplace_id: connection.marketplace_id.clone(),

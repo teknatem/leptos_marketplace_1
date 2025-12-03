@@ -7,10 +7,10 @@ use uuid::Uuid;
 use super::repository::Model;
 
 /// Константа эквайринга ПРОДАЖИ (1.9%)
-const ACQUIRING_RATE: f64 = 0.019;
+const WB_ACQUIRING_RATE: f64 = 0.019;
 
 /// Константа эквайринга ВОЗВРАТА (0.53%)
-const ACQUIRING_RETURN_RATE: f64 = 0.0053;
+const WB_ACQUIRING_RETURN_RATE: f64 = 0.0053;
 
 pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Result<Vec<Model>> {
     let now = Utc::now().to_rfc3339();
@@ -54,10 +54,10 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
     // 7. finished_price * ACQUIRING_RATE * -1 -> acquiring_out (со знаком минус)
     let acquiring_out = if finished_price > 0.0 {
         // ПРОДАЖА
-        -(finished_price * ACQUIRING_RATE)
+        -finished_price * WB_ACQUIRING_RATE
     } else {
         // ВОЗВРАТ
-        finished_price * ACQUIRING_RETURN_RATE
+        -finished_price * WB_ACQUIRING_RATE
     };
 
     // 8. amount_line - finished_price -> если > 0, то coinvest_in, иначе 0
@@ -72,11 +72,10 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
 
     // 9. total = amount_line + acquiring_out + commission_out
     // Разобраться
-    let discount_spp = price_effective - finished_price;
-    let total = amount_line + acquiring_out + commission_out + discount_spp;
 
     // 10. seller_out = (customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out)
     let seller_out = -(customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out);
+    let total = -seller_out;
 
     let entry = Model {
         id,

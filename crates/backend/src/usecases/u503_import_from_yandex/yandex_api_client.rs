@@ -617,6 +617,15 @@ pub struct YmOrderItem {
     pub total: Option<f64>,
     #[serde(default)]
     pub currency: Option<String>,
+    /// Платеж покупателя (общая стоимость товаров включая НДС, без доставки)
+    #[serde(rename = "itemsTotal", default)]
+    pub items_total: Option<f64>,
+    /// Стоимость доставки
+    #[serde(rename = "deliveryTotal", default)]
+    pub delivery_total: Option<f64>,
+    /// Субсидии от Маркета (вознаграждение продавцу за скидки)
+    #[serde(default)]
+    pub subsidies: Option<Vec<YmOrderSubsidy>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -638,6 +647,34 @@ pub struct YmOrderLineItem {
     pub total: Option<f64>,
     #[serde(default)]
     pub status: Option<String>,
+    /// Цена товара после всех скидок (buyerPrice)
+    #[serde(rename = "buyerPrice", default)]
+    pub buyer_price: Option<f64>,
+    /// Субсидии на уровне товара
+    #[serde(default)]
+    pub subsidies: Option<Vec<YmOrderItemSubsidy>>,
+}
+
+/// Субсидия на уровне заказа
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderSubsidy {
+    /// Сумма субсидии
+    #[serde(default)]
+    pub amount: Option<f64>,
+    /// Тип субсидии: YANDEX_CASHBACK, SUBSIDY, DELIVERY
+    #[serde(rename = "type", default)]
+    pub subsidy_type: Option<String>,
+}
+
+/// Субсидия на уровне товара
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderItemSubsidy {
+    /// Сумма субсидии
+    #[serde(default)]
+    pub amount: Option<f64>,
+    /// Тип субсидии
+    #[serde(rename = "type", default)]
+    pub subsidy_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -660,4 +697,268 @@ pub struct YmOrderDeliveryDates {
     pub from_date: Option<String>,
     #[serde(rename = "toDate", default)]
     pub to_date: Option<String>,
+}
+
+// ============================================================================
+// Returns structures (GET /v2/campaigns/{campaignId}/returns)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnsResponse {
+    #[serde(default)]
+    pub returns: Vec<YmReturnItem>,
+    #[serde(default)]
+    pub pager: Option<YmReturnsPager>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnsPager {
+    pub total: Option<i32>,
+    pub from: Option<i32>,
+    pub to: Option<i32>,
+    #[serde(rename = "currentPage")]
+    pub current_page: Option<i32>,
+    #[serde(rename = "pagesCount")]
+    pub pages_count: Option<i32>,
+    #[serde(rename = "pageSize")]
+    pub page_size: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnItem {
+    /// ID возврата
+    pub id: i64,
+    /// ID заказа
+    #[serde(rename = "orderId")]
+    pub order_id: i64,
+    /// Тип возврата: RETURN или UNREDEEMED
+    #[serde(rename = "returnType", default)]
+    pub return_type: Option<String>,
+    /// Статус возврата денег: REFUNDED, REFUND_IN_PROGRESS, NOT_REFUNDED и т.д.
+    #[serde(rename = "refundStatus", default)]
+    pub refund_status: Option<String>,
+    /// Дата создания возврата
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    /// Дата обновления возврата
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: Option<String>,
+    /// Общая сумма возврата
+    #[serde(default)]
+    pub amount: Option<YmReturnAmount>,
+    /// Товары в возврате
+    #[serde(default)]
+    pub items: Vec<YmReturnItemLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnAmount {
+    /// Сумма
+    #[serde(default)]
+    pub value: Option<f64>,
+    /// Валюта
+    #[serde(rename = "currencyId", default)]
+    pub currency_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnItemLine {
+    /// ID товара
+    pub id: i64,
+    /// offerId (идентификатор товара)
+    #[serde(rename = "offerId", default)]
+    pub offer_id: Option<String>,
+    /// shopSku (артикул продавца)
+    #[serde(rename = "shopSku", default)]
+    pub shop_sku: Option<String>,
+    /// Название товара
+    #[serde(rename = "offerName", default)]
+    pub offer_name: Option<String>,
+    /// Количество
+    #[serde(default)]
+    pub count: i32,
+    /// Цена товара
+    #[serde(default)]
+    pub price: Option<f64>,
+    /// Причина возврата
+    #[serde(rename = "returnReason", default)]
+    pub return_reason: Option<String>,
+    /// Комментарий покупателя
+    #[serde(rename = "returnReasonComment", default)]
+    pub return_reason_comment: Option<String>,
+    /// Решения по возврату
+    #[serde(default)]
+    pub decisions: Vec<YmReturnDecision>,
+    /// Фотографии дефектов
+    #[serde(default)]
+    pub photos: Vec<YmReturnPhoto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnDecision {
+    /// Тип решения: REFUND_MONEY, DECLINE_REFUND, REFUND_MONEY_INCLUDING_SHIPMENT и т.д.
+    #[serde(rename = "decisionType", default)]
+    pub decision_type: Option<String>,
+    /// Сумма возврата
+    #[serde(default)]
+    pub amount: Option<YmReturnAmount>,
+    /// Компенсация за обратную доставку
+    #[serde(rename = "partnerCompensationAmount", default)]
+    pub partner_compensation_amount: Option<YmReturnAmount>,
+    /// Комментарий к решению
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// Дата решения
+    #[serde(rename = "decisionDate", default)]
+    pub decision_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnPhoto {
+    /// URL фото
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+impl YandexApiClient {
+    /// Получить список возвратов через Yandex Market API с пагинацией
+    /// GET /v2/campaigns/{campaignId}/returns
+    /// Parameters:
+    /// - date_from: начало периода (фильтр по дате обновления)
+    /// - date_to: конец периода (фильтр по дате обновления)
+    pub async fn fetch_returns(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<Vec<YmReturnItem>> {
+        let mut all_returns = Vec::new();
+        let mut page = 1;
+        let page_size = 50;
+
+        loop {
+            let response = self
+                .fetch_returns_page(connection, date_from, date_to, page, page_size)
+                .await?;
+
+            let returns_count = response.returns.len();
+            all_returns.extend(response.returns);
+
+            self.log_to_file(&format!(
+                "Fetched page {} with {} returns (total so far: {})",
+                page, returns_count, all_returns.len()
+            ));
+
+            // Check if there are more pages
+            if let Some(pager) = response.pager {
+                if let Some(pages_count) = pager.pages_count {
+                    if page >= pages_count {
+                        break;
+                    }
+                }
+            }
+
+            // Stop if we got less than page_size returns (last page)
+            if returns_count < page_size as usize {
+                break;
+            }
+
+            page += 1;
+
+            // Safety limit to prevent infinite loops
+            if page > 100 {
+                tracing::warn!("Reached maximum page limit (100), stopping returns pagination");
+                break;
+            }
+        }
+
+        self.log_to_file(&format!("Total returns fetched: {}", all_returns.len()));
+        Ok(all_returns)
+    }
+
+    /// Получить одну страницу возвратов
+    async fn fetch_returns_page(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+        page: i32,
+        page_size: i32,
+    ) -> Result<YmReturnsResponse> {
+        let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Campaign ID (Идентификатор магазина) is required for Yandex Market API"
+            )
+        })?;
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+        }
+
+        let url = format!(
+            "https://api.partner.market.yandex.ru/v2/campaigns/{}/returns",
+            campaign_id
+        );
+
+        #[derive(Debug, Serialize)]
+        struct QueryParams {
+            #[serde(rename = "fromDate")]
+            pub from_date: String,
+            #[serde(rename = "toDate")]
+            pub to_date: String,
+            pub page: i32,
+            #[serde(rename = "pageSize")]
+            pub page_size: i32,
+        }
+
+        let query = QueryParams {
+            from_date: date_from.format("%Y-%m-%d").to_string(),
+            to_date: date_to.format("%Y-%m-%d").to_string(),
+            page,
+            page_size,
+        };
+
+        self.log_to_file(&format!(
+            "=== REQUEST RETURNS PAGE {} ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
+            page, url, query
+        ));
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .query(&query)
+            .send()
+            .await?;
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Yandex Market Returns API request failed: {}", body);
+            anyhow::bail!(
+                "Yandex Market Returns API failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RETURNS RESPONSE BODY ===\n{}\n", body));
+
+        match serde_json::from_str::<YmReturnsResponse>(&body) {
+            Ok(data) => {
+                let returns_count = data.returns.len();
+                self.log_to_file(&format!("Successfully parsed {} returns", returns_count));
+                Ok(data)
+            }
+            Err(e) => {
+                self.log_to_file(&format!("Failed to parse returns JSON: {}", e));
+                tracing::error!("Failed to parse Yandex Market returns response: {}", e);
+                anyhow::bail!("Failed to parse returns response: {}", e)
+            }
+        }
+    }
 }
