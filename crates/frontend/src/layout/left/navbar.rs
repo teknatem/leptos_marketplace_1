@@ -11,6 +11,11 @@ pub fn Navbar() -> impl IntoView {
         icons::icon(kind)
     }
 
+    // Дашборды
+    let dashboards = vec![
+        ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
+    ];
+
     // Справочники
     let directories = vec![
         ("a002_organization", "Организации", "building"),
@@ -82,6 +87,21 @@ pub fn Navbar() -> impl IntoView {
     view! {
         <nav class="main-nav-bar">
             <>
+                // Дашборды
+                <div class="main-nav-bar-header">
+                    "Дашборды"
+                </div>
+                <ul>
+                    {dashboards.into_iter().map(|(key, title, icon_name)| {
+                        view! {
+                            <li on:click=move |_| tabs_store.open_tab(key, title)>
+                                {icon_for(icon_name)}
+                                <span>{title}</span>
+                            </li>
+                        }
+                    }).collect_view()}
+                </ul>
+
                 // Справочники
                 <div class="main-nav-bar-header">
                     "Справочники"

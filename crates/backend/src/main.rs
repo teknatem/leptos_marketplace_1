@@ -1,3 +1,4 @@
+pub mod dashboards;
 pub mod domain;
 pub mod handlers;
 pub mod projections;
@@ -1171,6 +1172,11 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/p904/sales-data",
             get(handlers::p904_sales_data::list),
+        )
+        // D400 Monthly Summary Dashboard
+        .route(
+            "/api/d400/monthly_summary",
+            get(handlers::d400_monthly_summary::get_monthly_summary),
         )
         // P905 WB Commission History handlers
         .route(

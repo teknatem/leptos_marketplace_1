@@ -30,6 +30,7 @@ use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::projections::p904_sales_data::ui::list::SalesDataList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
+use crate::dashboards::MonthlySummaryDashboard;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
 use crate::usecases::u503_import_from_yandex;
@@ -204,6 +205,11 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "p905-commission-new" => {
                 view! { <CommissionHistoryDetails /> }.into_any()
+            }
+            // Dashboards
+            "d400_monthly_summary" => {
+                log!("✅ Creating MonthlySummaryDashboard");
+                view! { <MonthlySummaryDashboard /> }.into_any()
             }
             _ => {
                 log!("⚠️ Unknown tab type: {}", key_ref);

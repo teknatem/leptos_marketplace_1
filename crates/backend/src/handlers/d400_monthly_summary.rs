@@ -1,0 +1,31 @@
+use axum::{extract::Query, http::StatusCode, Json};
+use contracts::dashboards::d400_monthly_summary::{MonthlySummaryRequest, MonthlySummaryResponse};
+
+use crate::dashboards::d400_monthly_summary::service;
+
+/// GET /api/d400/monthly_summary?year=2025&month=12
+pub async fn get_monthly_summary(
+    Query(request): Query<MonthlySummaryRequest>,
+) -> Result<Json<MonthlySummaryResponse>, StatusCode> {
+    tracing::info!(
+        "D400 Dashboard: Getting monthly summary for {}-{:02}",
+        request.year,
+        request.month
+    );
+
+    match service::get_monthly_summary(request).await {
+        Ok(response) => {
+            tracing::info!(
+                "D400 Dashboard: Returning {} rows for {} marketplaces",
+                response.rows.len(),
+                response.marketplaces.len()
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            tracing::error!("D400 Dashboard: Failed to get monthly summary: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
