@@ -1,4 +1,4 @@
-use super::list::YmOrderDto;
+use super::YmOrderDto;
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]

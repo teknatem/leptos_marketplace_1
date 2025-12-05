@@ -1,9 +1,11 @@
-use crate::domain::a016_ym_returns::state::create_state;
+pub mod state;
+
+use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::date_utils::format_datetime;
-use crate::shared::list_utils::{format_number, get_sort_indicator, Sortable};
+use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -553,31 +555,31 @@ pub fn YmReturnsList() -> impl IntoView {
                             <th class="resizable" on:click=toggle_sort("created_at_source")>
                                 <span class="sortable-header">
                                     "Дата"
-                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "created_at_source", state.get().sort_ascending)}</span>
+                                    <span class={move || get_sort_class("created_at_source", &state.get().sort_field)}>{move || get_sort_indicator("created_at_source", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("return_id")>
                                 <span class="sortable-header">
                                     "Return №"
-                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "return_id", state.get().sort_ascending)}</span>
+                                    <span class={move || get_sort_class("return_id", &state.get().sort_field)}>{move || get_sort_indicator("return_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("order_id")>
                                 <span class="sortable-header">
                                     "Order №"
-                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "order_id", state.get().sort_ascending)}</span>
+                                    <span class={move || get_sort_class("order_id", &state.get().sort_field)}>{move || get_sort_indicator("order_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("return_type")>
                                 <span class="sortable-header">
                                     "Тип"
-                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "return_type", state.get().sort_ascending)}</span>
+                                    <span class={move || get_sort_class("return_type", &state.get().sort_field)}>{move || get_sort_indicator("return_type", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("refund_status")>
                                 <span class="sortable-header">
                                     "Статус"
-                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "refund_status", state.get().sort_ascending)}</span>
+                                    <span class={move || get_sort_class("refund_status", &state.get().sort_field)}>{move || get_sort_indicator("refund_status", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable text-right">"Шт."</th>

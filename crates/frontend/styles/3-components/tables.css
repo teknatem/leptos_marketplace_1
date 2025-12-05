@@ -65,10 +65,10 @@ thead th {
 .sortable-header {
     cursor: pointer;
     user-select: none;
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    width: 100%;
     gap: 4px;
-    white-space: nowrap;
 }
 
 .sortable-header:hover {
@@ -76,17 +76,19 @@ thead th {
 }
 
 .sort-icon {
-    font-size: 11px;
-    opacity: 0.6;
+    font-size: 14px;
+    opacity: 0.4;
     flex-shrink: 0;
-    display: inline-flex;
-    flex-direction: column;
-    line-height: 0.5;
-    letter-spacing: -2px;
+    color: inherit;
+    margin-left: auto;
+    margin-right: 0;
 }
 
 .sort-icon.active {
     opacity: 1;
+    color: #22c55e;
+    font-weight: bold;
+    font-size: 14px;
 }
 
 /* Resizable columns - position is inherited from thead th (sticky) */
@@ -232,6 +234,7 @@ thead th.sticky-left {
     z-index: 10;
     background: var(--table-header-bg, #667788);
     color: var(--table-header-fg, white);
+    padding: 8px 8px;
 }
 
 /* Ensure resizable headers stay sticky */

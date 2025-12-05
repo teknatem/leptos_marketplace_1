@@ -13,7 +13,7 @@
 | Механизм            | Файл                                                                  | Строки    |
 | ------------------- | --------------------------------------------------------------------- | --------- |
 | Полный List         | `crates/frontend/src/domain/a012_wb_sales/ui/list/mod.rs`             | весь файл |
-| State с пагинацией  | `crates/frontend/src/domain/a012_wb_sales/state.rs`                   | весь файл |
+| State с пагинацией  | `crates/frontend/src/domain/a012_wb_sales/ui/list/state.rs`           | весь файл |
 | Resize колонок      | `crates/frontend/src/domain/a012_wb_sales/ui/list/mod.rs`             | 191-320   |
 | Пагинация UI        | `crates/frontend/src/domain/a012_wb_sales/ui/list/mod.rs`             | 907-994   |
 | Итоги в header      | `crates/frontend/src/projections/p904_sales_data/ui/list/mod.rs`      | 826-846   |
@@ -26,11 +26,11 @@
 ```
 domain/aXXX_feature/
 ├── mod.rs
-├── state.rs                 # Глобальное состояние
 └── ui/
     ├── mod.rs
     ├── list/
-    │   └── mod.rs           # List компонент
+    │   ├── mod.rs           # List компонент
+    │   └── state.rs         # Состояние списка
     └── details/
         └── mod.rs           # Detail компонент
 ```
@@ -42,7 +42,7 @@ domain/aXXX_feature/
 ### Обязательные поля
 
 ```rust
-use super::ui::list::ItemDto;
+use super::ItemDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
 

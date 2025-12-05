@@ -214,7 +214,7 @@ pub fn SearchInput(
     }
 }
 
-/// Получить индикатор сортировки для заголовка (ромб для неактивной)
+/// Получить индикатор сортировки для заголовка (один треугольник)
 pub fn get_sort_indicator(current_field: &str, field: &str, ascending: bool) -> &'static str {
     if current_field == field {
         if ascending {
@@ -223,7 +223,7 @@ pub fn get_sort_indicator(current_field: &str, field: &str, ascending: bool) -> 
             "▼"
         }
     } else {
-        "◆"
+        "▲"
     }
 }
 

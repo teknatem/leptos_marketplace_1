@@ -1,4 +1,4 @@
-use super::ui::list::OzonTransactionsDto;
+use super::OzonTransactionsDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
 
@@ -54,3 +54,4 @@ impl Default for TransactionsState {
 pub fn create_state() -> RwSignal<TransactionsState> {
     RwSignal::new(TransactionsState::default())
 }
+

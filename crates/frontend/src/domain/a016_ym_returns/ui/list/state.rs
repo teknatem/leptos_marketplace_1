@@ -1,30 +1,37 @@
-use super::ui::list::WbSalesDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]
-pub struct WbSalesState {
-    pub sales: Vec<WbSalesDto>,
+pub struct YmReturnsState {
+    // Фильтры
     pub date_from: String,
     pub date_to: String,
-    pub selected_organization_id: Option<String>,
+    pub filter_type: Option<String>,
+
+    // Сортировка
     pub sort_field: String,
     pub sort_ascending: bool,
+
+    // Множественный выбор
     pub selected_ids: Vec<String>,
+
+    // Флаг загрузки
     pub is_loaded: bool,
-    // Pagination fields
+
+    // Серверная пагинация
     pub page: usize,
     pub page_size: usize,
     pub total_count: usize,
     pub total_pages: usize,
-    // Search fields
-    pub search_sale_id: String,
-    pub search_srid: String,
+
+    // Поиск
+    pub search_return_id: String,
+    pub search_order_id: String,
 }
 
-impl Default for WbSalesState {
+impl Default for YmReturnsState {
     fn default() -> Self {
-        // Default period: current month
+        // Период по умолчанию: текущий месяц
         let now = Utc::now().date_naive();
         let year = now.year();
         let month = now.month();
@@ -41,28 +48,26 @@ impl Default for WbSalesState {
         };
 
         Self {
-            sales: Vec::new(),
             date_from: month_start.format("%Y-%m-%d").to_string(),
             date_to: month_end.format("%Y-%m-%d").to_string(),
-            selected_organization_id: None,
-            sort_field: "sale_date".to_string(),
+            filter_type: None,
+            sort_field: "created_at_source".to_string(),
             sort_ascending: false,
             selected_ids: Vec::new(),
             is_loaded: false,
-            // Pagination defaults
+            // Пагинация
             page: 0,
             page_size: 100,
             total_count: 0,
             total_pages: 0,
-            // Search defaults
-            search_sale_id: String::new(),
-            search_srid: String::new(),
+            // Поиск
+            search_return_id: String::new(),
+            search_order_id: String::new(),
         }
     }
 }
 
-// Create state within component scope instead of thread-local
-// This ensures state is properly disposed when component unmounts
-pub fn create_state() -> RwSignal<WbSalesState> {
-    RwSignal::new(WbSalesState::default())
+pub fn create_state() -> RwSignal<YmReturnsState> {
+    RwSignal::new(YmReturnsState::default())
 }
+

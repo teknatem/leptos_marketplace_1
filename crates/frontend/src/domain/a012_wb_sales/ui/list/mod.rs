@@ -1,24 +1,24 @@
-use crate::domain::a012_wb_sales::state::create_state;
+pub mod state;
+
+use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::list_utils::{
     format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
 };
+use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::rc::Rc;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    Blob, BlobPropertyBag, HtmlAnchorElement, HtmlElement, MouseEvent as WebMouseEvent, Url,
+    Blob, BlobPropertyBag, HtmlAnchorElement, Url,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,233 +98,7 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
     result
 }
 
-/// Check if resize just happened (to block sort click)
-fn was_just_resizing() -> bool {
-    web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.body())
-        .map(|b| b.get_attribute("data-was-resizing").as_deref() == Some("true"))
-        .unwrap_or(false)
-}
-
-/// Clear the resize flag
-fn clear_resize_flag() {
-    if let Some(body) = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.body())
-    {
-        let _ = body.remove_attribute("data-was-resizing");
-    }
-}
-
 const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_column_widths";
-
-/// Save column widths to localStorage
-fn save_column_widths(table_id: &str) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let Some(document) = window.document() else {
-        return;
-    };
-    let Some(storage) = window.local_storage().ok().flatten() else {
-        return;
-    };
-    let Some(table) = document.get_element_by_id(table_id) else {
-        return;
-    };
-
-    let headers = table.query_selector_all("th.resizable").ok();
-    let Some(headers) = headers else { return };
-
-    let mut widths: Vec<i32> = Vec::new();
-    for i in 0..headers.length() {
-        if let Some(th) = headers.get(i) {
-            if let Ok(th) = th.dyn_into::<HtmlElement>() {
-                widths.push(th.offset_width());
-            }
-        }
-    }
-
-    if let Ok(json) = serde_json::to_string(&widths) {
-        let _ = storage.set_item(COLUMN_WIDTHS_KEY, &json);
-    }
-}
-
-/// Restore column widths from localStorage
-fn restore_column_widths(table_id: &str) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let Some(document) = window.document() else {
-        return;
-    };
-    let Some(storage) = window.local_storage().ok().flatten() else {
-        return;
-    };
-    let Some(table) = document.get_element_by_id(table_id) else {
-        return;
-    };
-
-    let Some(json) = storage.get_item(COLUMN_WIDTHS_KEY).ok().flatten() else {
-        return;
-    };
-    let Ok(widths): Result<Vec<i32>, _> = serde_json::from_str(&json) else {
-        return;
-    };
-
-    let headers = table.query_selector_all("th.resizable").ok();
-    let Some(headers) = headers else { return };
-
-    for (i, width) in widths.iter().enumerate() {
-        if let Some(th) = headers.get(i as u32) {
-            if let Ok(th) = th.dyn_into::<HtmlElement>() {
-                let _ = th.style().set_property("width", &format!("{}px", width));
-                let _ = th
-                    .style()
-                    .set_property("min-width", &format!("{}px", width));
-            }
-        }
-    }
-}
-
-/// Initialize column resize for all resizable headers in a table
-fn init_column_resize(table_id: &str) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let Some(document) = window.document() else {
-        return;
-    };
-    let Some(table) = document.get_element_by_id(table_id) else {
-        return;
-    };
-
-    // First restore saved widths
-    restore_column_widths(table_id);
-
-    let headers = table.query_selector_all("th.resizable").ok();
-    let Some(headers) = headers else { return };
-
-    let table_id_owned = table_id.to_string();
-
-    for i in 0..headers.length() {
-        let Some(th) = headers.get(i) else { continue };
-        let Ok(th) = th.dyn_into::<HtmlElement>() else {
-            continue;
-        };
-
-        // Skip if already has resize handle
-        if th.query_selector(".resize-handle").ok().flatten().is_some() {
-            continue;
-        }
-
-        // Create resize handle
-        let Ok(handle) = document.create_element("div") else {
-            continue;
-        };
-        handle.set_class_name("resize-handle");
-
-        // State for this column
-        let resizing = Rc::new(RefCell::new(false));
-        let did_resize = Rc::new(RefCell::new(false));
-        let start_x = Rc::new(RefCell::new(0i32));
-        let start_width = Rc::new(RefCell::new(0i32));
-        let th_ref = Rc::new(RefCell::new(th.clone()));
-        let table_id_for_save = table_id_owned.clone();
-
-        // Mousedown on handle
-        let resizing_md = resizing.clone();
-        let did_resize_md = did_resize.clone();
-        let start_x_md = start_x.clone();
-        let start_width_md = start_width.clone();
-        let th_md = th_ref.clone();
-
-        let mousedown = Closure::wrap(Box::new(move |e: WebMouseEvent| {
-            e.prevent_default();
-            e.stop_propagation();
-            *resizing_md.borrow_mut() = true;
-            *did_resize_md.borrow_mut() = false;
-            *start_x_md.borrow_mut() = e.client_x();
-            *start_width_md.borrow_mut() = th_md.borrow().offset_width();
-
-            if let Some(body) = web_sys::window()
-                .and_then(|w| w.document())
-                .and_then(|d| d.body())
-            {
-                let _ = body.class_list().add_1("resizing-column");
-            }
-        }) as Box<dyn FnMut(WebMouseEvent)>);
-
-        let _ = handle
-            .add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref());
-        mousedown.forget();
-
-        // Mousemove on document
-        let resizing_mm = resizing.clone();
-        let did_resize_mm = did_resize.clone();
-        let start_x_mm = start_x.clone();
-        let start_width_mm = start_width.clone();
-        let th_mm = th_ref.clone();
-
-        let mousemove = Closure::wrap(Box::new(move |e: WebMouseEvent| {
-            if !*resizing_mm.borrow() {
-                return;
-            }
-            *did_resize_mm.borrow_mut() = true;
-            let diff = e.client_x() - *start_x_mm.borrow();
-            let new_width = (*start_width_mm.borrow() + diff).max(40);
-            let _ = th_mm
-                .borrow()
-                .style()
-                .set_property("width", &format!("{}px", new_width));
-            let _ = th_mm
-                .borrow()
-                .style()
-                .set_property("min-width", &format!("{}px", new_width));
-        }) as Box<dyn FnMut(WebMouseEvent)>);
-
-        let _ = document
-            .add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref());
-        mousemove.forget();
-
-        // Mouseup on document
-        let resizing_mu = resizing.clone();
-        let did_resize_mu = did_resize.clone();
-        let table_id_mu = table_id_for_save.clone();
-
-        let mouseup = Closure::wrap(Box::new(move |_: WebMouseEvent| {
-            if !*resizing_mu.borrow() {
-                return;
-            }
-            let was_resizing = *did_resize_mu.borrow();
-            *resizing_mu.borrow_mut() = false;
-            *did_resize_mu.borrow_mut() = false;
-
-            if let Some(body) = web_sys::window()
-                .and_then(|w| w.document())
-                .and_then(|d| d.body())
-            {
-                let _ = body.class_list().remove_1("resizing-column");
-                if was_resizing {
-                    // Save column widths to localStorage
-                    save_column_widths(&table_id_mu);
-                    let _ = body.set_attribute("data-was-resizing", "true");
-                    spawn_local(async {
-                        gloo_timers::future::TimeoutFuture::new(50).await;
-                        clear_resize_flag();
-                    });
-                }
-            }
-        }) as Box<dyn FnMut(WebMouseEvent)>);
-
-        let _ =
-            document.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref());
-        mouseup.forget();
-
-        let _ = th.append_child(&handle);
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesDto {
@@ -1258,7 +1032,7 @@ pub fn WbSalesList() -> impl IntoView {
                     // Initialize column resize after each render
                     spawn_local(async {
                         gloo_timers::future::TimeoutFuture::new(50).await;
-                        init_column_resize("wb-sales-table");
+                        init_column_resize("wb-sales-table", COLUMN_WIDTHS_KEY);
                     });
 
                     view! {
