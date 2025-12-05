@@ -24,17 +24,18 @@ pub fn Navbar() -> impl IntoView {
         ("a004_nomenclature_list", "Номенклатура (список)", "table"),
         ("a005_marketplace", "Маркетплейсы", "store"),
         ("a007_marketplace_product", "Товары МП", "package"),
-        ("a008_marketplace_sales", "Продажи МП", "cash"),
-        ("a009_ozon_returns", "Возвраты OZON", "package-x"),
     ];
 
     // Документы (Aggregates)
     let documents = vec![
+        ("a008_marketplace_sales", "Продажи МП", "cash"),
         ("a010_ozon_fbs_posting", "OZON FBS Posting", "file-text"),
         ("a011_ozon_fbo_posting", "OZON FBO Posting", "file-text"),
         ("a015_wb_orders", "WB Orders", "file-text"),
         ("a012_wb_sales", "WB Sales", "file-text"),
         ("a013_ym_order", "YM Orders", "file-text"),
+        ("a009_ozon_returns", "Возвраты OZON", "package-x"),
+        ("a016_ym_returns", "Возвраты Yandex", "package-x"),
         ("a014_ozon_transactions", "Транзакции OZON", "credit-card"),
     ];
 

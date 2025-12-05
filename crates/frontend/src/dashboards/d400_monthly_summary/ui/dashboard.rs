@@ -108,42 +108,39 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
     };
 
     view! {
-        <div class="dashboard-container" style="padding: 16px; height: 100%; display: flex; flex-direction: column;">
-            // Header with month selector
-            <div class="dashboard-header" style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0;">
-                <h2 style="margin: 0; font-size: 1.25rem; color: #333; font-weight: 600;">
-                    "Сводка по маркетплейсам"
-                </h2>
+        <div class="d400-dashboard">
+            // Header with gradient
+            <div class="d400-header">
+                <div class="d400-header-content">
+                    <h1 class="d400-title">"Сводка по маркетплейсам"</h1>
+                    <p class="d400-subtitle">"Ключевые показатели эффективности за период"</p>
+                </div>
 
-                <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                <div class="d400-month-selector">
                     <button
+                        class="d400-nav-btn"
                         on:click=go_prev_month
-                        style="padding: 6px 12px; border: 1px solid #ced4da; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.875rem;"
                         title="Предыдущий месяц"
                     >
-                        "←"
+                        "‹"
                     </button>
 
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 6px 16px; background: #f8f9fa; border-radius: 4px; min-width: 160px; justify-content: center;">
-                        <span style="font-weight: 600; color: #333;">
-                            {month_name}
-                        </span>
-                        <span style="color: #666;">
-                            {move || selected_year.get()}
-                        </span>
+                    <div class="d400-month-display">
+                        <span class="d400-month-name">{month_name}</span>
+                        <span class="d400-year">{move || selected_year.get()}</span>
                     </div>
 
                     <button
+                        class="d400-nav-btn"
                         on:click=go_next_month
-                        style="padding: 6px 12px; border: 1px solid #ced4da; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.875rem;"
                         title="Следующий месяц"
                     >
-                        "→"
+                        "›"
                     </button>
 
                     <button
+                        class="d400-today-btn"
                         on:click=go_current_month
-                        style="padding: 6px 12px; border: 1px solid #ced4da; border-radius: 4px; background: #e3f2fd; cursor: pointer; font-size: 0.875rem;"
                         title="Текущий месяц"
                     >
                         "Сегодня"
@@ -155,7 +152,8 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
             {move || {
                 if loading.get() {
                     view! {
-                        <div style="display: flex; align-items: center; justify-content: center; padding: 40px; color: #666;">
+                        <div class="d400-loading">
+                            <div class="d400-spinner"></div>
                             <span>"Загрузка данных..."</span>
                         </div>
                     }.into_any()
@@ -168,8 +166,8 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
             {move || {
                 if let Some(err) = error.get() {
                     view! {
-                        <div style="padding: 16px; background: #ffebee; border-radius: 4px; color: #c62828; margin-bottom: 16px;">
-                            <strong>"Ошибка: "</strong>
+                        <div class="d400-error">
+                            <strong>"⚠ Ошибка: "</strong>
                             {err}
                         </div>
                     }.into_any()
@@ -187,24 +185,19 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
                     let rows = response.rows.clone();
 
                     view! {
-                        <div class="dashboard-table-container" style="flex: 1; overflow: auto;">
-                            <table class="dashboard-table" style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                        <div class="d400-table-wrapper">
+                            <table class="d400-table">
                                 <thead>
-                                    <tr style="background: #f5f5f5;">
-                                        <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #333; min-width: 200px;">
-                                            "Показатель"
-                                        </th>
+                                    <tr>
+                                        <th class="d400-th d400-th-indicator">"Показатель"</th>
                                         {marketplaces.iter().map(|mp| {
                                             let mp_display = mp.clone();
+                                            let mp_class = format!("d400-th d400-th-mp d400-mp-{}", mp.to_lowercase());
                                             view! {
-                                                <th style="padding: 12px 16px; text-align: right; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #333; min-width: 120px;">
-                                                    {mp_display}
-                                                </th>
+                                                <th class=mp_class>{mp_display}</th>
                                             }
                                         }).collect_view()}
-                                        <th style="padding: 12px 16px; text-align: right; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #333; background: #e8f5e9; min-width: 140px;">
-                                            "Итого"
-                                        </th>
+                                        <th class="d400-th d400-th-total">"ИТОГО"</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -229,8 +222,9 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
                     }.into_any()
                 } else if !loading.get() {
                     view! {
-                        <div style="display: flex; align-items: center; justify-content: center; padding: 40px; color: #666;">
-                            "Нет данных для отображения"
+                        <div class="d400-empty">
+                            <span class="d400-empty-icon">"📊"</span>
+                            <span>"Нет данных для отображения"</span>
                         </div>
                     }.into_any()
                 } else {
@@ -249,28 +243,28 @@ fn DashboardRow(
     is_total: bool,
     on_drilldown: impl Fn(DrilldownFilter, Option<String>) + Clone + 'static,
 ) -> impl IntoView {
-    let row_style = if is_total {
-        "background: #fff; font-weight: 600;"
+    let row_class = if is_total {
+        "d400-row d400-row-total"
     } else {
-        "background: #fafafa;"
+        "d400-row d400-row-detail"
     };
 
-    let name_style = if is_total {
-        "padding: 12px 16px; border-bottom: 1px solid #e0e0e0; color: #333;"
+    let name_class = if is_total {
+        "d400-td d400-td-name"
     } else {
-        "padding: 8px 16px; padding-left: 32px; border-bottom: 1px solid #f0f0f0; color: #666; font-size: 0.8125rem;"
+        "d400-td d400-td-name d400-td-name-indent"
     };
 
-    let value_style = if is_total {
-        "padding: 12px 16px; text-align: right; border-bottom: 1px solid #e0e0e0; color: #1976d2; cursor: pointer;"
+    let value_class = if is_total {
+        "d400-td d400-td-value"
     } else {
-        "padding: 8px 16px; text-align: right; border-bottom: 1px solid #f0f0f0; color: #1976d2; cursor: pointer; font-size: 0.8125rem;"
+        "d400-td d400-td-value d400-td-value-detail"
     };
 
-    let total_value_style = if is_total {
-        "padding: 12px 16px; text-align: right; border-bottom: 1px solid #e0e0e0; background: #e8f5e9; font-weight: 700; color: #2e7d32;"
+    let total_class = if is_total {
+        "d400-td d400-td-total-value"
     } else {
-        "padding: 8px 16px; text-align: right; border-bottom: 1px solid #f0f0f0; background: #f1f8e9; color: #2e7d32; font-size: 0.8125rem;"
+        "d400-td d400-td-total-value d400-td-total-detail"
     };
 
     // Display name with group
@@ -283,8 +277,8 @@ fn DashboardRow(
     let filter = row.drilldown_filter.clone();
 
     view! {
-        <tr style=row_style>
-            <td style=name_style>
+        <tr class=row_class>
+            <td class=name_class>
                 {display_name}
             </td>
             {marketplaces.iter().map(|mp| {
@@ -296,7 +290,7 @@ fn DashboardRow(
 
                 view! {
                     <td
-                        style=value_style
+                        class=value_class
                         on:click=move |_| {
                             on_drilldown_clone(filter_clone.clone(), Some(mp_clone.clone()));
                         }
@@ -306,7 +300,7 @@ fn DashboardRow(
                     </td>
                 }
             }).collect_view()}
-            <td style=total_value_style>
+            <td class=total_class>
                 {format_number(row.values.get("total").copied().unwrap_or(0.0))}
             </td>
         </tr>

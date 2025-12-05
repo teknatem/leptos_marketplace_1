@@ -703,25 +703,27 @@ pub struct YmOrderDeliveryDates {
 // Returns structures (GET /v2/campaigns/{campaignId}/returns)
 // ============================================================================
 
+/// Wrapper for the API response (top level with status and result)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmReturnsResponse {
+pub struct YmReturnsApiResponse {
+    pub status: String,
+    pub result: YmReturnsResult,
+}
+
+/// Inner result structure containing returns and paging
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnsResult {
     #[serde(default)]
     pub returns: Vec<YmReturnItem>,
     #[serde(default)]
-    pub pager: Option<YmReturnsPager>,
+    pub paging: Option<YmReturnsPaging>,
 }
 
+/// Token-based pagination structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmReturnsPager {
-    pub total: Option<i32>,
-    pub from: Option<i32>,
-    pub to: Option<i32>,
-    #[serde(rename = "currentPage")]
-    pub current_page: Option<i32>,
-    #[serde(rename = "pagesCount")]
-    pub pages_count: Option<i32>,
-    #[serde(rename = "pageSize")]
-    pub page_size: Option<i32>,
+pub struct YmReturnsPaging {
+    #[serde(rename = "nextPageToken", default)]
+    pub next_page_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -738,10 +740,10 @@ pub struct YmReturnItem {
     #[serde(rename = "refundStatus", default)]
     pub refund_status: Option<String>,
     /// Дата создания возврата
-    #[serde(rename = "createdAt", default)]
+    #[serde(rename = "creationDate", default)]
     pub created_at: Option<String>,
     /// Дата обновления возврата
-    #[serde(rename = "updatedAt", default)]
+    #[serde(rename = "updateDate", default)]
     pub updated_at: Option<String>,
     /// Общая сумма возврата
     #[serde(default)]
@@ -763,9 +765,10 @@ pub struct YmReturnAmount {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmReturnItemLine {
-    /// ID товара
-    pub id: i64,
-    /// offerId (идентификатор товара)
+    /// Market SKU (идентификатор товара в Маркете)
+    #[serde(rename = "marketSku", default)]
+    pub market_sku: Option<i64>,
+    /// offerId (идентификатор товара продавца)
     #[serde(rename = "offerId", default)]
     pub offer_id: Option<String>,
     /// shopSku (артикул продавца)
@@ -821,7 +824,7 @@ pub struct YmReturnPhoto {
 }
 
 impl YandexApiClient {
-    /// Получить список возвратов через Yandex Market API с пагинацией
+    /// Получить список возвратов через Yandex Market API с пагинацией (token-based)
     /// GET /v2/campaigns/{campaignId}/returns
     /// Parameters:
     /// - date_from: начало периода (фильтр по дате обновления)
@@ -833,12 +836,14 @@ impl YandexApiClient {
         date_to: chrono::NaiveDate,
     ) -> Result<Vec<YmReturnItem>> {
         let mut all_returns = Vec::new();
-        let mut page = 1;
+        let mut page_token: Option<String> = None;
         let page_size = 50;
+        let mut page_count = 0;
 
         loop {
+            page_count += 1;
             let response = self
-                .fetch_returns_page(connection, date_from, date_to, page, page_size)
+                .fetch_returns_page(connection, date_from, date_to, page_token.clone(), page_size)
                 .await?;
 
             let returns_count = response.returns.len();
@@ -846,27 +851,28 @@ impl YandexApiClient {
 
             self.log_to_file(&format!(
                 "Fetched page {} with {} returns (total so far: {})",
-                page, returns_count, all_returns.len()
+                page_count, returns_count, all_returns.len()
             ));
 
-            // Check if there are more pages
-            if let Some(pager) = response.pager {
-                if let Some(pages_count) = pager.pages_count {
-                    if page >= pages_count {
-                        break;
-                    }
-                }
-            }
+            // Check if there are more pages (token-based pagination)
+            let next_token = response
+                .paging
+                .and_then(|p| p.next_page_token);
 
-            // Stop if we got less than page_size returns (last page)
-            if returns_count < page_size as usize {
+            if next_token.is_none() {
+                // No more pages
                 break;
             }
 
-            page += 1;
+            // Stop if we got no returns (last page)
+            if returns_count == 0 {
+                break;
+            }
+
+            page_token = next_token;
 
             // Safety limit to prevent infinite loops
-            if page > 100 {
+            if page_count > 100 {
                 tracing::warn!("Reached maximum page limit (100), stopping returns pagination");
                 break;
             }
@@ -876,15 +882,15 @@ impl YandexApiClient {
         Ok(all_returns)
     }
 
-    /// Получить одну страницу возвратов
+    /// Получить одну страницу возвратов (token-based pagination)
     async fn fetch_returns_page(
         &self,
         connection: &ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
-        page: i32,
+        page_token: Option<String>,
         page_size: i32,
-    ) -> Result<YmReturnsResponse> {
+    ) -> Result<YmReturnsResult> {
         let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
                 "Campaign ID (Идентификатор магазина) is required for Yandex Market API"
@@ -900,34 +906,27 @@ impl YandexApiClient {
             campaign_id
         );
 
-        #[derive(Debug, Serialize)]
-        struct QueryParams {
-            #[serde(rename = "fromDate")]
-            pub from_date: String,
-            #[serde(rename = "toDate")]
-            pub to_date: String,
-            pub page: i32,
-            #[serde(rename = "pageSize")]
-            pub page_size: i32,
+        // Build query parameters
+        let mut query_params: Vec<(&str, String)> = vec![
+            ("fromDate", date_from.format("%d-%m-%Y").to_string()),
+            ("toDate", date_to.format("%d-%m-%Y").to_string()),
+            ("pageSize", page_size.to_string()),
+        ];
+
+        if let Some(ref token) = page_token {
+            query_params.push(("page_token", token.clone()));
         }
 
-        let query = QueryParams {
-            from_date: date_from.format("%Y-%m-%d").to_string(),
-            to_date: date_to.format("%Y-%m-%d").to_string(),
-            page,
-            page_size,
-        };
-
         self.log_to_file(&format!(
-            "=== REQUEST RETURNS PAGE {} ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
-            page, url, query
+            "=== REQUEST RETURNS PAGE ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
+            url, query_params
         ));
 
         let response = self
             .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
-            .query(&query)
+            .query(&query_params)
             .send()
             .await?;
 
@@ -948,11 +947,11 @@ impl YandexApiClient {
         let body = response.text().await?;
         self.log_to_file(&format!("=== RETURNS RESPONSE BODY ===\n{}\n", body));
 
-        match serde_json::from_str::<YmReturnsResponse>(&body) {
-            Ok(data) => {
-                let returns_count = data.returns.len();
+        match serde_json::from_str::<YmReturnsApiResponse>(&body) {
+            Ok(api_response) => {
+                let returns_count = api_response.result.returns.len();
                 self.log_to_file(&format!("Successfully parsed {} returns", returns_count));
-                Ok(data)
+                Ok(api_response.result)
             }
             Err(e) => {
                 self.log_to_file(&format!("Failed to parse returns JSON: {}", e));

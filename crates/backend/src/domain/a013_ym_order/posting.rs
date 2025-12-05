@@ -39,9 +39,12 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         &id.to_string(),
     )
     .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     // Создать новые проекции
     crate::projections::p900_mp_sales_register::service::project_ym_order(&document, id).await?;
+    crate::projections::p904_sales_data::service::project_ym_order(&document, id).await?;
 
     tracing::info!(
         "Posted document a013: {}, is_error: {}",
@@ -70,6 +73,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         &id.to_string(),
     )
     .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     tracing::info!("Unposted document a013: {}", id);
     Ok(())

@@ -112,20 +112,15 @@ pub fn MegaMenuBar() -> impl IntoView {
             title: "Товары МП",
             icon_name: "package",
         },
+    ];
+
+    // Документы
+    let documents = vec![
         MegaMenuItem {
             key: "a008_marketplace_sales",
             title: "Продажи МП",
             icon_name: "dollar-sign",
         },
-        MegaMenuItem {
-            key: "a009_ozon_returns",
-            title: "Возвраты OZON",
-            icon_name: "package-x",
-        },
-    ];
-
-    // Документы
-    let documents = vec![
         MegaMenuItem {
             key: "a010_ozon_fbs_posting",
             title: "OZON FBS Posting",
@@ -152,8 +147,13 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "file-text",
         },
         MegaMenuItem {
+            key: "a009_ozon_returns",
+            title: "Возвраты OZON",
+            icon_name: "package-x",
+        },
+        MegaMenuItem {
             key: "a016_ym_returns",
-            title: "YM Returns",
+            title: "Возвраты Yandex",
             icon_name: "package-x",
         },
         MegaMenuItem {

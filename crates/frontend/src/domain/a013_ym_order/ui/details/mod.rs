@@ -125,6 +125,10 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     let (selected_marketplace_product_id, set_selected_marketplace_product_id) =
         signal::<Option<String>>(None);
 
+    // Projections signals
+    let (projections, set_projections) = signal::<Option<serde_json::Value>>(None);
+    let (projections_loading, set_projections_loading) = signal(false);
+
     let is_posted = Memo::new(move |_| order.get().map(|o| o.metadata.is_posted).unwrap_or(false));
 
     // Сохраняем id для использования в разных местах
@@ -242,6 +246,32 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                 }
                                             }
                                         });
+
+                                        // Асинхронная загрузка проекций
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            set_projections_loading.set(true);
+                                            let projections_url = format!(
+                                                "http://localhost:3000/api/a013/ym-order/{}/projections",
+                                                id
+                                            );
+                                            match Request::get(&projections_url).send().await {
+                                                Ok(resp) => {
+                                                    if resp.status() == 200 {
+                                                        if let Ok(text) = resp.text().await {
+                                                            if let Ok(proj_data) =
+                                                                serde_json::from_str::<serde_json::Value>(&text)
+                                                            {
+                                                                set_projections.set(Some(proj_data));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to load projections: {:?}", e);
+                                                }
+                                            }
+                                            set_projections_loading.set(false);
+                                        });
                                     }
                                     Err(e) => {
                                         log!("Failed to parse order: {:?}", e);
@@ -294,6 +324,17 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                 }
                             }
                         }
+                        // Перезагрузить проекции
+                        let projections_url = format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                        if let Ok(resp) = Request::get(&projections_url).send().await {
+                            if resp.status() == 200 {
+                                if let Ok(text) = resp.text().await {
+                                    if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                        set_projections.set(Some(proj_data));
+                                    }
+                                }
+                            }
+                        }
                         set_loading.set(false);
                     } else {
                         log!("Failed to post document: HTTP {}", resp.status());
@@ -326,6 +367,17 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         serde_json::from_str::<YmOrderDetailDto>(&text)
                                     {
                                         set_order.set(Some(data));
+                                    }
+                                }
+                            }
+                        }
+                        // Перезагрузить проекции (после unpost должны быть пустые)
+                        let projections_url = format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                        if let Ok(resp) = Request::get(&projections_url).send().await {
+                            if resp.status() == 200 {
+                                if let Ok(text) = resp.text().await {
+                                    if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                        set_projections.set(Some(proj_data));
                                     }
                                 }
                             }
@@ -447,6 +499,19 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         on:click=move |_| set_active_tab.set("json")
                                     >
                                         "📄 Raw JSON"
+                                    </button>
+                                    <button
+                                        class=move || if active_tab.get() == "projections" { "detail-tab active" } else { "detail-tab" }
+                                        on:click=move |_| set_active_tab.set("projections")
+                                    >
+                                        {move || {
+                                            let count = projections.get().as_ref().map(|p| {
+                                                let p900_len = p["p900_sales_register"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                let p904_len = p["p904_sales_data"].as_array().map(|a| a.len()).unwrap_or(0);
+                                                p900_len + p904_len
+                                            }).unwrap_or(0);
+                                            format!("📊 Проекции ({})", count)
+                                        }}
                                     </button>
                                 </div>
 
@@ -844,6 +909,132 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     view! {
                                                         <div class="loading-placeholder">
                                                             "Загрузка Raw JSON от Yandex Market..."
+                                                        </div>
+                                                    }.into_any()
+                                                }
+                                            }}
+                                        </div>
+                                    }.into_any(),
+                                    "projections" => view! {
+                                        <div class="projections-info">
+                                            {move || {
+                                                if projections_loading.get() {
+                                                    view! {
+                                                        <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                            "Загрузка проекций..."
+                                                        </div>
+                                                    }.into_any()
+                                                } else if let Some(proj_data) = projections.get() {
+                                                    let p900_items = proj_data["p900_sales_register"].as_array().cloned().unwrap_or_default();
+                                                    let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+
+                                                    view! {
+                                                        <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                                                            // P900 Sales Register
+                                                            <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-warning); padding-bottom: var(--space-xs);">
+                                                                    {format!("📊 Sales Register (p900) - {} записей", p900_items.len())}
+                                                                </h3>
+                                                                {if !p900_items.is_empty() {
+                                                                    view! {
+                                                                        <div style="overflow-x: auto;">
+                                                                            <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
+                                                                                <thead>
+                                                                                    <tr style="background: var(--color-bg-secondary);">
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"MP"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Title"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {p900_items.iter().map(|item| {
+                                                                                        let mp = item["marketplace"].as_str().unwrap_or("—");
+                                                                                        let sku = item["seller_sku"].as_str().unwrap_or("—");
+                                                                                        let title = item["title"].as_str().unwrap_or("—");
+                                                                                        let qty = item["qty"].as_f64().unwrap_or(0.0);
+                                                                                        let amount = item["amount_line"].as_f64().unwrap_or(0.0);
+
+                                                                                        view! {
+                                                                                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{mp}</td>
+                                                                                                <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{sku}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{title}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
+                                                                                            </tr>
+                                                                                        }
+                                                                                    }).collect::<Vec<_>>()}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! {
+                                                                        <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                    }.into_any()
+                                                                }}
+                                                            </div>
+
+                                                            // P904 Sales Data
+                                                            <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-xs);">
+                                                                    {format!("📈 Sales Data (p904) - {} записей", p904_items.len())}
+                                                                </h3>
+                                                                {if !p904_items.is_empty() {
+                                                                    view! {
+                                                                        <div style="overflow-x: auto;">
+                                                                            <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-xs);">
+                                                                                <thead>
+                                                                                    <tr style="background: var(--color-bg-secondary);">
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Article"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="price_list">"Price List"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="customer_in (buyer_price/amount_line)">"Cust In"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="customer_out">"Cust Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="commission_out">"Comm Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="acquiring_out">"Acq Out"</th>
+                                                                                        <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);" title="total">"Total"</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {p904_items.iter().map(|item| {
+                                                                                        let article = item["article"].as_str().unwrap_or("—");
+                                                                                        let price_list = item["price_list"].as_f64().unwrap_or(0.0);
+                                                                                        let customer_in = item["customer_in"].as_f64().unwrap_or(0.0);
+                                                                                        let customer_out = item["customer_out"].as_f64().unwrap_or(0.0);
+                                                                                        let commission_out = item["commission_out"].as_f64().unwrap_or(0.0);
+                                                                                        let acquiring_out = item["acquiring_out"].as_f64().unwrap_or(0.0);
+                                                                                        let total = item["total"].as_f64().unwrap_or(0.0);
+
+                                                                                        view! {
+                                                                                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                                                                                <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{article}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_list)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); color: var(--color-success); font-weight: var(--font-weight-semibold);">{format!("{:.2}", customer_in)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", commission_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", acquiring_out)}</td>
+                                                                                                <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-bold);">{format!("{:.2}", total)}</td>
+                                                                                            </tr>
+                                                                                        }
+                                                                                    }).collect::<Vec<_>>()}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! {
+                                                                        <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей (проекции создаются только для документов со статусом DELIVERED)"</p>
+                                                                    }.into_any()
+                                                                }}
+                                                            </div>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {
+                                                        <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                            "Проекции не загружены"
                                                         </div>
                                                     }.into_any()
                                                 }

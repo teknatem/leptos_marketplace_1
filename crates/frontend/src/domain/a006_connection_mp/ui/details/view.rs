@@ -157,6 +157,11 @@ pub fn ConnectionMPDetails(
                         placeholder="Вставьте API ключ"
                         rows="3"
                     />
+                    <small class="help-text">
+                        {"• Wildberries: API ключ (Bearer token)"}<br/>
+                        {"• Ozon: Api-Key (в связке с Client-Id)"}<br/>
+                        {"• Яндекс.Маркет: OAuth токен (Bearer token)"}
+                    </small>
                 </div>
 
                 // Колонка 1
@@ -198,6 +203,10 @@ pub fn ConnectionMPDetails(
                         }
                         placeholder="Для Озон"
                     />
+                    <small class="help-text">
+                        {"• Ozon: Client-Id (для всех API запросов)"}<br/>
+                        {"• Яндекс.Маркет: Campaign ID / Идентификатор магазина (для заказов и возвратов)"}
+                    </small>
                 </div>
 
                 // Колонка 1
@@ -238,6 +247,9 @@ pub fn ConnectionMPDetails(
                             set_form.update(|f| f.application_id = if val.is_empty() { None } else { Some(val) });
                         }
                     />
+                    <small class="help-text">
+                        {"• Ozon: Application ID / Client-Id (обязательно для всех запросов)"}
+                    </small>
                 </div>
 
                 // Колонка 1
@@ -264,6 +276,9 @@ pub fn ConnectionMPDetails(
                         }
                         placeholder="Для Яндекс.Маркет"
                     />
+                    <small class="help-text">
+                        {"• Яндекс.Маркет: Business ID / БизнесАккаунтID (для работы с товарами)"}
+                    </small>
                 </div>
 
                 // Колонка 1

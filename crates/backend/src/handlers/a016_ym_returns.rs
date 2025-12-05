@@ -2,14 +2,101 @@ use axum::{extract::Query, Json};
 use chrono::NaiveDate;
 use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use contracts::domain::common::AggregateId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a016_ym_returns;
 use crate::shared::data::raw_storage;
 
-/// Handler для получения списка Yandex Market Returns
-pub async fn list_returns() -> Result<Json<Vec<YmReturn>>, axum::http::StatusCode> {
+/// DTO для списка возвратов (минимальные поля)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnListItemDto {
+    pub id: String,
+    pub return_id: i64,
+    pub order_id: i64,
+    pub return_type: String,
+    pub refund_status: String,
+    pub total_items: i32,
+    pub total_amount: f64,
+    pub created_at_source: String,
+    pub fetched_at: String,
+    pub is_posted: bool,
+}
+
+/// Ответ с пагинацией
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginatedYmReturnsResponse {
+    pub items: Vec<YmReturnListItemDto>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
+}
+
+/// Параметры запроса списка
+#[derive(Debug, Deserialize)]
+pub struct ListReturnsQuery {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub return_type: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub search_return_id: Option<String>,
+    pub search_order_id: Option<String>,
+}
+
+/// Handler для получения списка с пагинацией
+pub async fn list_returns(
+    Query(query): Query<ListReturnsQuery>,
+) -> Result<Json<PaginatedYmReturnsResponse>, axum::http::StatusCode> {
+    use a016_ym_returns::repository::{list_sql, YmReturnsListQuery};
+
+    let page_size = query.limit.unwrap_or(100);
+    let offset = query.offset.unwrap_or(0);
+    let page = if page_size > 0 { offset / page_size } else { 0 };
+    let sort_by = query
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "created_at_source".to_string());
+    let sort_desc = query.sort_desc.unwrap_or(true);
+
+    let list_query = YmReturnsListQuery {
+        date_from: query.date_from.clone(),
+        date_to: query.date_to.clone(),
+        return_type: query.return_type.clone(),
+        search_return_id: query.search_return_id.clone(),
+        search_order_id: query.search_order_id.clone(),
+        sort_by: sort_by.clone(),
+        sort_desc,
+        limit: page_size,
+        offset,
+    };
+
+    let result = list_sql(list_query).await.map_err(|e| {
+        tracing::error!("Failed to list Yandex Market returns: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let total = result.total;
+    let total_pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
+
+    Ok(Json(PaginatedYmReturnsResponse {
+        items: result.items,
+        total,
+        page,
+        page_size,
+        total_pages,
+    }))
+}
+
+/// Handler для получения всех возвратов (без пагинации, для обратной совместимости)
+pub async fn list_returns_all() -> Result<Json<Vec<YmReturn>>, axum::http::StatusCode> {
     let items = a016_ym_returns::service::list_all().await.map_err(|e| {
         tracing::error!("Failed to list Yandex Market returns: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
@@ -120,11 +207,7 @@ pub async fn post_period(
                 }
                 Err(e) => {
                     failed_count += 1;
-                    tracing::error!(
-                        "Failed to post document {}: {}",
-                        doc.base.id.as_string(),
-                        e
-                    );
+                    tracing::error!("Failed to post document {}: {}", doc.base.id.as_string(), e);
                 }
             }
         }
@@ -137,3 +220,103 @@ pub async fn post_period(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct BatchOperationRequest {
+    pub ids: Vec<String>,
+}
+
+/// Handler для пакетного проведения документов
+pub async fn batch_post_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a016_ym_returns::posting::post_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch posted {} documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
+    })))
+}
+
+/// Handler для пакетной отмены проведения документов
+pub async fn batch_unpost_documents(
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let total = req.ids.len();
+    let mut succeeded = 0;
+    let mut failed = 0;
+
+    for id_str in req.ids {
+        let uuid = match Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match a016_ym_returns::posting::unpost_document(uuid).await {
+            Ok(_) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    tracing::info!(
+        "Batch unposted {} documents (succeeded: {}, failed: {})",
+        total,
+        succeeded,
+        failed
+    );
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "succeeded": succeeded,
+        "failed": failed,
+        "total": total
+    })))
+}
+
+/// Handler для получения проекций по registrator_ref
+pub async fn get_projections(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    // Получаем данные из проекции p904 (YM Returns использует только её)
+    let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p904 projections: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Возвращаем результат в формате совместимом с WB Sales
+    let result = serde_json::json!({
+        "p904_sales_data": p904_items,
+    });
+
+    Ok(Json(result))
+}

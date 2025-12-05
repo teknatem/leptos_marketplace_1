@@ -118,8 +118,10 @@
 }
 
 .help-text {
+    display: block;
     color: var(--color-secondary);
     font-size: var(--font-size-xs);
+    line-height: 1.4;
     margin-top: var(--space-sm);
 }
 

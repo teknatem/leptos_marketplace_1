@@ -1,7 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
+use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::a014_ozon_transactions::aggregate::OzonTransactions;
+use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use uuid::Uuid;
 
 use super::repository::Model;
@@ -191,11 +193,18 @@ pub async fn from_ozon_transactions(
             };
 
             // Вычисляем суммы пропорционально
-            let customer_in = document.header.accruals_for_sale * proportion;
+            // Для возвратов (returns) accruals_for_sale идет в customer_out, иначе в customer_in
+            let accruals = document.header.accruals_for_sale * proportion;
+            let is_return = document.header.transaction_type == "returns";
+            let (customer_in, customer_out) = if is_return {
+                (0.0, accruals)
+            } else {
+                (accruals, 0.0)
+            };
             let commission_out = sale_commission * proportion;
             let logistics_out = logistics_total * proportion;
             let seller_out = -amount * proportion;
-            let total = customer_in + commission_out + logistics_out;
+            let total = customer_in + customer_out + commission_out + logistics_out;
 
             let entry = Model {
                 id: Uuid::new_v4().to_string(),
@@ -208,7 +217,7 @@ pub async fn from_ozon_transactions(
 
                 // Sums
                 customer_in,
-                customer_out: 0.0,
+                customer_out,
                 coinvest_in: 0.0,
                 commission_out,
                 acquiring_out: 0.0,
@@ -250,11 +259,18 @@ pub async fn from_ozon_transactions(
             };
 
             // Вычисляем суммы пропорционально
-            let customer_in = document.header.accruals_for_sale * proportion;
+            // Для возвратов (returns) accruals_for_sale идет в customer_out, иначе в customer_in
+            let accruals = document.header.accruals_for_sale * proportion;
+            let is_return = document.header.transaction_type == "returns";
+            let (customer_in, customer_out) = if is_return {
+                (0.0, accruals)
+            } else {
+                (accruals, 0.0)
+            };
             let commission_out = sale_commission * proportion;
             let logistics_out = logistics_total * proportion;
             let seller_out = -amount * proportion;
-            let total = customer_in + commission_out + logistics_out;
+            let total = customer_in + customer_out + commission_out + logistics_out;
 
             // Найти/создать a007_marketplace_product
             let marketplace_product_ref =
@@ -290,7 +306,7 @@ pub async fn from_ozon_transactions(
 
                 // Sums
                 customer_in,
-                customer_out: 0.0,
+                customer_out,
                 coinvest_in: 0.0,
                 commission_out,
                 acquiring_out: 0.0,
@@ -327,11 +343,18 @@ pub async fn from_ozon_transactions(
             };
 
             // Вычисляем суммы пропорционально
-            let customer_in = document.header.accruals_for_sale * proportion;
+            // Для возвратов (returns) accruals_for_sale идет в customer_out, иначе в customer_in
+            let accruals = document.header.accruals_for_sale * proportion;
+            let is_return = document.header.transaction_type == "returns";
+            let (customer_in, customer_out) = if is_return {
+                (0.0, accruals)
+            } else {
+                (accruals, 0.0)
+            };
             let commission_out = sale_commission * proportion;
             let logistics_out = logistics_total * proportion;
             let seller_out = -amount * proportion;
-            let total = customer_in + commission_out + logistics_out;
+            let total = customer_in + customer_out + commission_out + logistics_out;
 
             // Найти/создать a007_marketplace_product
             let marketplace_product_ref =
@@ -367,7 +390,7 @@ pub async fn from_ozon_transactions(
 
                 // Sums
                 customer_in,
-                customer_out: 0.0,
+                customer_out,
                 coinvest_in: 0.0,
                 commission_out,
                 acquiring_out: 0.0,
@@ -393,6 +416,175 @@ pub async fn from_ozon_transactions(
         "Created {} P904 entries from A014 document {}",
         entries.len(),
         document.header.operation_id
+    );
+
+    Ok(entries)
+}
+
+/// Конвертировать YM Order в записи Sales Data (P904)
+/// Только документы со статусом DELIVERED формируют проекции
+pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> Result<Vec<Model>> {
+    let mut entries = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    // Проверяем статус документа - только DELIVERED формируют проекции
+    if document.state.status_norm != "DELIVERED" {
+        tracing::debug!(
+            "YM Order {} has status '{}', skipping P904 projection (only DELIVERED allowed)",
+            document.header.document_no,
+            document.state.status_norm
+        );
+        return Ok(entries);
+    }
+
+    // Если нет строк, ничего не создаем
+    if document.lines.is_empty() {
+        tracing::warn!(
+            "YM Order {} has no lines, skipping P904 projection",
+            document.header.document_no
+        );
+        return Ok(entries);
+    }
+
+    // Определяем дату для проекции (delivery_date или status_changed_at)
+    let date = document
+        .state
+        .delivery_date
+        .map(|dt| dt.to_rfc3339())
+        .or_else(|| document.state.status_changed_at.map(|dt| dt.to_rfc3339()))
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+    for line in &document.lines {
+        // customer_in берём из buyer_price или amount_line
+        let customer_in = line.buyer_price.unwrap_or_else(|| line.amount_line.unwrap_or(0.0));
+
+        let entry = Model {
+            id: Uuid::new_v4().to_string(),
+            registrator_ref: document_id.to_string(),
+            registrator_type: "YM_Order".to_string(),
+            date: date.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
+            nomenclature_ref: line.nomenclature_ref.clone().unwrap_or_default(),
+            marketplace_product_ref: line.marketplace_product_ref.clone().unwrap_or_default(),
+
+            // Sums - заполняем только customer_in
+            customer_in,
+            customer_out: 0.0,
+            coinvest_in: 0.0,
+            commission_out: 0.0,
+            acquiring_out: 0.0,
+            penalty_out: 0.0,
+            logistics_out: 0.0,
+            seller_out: 0.0,
+            price_full: 0.0,
+            price_list: line.price_list.unwrap_or(0.0),
+            price_return: 0.0,
+            commission_percent: 0.0,
+            coinvest_persent: 0.0,
+            total: customer_in,
+
+            document_no: document.header.document_no.clone(),
+            article: line.shop_sku.clone(),
+            posted_at: now.clone(),
+        };
+        entries.push(entry);
+    }
+
+    tracing::info!(
+        "Created {} P904 entries from YM Order {} (status: {})",
+        entries.len(),
+        document.header.document_no,
+        document.state.status_norm
+    );
+
+    Ok(entries)
+}
+
+/// Конвертировать YM Returns в записи Sales Data (P904)
+/// Только документы со статусом REFUNDED формируют проекции
+/// Заполняется только customer_out (с минусом - возврат денег покупателю)
+pub async fn from_ym_returns(document: &YmReturn, document_id: &str) -> Result<Vec<Model>> {
+    let mut entries = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    // Проверяем статус документа - только REFUNDED формируют проекции
+    if document.state.refund_status != "REFUNDED" {
+        tracing::debug!(
+            "YM Return {} has refund_status '{}', skipping P904 projection (only REFUNDED allowed)",
+            document.header.return_id,
+            document.state.refund_status
+        );
+        return Ok(entries);
+    }
+
+    // Если нет строк, ничего не создаем
+    if document.lines.is_empty() {
+        tracing::warn!(
+            "YM Return {} has no lines, skipping P904 projection",
+            document.header.return_id
+        );
+        return Ok(entries);
+    }
+
+    // Определяем дату для проекции (refund_date или created_at_source)
+    let date = document
+        .state
+        .refund_date
+        .map(|dt| dt.to_rfc3339())
+        .or_else(|| document.state.created_at_source.map(|dt| dt.to_rfc3339()))
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+    for line in &document.lines {
+        // Определяем сумму возврата:
+        // 1. Ищем решение с типом REFUND_MONEY
+        // 2. Если не нашли - используем price * count
+        let refund_amount = line
+            .decisions
+            .iter()
+            .find(|d| d.decision_type == "REFUND_MONEY")
+            .and_then(|d| d.amount)
+            .unwrap_or_else(|| line.price.unwrap_or(0.0) * line.count as f64);
+
+        // customer_out отрицательный (возврат денег покупателю)
+        let customer_out = -refund_amount;
+
+        let entry = Model {
+            id: Uuid::new_v4().to_string(),
+            registrator_ref: document_id.to_string(),
+            registrator_type: "YM_Returns".to_string(),
+            date: date.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
+            nomenclature_ref: String::new(), // Пока не заполняем
+            marketplace_product_ref: String::new(), // Пока не заполняем
+
+            // Sums - заполняем только customer_out (с минусом)
+            customer_in: 0.0,
+            customer_out,
+            coinvest_in: 0.0,
+            commission_out: 0.0,
+            acquiring_out: 0.0,
+            penalty_out: 0.0,
+            logistics_out: 0.0,
+            seller_out: 0.0,
+            price_full: 0.0,
+            price_list: line.price.unwrap_or(0.0),
+            price_return: refund_amount,
+            commission_percent: 0.0,
+            coinvest_persent: 0.0,
+            total: customer_out,
+
+            document_no: format!("YM-RET-{}", document.header.return_id),
+            article: line.shop_sku.clone(),
+            posted_at: now.clone(),
+        };
+        entries.push(entry);
+    }
+
+    tracing::info!(
+        "Created {} P904 entries from YM Return {} (refund_status: {})",
+        entries.len(),
+        document.header.return_id,
+        document.state.refund_status
     );
 
     Ok(entries)

@@ -21,12 +21,6 @@
     position: relative;
 }
 
-/* Ensure sticky works within scrollable container */
-.table-container table {
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
 /* Base table styles */
 table {
     width: 100%;
@@ -34,6 +28,12 @@ table {
     background: var(--color-bg-body);
     overflow: visible;
     table-layout: fixed;
+}
+
+/* Ensure sticky works within scrollable container */
+.table-container table {
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 /* Table header cell styles */
@@ -220,6 +220,26 @@ thead th.sticky-left {
     padding: 4px !important;
 }
 
+/* Data table specific styles for sticky header */
+.data-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.data-table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10;
+    background: var(--table-header-bg, #667788);
+    color: var(--table-header-fg, white);
+}
+
+/* Ensure resizable headers stay sticky */
+.data-table thead th.resizable {
+    position: sticky !important;
+    top: 0 !important;
+}
+
 /* Table body row styles */
 .data-table tbody tr {
     transition: background-color 0.15s ease;
@@ -246,4 +266,31 @@ thead th.sticky-left {
 .data-table td {
     padding: 6px 8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================
+   Totals Row in Header (sticky)
+   ============================================ */
+
+/* Строка итогов в thead - под заголовками, sticky */
+.totals-header-row td {
+    position: sticky;
+    top: var(--table-header-height, 32px);
+    z-index: 9;
+    background: #f0f4f8;
+    font-weight: 600;
+    font-size: var(--font-size-xs);
+    padding: 4px 8px;
+    border-bottom: 2px solid #ddd;
+    color: #2d3748;
+    white-space: nowrap;
+}
+
+.totals-header-row td.text-right {
+    text-align: right;
+}
+
+/* Resizable column headers - sticky already creates positioning context */
+th.resizable {
+    min-width: 60px;
 }

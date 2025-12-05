@@ -138,6 +138,7 @@ domain/{feature}/ui/
 
 ### Common Utilities
 - `shared/list_utils.rs` - Table sorting, filtering helpers
+- `shared/table_utils.rs` - Column resize with localStorage persistence
 - `shared/date_utils.rs` - Date formatting
 - `layout/center/tabs/tabs.rs` - Tab management
 
@@ -146,12 +147,18 @@ domain/{feature}/ui/
 - Use existing table classes, form patterns
 - Consistent UI: tabs, filters, date pickers
 
+### List Standard (IMPORTANT)
+- See: `memory-bank/architecture/list-standard.md` for complete specification
+- Эталон: `a012_wb_sales` - серверная пагинация, resize колонок, чекбоксы
+- Все списки должны использовать серверную пагинацию (offset/limit)
+
 ## 🔍 Key Files to Reference
 
 ### Architecture
 - `memory-bank/architecture/domain-layer-architecture.md` - Domain layer rules
 - `memory-bank/architecture/naming-conventions.md` - Complete naming guide
 - `memory-bank/architecture/project-structure.md` - Workspace structure
+- `memory-bank/architecture/list-standard.md` - List component standard (пагинация, resize, чекбоксы)
 
 ### Active Work
 - `memory-bank/activeContext.md` - Current focus & recent changes

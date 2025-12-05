@@ -1341,6 +1341,10 @@ async fn main() -> anyhow::Result<()> {
             post(handlers::a013_ym_order::unpost_document),
         )
         .route(
+            "/api/a013/ym-order/:id/projections",
+            get(handlers::a013_ym_order::get_projections),
+        )
+        .route(
             "/api/a013/ym-order/post-period",
             post(handlers::a013_ym_order::post_period),
         )
@@ -1374,8 +1378,20 @@ async fn main() -> anyhow::Result<()> {
             post(handlers::a016_ym_returns::unpost_document),
         )
         .route(
+            "/api/a016/ym-returns/:id/projections",
+            get(handlers::a016_ym_returns::get_projections),
+        )
+        .route(
             "/api/a016/ym-returns/post-period",
             post(handlers::a016_ym_returns::post_period),
+        )
+        .route(
+            "/api/a016/ym-returns/batch-post",
+            post(handlers::a016_ym_returns::batch_post_documents),
+        )
+        .route(
+            "/api/a016/ym-returns/batch-unpost",
+            post(handlers::a016_ym_returns::batch_unpost_documents),
         )
         // A015 WB Orders handlers
         .route(

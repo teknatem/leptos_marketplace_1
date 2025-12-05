@@ -1,21 +1,32 @@
-use super::details::YmReturnDetail;
-use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use crate::domain::a016_ym_returns::state::create_state;
+use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::date_input::DateInput;
+use crate::shared::components::month_selector::MonthSelector;
+use crate::shared::date_utils::format_datetime;
+use crate::shared::list_utils::{format_number, get_sort_indicator, Sortable};
+use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::cmp::Ordering;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
-/// Форматирует ISO 8601 дату в dd.mm.yyyy
-fn format_date(iso_date: &str) -> String {
-    if let Some(date_part) = iso_date.split('T').next() {
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                return format!("{}.{}.{}", day, month, year);
-            }
-        }
-    }
-    iso_date.to_string()
+const TABLE_ID: &str = "a016-ym-returns-table";
+const COLUMN_WIDTHS_KEY: &str = "a016_ym_returns_column_widths";
+
+/// Paginated response from backend API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedResponse {
+    pub items: Vec<YmReturnDto>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +38,7 @@ pub struct YmReturnDto {
     pub refund_status: String,
     pub total_items: i32,
     pub total_amount: f64,
+    pub created_at_source: String,
     pub fetched_at: String,
     pub is_posted: bool,
 }
@@ -49,6 +61,7 @@ impl Sortable for YmReturnDto {
                 .total_amount
                 .partial_cmp(&other.total_amount)
                 .unwrap_or(Ordering::Equal),
+            "created_at_source" => self.created_at_source.cmp(&other.created_at_source),
             "fetched_at" => self.fetched_at.cmp(&other.fetched_at),
             _ => Ordering::Equal,
         }
@@ -57,529 +70,619 @@ impl Sortable for YmReturnDto {
 
 #[component]
 pub fn YmReturnsList() -> impl IntoView {
-    let (returns, set_returns) = signal::<Vec<YmReturnDto>>(Vec::new());
+    let state = create_state();
+    let global_ctx = expect_context::<AppGlobalContext>();
+
+    let (items, set_items) = signal::<Vec<YmReturnDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (posting_in_progress, set_posting_in_progress) = signal(false);
 
-    // Сортировка
-    let (sort_field, set_sort_field) = signal::<String>("return_id".to_string());
-    let (sort_ascending, set_sort_ascending) = signal(false);
+    // Load data function
+    let load_data = move || {
+        let current_state = state.get();
+        set_loading.set(true);
+        set_error.set(None);
 
-    // Поиск
-    let (search_return_id, set_search_return_id) = signal(String::new());
-    let (search_order_id, set_search_order_id) = signal(String::new());
-    
-    // Фильтры по типу
-    let (filter_type, set_filter_type) = signal::<Option<String>>(None);
+        spawn_local(async move {
+            let offset = current_state.page * current_state.page_size;
+            let sort_desc = !current_state.sort_ascending;
 
-    let load_returns = move || {
-        let set_returns = set_returns.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            set_loading.set(true);
-            set_error.set(None);
+            let mut url = format!(
+                "http://localhost:3000/api/a016/ym-returns?limit={}&offset={}&sort_by={}&sort_desc={}&date_from={}&date_to={}",
+                current_state.page_size,
+                offset,
+                current_state.sort_field,
+                sort_desc,
+                current_state.date_from,
+                current_state.date_to
+            );
 
-            let url = "http://localhost:3000/api/a016/ym-returns";
+            if let Some(ref t) = current_state.filter_type {
+                url.push_str(&format!("&return_type={}", t));
+            }
+            if !current_state.search_return_id.is_empty() {
+                url.push_str(&format!(
+                    "&search_return_id={}",
+                    current_state.search_return_id
+                ));
+            }
+            if !current_state.search_order_id.is_empty() {
+                url.push_str(&format!(
+                    "&search_order_id={}",
+                    current_state.search_order_id
+                ));
+            }
 
-            match Request::get(url).send().await {
+            match Request::get(&url).send().await {
                 Ok(response) => {
-                    let status = response.status();
-                    if status == 200 {
-                        match response.text().await {
-                            Ok(text) => {
-                                log!(
-                                    "Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>()
-                                );
-
-                                match serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                                    Ok(data) => {
-                                        let total_count = data.len();
-                                        log!("Parsed {} items from JSON", total_count);
-
-                                        let items: Vec<YmReturnDto> = data
-                                            .into_iter()
-                                            .filter_map(|v| {
-                                                let return_id = v
-                                                    .get("header")
-                                                    .and_then(|h| h.get("return_id"))
-                                                    .and_then(|r| r.as_i64())
-                                                    .unwrap_or(0);
-
-                                                let order_id = v
-                                                    .get("header")
-                                                    .and_then(|h| h.get("order_id"))
-                                                    .and_then(|o| o.as_i64())
-                                                    .unwrap_or(0);
-
-                                                let return_type = v
-                                                    .get("header")
-                                                    .and_then(|h| h.get("return_type"))
-                                                    .and_then(|t| t.as_str())
-                                                    .unwrap_or("UNKNOWN")
-                                                    .to_string();
-
-                                                let refund_status = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("refund_status"))
-                                                    .and_then(|s| s.as_str())
-                                                    .unwrap_or("UNKNOWN")
-                                                    .to_string();
-
-                                                let fetched_at = v
-                                                    .get("source_meta")
-                                                    .and_then(|s| s.get("fetched_at"))
-                                                    .and_then(|f| f.as_str())
-                                                    .unwrap_or("")
-                                                    .to_string();
-
-                                                let is_posted = v
-                                                    .get("is_posted")
-                                                    .and_then(|p| p.as_bool())
-                                                    .unwrap_or(false);
-
-                                                // Считаем строки и сумму
-                                                let lines = v
-                                                    .get("lines")
-                                                    .and_then(|l| l.as_array())
-                                                    .cloned()
-                                                    .unwrap_or_default();
-
-                                                let mut total_items = 0i32;
-                                                let mut total_amount = 0.0f64;
-
-                                                for line in &lines {
-                                                    if let Some(count) =
-                                                        line.get("count").and_then(|c| c.as_i64())
-                                                    {
-                                                        total_items += count as i32;
-                                                    }
-                                                    if let Some(price) =
-                                                        line.get("price").and_then(|p| p.as_f64())
-                                                    {
-                                                        let count = line
-                                                            .get("count")
-                                                            .and_then(|c| c.as_i64())
-                                                            .unwrap_or(1)
-                                                            as f64;
-                                                        total_amount += price * count;
-                                                    }
-                                                }
-
-                                                // Или используем header.amount если доступен
-                                                if total_amount == 0.0 {
-                                                    if let Some(amount) = v
-                                                        .get("header")
-                                                        .and_then(|h| h.get("amount"))
-                                                        .and_then(|a| a.as_f64())
-                                                    {
-                                                        total_amount = amount;
-                                                    }
-                                                }
-
-                                                Some(YmReturnDto {
-                                                    id: v.get("id")?.as_str()?.to_string(),
-                                                    return_id,
-                                                    order_id,
-                                                    return_type,
-                                                    refund_status,
-                                                    total_items,
-                                                    total_amount,
-                                                    fetched_at,
-                                                    is_posted,
-                                                })
-                                            })
-                                            .collect();
-
-                                        log!(
-                                            "Successfully parsed {} returns out of {}",
-                                            items.len(),
-                                            total_count
-                                        );
-                                        set_returns.set(items);
-                                        set_loading.set(false);
-                                    }
-                                    Err(e) => {
-                                        log!("Failed to parse response: {:?}", e);
-                                        set_error
-                                            .set(Some(format!("Failed to parse response: {}", e)));
-                                        set_loading.set(false);
-                                    }
-                                }
+                    if response.status() == 200 {
+                        match response.json::<PaginatedResponse>().await {
+                            Ok(data) => {
+                                set_items.set(data.items);
+                                state.update(|s| {
+                                    s.total_count = data.total;
+                                    s.total_pages = data.total_pages;
+                                    s.is_loaded = true;
+                                });
+                                set_loading.set(false);
                             }
                             Err(e) => {
-                                log!("Failed to read response text: {:?}", e);
-                                set_error.set(Some(format!("Failed to read response: {}", e)));
+                                log!("Failed to parse response: {:?}", e);
+                                set_error.set(Some(format!("Failed to parse: {}", e)));
                                 set_loading.set(false);
                             }
                         }
                     } else {
-                        set_error.set(Some(format!("Server error: {}", status)));
+                        set_error.set(Some(format!("Server error: {}", response.status())));
                         set_loading.set(false);
                     }
                 }
                 Err(e) => {
-                    log!("Failed to fetch returns: {:?}", e);
-                    set_error.set(Some(format!("Failed to fetch returns: {}", e)));
+                    log!("Failed to fetch: {:?}", e);
+                    set_error.set(Some(format!("Failed to fetch: {}", e)));
                     set_loading.set(false);
                 }
             }
         });
     };
 
-    // Функция для получения отфильтрованных и отсортированных данных
-    let get_filtered_sorted_items = move || -> Vec<YmReturnDto> {
-        let mut result = returns.get();
-        let field = sort_field.get();
-        let ascending = sort_ascending.get();
-        let search_ret = search_return_id.get();
-        let search_ord = search_order_id.get();
-        let type_filter = filter_type.get();
-
-        // Фильтрация по return_id
-        if !search_ret.is_empty() {
-            if let Ok(search_num) = search_ret.parse::<i64>() {
-                result.retain(|r| r.return_id == search_num);
-            } else {
-                result.retain(|r| r.return_id.to_string().contains(&search_ret));
-            }
+    // Initial load - only once
+    Effect::new(move |_| {
+        if !state.with_untracked(|s| s.is_loaded) {
+            load_data();
         }
+    });
 
-        // Фильтрация по order_id
-        if !search_ord.is_empty() {
-            if let Ok(search_num) = search_ord.parse::<i64>() {
-                result.retain(|r| r.order_id == search_num);
-            } else {
-                result.retain(|r| r.order_id.to_string().contains(&search_ord));
-            }
+    // Init column resize after data is loaded
+    Effect::new(move |_| {
+        let is_loaded = state.get().is_loaded;
+        if is_loaded {
+            // Small delay to ensure DOM is ready
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(50).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
         }
+    });
 
-        // Фильтрация по типу
-        if let Some(ref t) = type_filter {
-            result.retain(|r| &r.return_type == t);
-        }
-
-        // Сортировка
-        result.sort_by(|a, b| {
-            let cmp = a.compare_by_field(b, &field);
-            if ascending {
-                cmp
-            } else {
-                cmp.reverse()
-            }
-        });
-
-        result
-    };
-
-    // Обработчик переключения сортировки
+    // Handlers
     let toggle_sort = move |field: &'static str| {
         move |_| {
-            if sort_field.get() == field {
-                set_sort_ascending.update(|v| *v = !*v);
+            if was_just_resizing() {
+                return;
+            }
+            state.update(|s| {
+                if s.sort_field == field {
+                    s.sort_ascending = !s.sort_ascending;
+                } else {
+                    s.sort_field = field.to_string();
+                    s.sort_ascending = true;
+                }
+                s.page = 0;
+            });
+            load_data();
+        }
+    };
+
+    let go_to_page = move |page: usize| {
+        state.update(|s| s.page = page);
+        load_data();
+    };
+
+    let change_page_size = move |size: usize| {
+        state.update(|s| {
+            s.page_size = size;
+            s.page = 0;
+        });
+        load_data();
+    };
+
+    let toggle_select = move |id: String| {
+        state.update(|s| {
+            if s.selected_ids.contains(&id) {
+                s.selected_ids.retain(|x| x != &id);
             } else {
-                set_sort_field.set(field.to_string());
-                set_sort_ascending.set(true);
+                s.selected_ids.push(id);
+            }
+        });
+    };
+
+    let toggle_select_all = move |_| {
+        let current_items = items.get();
+        let current_selected = state.get().selected_ids.clone();
+        let all_on_page: Vec<String> = current_items.iter().map(|i| i.id.clone()).collect();
+
+        if all_on_page.iter().all(|id| current_selected.contains(id)) {
+            // Deselect all on page
+            state.update(|s| {
+                s.selected_ids.retain(|id| !all_on_page.contains(id));
+            });
+        } else {
+            // Select all on page
+            state.update(|s| {
+                for id in all_on_page {
+                    if !s.selected_ids.contains(&id) {
+                        s.selected_ids.push(id);
+                    }
+                }
+            });
+        }
+    };
+
+    // Batch post
+    let batch_post = move |_| {
+        let ids = state.get().selected_ids.clone();
+        if ids.is_empty() {
+            return;
+        }
+        set_posting_in_progress.set(true);
+
+        spawn_local(async move {
+            let body = json!({ "ids": ids });
+            match Request::post("http://localhost:3000/api/a016/ym-returns/batch-post")
+                .header("Content-Type", "application/json")
+                .body(body.to_string())
+                .unwrap()
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    if resp.status() == 200 {
+                        state.update(|s| s.selected_ids.clear());
+                        load_data();
+                    }
+                }
+                Err(e) => log!("Batch post error: {:?}", e),
+            }
+            set_posting_in_progress.set(false);
+        });
+    };
+
+    // Batch unpost
+    let batch_unpost = move |_| {
+        let ids = state.get().selected_ids.clone();
+        if ids.is_empty() {
+            return;
+        }
+        set_posting_in_progress.set(true);
+
+        spawn_local(async move {
+            let body = json!({ "ids": ids });
+            match Request::post("http://localhost:3000/api/a016/ym-returns/batch-unpost")
+                .header("Content-Type", "application/json")
+                .body(body.to_string())
+                .unwrap()
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    if resp.status() == 200 {
+                        state.update(|s| s.selected_ids.clear());
+                        load_data();
+                    }
+                }
+                Err(e) => log!("Batch unpost error: {:?}", e),
+            }
+            set_posting_in_progress.set(false);
+        });
+    };
+
+    // Export to Excel
+    let export_excel = move |_| {
+        let data = items.get();
+        let mut csv = String::from("\u{FEFF}"); // BOM for Excel
+        csv.push_str("Return ID;Order ID;Тип;Статус;Кол-во;Сумма;Дата;Проведен\n");
+
+        for item in data.iter() {
+            csv.push_str(&format!(
+                "{};{};{};{};{};{};{};{}\n",
+                item.return_id,
+                item.order_id,
+                item.return_type,
+                item.refund_status,
+                item.total_items,
+                format_number(item.total_amount),
+                format_datetime(&item.created_at_source),
+                if item.is_posted { "Да" } else { "Нет" }
+            ));
+        }
+
+        // Download file
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                let parts = js_sys::Array::new();
+                parts.push(&JsValue::from_str(&csv));
+                let opts = BlobPropertyBag::new();
+                opts.set_type("text/csv;charset=utf-8");
+                if let Ok(blob) = Blob::new_with_str_sequence_and_options(&parts, &opts) {
+                    if let Ok(url) = Url::create_object_url_with_blob(&blob) {
+                        if let Ok(a) = document.create_element("a") {
+                            if let Ok(anchor) = a.dyn_into::<HtmlAnchorElement>() {
+                                anchor.set_href(&url);
+                                anchor.set_download("ym_returns.csv");
+                                anchor.click();
+                                let _ = Url::revoke_object_url(&url);
+                            }
+                        }
+                    }
+                }
             }
         }
     };
 
-    // Автоматическая загрузка при открытии
-    load_returns();
+    // Open detail view
+    let open_detail = move |id: String| {
+        global_ctx.open_tab(
+            &format!("a016_ym_returns_detail_{}", id),
+            &format!("YM Return {}", &id[..8.min(id.len())]),
+        );
+    };
 
     view! {
-        <div class="ym-returns-list" style="padding: 10px;">
+        <div class="list-container">
+            // Header Row 1 - Title, Pagination, Actions
+            <div class="list-header-row gradient-header">
+                <div class="header-left">
+                    <h2 class="list-title">"📦 YM Returns (A016)"</h2>
+                </div>
+
+                // Pagination
+                <div class="pagination-controls">
+                    <button
+                        class="btn btn-icon-transparent"
+                        on:click=move |_| go_to_page(0)
+                        disabled=move || state.get().page == 0
+                    >"⏮"</button>
+                    <button
+                        class="btn btn-icon-transparent"
+                        on:click=move |_| {
+                            let p = state.get().page;
+                            if p > 0 { go_to_page(p - 1); }
+                        }
+                        disabled=move || state.get().page == 0
+                    >"◀"</button>
+                    <span class="pagination-info">
+                        {move || {
+                            let s = state.get();
+                            format!("{} / {} ({})", s.page + 1, s.total_pages.max(1), s.total_count)
+                        }}
+                    </span>
+                    <button
+                        class="btn btn-icon-transparent"
+                        on:click=move |_| {
+                            let s = state.get();
+                            if s.page + 1 < s.total_pages { go_to_page(s.page + 1); }
+                        }
+                        disabled=move || {
+                            let s = state.get();
+                            s.page + 1 >= s.total_pages
+                        }
+                    >"▶"</button>
+                    <button
+                        class="btn btn-icon-transparent"
+                        on:click=move |_| {
+                            let s = state.get();
+                            if s.total_pages > 0 { go_to_page(s.total_pages - 1); }
+                        }
+                        disabled=move || {
+                            let s = state.get();
+                            s.page + 1 >= s.total_pages
+                        }
+                    >"⏭"</button>
+                    <select
+                        class="page-size-select"
+                        on:change=move |ev| {
+                            let val = event_target_value(&ev).parse().unwrap_or(100);
+                            change_page_size(val);
+                        }
+                    >
+                        <option value="50" selected=move || state.get().page_size == 50>"50"</option>
+                        <option value="100" selected=move || state.get().page_size == 100>"100"</option>
+                        <option value="200" selected=move || state.get().page_size == 200>"200"</option>
+                        <option value="500" selected=move || state.get().page_size == 500>"500"</option>
+                    </select>
+                </div>
+
+                // Action buttons
+                <div class="header-right">
+                    <button
+                        class="btn btn-success"
+                        on:click=batch_post
+                        disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
+                    >
+                        {move || format!("✓ Post ({})", state.get().selected_ids.len())}
+                    </button>
+                    <button
+                        class="btn btn-warning"
+                        on:click=batch_unpost
+                        disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
+                    >
+                        {move || format!("✗ Unpost ({})", state.get().selected_ids.len())}
+                    </button>
+                    <button class="btn btn-excel" on:click=export_excel>"📊 Excel"</button>
+                </div>
+            </div>
+
+            // Header Row 2 - Filters
+            <div class="list-header-row filters-row">
+                <div class="filter-group">
+                    <label>"Период:"</label>
+                    <DateInput
+                        value=Signal::derive(move || state.get().date_from)
+                        on_change=move |val| {
+                            state.update(|s| { s.date_from = val; s.page = 0; });
+                            load_data();
+                        }
+                    />
+                    <span>" — "</span>
+                    <DateInput
+                        value=Signal::derive(move || state.get().date_to)
+                        on_change=move |val| {
+                            state.update(|s| { s.date_to = val; s.page = 0; });
+                            load_data();
+                        }
+                    />
+                    <MonthSelector
+                        on_select=Callback::new(move |(from, to)| {
+                            state.update(|s| {
+                                s.date_from = from;
+                                s.date_to = to;
+                                s.page = 0;
+                            });
+                            load_data();
+                        })
+                    />
+                </div>
+
+                <div class="filter-group">
+                    <label>"Return ID:"</label>
+                    <input
+                        type="text"
+                        class="filter-input"
+                        placeholder="Поиск..."
+                        prop:value=move || state.get().search_return_id
+                        on:input=move |ev| {
+                            state.update(|s| {
+                                s.search_return_id = event_target_value(&ev);
+                                s.page = 0;
+                            });
+                        }
+                        on:keydown=move |ev| {
+                            if ev.key() == "Enter" {
+                                load_data();
+                            }
+                        }
+                    />
+                </div>
+
+                <div class="filter-group">
+                    <label>"Order ID:"</label>
+                    <input
+                        type="text"
+                        class="filter-input"
+                        placeholder="Поиск..."
+                        prop:value=move || state.get().search_order_id
+                        on:input=move |ev| {
+                            state.update(|s| {
+                                s.search_order_id = event_target_value(&ev);
+                                s.page = 0;
+                            });
+                        }
+                        on:keydown=move |ev| {
+                            if ev.key() == "Enter" {
+                                load_data();
+                            }
+                        }
+                    />
+                </div>
+
+                <div class="filter-group">
+                    <label>"Тип:"</label>
+                    <select
+                        class="filter-select"
+                        on:change=move |ev| {
+                            let val = event_target_value(&ev);
+                            state.update(|s| {
+                                s.filter_type = if val.is_empty() { None } else { Some(val) };
+                                s.page = 0;
+                            });
+                            load_data();
+                        }
+                    >
+                        <option value="">"Все"</option>
+                        <option value="RETURN">"Возврат"</option>
+                        <option value="UNREDEEMED">"Невыкуп"</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" on:click=move |_| load_data()>
+                    {move || if loading.get() { "⏳ Загрузка..." } else { "🔄 Обновить" }}
+                </button>
+            </div>
+
+            // Error message
             {move || {
-                if let Some(id) = selected_id.get() {
+                if let Some(err) = error.get() {
                     view! {
-                        <div class="modal-overlay" style="align-items: flex-start; padding-top: 40px;">
-                            <div class="modal-content" style="max-width: 1200px; height: calc(100vh - 80px); overflow: hidden; margin: 0;">
-                                <YmReturnDetail
-                                    id=id
-                                    on_close=move || set_selected_id.set(None)
-                                />
-                            </div>
+                        <div class="error-message">
+                            <strong>"Ошибка: "</strong>{err}
                         </div>
                     }.into_any()
                 } else {
-                    view! {
-                        <div>
-                            // Header
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                                <h2 style="margin: 0;">"Yandex Market Returns (A016)"</h2>
-                                <button
-                                    on:click=move |_| {
-                                        load_returns();
-                                    }
-                                    style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
-                                    prop:disabled=move || loading.get()
-                                >
-                                    {move || if loading.get() { "Загрузка..." } else { "🔄 Обновить" }}
-                                </button>
-                            </div>
-
-                            // Filters panel
-                            <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; padding: 12px; background: #f9f9f9; border-radius: 8px; border: 1px solid #eee;">
-                                // Search by Return ID
-                                <div style="flex: 1; min-width: 150px; max-width: 200px;">
-                                    <label style="display: block; font-size: 12px; font-weight: 500; color: #666; margin-bottom: 4px;">"Return ID"</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Поиск..."
-                                        style="width: 100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
-                                        prop:value=move || search_return_id.get()
-                                        on:input=move |ev| {
-                                            set_search_return_id.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </div>
-
-                                // Search by Order ID
-                                <div style="flex: 1; min-width: 150px; max-width: 200px;">
-                                    <label style="display: block; font-size: 12px; font-weight: 500; color: #666; margin-bottom: 4px;">"Order ID"</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Поиск..."
-                                        style="width: 100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
-                                        prop:value=move || search_order_id.get()
-                                        on:input=move |ev| {
-                                            set_search_order_id.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </div>
-
-                                // Filter by Type
-                                <div style="flex: 1; min-width: 150px; max-width: 200px;">
-                                    <label style="display: block; font-size: 12px; font-weight: 500; color: #666; margin-bottom: 4px;">"Тип"</label>
-                                    <select
-                                        style="width: 100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white;"
-                                        on:change=move |ev| {
-                                            let value = event_target_value(&ev);
-                                            if value.is_empty() {
-                                                set_filter_type.set(None);
-                                            } else {
-                                                set_filter_type.set(Some(value));
-                                            }
-                                        }
-                                    >
-                                        <option value="">"Все"</option>
-                                        <option value="RETURN">"Возврат"</option>
-                                        <option value="UNREDEEMED">"Невыкуп"</option>
-                                    </select>
-                                </div>
-
-                                // Clear filters button
-                                <div style="display: flex; align-items: flex-end;">
-                                    <button
-                                        on:click=move |_| {
-                                            set_search_return_id.set(String::new());
-                                            set_search_order_id.set(String::new());
-                                            set_filter_type.set(None);
-                                        }
-                                        style="padding: 6px 12px; background: #fff; color: #666; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 13px;"
-                                    >
-                                        "✕ Сбросить"
-                                    </button>
-                                </div>
-                            </div>
-
-                            // Summary
-                            {move || {
-                                let items = get_filtered_sorted_items();
-                                let total_count = items.len();
-                                let returns_count = items.iter().filter(|r| r.return_type == "RETURN").count();
-                                let unredeemed_count = items.iter().filter(|r| r.return_type == "UNREDEEMED").count();
-                                let total_amount: f64 = items.iter().map(|r| r.total_amount).sum();
-                                let total_items_sum: i32 = items.iter().map(|r| r.total_items).sum();
-
-                                view! {
-                                    <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
-                                        <div style="padding: 10px 16px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #1976d2;">
-                                            <div style="font-size: 11px; color: #666; text-transform: uppercase;">"Всего"</div>
-                                            <div style="font-size: 20px; font-weight: bold; color: #1976d2;">{total_count}</div>
-                                        </div>
-                                        <div style="padding: 10px 16px; background: #e8f5e9; border-radius: 6px; border-left: 4px solid #388e3c;">
-                                            <div style="font-size: 11px; color: #666; text-transform: uppercase;">"Возвраты"</div>
-                                            <div style="font-size: 20px; font-weight: bold; color: #388e3c;">{returns_count}</div>
-                                        </div>
-                                        <div style="padding: 10px 16px; background: #fff3e0; border-radius: 6px; border-left: 4px solid #f57c00;">
-                                            <div style="font-size: 11px; color: #666; text-transform: uppercase;">"Невыкупы"</div>
-                                            <div style="font-size: 20px; font-weight: bold; color: #f57c00;">{unredeemed_count}</div>
-                                        </div>
-                                        <div style="padding: 10px 16px; background: #fce4ec; border-radius: 6px; border-left: 4px solid #c2185b;">
-                                            <div style="font-size: 11px; color: #666; text-transform: uppercase;">"Сумма"</div>
-                                            <div style="font-size: 20px; font-weight: bold; color: #c2185b;">{format!("{:.2}", total_amount)}</div>
-                                        </div>
-                                        <div style="padding: 10px 16px; background: #f3e5f5; border-radius: 6px; border-left: 4px solid #7b1fa2;">
-                                            <div style="font-size: 11px; color: #666; text-transform: uppercase;">"Товаров"</div>
-                                            <div style="font-size: 20px; font-weight: bold; color: #7b1fa2;">{total_items_sum}</div>
-                                        </div>
-                                    </div>
-                                }
-                            }}
-
-                            // Error message
-                            {move || {
-                                if let Some(err) = error.get() {
-                                    view! {
-                                        <div style="padding: 12px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828; margin-bottom: 16px;">
-                                            <strong>"Ошибка: "</strong>{err}
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! { <div></div> }.into_any()
-                                }
-                            }}
-
-                            // Loading indicator
-                            {move || {
-                                if loading.get() {
-                                    view! {
-                                        <div style="text-align: center; padding: 40px; color: #666;">
-                                            <div style="font-size: 24px; margin-bottom: 8px;">"⏳"</div>
-                                            <div>"Загрузка данных..."</div>
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! { <div></div> }.into_any()
-                                }
-                            }}
-
-                            // Table
-                            {move || {
-                                if !loading.get() && error.get().is_none() {
-                                    let items = get_filtered_sorted_items();
-                                    view! {
-                                        <div class="table-container" style="overflow-x: auto;">
-                                            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                                                <thead>
-                                                    <tr style="background: #f5f5f5;">
-                                                        <th style="border: 1px solid #ddd; padding: 10px; width: 80px;">"ID"</th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("return_id")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Return №{}", get_sort_indicator(&sort_field.get(), "return_id", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("order_id")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Order №{}", get_sort_indicator(&sort_field.get(), "order_id", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("return_type")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Тип{}", get_sort_indicator(&sort_field.get(), "return_type", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("refund_status")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Статус{}", get_sort_indicator(&sort_field.get(), "refund_status", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; text-align: right; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("total_items")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Шт.{}", get_sort_indicator(&sort_field.get(), "total_items", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; text-align: right; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("total_amount")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Сумма{}", get_sort_indicator(&sort_field.get(), "total_amount", sort_ascending.get()))}
-                                                        </th>
-                                                        <th
-                                                            style="border: 1px solid #ddd; padding: 10px; cursor: pointer; user-select: none;"
-                                                            on:click=toggle_sort("fetched_at")
-                                                            title="Сортировать"
-                                                        >
-                                                            {move || format!("Загружен{}", get_sort_indicator(&sort_field.get(), "fetched_at", sort_ascending.get()))}
-                                                        </th>
-                                                        <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">"✓"</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {items.into_iter().map(|ret| {
-                                                        let short_id = ret.id.chars().take(8).collect::<String>();
-                                                        let ret_id = ret.id.clone();
-                                                        let formatted_amount = format!("{:.2}", ret.total_amount);
-                                                        let formatted_date = format_date(&ret.fetched_at);
-                                                        let return_type_label = match ret.return_type.as_str() {
-                                                            "UNREDEEMED" => "Невыкуп".to_string(),
-                                                            "RETURN" => "Возврат".to_string(),
-                                                            _ => ret.return_type.clone(),
-                                                        };
-                                                        let return_type_style = match ret.return_type.as_str() {
-                                                            "UNREDEEMED" => "background: #fff3e0; color: #e65100;",
-                                                            "RETURN" => "background: #e3f2fd; color: #1565c0;",
-                                                            _ => "background: #f5f5f5; color: #666;",
-                                                        };
-                                                        let status_style = match ret.refund_status.as_str() {
-                                                            "REFUNDED" => "background: #e8f5e9; color: #2e7d32;",
-                                                            "NOT_REFUNDED" => "background: #ffebee; color: #c62828;",
-                                                            "REFUND_IN_PROGRESS" => "background: #fff3e0; color: #e65100;",
-                                                            _ => "background: #f5f5f5; color: #666;",
-                                                        };
-                                                        view! {
-                                                            <tr
-                                                                on:click=move |_| {
-                                                                    set_selected_id.set(Some(ret_id.clone()));
-                                                                }
-                                                                style="cursor: pointer; transition: background 0.2s;"
-                                                                onmouseenter="this.style.background='#f5f5f5'"
-                                                                onmouseleave="this.style.background='white'"
-                                                            >
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                    <code style="font-size: 0.85em; color: #666;">{format!("{}...", short_id)}</code>
-                                                                </td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; font-weight: 600; color: #1976d2;">{ret.return_id}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">{ret.order_id}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                    <span style={format!("padding: 3px 10px; border-radius: 4px; font-size: 0.85em; font-weight: 500; {}", return_type_style)}>
-                                                                        {return_type_label}
-                                                                    </span>
-                                                                </td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                    <span style={format!("padding: 3px 10px; border-radius: 4px; font-size: 0.85em; font-weight: 500; {}", status_style)}>
-                                                                        {ret.refund_status.clone()}
-                                                                    </span>
-                                                                </td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{ret.total_items}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: 500;">{formatted_amount}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; font-size: 0.85em; color: #666;">{formatted_date}</td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
-                                                                    {if ret.is_posted {
-                                                                        view! { <span style="color: #2e7d32; font-size: 16px;">"✓"</span> }.into_any()
-                                                                    } else {
-                                                                        view! { <span style="color: #ccc;">"—"</span> }.into_any()
-                                                                    }}
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    }).collect_view()}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! { <div></div> }.into_any()
-                                }
-                            }}
-                        </div>
-                    }.into_any()
+                    view! { <div></div> }.into_any()
                 }
             }}
+
+            // Table
+            <div class="table-container">
+                <table id=TABLE_ID class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell">
+                                <input
+                                    type="checkbox"
+                                    on:change=toggle_select_all
+                                    prop:checked=move || {
+                                        let current_items = items.get();
+                                        let selected = state.get().selected_ids;
+                                        !current_items.is_empty() && current_items.iter().all(|i| selected.contains(&i.id))
+                                    }
+                                />
+                            </th>
+                            <th class="resizable" on:click=toggle_sort("created_at_source")>
+                                <span class="sortable-header">
+                                    "Дата"
+                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "created_at_source", state.get().sort_ascending)}</span>
+                                </span>
+                            </th>
+                            <th class="resizable" on:click=toggle_sort("return_id")>
+                                <span class="sortable-header">
+                                    "Return №"
+                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "return_id", state.get().sort_ascending)}</span>
+                                </span>
+                            </th>
+                            <th class="resizable" on:click=toggle_sort("order_id")>
+                                <span class="sortable-header">
+                                    "Order №"
+                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "order_id", state.get().sort_ascending)}</span>
+                                </span>
+                            </th>
+                            <th class="resizable" on:click=toggle_sort("return_type")>
+                                <span class="sortable-header">
+                                    "Тип"
+                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "return_type", state.get().sort_ascending)}</span>
+                                </span>
+                            </th>
+                            <th class="resizable" on:click=toggle_sort("refund_status")>
+                                <span class="sortable-header">
+                                    "Статус"
+                                    <span class="sort-icon">{move || get_sort_indicator(&state.get().sort_field, "refund_status", state.get().sort_ascending)}</span>
+                                </span>
+                            </th>
+                            <th class="resizable text-right">"Шт."</th>
+                            <th class="resizable text-right">"Сумма"</th>
+                            <th class="text-center">"✓"</th>
+                        </tr>
+                        // Totals row
+                        <tr class="totals-header-row">
+                            <td class="checkbox-cell"></td>
+                            <td>
+                                {move || format!("Записей: {}", items.get().len())}
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td>
+                                {move || {
+                                    let data = items.get();
+                                    let returns = data.iter().filter(|r| r.return_type == "RETURN").count();
+                                    let unredeemed = data.iter().filter(|r| r.return_type == "UNREDEEMED").count();
+                                    format!("Возвр: {} / Невык: {}", returns, unredeemed)
+                                }}
+                            </td>
+                            <td></td>
+                            <td class="text-right">
+                                {move || {
+                                    let sum: i32 = items.get().iter().map(|i| i.total_items).sum();
+                                    format!("{}", sum)
+                                }}
+                            </td>
+                            <td class="text-right">
+                                {move || {
+                                    let sum: f64 = items.get().iter().map(|i| i.total_amount).sum();
+                                    format_number(sum)
+                                }}
+                            </td>
+                            <td></td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {move || {
+                            items.get().into_iter().map(|item| {
+                                let id = item.id.clone();
+                                let id_for_click = id.clone();
+                                let id_for_checkbox = id.clone();
+                                let is_selected = state.get().selected_ids.contains(&id);
+
+                                let return_type_class = match item.return_type.as_str() {
+                                    "UNREDEEMED" => "badge badge-warning",
+                                    "RETURN" => "badge badge-info",
+                                    _ => "badge",
+                                };
+                                let return_type_label = match item.return_type.as_str() {
+                                    "UNREDEEMED" => "Невыкуп".to_string(),
+                                    "RETURN" => "Возврат".to_string(),
+                                    _ => item.return_type.clone(),
+                                };
+                                let refund_status = item.refund_status.clone();
+
+                                let status_class = match item.refund_status.as_str() {
+                                    "REFUNDED" => "badge badge-success",
+                                    "NOT_REFUNDED" => "badge badge-danger",
+                                    "REFUND_IN_PROGRESS" => "badge badge-warning",
+                                    _ => "badge",
+                                };
+
+                                view! {
+                                    <tr
+                                        class=move || if is_selected { "selected" } else { "" }
+                                    >
+                                        <td class="checkbox-cell">
+                                            <input
+                                                type="checkbox"
+                                                prop:checked=is_selected
+                                                on:change=move |_| toggle_select(id_for_checkbox.clone())
+                                            />
+                                        </td>
+                                        <td on:click=move |_| open_detail(id_for_click.clone())>
+                                            {format_datetime(&item.created_at_source)}
+                                        </td>
+                                        <td on:click=move |_| open_detail(id.clone()) class="font-bold text-primary">
+                                            {item.return_id}
+                                        </td>
+                                        <td>{item.order_id}</td>
+                                        <td>
+                                            <span class=return_type_class>{return_type_label}</span>
+                                        </td>
+                                        <td>
+                                            <span class=status_class>{refund_status}</span>
+                                        </td>
+                                        <td class="text-right">{item.total_items}</td>
+                                        <td class="text-right font-medium">{format_number(item.total_amount)}</td>
+                                        <td class="text-center">
+                                            {if item.is_posted {
+                                                view! { <span class="text-success">"✓"</span> }.into_any()
+                                            } else {
+                                                view! { <span class="text-muted">"—"</span> }.into_any()
+                                            }}
+                                        </td>
+                                    </tr>
+                                }
+                            }).collect_view()
+                        }}
+                    </tbody>
+                </table>
+            </div>
         </div>
     }
 }

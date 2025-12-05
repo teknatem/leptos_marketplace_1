@@ -6,17 +6,6 @@ use std::collections::HashMap;
 
 use super::repository;
 
-/// Marketplace type to display code mapping
-fn marketplace_display_code(marketplace_type: Option<&str>) -> String {
-    match marketplace_type {
-        Some("Wildberries") => "WB".to_string(),
-        Some("Озон") => "OZON".to_string(),
-        Some("Яндекс.Маркет") => "YM".to_string(),
-        Some(other) => other.to_string(),
-        None => "Другое".to_string(),
-    }
-}
-
 /// Get monthly summary data
 pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<MonthlySummaryResponse> {
     let year = request.year;
@@ -27,38 +16,74 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     let date_to = last_day_of_month(year, month);
     let period = format!("{:04}-{:02}", year, month);
 
-    // Get aggregated revenue data
-    let revenue_data = repository::get_revenue_by_marketplace_and_org(&date_from, &date_to).await?;
-
-    // Get active marketplaces (hardcoded order: WB, OZON, YM)
+    // Fixed marketplaces order: WB, OZON, YM
     let marketplaces = vec!["WB".to_string(), "OZON".to_string(), "YM".to_string()];
 
     // Build indicator rows
     let mut rows = Vec::new();
 
+    // === REVENUE (Выручка) ===
+    let revenue_data = repository::get_revenue_by_marketplace_and_org(&date_from, &date_to).await?;
+    let revenue_rows = build_indicator_rows(
+        &revenue_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_revenue)).collect::<Vec<_>>(),
+        "revenue",
+        "Выручка",
+        &marketplaces,
+        year,
+        month,
+    );
+    rows.extend(revenue_rows);
+
+    // === RETURNS (Возвраты) ===
+    let returns_data = repository::get_returns_by_marketplace_and_org(&date_from, &date_to).await?;
+    let returns_rows = build_indicator_rows(
+        &returns_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_returns)).collect::<Vec<_>>(),
+        "returns",
+        "Возвраты",
+        &marketplaces,
+        year,
+        month,
+    );
+    rows.extend(returns_rows);
+
+    Ok(MonthlySummaryResponse {
+        period,
+        rows,
+        marketplaces,
+    })
+}
+
+/// Build indicator rows from aggregated data
+fn build_indicator_rows(
+    data: &[(Option<String>, Option<String>, f64)], // (marketplace_code, org_name, value)
+    indicator_id: &str,
+    indicator_name: &str,
+    marketplaces: &[String],
+    year: i32,
+    month: u32,
+) -> Vec<IndicatorRow> {
+    let mut rows = Vec::new();
+
     // Calculate totals by marketplace and organization
     let mut mp_totals: HashMap<String, f64> = HashMap::new();
-    let mut org_mp_totals: HashMap<(String, String, String), f64> = HashMap::new(); // (org_ref, org_name, mp_code) -> revenue
-    let mut org_names: HashMap<String, String> = HashMap::new();
+    let mut org_mp_totals: HashMap<(String, String), f64> = HashMap::new();
+    let mut org_names: Vec<String> = Vec::new();
 
-    for item in &revenue_data {
-        let mp_code = marketplace_display_code(item.marketplace_type.as_deref());
-        let revenue = item.total_revenue;
+    for (mp_code_opt, org_name_opt, value) in data {
+        let mp_code = mp_code_opt.clone().unwrap_or_else(|| "Другое".to_string());
 
         // Add to marketplace total
-        *mp_totals.entry(mp_code.clone()).or_insert(0.0) += revenue;
+        *mp_totals.entry(mp_code.clone()).or_insert(0.0) += value;
 
         // Add to organization-marketplace breakdown
-        if let Some(org_ref) = &item.organization_ref {
-            if !org_ref.is_empty() {
-                let org_name = item
-                    .organization_name
-                    .clone()
-                    .unwrap_or_else(|| "Неизвестная организация".to_string());
-                org_names.insert(org_ref.clone(), org_name.clone());
+        if let Some(org_name) = org_name_opt {
+            if !org_name.is_empty() {
+                if !org_names.contains(org_name) {
+                    org_names.push(org_name.clone());
+                }
                 *org_mp_totals
-                    .entry((org_ref.clone(), org_name, mp_code))
-                    .or_insert(0.0) += revenue;
+                    .entry((org_name.clone(), mp_code))
+                    .or_insert(0.0) += value;
             }
         }
     }
@@ -66,34 +91,32 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     // Calculate grand total
     let grand_total: f64 = mp_totals.values().sum();
 
-    // Build total row for revenue
+    // Build total row
     let mut total_values: HashMap<String, f64> = HashMap::new();
-    for mp in &marketplaces {
+    for mp in marketplaces {
         total_values.insert(mp.clone(), *mp_totals.get(mp).unwrap_or(&0.0));
     }
     total_values.insert("total".to_string(), grand_total);
 
     let total_row = IndicatorRow {
-        indicator_id: "revenue".to_string(),
-        indicator_name: "Выручка".to_string(),
+        indicator_id: indicator_id.to_string(),
+        indicator_name: indicator_name.to_string(),
         group_name: None,
         level: 0,
         values: total_values,
-        drilldown_filter: DrilldownFilter::for_month(year, month as u32),
+        drilldown_filter: DrilldownFilter::for_month(year, month),
     };
     rows.push(total_row);
 
-    // Build organization breakdown rows
-    let mut org_refs: Vec<String> = org_names.keys().cloned().collect();
-    org_refs.sort();
+    // Build organization breakdown rows (sorted alphabetically)
+    org_names.sort();
 
-    for org_ref in org_refs {
-        let org_name = org_names.get(&org_ref).cloned().unwrap_or_default();
+    for org_name in org_names {
         let mut org_values: HashMap<String, f64> = HashMap::new();
         let mut org_total = 0.0;
 
-        for mp in &marketplaces {
-            let key = (org_ref.clone(), org_name.clone(), mp.clone());
+        for mp in marketplaces {
+            let key = (org_name.clone(), mp.clone());
             let value = *org_mp_totals.get(&key).unwrap_or(&0.0);
             org_values.insert(mp.clone(), value);
             org_total += value;
@@ -101,21 +124,17 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
         org_values.insert("total".to_string(), org_total);
 
         let org_row = IndicatorRow {
-            indicator_id: "revenue".to_string(),
-            indicator_name: "Выручка".to_string(),
+            indicator_id: indicator_id.to_string(),
+            indicator_name: indicator_name.to_string(),
             group_name: Some(org_name.clone()),
             level: 1,
             values: org_values,
-            drilldown_filter: DrilldownFilter::for_organization(year, month as u32, &org_ref),
+            drilldown_filter: DrilldownFilter::for_organization(year, month, &org_name),
         };
         rows.push(org_row);
     }
 
-    Ok(MonthlySummaryResponse {
-        period,
-        rows,
-        marketplaces,
-    })
+    rows
 }
 
 /// Calculate the last day of a month

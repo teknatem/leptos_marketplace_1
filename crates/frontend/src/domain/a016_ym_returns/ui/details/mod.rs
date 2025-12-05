@@ -3,6 +3,8 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::shared::date_utils::format_datetime;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmReturnDetailDto {
     pub id: String,
@@ -70,6 +72,8 @@ pub struct SourceMetaDto {
 pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (return_data, set_return_data) = signal::<Option<YmReturnDetailDto>>(None);
     let (raw_json_from_ym, set_raw_json_from_ym) = signal::<Option<String>>(None);
+    let (projections, set_projections) = signal::<Option<serde_json::Value>>(None);
+    let (projections_loading, set_projections_loading) = signal(false);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
@@ -92,6 +96,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                 match serde_json::from_str::<YmReturnDetailDto>(&text) {
                                     Ok(data) => {
                                         let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
+                                        let return_id = data.id.clone();
                                         set_return_data.set(Some(data));
                                         set_loading.set(false);
 
@@ -127,6 +132,32 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                 }
                                             }
                                         });
+
+                                        // Асинхронная загрузка проекций
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            set_projections_loading.set(true);
+                                            let projections_url = format!(
+                                                "http://localhost:3000/api/a016/ym-returns/{}/projections",
+                                                return_id
+                                            );
+                                            match Request::get(&projections_url).send().await {
+                                                Ok(resp) => {
+                                                    if resp.status() == 200 {
+                                                        if let Ok(text) = resp.text().await {
+                                                            if let Ok(proj_data) =
+                                                                serde_json::from_str::<serde_json::Value>(&text)
+                                                            {
+                                                                set_projections.set(Some(proj_data));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to load projections: {:?}", e);
+                                                }
+                                            }
+                                            set_projections_loading.set(false);
+                                        });
                                     }
                                     Err(e) => {
                                         log!("Failed to parse return: {:?}", e);
@@ -156,79 +187,75 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     });
 
     view! {
-        <div class="return-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                <h2 style="margin: 0;">"Yandex Market Return Details"</h2>
-                <button
-                    on:click=move |_| on_close.run(())
-                    style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                >
-                    "✕ Close"
-                </button>
+        <div class="detail-form">
+            <div class="detail-form-header">
+                <div class="detail-form-header-left">
+                    <h2>"Yandex Market Return"</h2>
+                </div>
+                <div class="detail-form-header-right">
+                    <button
+                        class="btn btn-secondary"
+                        on:click=move |_| on_close.run(())
+                    >
+                        "✕ Закрыть"
+                    </button>
+                </div>
             </div>
 
-            <div style="flex: 1; overflow-y: auto; min-height: 0;">
+            <div class="detail-form-content">
                 {move || {
                     if loading.get() {
                         view! {
-                            <div style="text-align: center; padding: 40px;">
-                                <p>"Loading..."</p>
+                            <div style="text-align: center; padding: var(--space-2xl);">
+                                <p style="font-size: var(--font-size-sm);">"Загрузка..."</p>
                             </div>
                         }.into_any()
                     } else if let Some(err) = error.get() {
                         view! {
-                            <div style="padding: 20px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828;">
-                                <strong>"Error: "</strong>{err}
+                            <div style="padding: var(--space-lg); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); color: var(--color-error-text); margin: var(--space-lg); font-size: var(--font-size-sm);">
+                                <strong>"Ошибка: "</strong>{err}
                             </div>
                         }.into_any()
                     } else if let Some(data) = return_data.get() {
                         view! {
-                            <div style="height: 100%; display: flex; flex-direction: column;">
-                                // Вкладки
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                            <div>
+                                <div class="detail-tabs">
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "general"
                                         on:click=move |_| set_active_tab.set("general")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "general" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "📋 General"
+                                        "Общие данные"
                                     </button>
                                     <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "lines"
                                         on:click=move |_| set_active_tab.set("lines")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                                            if active_tab.get() == "lines" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
                                     >
-                                        "📦 Items"
+                                        "Товары"
                                     </button>
                                     <button
-                                        on:click=move |_| set_active_tab.set("json")
-                                        style=move || format!(
-                                            "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                                            if active_tab.get() == "json" {
-                                                "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                                            } else {
-                                                "background: #f5f5f5; color: #666;"
-                                            }
-                                        )
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "projections"
+                                        on:click=move |_| set_active_tab.set("projections")
                                     >
-                                        "📄 Raw JSON"
+                                        {move || {
+                                            let count = projections.get().as_ref().map(|p| {
+                                                p["p904_sales_data"].as_array().map(|a| a.len()).unwrap_or(0)
+                                            }).unwrap_or(0);
+                                            format!("Проекции ({})", count)
+                                        }}
+                                    </button>
+                                    <button
+                                        class="detail-tab"
+                                        class:active=move || active_tab.get() == "json"
+                                        on:click=move |_| set_active_tab.set("json")
+                                    >
+                                        "Raw JSON"
                                     </button>
                                 </div>
 
-                                // Контент вкладок
-                                <div style="flex: 1; overflow-y: auto; padding: 10px 0;">
+                                <div style="padding-top: var(--space-lg);">
                                     {move || {
                                         let tab = active_tab.get();
                                         match tab.as_ref() {
@@ -238,69 +265,74 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                     "RETURN" => "Возврат",
                                                     _ => data.header.return_type.as_str(),
                                                 };
-                                                let return_type_style = match data.header.return_type.as_str() {
-                                                    "UNREDEEMED" => "background: #fff3e0; color: #e65100;",
-                                                    "RETURN" => "background: #e3f2fd; color: #1565c0;",
-                                                    _ => "background: #f5f5f5; color: #666;",
+                                                let (return_type_class, return_type_extra_style) = match data.header.return_type.as_str() {
+                                                    "UNREDEEMED" => ("badge", "background: #fff3e0; color: #e65100;"),
+                                                    "RETURN" => ("badge", "background: #e3f2fd; color: #1565c0;"),
+                                                    _ => ("badge", "background: #f5f5f5; color: #666;"),
                                                 };
-                                                let refund_status_style = match data.state.refund_status.as_str() {
-                                                    "REFUNDED" => "background: #e8f5e9; color: #2e7d32;",
-                                                    "NOT_REFUNDED" => "background: #ffebee; color: #c62828;",
-                                                    "REFUND_IN_PROGRESS" => "background: #fff3e0; color: #e65100;",
-                                                    _ => "background: #f5f5f5; color: #666;",
+                                                let (refund_status_class, refund_extra_style) = match data.state.refund_status.as_str() {
+                                                    "REFUNDED" => ("badge badge-success", ""),
+                                                    "NOT_REFUNDED" => ("badge badge-error", ""),
+                                                    "REFUND_IN_PROGRESS" => ("badge", "background: #fff3e0; color: #e65100;"),
+                                                    _ => ("badge", "background: #f5f5f5; color: #666;"),
                                                 };
 
                                                 view! {
-                                                    <div class="general-info">
-                                                        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px 20px; align-items: center;">
-                                                            <div style="font-weight: 600; color: #555;">"Return №:"</div>
-                                                            <div style="font-family: monospace; font-size: 16px; font-weight: bold; color: #1976d2;">{data.header.return_id}</div>
+                                                    <div class="general-info" style="max-width: 1400px;">
+                                                        <div style="background: var(--color-bg-body); padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
+                                                            <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--space-md); align-items: start; font-size: var(--font-size-sm);">
+                                                                <div class="field-label">"Return №:"</div>
+                                                                <div style="font-family: monospace; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: #1976d2;">{data.header.return_id}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Order №:"</div>
-                                                            <div style="font-family: monospace; font-size: 14px;">{data.header.order_id}</div>
+                                                                <div class="field-label">"Order №:"</div>
+                                                                <div style="font-family: monospace;">{data.header.order_id}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Type:"</div>
-                                                            <div>
-                                                                <span style={format!("padding: 4px 12px; border-radius: 4px; font-weight: 500; {}", return_type_style)}>
-                                                                    {return_type_label}
-                                                                </span>
-                                                            </div>
+                                                                <div class="field-label">"Type:"</div>
+                                                                <div>
+                                                                    <span class={return_type_class} style={return_type_extra_style}>
+                                                                        {return_type_label}
+                                                                    </span>
+                                                                </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Refund Status:"</div>
-                                                            <div>
-                                                                <span style={format!("padding: 4px 12px; border-radius: 4px; font-weight: 500; {}", refund_status_style)}>
-                                                                    {data.state.refund_status.clone()}
-                                                                </span>
-                                                            </div>
+                                                                <div class="field-label">"Refund Status:"</div>
+                                                                <div>
+                                                                    <span class={refund_status_class} style={refund_extra_style}>
+                                                                        {data.state.refund_status.clone()}
+                                                                    </span>
+                                                                </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Amount:"</div>
-                                                            <div style="font-size: 16px; font-weight: bold; color: #c62828;">
-                                                                {data.header.amount.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
-                                                                {data.header.currency.clone().map(|c| format!(" {}", c)).unwrap_or_default()}
-                                                            </div>
+                                                                <div class="field-label">"Amount:"</div>
+                                                                <div style="font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: #c62828;">
+                                                                    {data.header.amount.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string())}
+                                                                    {data.header.currency.clone().map(|c| format!(" {}", c)).unwrap_or_default()}
+                                                                </div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Campaign ID:"</div>
-                                                            <div style="font-family: monospace; font-size: 14px;">{data.header.campaign_id.clone()}</div>
+                                                                <div class="field-label">"Campaign ID:"</div>
+                                                                <div style="font-family: monospace;">{data.header.campaign_id.clone()}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Created At Source:"</div>
-                                                            <div>{data.state.created_at_source.clone().unwrap_or("—".to_string())}</div>
+                                                                <div class="field-label">"Created At Source:"</div>
+                                                                <div class="field-value">{data.state.created_at_source.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Updated At Source:"</div>
-                                                            <div>{data.state.updated_at_source.clone().unwrap_or("—".to_string())}</div>
+                                                                <div class="field-label">"Updated At Source:"</div>
+                                                                <div class="field-value">{data.state.updated_at_source.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Fetched At:"</div>
-                                                            <div>{data.source_meta.fetched_at.clone()}</div>
+                                                                <div class="field-label">"Refund Date:"</div>
+                                                                <div class="field-value">{data.state.refund_date.as_ref().map(|d| format_datetime(d)).unwrap_or("—".to_string())}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Document Version:"</div>
-                                                            <div>{data.source_meta.document_version}</div>
+                                                                <div class="field-label">"Fetched At:"</div>
+                                                                <div class="field-value">{format_datetime(&data.source_meta.fetched_at)}</div>
 
-                                                            <div style="font-weight: 600; color: #555;">"Is Posted:"</div>
-                                                            <div>
-                                                                {if data.is_posted {
-                                                                    view! { <span style="color: #2e7d32; font-weight: 500;">"✓ Yes"</span> }.into_any()
-                                                                } else {
-                                                                    view! { <span style="color: #999;">"No"</span> }.into_any()
-                                                                }}
+                                                                <div class="field-label">"Document Version:"</div>
+                                                                <div class="field-value">{data.source_meta.document_version}</div>
+
+                                                                <div class="field-label">"Is Posted:"</div>
+                                                                <div>
+                                                                    {if data.is_posted {
+                                                                        view! { <span style="color: var(--color-success); font-weight: var(--font-weight-medium);">"✓ Yes"</span> }.into_any()
+                                                                    } else {
+                                                                        view! { <span style="color: var(--color-text-muted);">"No"</span> }.into_any()
+                                                                    }}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -313,81 +345,164 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
 
                                                 view! {
                                                     <div class="lines-info">
-                                                        <div style="margin-bottom: 15px; padding: 10px; background: #ffebee; border-radius: 4px;">
-                                                            <strong>"Return Summary: "</strong>
-                                                            {format!("{} items, {} total units, {:.2} total amount",
+                                                        <div style="margin-bottom: var(--space-lg); padding: var(--space-lg); background: var(--color-error-bg); border-radius: var(--radius-sm); font-size: var(--font-size-sm);">
+                                                            <strong>"Сводка по возврату: "</strong>
+                                                            {format!("{} позиций, {} шт. всего, {:.2} сумма",
                                                                 lines.len(),
                                                                 total_items,
                                                                 total_amount
                                                             )}
                                                         </div>
 
-                                                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                                                        <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                             <thead>
-                                                                <tr style="background: #f5f5f5;">
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Shop SKU"</th>
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Name"</th>
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Count"</th>
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Price"</th>
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Reason"</th>
-                                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Decision"</th>
+                                                                <tr style="background: var(--color-bg-secondary);">
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Shop SKU"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Наименование"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Кол-во"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Цена"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Причина"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Тип решения"</th>
+                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Комментарий"</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 {lines.iter().map(|line| {
-                                                                    let decision_info = line.decisions.first().map(|d| {
-                                                                        let amount_str = d.amount.map(|a| format!("{:.2}", a)).unwrap_or("—".to_string());
-                                                                        format!("{} ({})", d.decision_type, amount_str)
-                                                                    }).unwrap_or("—".to_string());
+                                                                    let decision_type = line.decisions.first()
+                                                                        .map(|d| d.decision_type.clone())
+                                                                        .unwrap_or("—".to_string());
+                                                                    let comment = line.decisions.first()
+                                                                        .and_then(|d| d.comment.clone())
+                                                                        .unwrap_or("—".to_string());
 
                                                                     view! {
                                                                         <tr>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                                <code style="font-size: 0.85em;">{line.shop_sku.clone()}</code>
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md);">
+                                                                                <code style="font-size: var(--font-size-xs);">{line.shop_sku.clone()}</code>
                                                                             </td>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px;">{line.name.clone()}</td>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md);">{line.name.clone()}</td>
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">
                                                                                 <strong>{line.count}</strong>
                                                                             </td>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">
                                                                                 {line.price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
                                                                             </td>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px; font-size: 0.85em;">
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
                                                                                 {line.return_reason.clone().unwrap_or("—".to_string())}
                                                                             </td>
-                                                                            <td style="border: 1px solid #ddd; padding: 8px; font-size: 0.85em;">
-                                                                                {decision_info}
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
+                                                                                {decision_type}
+                                                                            </td>
+                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
+                                                                                {comment}
                                                                             </td>
                                                                         </tr>
                                                                     }
                                                                 }).collect_view()}
-                                                                <tr style="background: #f5f5f5; font-weight: bold;">
-                                                                    <td colspan="2" style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Total:"</td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{total_items}</td>
-                                                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; color: #c62828;">{format!("{:.2}", total_amount)}</td>
-                                                                    <td colspan="2" style="border: 1px solid #ddd; padding: 8px;"></td>
+                                                                <tr style="background: var(--color-bg-secondary); font-weight: var(--font-weight-semibold);">
+                                                                    <td colspan="2" style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Итого:"</td>
+                                                                    <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">{total_items}</td>
+                                                                    <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right; color: #c62828;">{format!("{:.2}", total_amount)}</td>
+                                                                    <td colspan="3" style="border: 1px solid var(--color-border-light); padding: var(--space-md);"></td>
                                                                 </tr>
                                                             </tbody>
                                                         </table>
                                                     </div>
                                                 }.into_any()
                                             },
+                                            "projections" => view! {
+                                                <div class="projections-info">
+                                                    {move || {
+                                                        if projections_loading.get() {
+                                                            view! {
+                                                                <div style="padding: var(--space-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                                                                    "Загрузка проекций..."
+                                                                </div>
+                                                            }.into_any()
+                                                        } else if let Some(proj_data) = projections.get() {
+                                                            let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+
+                                                            view! {
+                                                                <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
+                                                                    <div style="background: var(--color-bg-body); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--color-border-lighter);">
+                                                                        <h3 style="margin: 0 0 var(--space-lg) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-md);">
+                                                                            {format!("📈 Sales Data (p904) — {} записей", p904_items.len())}
+                                                                        </h3>
+                                                                        {if !p904_items.is_empty() {
+                                                                            view! {
+                                                                                <div style="overflow-x: auto;">
+                                                                                    <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
+                                                                                        <thead>
+                                                                                            <tr style="background: var(--color-bg-secondary);">
+                                                                                                <th style="padding: var(--space-md); text-align: left; border: 1px solid var(--color-border-light);">"Артикул"</th>
+                                                                                                <th style="padding: var(--space-md); text-align: left; border: 1px solid var(--color-border-light);">"Дата"</th>
+                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="price_list">"Цена прайс"</th>
+                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="price_return">"Цена возврат"</th>
+                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="customer_out (отрицательное значение - возврат)">"К клиенту"</th>
+                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="total">"Итого"</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            {p904_items.iter().map(|item| {
+                                                                                                let article = item["article"].as_str().unwrap_or("—");
+                                                                                                let date = item["date"].as_str().unwrap_or("—");
+                                                                                                let date_formatted = if date.len() > 10 { &date[..10] } else { date };
+                                                                                                let price_list = item["price_list"].as_f64().unwrap_or(0.0);
+                                                                                                let price_return = item["price_return"].as_f64().unwrap_or(0.0);
+                                                                                                let customer_out = item["customer_out"].as_f64().unwrap_or(0.0);
+                                                                                                let total = item["total"].as_f64().unwrap_or(0.0);
+
+                                                                                                view! {
+                                                                                                    <tr style="border-bottom: 1px solid var(--color-border-lighter);">
+                                                                                                        <td style="padding: var(--space-md); border: 1px solid var(--color-border-light); font-family: monospace; font-size: var(--font-size-xs);">{article}</td>
+                                                                                                        <td style="padding: var(--space-md); border: 1px solid var(--color-border-light);">{date_formatted}</td>
+                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);">{format!("{:.2}", price_list)}</td>
+                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); color: #e65100;">{format!("{:.2}", price_return)}</td>
+                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); color: #c62828; background: var(--color-error-bg); font-weight: var(--font-weight-semibold);">{format!("{:.2}", customer_out)}</td>
+                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); font-weight: var(--font-weight-semibold);">{format!("{:.2}", total)}</td>
+                                                                                                    </tr>
+                                                                                                }
+                                                                                            }).collect::<Vec<_>>()}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            view! {
+                                                                                <p style="text-align: center; padding: var(--space-lg); color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                                                                                    "Нет записей. Документ должен иметь статус REFUNDED и быть проведён."
+                                                                                </p>
+                                                                            }.into_any()
+                                                                        }}
+                                                                    </div>
+                                                                </div>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! {
+                                                                <div style="padding: var(--space-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                                                                    "Нет данных проекций"
+                                                                </div>
+                                                            }.into_any()
+                                                        }
+                                                    }}
+                                                </div>
+                                            }.into_any(),
                                             "json" => view! {
                                                 <div class="json-info">
-                                                    <div style="margin-bottom: 10px;">
-                                                        <strong>"Raw JSON from Yandex Market API:"</strong>
+                                                    <div style="margin-bottom: var(--space-lg); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);">
+                                                        "Raw JSON from Yandex Market API:"
                                                     </div>
                                                     {move || {
                                                         if let Some(json) = raw_json_from_ym.get() {
                                                             view! {
-                                                                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">
+                                                                <pre style="background: var(--color-bg-secondary); padding: var(--space-lg); border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--font-size-xs); border: 1px solid var(--color-border-lighter);">
                                                                     {json}
                                                                 </pre>
                                                             }.into_any()
                                                         } else {
                                                             view! {
-                                                                <div style="padding: 20px; text-align: center; color: #999;">
-                                                                    "Loading raw JSON from Yandex Market..."
+                                                                <div style="padding: var(--space-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                                                                    "Загрузка raw JSON из Yandex Market..."
                                                                 </div>
                                                             }.into_any()
                                                         }
@@ -408,4 +523,3 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
         </div>
     }
 }
-

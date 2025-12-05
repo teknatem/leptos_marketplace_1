@@ -909,7 +909,7 @@ impl ImportExecutor {
                         item.photos.iter().filter_map(|p| p.url.clone()).collect();
 
                     YmReturnLine {
-                        item_id: item.id,
+                        item_id: item.market_sku.unwrap_or(0),
                         shop_sku: item.shop_sku.clone().unwrap_or_default(),
                         offer_id: item.offer_id.clone().unwrap_or_default(),
                         name: item.offer_name.clone().unwrap_or_default(),

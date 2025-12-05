@@ -2,8 +2,8 @@ use super::repository;
 use anyhow::Result;
 use uuid::Uuid;
 
-/// Провести документ (установить is_posted = true)
-/// Возвраты YM пока не формируют проекции в p900
+/// Провести документ (установить is_posted = true и создать проекции)
+/// Возвраты YM со статусом REFUNDED формируют проекции в p904 (customer_out с минусом)
 pub async fn post_document(id: Uuid) -> Result<()> {
     // Загрузить документ
     let mut document = repository::get_by_id(id)
@@ -17,14 +17,22 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Сохранить документ
     repository::upsert_document(&document).await?;
 
-    // TODO: Если нужно, добавить проекции для возвратов
-    // Например, в отдельную таблицу p9XX_ym_returns_register
+    // Удалить старые проекции (если были)
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
-    tracing::info!("Posted document a016 (YM Return): {}", id);
+    // Создать новые проекции (только для REFUNDED документов)
+    crate::projections::p904_sales_data::service::project_ym_returns(&document, id).await?;
+
+    tracing::info!(
+        "Posted document a016 (YM Return): {}, refund_status: {}",
+        id,
+        document.state.refund_status
+    );
     Ok(())
 }
 
-/// Отменить проведение документа (установить is_posted = false)
+/// Отменить проведение документа (установить is_posted = false и удалить проекции)
 pub async fn unpost_document(id: Uuid) -> Result<()> {
     // Загрузить документ
     let mut document = repository::get_by_id(id)
@@ -38,9 +46,10 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     // Сохранить документ
     repository::upsert_document(&document).await?;
 
-    // TODO: Если были проекции - удалить их
+    // Удалить проекции
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     tracing::info!("Unposted document a016 (YM Return): {}", id);
     Ok(())
 }
-

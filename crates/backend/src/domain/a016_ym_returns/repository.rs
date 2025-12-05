@@ -5,10 +5,13 @@ use contracts::domain::a016_ym_returns::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::handlers::a016_ym_returns::YmReturnListItemDto;
 use crate::shared::data::db::get_connection;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -66,8 +69,8 @@ impl From<Model> for YmReturn {
                 m.return_id
             )
         });
-        let source_meta: YmReturnSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
+        let source_meta: YmReturnSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| {
                 panic!(
                     "Failed to deserialize source_meta_json for return_id: {}",
                     m.return_id
@@ -185,3 +188,163 @@ pub async fn soft_delete(id: Uuid) -> Result<bool> {
     Ok(result.rows_affected > 0)
 }
 
+// ============================================
+// SQL-based list with pagination
+// ============================================
+
+#[derive(Debug, Clone)]
+pub struct YmReturnsListQuery {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub return_type: Option<String>,
+    pub search_return_id: Option<String>,
+    pub search_order_id: Option<String>,
+    pub sort_by: String,
+    pub sort_desc: bool,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+#[derive(Debug)]
+pub struct YmReturnsListResult {
+    pub items: Vec<YmReturnListItemDto>,
+    pub total: usize,
+}
+
+/// SQL-based list with pagination and filtering
+pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> {
+    let db = get_connection();
+
+    // Build WHERE clause
+    let mut conditions = vec!["is_deleted = 0".to_string()];
+
+    if let Some(ref date_from) = query.date_from {
+        conditions.push(format!(
+            "json_extract(state_json, '$.created_at_source') >= '{}'",
+            date_from
+        ));
+    }
+    if let Some(ref date_to) = query.date_to {
+        conditions.push(format!(
+            "json_extract(state_json, '$.created_at_source') <= '{}T23:59:59'",
+            date_to
+        ));
+    }
+    if let Some(ref return_type) = query.return_type {
+        conditions.push(format!(
+            "json_extract(header_json, '$.return_type') = '{}'",
+            return_type
+        ));
+    }
+    if let Some(ref search_return_id) = query.search_return_id {
+        if !search_return_id.is_empty() {
+            conditions.push(format!(
+                "CAST(return_id AS TEXT) LIKE '%{}%'",
+                search_return_id
+            ));
+        }
+    }
+    if let Some(ref search_order_id) = query.search_order_id {
+        if !search_order_id.is_empty() {
+            conditions.push(format!(
+                "CAST(order_id AS TEXT) LIKE '%{}%'",
+                search_order_id
+            ));
+        }
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Map sort field to SQL expression
+    let sort_column = match query.sort_by.as_str() {
+        "return_id" => "return_id",
+        "order_id" => "order_id",
+        "return_type" => "json_extract(header_json, '$.return_type')",
+        "refund_status" => "json_extract(state_json, '$.refund_status')",
+        "created_at_source" => "json_extract(state_json, '$.created_at_source')",
+        "fetched_at" => "json_extract(source_meta_json, '$.fetched_at')",
+        _ => "json_extract(state_json, '$.created_at_source')",
+    };
+    let sort_order = if query.sort_desc { "DESC" } else { "ASC" };
+
+    // Count total
+    let count_sql = format!(
+        "SELECT COUNT(*) as cnt FROM a016_ym_returns WHERE {}",
+        where_clause
+    );
+    let count_stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, count_sql);
+    let count_result = db.query_one(count_stmt).await?;
+    let total: usize = count_result
+        .map(|row| row.try_get::<i64>("", "cnt").unwrap_or(0) as usize)
+        .unwrap_or(0);
+
+    // Fetch paginated data
+    let select_sql = format!(
+        r#"
+        SELECT 
+            id,
+            return_id,
+            order_id,
+            json_extract(header_json, '$.return_type') as return_type,
+            json_extract(state_json, '$.refund_status') as refund_status,
+            json_extract(state_json, '$.created_at_source') as created_at_source,
+            json_extract(source_meta_json, '$.fetched_at') as fetched_at,
+            lines_json,
+            is_posted
+        FROM a016_ym_returns
+        WHERE {}
+        ORDER BY {} {}
+        LIMIT {} OFFSET {}
+        "#,
+        where_clause, sort_column, sort_order, query.limit, query.offset
+    );
+
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, select_sql);
+    let rows = db.query_all(stmt).await?;
+
+    let items: Vec<YmReturnListItemDto> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let return_id: i64 = row.try_get("", "return_id").ok()?;
+            let order_id: i64 = row.try_get("", "order_id").ok()?;
+            let return_type: String = row.try_get("", "return_type").unwrap_or_default();
+            let refund_status: String = row.try_get("", "refund_status").unwrap_or_default();
+            let created_at_source: String = row.try_get("", "created_at_source").unwrap_or_default();
+            let fetched_at: String = row.try_get("", "fetched_at").unwrap_or_default();
+            let lines_json: String = row.try_get("", "lines_json").unwrap_or_default();
+            let is_posted: bool = row.try_get::<i32>("", "is_posted").unwrap_or(0) == 1;
+
+            // Parse lines to calculate totals
+            let lines: Vec<serde_json::Value> =
+                serde_json::from_str(&lines_json).unwrap_or_default();
+            let mut total_items = 0i32;
+            let mut total_amount = 0.0f64;
+
+            for line in &lines {
+                if let Some(count) = line.get("count").and_then(|c| c.as_i64()) {
+                    total_items += count as i32;
+                }
+                if let Some(price) = line.get("price").and_then(|p| p.as_f64()) {
+                    let count = line.get("count").and_then(|c| c.as_i64()).unwrap_or(1) as f64;
+                    total_amount += price * count;
+                }
+            }
+
+            Some(YmReturnListItemDto {
+                id,
+                return_id,
+                order_id,
+                return_type,
+                refund_status,
+                total_items,
+                total_amount,
+                created_at_source,
+                fetched_at,
+                is_posted,
+            })
+        })
+        .collect();
+
+    Ok(YmReturnsListResult { items, total })
+}
