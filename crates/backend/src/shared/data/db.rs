@@ -2244,6 +2244,74 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
     }
 
     // ============================================================
+    // P906: Nomenclature Prices (1C)
+    // ============================================================
+    let check_p906_nomenclature_prices = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='p906_nomenclature_prices';
+    "#;
+    let p906_nomenclature_prices_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_p906_nomenclature_prices.to_string(),
+        ))
+        .await?;
+
+    if p906_nomenclature_prices_exists.is_empty() {
+        tracing::info!("Creating p906_nomenclature_prices table");
+        let create_p906_nomenclature_prices_table_sql = r#"
+            CREATE TABLE p906_nomenclature_prices (
+                id TEXT PRIMARY KEY NOT NULL,
+                period TEXT NOT NULL,
+                nomenclature_ref TEXT NOT NULL,
+                price REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p906_nomenclature_prices_table_sql.to_string(),
+        ))
+        .await?;
+
+        // Create unique index on period + nomenclature_ref to prevent duplicates
+        let create_idx_period_nomenclature = r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_p906_period_nomenclature 
+            ON p906_nomenclature_prices(period, nomenclature_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_period_nomenclature.to_string(),
+        ))
+        .await?;
+
+        // Create index for period queries
+        let create_idx_period = r#"
+            CREATE INDEX IF NOT EXISTS idx_p906_period 
+            ON p906_nomenclature_prices(period);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_period.to_string(),
+        ))
+        .await?;
+
+        // Create index for nomenclature_ref lookups
+        let create_idx_nomenclature = r#"
+            CREATE INDEX IF NOT EXISTS idx_p906_nomenclature_ref 
+            ON p906_nomenclature_prices(nomenclature_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_idx_nomenclature.to_string(),
+        ))
+        .await?;
+
+        tracing::info!("Successfully created p906_nomenclature_prices table with indexes");
+    }
+
+    // ============================================================
     // User Form Settings
     // ============================================================
     let check_user_form_settings = conn

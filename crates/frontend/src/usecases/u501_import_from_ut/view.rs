@@ -22,6 +22,9 @@ pub fn ImportWidget() -> impl IntoView {
     let (import_p901, set_import_p901) = signal(true);
     let (delete_obsolete, set_delete_obsolete) = signal(false);
 
+    // Дополнительные загрузки
+    let (import_p906, set_import_p906) = signal(false);
+
     // Ключи для localStorage
     const SESSION_KEY: &str = "u501_session_id";
     const PROGRESS_KEY: &str = "u501_progress";
@@ -93,11 +96,20 @@ pub fn ImportWidget() -> impl IntoView {
                             set_progress.set(Some(prog.clone()));
                             if is_finished {
                                 clear_session_storage();
+                                set_session_id.set(None);
                                 break;
                             }
                         }
                         Err(e) => {
-                            set_error_msg.set(format!("Ошибка получения прогресса: {}", e));
+                            // При ошибке (особенно 404) очищаем сессию - она больше не существует
+                            if e.contains("404") {
+                                clear_session_storage();
+                                set_session_id.set(None);
+                                set_progress.set(None);
+                                // Не показываем ошибку пользователю - просто сбрасываем состояние
+                            } else {
+                                set_error_msg.set(format!("Ошибка получения прогресса: {}", e));
+                            }
                             break;
                         }
                     }
@@ -109,13 +121,25 @@ pub fn ImportWidget() -> impl IntoView {
     });
 
     // Восстановить сессию и последний прогресс при монтировании
+    // Сначала проверяем, существует ли сессия на сервере
     Effect::new(move || {
         if session_id.get().is_none() {
             if let Some(saved_id) = load_session_id() {
-                set_session_id.set(Some(saved_id));
-                if let Some(snapshot) = load_progress_snapshot() {
-                    set_progress.set(Some(snapshot));
-                }
+                // Пробуем проверить сессию на сервере
+                let saved_id_clone = saved_id.clone();
+                spawn_local(async move {
+                    match api::get_progress(&saved_id_clone).await {
+                        Ok(prog) => {
+                            // Сессия существует, восстанавливаем
+                            set_session_id.set(Some(saved_id_clone));
+                            set_progress.set(Some(prog));
+                        }
+                        Err(_) => {
+                            // Сессия не существует на сервере, очищаем localStorage
+                            clear_session_storage();
+                        }
+                    }
+                });
             }
         }
     });
@@ -145,6 +169,10 @@ pub fn ImportWidget() -> impl IntoView {
             if import_p901.get() {
                 targets.push("p901_barcodes".to_string());
             }
+            // Дополнительные загрузки
+            if import_p906.get() {
+                targets.push("p906_prices".to_string());
+            }
 
             if targets.is_empty() {
                 set_error_msg.set("Выберите агрегаты для импорта".to_string());
@@ -157,6 +185,8 @@ pub fn ImportWidget() -> impl IntoView {
                 target_aggregates: targets,
                 mode: ImportMode::Interactive,
                 delete_obsolete: delete_obsolete.get(),
+                period_from: None,
+                period_to: None,
             };
 
             match api::start_import(request).await {
@@ -250,6 +280,26 @@ pub fn ImportWidget() -> impl IntoView {
                 </div>
                 <div style="margin-top: 5px; font-size: 12px; color: #666;">
                     "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
+                </div>
+            </div>
+
+            // Дополнительные загрузки
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
+                    "Дополнительные загрузки:"
+                </label>
+                <div style="padding: 12px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
+                    <label style="display: flex; align-items: center;">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || import_p906.get()
+                            on:change=move |ev| { set_import_p906.set(event_target_checked(&ev)); }
+                        />
+                        " p906_prices - Плановые цены номенклатуры"
+                    </label>
+                    <div style="margin-top: 8px; font-size: 12px; color: #1565c0;">
+                        "HTTP: /hs/mpi_api/prices_plan"
+                    </div>
                 </div>
             </div>
 
@@ -371,8 +421,13 @@ pub fn ImportWidget() -> impl IntoView {
                                                 </div>
                                             })}
                                             <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                                                "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Ошибок: " {agg.errors}
+                                                "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Пропущено: " {agg.skipped} " | Ошибок: " {agg.errors}
                                             </div>
+                                            {agg.info.as_ref().map(|info| view! {
+                                                <div style="margin-top: 5px; font-size: 11px; color: #888; font-style: italic;">
+                                                    {info.clone()}
+                                                </div>
+                                            })}
                                         </div>
                                     }
                                 }).collect_view()}

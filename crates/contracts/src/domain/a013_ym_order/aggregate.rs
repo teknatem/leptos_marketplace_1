@@ -206,7 +206,10 @@ impl YmOrder {
     /// Обновление флага is_error на основе строк документа
     /// Ошибкой считается отсутствие nomenclature_ref в любой строке
     pub fn update_is_error(&mut self) {
-        self.is_error = self.lines.iter().any(|line| line.nomenclature_ref.is_none());
+        self.is_error = self
+            .lines
+            .iter()
+            .any(|line| line.nomenclature_ref.is_none());
     }
 
     /// Пересчет итогов по строкам документа
@@ -261,53 +264,52 @@ impl YmOrder {
 
 impl AggregateRoot for YmOrder {
     type Id = YmOrderId;
-    
+
     fn id(&self) -> Self::Id {
         self.base.id
     }
-    
+
     fn code(&self) -> &str {
         &self.base.code
     }
-    
+
     fn description(&self) -> &str {
         &self.base.description
     }
-    
+
     fn metadata(&self) -> &EntityMetadata {
         &self.base.metadata
     }
-    
+
     fn metadata_mut(&mut self) -> &mut EntityMetadata {
         &mut self.base.metadata
     }
-    
+
     fn events(&self) -> &EventStore {
         &self.base.events
     }
-    
+
     fn events_mut(&mut self) -> &mut EventStore {
         &mut self.base.events
     }
-    
+
     fn aggregate_index() -> &'static str {
         "a013"
     }
-    
+
     fn collection_name() -> &'static str {
         "ym_order"
     }
-    
+
     fn element_name() -> &'static str {
         "Заказ Yandex Market"
     }
-    
+
     fn list_name() -> &'static str {
         "Заказы Yandex Market"
     }
-    
+
     fn origin() -> Origin {
         Origin::Marketplace
     }
 }
-

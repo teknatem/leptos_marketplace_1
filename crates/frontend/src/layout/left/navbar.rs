@@ -82,6 +82,11 @@ pub fn Navbar() -> impl IntoView {
             "WB Commission History (P905)",
             "percent",
         ),
+        (
+            "p906_nomenclature_prices",
+            "Плановые цены (P906)",
+            "dollar-sign",
+        ),
     ];
 
     view! {

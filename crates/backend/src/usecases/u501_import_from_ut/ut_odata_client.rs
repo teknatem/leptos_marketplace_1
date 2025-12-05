@@ -55,7 +55,7 @@ impl UtODataClient {
             .await
     }
 
-    /// Получить данные из OData коллекции с фильтром, expand и select
+    /// Получить данные из OData коллекции с фильтром, expand, select и orderby
     pub async fn fetch_collection_with_options<T: serde::de::DeserializeOwned>(
         &self,
         connection: &Connection1CDatabase,
@@ -65,6 +65,22 @@ impl UtODataClient {
         filter: Option<&str>,
         expand: Option<&str>,
         select: Option<&str>,
+    ) -> Result<T> {
+        self.fetch_collection_full(connection, collection_name, top, skip, filter, expand, select, None)
+            .await
+    }
+
+    /// Получить данные из OData коллекции со всеми параметрами включая orderby
+    pub async fn fetch_collection_full<T: serde::de::DeserializeOwned>(
+        &self,
+        connection: &Connection1CDatabase,
+        collection_name: &str,
+        top: Option<i32>,
+        skip: Option<i32>,
+        filter: Option<&str>,
+        expand: Option<&str>,
+        select: Option<&str>,
+        orderby: Option<&str>,
     ) -> Result<T> {
         // Формируем полный OData URL: base_url + /odata/standard.odata/ + collection_name
         let base_url = connection.url.trim_end_matches('/');
@@ -95,22 +111,21 @@ impl UtODataClient {
             params.push(format!("$select={}", select));
         }
 
-        // ВАЖНО: При использовании пагинации ($skip/$top) ОБЯЗАТЕЛЬНО нужен $orderby для стабильного порядка
-        if skip.is_some() || top.is_some() {
+        // Если передан orderby - используем его, иначе определяем автоматически
+        if let Some(ob) = orderby {
+            params.push(format!("$orderby={}", ob));
+        } else if skip.is_some() || top.is_some() {
+            // ВАЖНО: При использовании пагинации ($skip/$top) ОБЯЗАТЕЛЬНО нужен $orderby для стабильного порядка
             // Определяем поле для сортировки в зависимости от типа коллекции
             let order_by = match collection_name {
                 // Справочники и документы имеют Ref_Key
                 name if name.starts_with("Catalog_") => Some("Ref_Key"),
                 name if name.starts_with("Document_") => Some("Ref_Key"),
                 // Регистры сведений (InformationRegister) не имеют Ref_Key
-                // Для них будем сортировать по первому измерению (обычно это и есть ключевое поле)
                 name if name.starts_with("InformationRegister_") => {
-                    // Для регистра штрихкодов это будет "Штрихкод"
                     if name.contains("Штрихкод") || name.contains("Barcode") {
                         Some("Штрихкод")
                     } else {
-                        // Для других регистров можно не использовать сортировку
-                        // или использовать LineNumber если есть
                         None
                     }
                 },

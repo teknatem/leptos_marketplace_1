@@ -253,7 +253,10 @@ impl ImportExecutor {
                     Some(display_name),
                 );
 
-                match self.process_product_from_offer(connection, offer, mapping).await {
+                match self
+                    .process_product_from_offer(connection, offer, mapping)
+                    .await
+                {
                     Ok((is_new, barcodes_count)) => {
                         total_processed += 1;
                         total_barcodes_imported += barcodes_count as i32;
@@ -361,7 +364,6 @@ impl ImportExecutor {
         )
         .await?;
 
-
         // Берем первый barcode из списка
         let barcode = offer.barcodes.first().cloned();
 
@@ -370,7 +372,10 @@ impl ImportExecutor {
         let (category_id, category_name) = (None, offer.category.clone());
 
         // Получаем название товара из offer.name для description
-        let product_title = offer.name.clone().unwrap_or_else(|| "Без названия".to_string());
+        let product_title = offer
+            .name
+            .clone()
+            .unwrap_or_else(|| "Без названия".to_string());
 
         if let Some(mut existing_product) = existing {
             // Обновляем существующий товар
@@ -390,7 +395,13 @@ impl ImportExecutor {
             a007_marketplace_product::repository::update(&existing_product).await?;
 
             // Импорт всех штрихкодов в проекцию p901
-            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &existing_product.nomenclature_ref).await?;
+            let barcodes_count = self
+                .import_barcodes_to_p901(
+                    &offer.barcodes,
+                    &offer.offer_id,
+                    &existing_product.nomenclature_ref,
+                )
+                .await?;
 
             Ok((false, barcodes_count))
         } else {
@@ -414,12 +425,20 @@ impl ImportExecutor {
             );
 
             // Автоматический поиск номенклатуры по артикулу
-            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
+            let _ =
+                a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
+                    .await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
 
             // Импорт всех штрихкодов в проекцию p901
-            let barcodes_count = self.import_barcodes_to_p901(&offer.barcodes, &offer.offer_id, &new_product.nomenclature_ref).await?;
+            let barcodes_count = self
+                .import_barcodes_to_p901(
+                    &offer.barcodes,
+                    &offer.offer_id,
+                    &new_product.nomenclature_ref,
+                )
+                .await?;
 
             Ok((true, barcodes_count))
         }
@@ -436,11 +455,18 @@ impl ImportExecutor {
         use crate::projections::p901_nomenclature_barcodes::{repository, service};
 
         if barcodes.is_empty() {
-            tracing::info!("Product {} has no barcodes, skipping barcode import", article);
+            tracing::info!(
+                "Product {} has no barcodes, skipping barcode import",
+                article
+            );
             return Ok(0);
         }
 
-        tracing::info!("Importing {} barcode(s) for product {} (source: YM)", barcodes.len(), article);
+        tracing::info!(
+            "Importing {} barcode(s) for product {} (source: YM)",
+            barcodes.len(),
+            article
+        );
 
         let mut imported_count = 0;
 
@@ -507,7 +533,11 @@ impl ImportExecutor {
             }
         }
 
-        tracing::info!("Finished importing barcodes for product {}: {} barcode(s) imported", article, imported_count);
+        tracing::info!(
+            "Finished importing barcodes for product {}: {} barcode(s) imported",
+            article,
+            imported_count
+        );
         Ok(imported_count)
     }
 
@@ -534,7 +564,9 @@ impl ImportExecutor {
 
         // 1. Resolve organization
         let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization).await? {
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
                 Some(org) => org.base.id.as_string(),
                 None => {
                     let msg = format!("Organization '{}' not found", connection.organization);
@@ -571,17 +603,38 @@ impl ImportExecutor {
             let is_new = existing.is_none();
 
             // Fetch detailed order info to get realDeliveryDate
-            let order_details = match self.api_client.fetch_order_details(connection, order.id).await {
+            let order_details = match self
+                .api_client
+                .fetch_order_details(connection, order.id)
+                .await
+            {
                 Ok(details) => {
                     // Log full delivery structure for debugging
                     if let Some(delivery) = &details.delivery {
-                        let delivery_json = serde_json::to_string_pretty(delivery).unwrap_or_default();
-                        tracing::info!("Order {} delivery structure:\n{}", order_id_str, delivery_json);
+                        let delivery_json =
+                            serde_json::to_string_pretty(delivery).unwrap_or_default();
+                        tracing::info!(
+                            "Order {} delivery structure:\n{}",
+                            order_id_str,
+                            delivery_json
+                        );
 
                         if let Some(dates) = &delivery.dates {
-                            tracing::info!("Order {} has dates.realDeliveryDate: {:?}", order_id_str, dates.real_delivery_date);
-                            tracing::info!("Order {} has dates.fromDate: {:?}", order_id_str, dates.from_date);
-                            tracing::info!("Order {} has dates.toDate: {:?}", order_id_str, dates.to_date);
+                            tracing::info!(
+                                "Order {} has dates.realDeliveryDate: {:?}",
+                                order_id_str,
+                                dates.real_delivery_date
+                            );
+                            tracing::info!(
+                                "Order {} has dates.fromDate: {:?}",
+                                order_id_str,
+                                dates.from_date
+                            );
+                            tracing::info!(
+                                "Order {} has dates.toDate: {:?}",
+                                order_id_str,
+                                dates.to_date
+                            );
                         } else {
                             tracing::warn!("Order {} delivery has NO dates field", order_id_str);
                         }
@@ -589,9 +642,13 @@ impl ImportExecutor {
                         tracing::warn!("Order {} has NO delivery field", order_id_str);
                     }
                     details
-                },
+                }
                 Err(e) => {
-                    tracing::warn!("Failed to fetch details for order {}: {}, using basic data", order_id_str, e);
+                    tracing::warn!(
+                        "Failed to fetch details for order {}: {}, using basic data",
+                        order_id_str,
+                        e
+                    );
                     order.clone() // Use original order if details fetch fails
                 }
             };
@@ -655,10 +712,16 @@ impl ImportExecutor {
                 .and_then(|dates| dates.real_delivery_date.as_ref())
                 .and_then(|s| parse_ym_date(s));
 
-            let creation_date = order_details.creation_date.as_ref().and_then(|s| parse_ym_date(s));
+            let creation_date = order_details
+                .creation_date
+                .as_ref()
+                .and_then(|s| parse_ym_date(s));
 
             // Clone status before consuming it
-            let status_raw = order_details.status.clone().unwrap_or_else(|| "UNKNOWN".to_string());
+            let status_raw = order_details
+                .status
+                .clone()
+                .unwrap_or_else(|| "UNKNOWN".to_string());
             let status_norm = normalize_ym_status(&status_raw);
 
             // Serialize order-level subsidies to JSON if present
@@ -780,18 +843,17 @@ impl ImportExecutor {
         let mut total_updated = 0;
 
         // 1. Resolve organization
-        let organization_id = match a002_organization::repository::get_by_description(
-            &connection.organization,
-        )
-        .await?
-        {
-            Some(org) => org.base.id.as_string(),
-            None => {
-                let msg = format!("Organization '{}' not found", connection.organization);
-                tracing::error!("{}", msg);
-                anyhow::bail!("{}", msg);
-            }
-        };
+        let organization_id =
+            match a002_organization::repository::get_by_description(&connection.organization)
+                .await?
+            {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!("Organization '{}' not found", connection.organization);
+                    tracing::error!("{}", msg);
+                    anyhow::bail!("{}", msg);
+                }
+            };
 
         // 2. Fetch returns from API with date period
         tracing::info!(
@@ -843,11 +905,8 @@ impl ImportExecutor {
                         .collect();
 
                     // Map photos URLs
-                    let photos: Vec<String> = item
-                        .photos
-                        .iter()
-                        .filter_map(|p| p.url.clone())
-                        .collect();
+                    let photos: Vec<String> =
+                        item.photos.iter().filter_map(|p| p.url.clone()).collect();
 
                     YmReturnLine {
                         item_id: item.id,
@@ -892,7 +951,10 @@ impl ImportExecutor {
                     .unwrap_or_else(|| "unknown".to_string()),
                 return_type: return_item.return_type.clone().unwrap_or_default(),
                 amount: return_item.amount.as_ref().and_then(|a| a.value),
-                currency: return_item.amount.as_ref().and_then(|a| a.currency_id.clone()),
+                currency: return_item
+                    .amount
+                    .as_ref()
+                    .and_then(|a| a.currency_id.clone()),
             };
 
             let state = YmReturnState {

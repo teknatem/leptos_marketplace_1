@@ -17,7 +17,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     opts.set_body(&JsValue::from_str(&body));
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/u501/import/start",
+        "/api/u501/import/start",
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;
@@ -53,7 +53,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!("http://localhost:3000/api/u501/import/{}/progress", session_id);
+    let url = format!("/api/u501/import/{}/progress", session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -93,7 +93,7 @@ pub async fn get_connections() -> Result<Vec<contracts::domain::a001_connection_
     opts.set_mode(RequestMode::Cors);
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/connection_1c",
+        "/api/connection_1c",
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;

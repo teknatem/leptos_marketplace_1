@@ -1197,6 +1197,15 @@ async fn main() -> anyhow::Result<()> {
             "/api/p905-commission",
             post(handlers::p905_wb_commission_history::save_commission),
         )
+        // P906 Nomenclature Prices handlers
+        .route(
+            "/api/p906/nomenclature-prices",
+            get(handlers::p906_nomenclature_prices::list),
+        )
+        .route(
+            "/api/p906/periods",
+            get(handlers::p906_nomenclature_prices::get_periods),
+        )
         // Form Settings handlers
         .route(
             "/api/form-settings/:form_key",

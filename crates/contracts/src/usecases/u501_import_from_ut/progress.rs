@@ -54,7 +54,13 @@ pub struct AggregateProgress {
     pub inserted: i32,
     pub updated: i32,
     pub errors: i32,
+    /// Пропущено записей (по фильтру или периоду)
+    #[serde(default)]
+    pub skipped: i32,
     pub current_item: Option<String>,
+    /// Дополнительная информация (например, найденные виды цен)
+    #[serde(default)]
+    pub info: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

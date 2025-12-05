@@ -42,7 +42,9 @@ impl ProgressTracker {
                 inserted: 0,
                 updated: 0,
                 errors: 0,
+                skipped: 0,
                 current_item: None,
+                info: None,
             });
             progress.updated_at = chrono::Utc::now();
         }
@@ -75,6 +77,28 @@ impl ProgressTracker {
                 progress.total_processed = progress.aggregates.iter().map(|a| a.processed).sum();
                 progress.total_inserted = progress.aggregates.iter().map(|a| a.inserted).sum();
                 progress.total_updated = progress.aggregates.iter().map(|a| a.updated).sum();
+                progress.updated_at = chrono::Utc::now();
+            }
+        }
+    }
+
+    /// Обновить количество пропущенных записей и info
+    pub fn update_aggregate_skipped(
+        &self,
+        session_id: &str,
+        aggregate_index: &str,
+        skipped: i32,
+        info: Option<String>,
+    ) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            if let Some(agg) = progress
+                .aggregates
+                .iter_mut()
+                .find(|a| a.aggregate_index == aggregate_index)
+            {
+                agg.skipped = skipped;
+                agg.info = info;
                 progress.updated_at = chrono::Utc::now();
             }
         }

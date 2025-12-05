@@ -16,6 +16,16 @@ pub struct ImportRequest {
     /// Удалять записи, которых нет в источнике (жесткое удаление)
     #[serde(default)]
     pub delete_obsolete: bool,
+
+    /// Начало периода для загрузок, зависящих от периода (p906_prices и др.)
+    /// Формат: "YYYY-MM-DD"
+    #[serde(default)]
+    pub period_from: Option<String>,
+
+    /// Конец периода для загрузок, зависящих от периода (p906_prices и др.)
+    /// Формат: "YYYY-MM-DD"
+    #[serde(default)]
+    pub period_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

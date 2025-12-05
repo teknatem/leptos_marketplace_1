@@ -4,3 +4,4 @@ pub mod p902_ozon_finance_realization;
 pub mod p903_wb_finance_report;
 pub mod p904_sales_data;
 pub mod p905_wb_commission_history;
+pub mod p906_nomenclature_prices;

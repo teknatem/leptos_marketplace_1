@@ -30,6 +30,7 @@ use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::projections::p904_sales_data::ui::list::SalesDataList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
+use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
 use crate::dashboards::MonthlySummaryDashboard;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
@@ -199,6 +200,10 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "p905_commission_history" => {
                 view! { <CommissionHistoryList /> }.into_any()
+            }
+            "p906_nomenclature_prices" => {
+                log!("✅ Creating NomenclaturePricesList");
+                view! { <NomenclaturePricesList /> }.into_any()
             }
             k if k.starts_with("p905-commission/") => {
                 view! { <CommissionHistoryDetails id=k.strip_prefix("p905-commission/").unwrap().to_string() /> }.into_any()

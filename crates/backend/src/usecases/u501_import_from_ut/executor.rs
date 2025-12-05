@@ -45,6 +45,7 @@ impl ImportExecutor {
                 "a003_counterparty" => "Контрагенты",
                 "a004_nomenclature" => "Номенклатура",
                 "p901_barcodes" => "Штрихкоды номенклатуры",
+                "p906_prices" => "Цены номенклатуры",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -111,10 +112,29 @@ impl ImportExecutor {
                     self.import_counterparties(session_id, connection).await?;
                 }
                 "a004_nomenclature" => {
-                    self.import_nomenclature(session_id, connection, request.delete_obsolete).await?;
+                    self.import_nomenclature(session_id, connection, request.delete_obsolete)
+                        .await?;
                 }
                 "p901_barcodes" => {
                     self.import_barcodes(session_id, connection).await?;
+                }
+                "p906_prices" => {
+                    // Получить период из запроса
+                    let period_from = request
+                        .period_from
+                        .clone()
+                        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                    let period_to = request
+                        .period_to
+                        .clone()
+                        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                    self.import_nomenclature_prices(
+                        session_id,
+                        connection,
+                        &period_from,
+                        &period_to,
+                    )
+                    .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -308,12 +328,19 @@ impl ImportExecutor {
 
             // Обрабатываем ВСЕ элементы из пакета (и папки, и элементы)
             for odata_item in response.value {
-                let item_type = if odata_item.is_folder { "Папка" } else { "Элемент" };
+                let item_type = if odata_item.is_folder {
+                    "Папка"
+                } else {
+                    "Элемент"
+                };
 
                 self.progress_tracker.set_current_item(
                     session_id,
                     aggregate_index,
-                    Some(format!("[{}] {} - {}", item_type, odata_item.code, odata_item.description)),
+                    Some(format!(
+                        "[{}] {} - {}",
+                        item_type, odata_item.code, odata_item.description
+                    )),
                 );
 
                 match self.process_counterparty(&odata_item).await {
@@ -326,7 +353,12 @@ impl ImportExecutor {
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to process {} {}: {}", item_type, odata_item.code, e);
+                        tracing::error!(
+                            "Failed to process {} {}: {}",
+                            item_type,
+                            odata_item.code,
+                            e
+                        );
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
@@ -447,7 +479,11 @@ impl ImportExecutor {
 
             // Обрабатываем ВСЕ элементы из пакета (и папки, и элементы)
             for odata_item in response.value {
-                let item_type = if odata_item.is_folder { "Папка" } else { "Элемент" };
+                let item_type = if odata_item.is_folder {
+                    "Папка"
+                } else {
+                    "Элемент"
+                };
 
                 // Записываем в CSV файл
                 let ref_key = if odata_item.ref_key.is_empty() {
@@ -471,7 +507,10 @@ impl ImportExecutor {
                 self.progress_tracker.set_current_item(
                     session_id,
                     aggregate_index,
-                    Some(format!("[{}] {} - {}", item_type, odata_item.code, odata_item.description)),
+                    Some(format!(
+                        "[{}] {} - {}",
+                        item_type, odata_item.code, odata_item.description
+                    )),
                 );
 
                 match self.process_nomenclature(&odata_item).await {
@@ -484,7 +523,12 @@ impl ImportExecutor {
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to process {} {}: {}", item_type, odata_item.code, e);
+                        tracing::error!(
+                            "Failed to process {} {}: {}",
+                            item_type,
+                            odata_item.code,
+                            e
+                        );
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
@@ -542,10 +586,7 @@ impl ImportExecutor {
             empty_ref_keys,
             invalid_ref_keys
         );
-        tracing::info!(
-            "📄 OData dump saved to: {}",
-            odata_log_path.display()
-        );
+        tracing::info!("📄 OData dump saved to: {}", odata_log_path.display());
 
         // Проверяем сколько записей реально в базе
         let db_items = match a004_nomenclature::repository::list_all().await {
@@ -565,31 +606,26 @@ impl ImportExecutor {
         // Удаление устаревших записей (которых нет в источнике)
         if delete_obsolete && !unique_ids.is_empty() {
             tracing::info!("🗑️  Checking for obsolete records to delete...");
-            
+
             // Получаем все ID из БД
-            let db_ids: std::collections::HashSet<uuid::Uuid> = db_items
-                .iter()
-                .map(|item| item.base.id.value())
-                .collect();
-            
+            let db_ids: std::collections::HashSet<uuid::Uuid> =
+                db_items.iter().map(|item| item.base.id.value()).collect();
+
             // Преобразуем unique_ids (String) в UUID
             let source_ids: std::collections::HashSet<uuid::Uuid> = unique_ids
                 .iter()
                 .filter_map(|s| uuid::Uuid::parse_str(s).ok())
                 .collect();
-            
+
             // Находим ID, которые есть в БД, но нет в источнике
-            let obsolete_ids: Vec<uuid::Uuid> = db_ids
-                .difference(&source_ids)
-                .copied()
-                .collect();
-            
+            let obsolete_ids: Vec<uuid::Uuid> = db_ids.difference(&source_ids).copied().collect();
+
             if !obsolete_ids.is_empty() {
                 tracing::info!(
                     "🗑️  Found {} obsolete records to delete",
                     obsolete_ids.len()
                 );
-                
+
                 match a004_nomenclature::repository::delete_by_ids(obsolete_ids.clone()).await {
                     Ok(deleted_count) => {
                         tracing::info!("✅ Deleted {} obsolete records", deleted_count);
@@ -626,12 +662,20 @@ impl ImportExecutor {
                 None
             }
         } else {
-            tracing::warn!("Empty ref_key for item: {} - {}", odata.code, odata.description);
+            tracing::warn!(
+                "Empty ref_key for item: {} - {}",
+                odata.code,
+                odata.description
+            );
             None
         };
 
         if let Some(mut existing_item) = existing {
-            tracing::debug!("Updating existing nomenclature: {} - {}", odata.ref_key, odata.description);
+            tracing::debug!(
+                "Updating existing nomenclature: {} - {}",
+                odata.ref_key,
+                odata.description
+            );
             // ВСЕГДА обновляем для диагностики - убрана проверка should_update
             existing_item.base.code = odata.code.clone();
             existing_item.base.description = odata.description.clone();
@@ -655,17 +699,30 @@ impl ImportExecutor {
             a004_nomenclature::repository::update(&existing_item).await?;
             Ok(false)
         } else {
-            tracing::debug!("Inserting new nomenclature: {} - {}", odata.ref_key, odata.description);
+            tracing::debug!(
+                "Inserting new nomenclature: {} - {}",
+                odata.ref_key,
+                odata.description
+            );
             let mut new_item = odata.to_aggregate().map_err(|e| anyhow::anyhow!(e))?;
             new_item.before_write();
 
             match a004_nomenclature::repository::insert(&new_item).await {
                 Ok(_) => {
-                    tracing::debug!("Successfully inserted: {} - {}", odata.ref_key, odata.description);
+                    tracing::debug!(
+                        "Successfully inserted: {} - {}",
+                        odata.ref_key,
+                        odata.description
+                    );
                     Ok(true)
                 }
                 Err(e) => {
-                    tracing::error!("Failed to insert {} - {}: {}", odata.ref_key, odata.description, e);
+                    tracing::error!(
+                        "Failed to insert {} - {}: {}",
+                        odata.ref_key,
+                        odata.description,
+                        e
+                    );
                     Err(e)
                 }
             }
@@ -873,9 +930,9 @@ impl ImportExecutor {
                     "InformationRegister_ШтрихкодыНоменклатуры",
                     Some(page_size),
                     Some(skip),
-                    None, // filter
+                    None,                 // filter
                     Some("Номенклатура"), // expand - 1С OData не поддерживает вложенный $select
-                    None, // select
+                    None,                 // select
                 )
                 .await?;
 
@@ -895,7 +952,10 @@ impl ImportExecutor {
                 self.progress_tracker.set_current_item(
                     session_id,
                     aggregate_index,
-                    Some(format!("Barcode: {} -> {}", odata_item.barcode, odata_item.owner_key)),
+                    Some(format!(
+                        "Barcode: {} -> {}",
+                        odata_item.barcode, odata_item.owner_key
+                    )),
                 );
 
                 match self.process_barcode(&odata_item).await {
@@ -985,6 +1045,190 @@ impl ImportExecutor {
             tracing::debug!("Inserted new barcode: {} (source: 1C)", odata.barcode);
             Ok(true) // Вставка
         }
+    }
+
+    /// Импорт цен номенклатуры из HTTP API /hs/mpi_api/prices_plan
+    async fn import_nomenclature_prices(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+        _period_from: &str,
+        _period_to: &str,
+    ) -> Result<()> {
+        use crate::projections::p906_nomenclature_prices::repository;
+        use crate::projections::p906_nomenclature_prices::u501_import::PricesPlanResponse;
+
+        tracing::info!("Importing nomenclature prices for session: {}", session_id);
+
+        let aggregate_index = "p906_prices";
+
+        // Формируем URL для HTTP API
+        // Из URL типа "http://host:port/trade/odata/standard.odata" получаем "http://host:port/trade"
+        let base_url = connection.url.trim_end_matches('/');
+        let trade_base = if let Some(pos) = base_url.find("/odata") {
+            &base_url[..pos]
+        } else {
+            base_url
+        };
+        let api_url = format!("{}/hs/mpi_api/prices_plan", trade_base);
+
+        tracing::info!("Fetching prices from: {}", api_url);
+
+        // Очищаем таблицу перед загрузкой
+        tracing::info!("Clearing all price records...");
+        let deleted_count = repository::delete_all().await?;
+        tracing::info!("Deleted {} old price records", deleted_count);
+
+        // Делаем HTTP запрос
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&api_url)
+            .basic_auth(&connection.login, Some(&connection.password))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("HTTP error {}: {}", status, body));
+        }
+
+        let prices_data: PricesPlanResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {}", e))?;
+
+        tracing::info!(
+            "Received {} total records (initial: {}, history: {})",
+            prices_data.count,
+            prices_data.initial.len(),
+            prices_data.history.len()
+        );
+
+        let total_count = prices_data.initial.len() + prices_data.history.len();
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_errors = 0;
+
+        // Обрабатываем initial записи
+        tracing::info!(
+            "Processing {} initial records...",
+            prices_data.initial.len()
+        );
+        for (i, item) in prices_data.initial.iter().enumerate() {
+            // Логируем первые 3 записи
+            if i < 3 {
+                tracing::info!("Sample initial record {}: {}", i + 1, item.debug_info());
+            }
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("[initial] {}", item.debug_info())),
+            );
+
+            match item.to_entry() {
+                Ok(entry) => match repository::insert_entry(&entry).await {
+                    Ok(_) => {
+                        total_processed += 1;
+                        total_inserted += 1;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to insert price: {}", e);
+                        total_errors += 1;
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Failed to parse price item: {}", e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Parse error: {}", e),
+                        Some(item.debug_info()),
+                    );
+                    total_errors += 1;
+                }
+            }
+
+            // Обновляем прогресс
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                Some(total_count as i32),
+                total_inserted,
+                0,
+            );
+        }
+
+        // Обрабатываем history записи
+        tracing::info!(
+            "Processing {} history records...",
+            prices_data.history.len()
+        );
+        for (i, item) in prices_data.history.iter().enumerate() {
+            // Логируем первые 3 записи
+            if i < 3 {
+                tracing::info!("Sample history record {}: {}", i + 1, item.debug_info());
+            }
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("[history] {}", item.debug_info())),
+            );
+
+            match item.to_entry() {
+                Ok(entry) => match repository::insert_entry(&entry).await {
+                    Ok(_) => {
+                        total_processed += 1;
+                        total_inserted += 1;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to insert price: {}", e);
+                        total_errors += 1;
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Failed to parse price item: {}", e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Parse error: {}", e),
+                        Some(item.debug_info()),
+                    );
+                    total_errors += 1;
+                }
+            }
+
+            // Обновляем прогресс
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                Some(total_count as i32),
+                total_inserted,
+                0,
+            );
+        }
+
+        // Очистить текущий элемент после завершения
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Nomenclature prices import completed: processed={}, inserted={}, errors={}",
+            total_processed,
+            total_inserted,
+            total_errors
+        );
+
+        Ok(())
     }
 }
 
