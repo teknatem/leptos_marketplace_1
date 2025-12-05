@@ -69,6 +69,7 @@ thead th {
     align-items: center;
     width: 100%;
     gap: 4px;
+    justify-content: flex-start; /* Все sortable заголовки - по левому краю */
 }
 
 .sortable-header:hover {
@@ -215,6 +216,13 @@ thead th.sticky-left {
     text-align: left;
 }
 
+/* Все заголовки th всегда выровнены по левому краю */
+th.text-right,
+th.text-center,
+th.text-left {
+    text-align: left !important;
+}
+
 /* Checkbox column */
 .checkbox-cell {
     width: 40px;
@@ -234,7 +242,7 @@ thead th.sticky-left {
     z-index: 10;
     background: var(--table-header-bg, #667788);
     color: var(--table-header-fg, white);
-    padding: 8px 8px;
+    padding: 6px 8px;
 }
 
 /* Ensure resizable headers stay sticky */
@@ -296,4 +304,18 @@ thead th.sticky-left {
 /* Resizable column headers - sticky already creates positioning context */
 th.resizable {
     min-width: 60px;
+}
+
+/* ============================================
+   A016 YM Returns - Border Radius Test
+   ============================================ */
+
+/* Remove border-radius from table container for A016 */
+.table-container:has(#a016-ym-returns-table) {
+    border-radius: 0;
+}
+
+/* Apply 3px border-radius to all th cells in A016 table */
+#a016-ym-returns-table thead th {
+    border-radius: 5px;
 }

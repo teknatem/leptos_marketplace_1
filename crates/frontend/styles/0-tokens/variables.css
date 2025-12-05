@@ -77,7 +77,7 @@
 
   /* ===== Layout Dimensions ===== */
 
-  --header-height: 32px;
+  --header-height: 30px;
   --footer-height: 30px;
   --sidebar-width: 260px;
   --panel-width: 260px;
@@ -85,7 +85,7 @@
 
   /* Table dimensions */
   --table-row-height: 26px;
-  --table-header-height: 32px;
+  --table-header-height: 30px;
   --table-max-height: calc(100vh - 220px);
 
 
