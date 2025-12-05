@@ -2,8 +2,16 @@ use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 use crate::shared::date_utils::format_datetime;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
+use crate::shared::table_utils::init_column_resize;
+
+const TABLE_ID_LINES: &str = "a016-ym-return-lines-table";
+const TABLE_ID_PROJECTIONS: &str = "a016-ym-return-p904-table";
+const COLUMN_WIDTHS_KEY_LINES: &str = "a016_ym_return_lines_column_widths";
+const COLUMN_WIDTHS_KEY_PROJECTIONS: &str = "a016_ym_return_p904_column_widths";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmReturnDetailDto {
@@ -77,6 +85,14 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
+    
+    // Sort state for lines table
+    let (lines_sort_column, set_lines_sort_column) = signal::<Option<&'static str>>(None);
+    let (lines_sort_asc, set_lines_sort_asc) = signal(true);
+    
+    // Sort state for projections table
+    let (proj_sort_column, set_proj_sort_column) = signal::<Option<&'static str>>(None);
+    let (proj_sort_asc, set_proj_sort_asc) = signal(true);
 
     // Загрузить детальные данные
     Effect::new(move || {
@@ -339,9 +355,38 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                 }.into_any()
                                             },
                                             "lines" => {
-                                                let lines = &data.lines;
+                                                // Clone and sort lines
+                                                let mut lines = data.lines.clone();
+                                                if let Some(col) = lines_sort_column.get() {
+                                                    let asc = lines_sort_asc.get();
+                                                    lines.sort_by(|a, b| {
+                                                        let cmp = match col {
+                                                            "shop_sku" => a.shop_sku.cmp(&b.shop_sku),
+                                                            "name" => a.name.cmp(&b.name),
+                                                            "count" => a.count.cmp(&b.count),
+                                                            "price" => {
+                                                                let a_price = a.price.unwrap_or(0.0);
+                                                                let b_price = b.price.unwrap_or(0.0);
+                                                                a_price.partial_cmp(&b_price).unwrap_or(Ordering::Equal)
+                                                            },
+                                                            _ => Ordering::Equal,
+                                                        };
+                                                        if asc { cmp } else { cmp.reverse() }
+                                                    });
+                                                }
+                                                
                                                 let total_items: i32 = lines.iter().map(|l| l.count).sum();
                                                 let total_amount: f64 = lines.iter().filter_map(|l| l.price.map(|p| p * l.count as f64)).sum();
+
+                                                // Sort handler
+                                                let handle_lines_sort = move |column: &'static str| {
+                                                    if lines_sort_column.get() == Some(column) {
+                                                        set_lines_sort_asc.set(!lines_sort_asc.get());
+                                                    } else {
+                                                        set_lines_sort_column.set(Some(column));
+                                                        set_lines_sort_asc.set(true);
+                                                    }
+                                                };
 
                                                 view! {
                                                     <div class="lines-info">
@@ -354,18 +399,47 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                             )}
                                                         </div>
 
-                                                        <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
-                                                            <thead>
-                                                                <tr style="background: var(--color-bg-secondary);">
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Shop SKU"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Наименование"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Кол-во"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Цена"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Причина"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Тип решения"</th>
-                                                                    <th style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: left;">"Комментарий"</th>
-                                                                </tr>
-                                                            </thead>
+                                                        <div class="table-container">
+                                                            <table class="data-table" id=TABLE_ID_LINES>
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th class="resizable" on:click=move |_| handle_lines_sort("shop_sku")>
+                                                                            <span class="sortable-header">
+                                                                                "Shop SKU"
+                                                                                <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "shop_sku")}>
+                                                                                    {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "shop_sku", lines_sort_asc.get())}
+                                                                                </span>
+                                                                            </span>
+                                                                        </th>
+                                                                        <th class="resizable" on:click=move |_| handle_lines_sort("name")>
+                                                                            <span class="sortable-header">
+                                                                                "Наименование"
+                                                                                <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "name")}>
+                                                                                    {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "name", lines_sort_asc.get())}
+                                                                                </span>
+                                                                            </span>
+                                                                        </th>
+                                                                        <th class="resizable text-right" on:click=move |_| handle_lines_sort("count")>
+                                                                            <span class="sortable-header">
+                                                                                "Кол-во"
+                                                                                <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "count")}>
+                                                                                    {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "count", lines_sort_asc.get())}
+                                                                                </span>
+                                                                            </span>
+                                                                        </th>
+                                                                        <th class="resizable text-right" on:click=move |_| handle_lines_sort("price")>
+                                                                            <span class="sortable-header">
+                                                                                "Цена"
+                                                                                <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "price")}>
+                                                                                    {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "price", lines_sort_asc.get())}
+                                                                                </span>
+                                                                            </span>
+                                                                        </th>
+                                                                        <th class="resizable">"Причина"</th>
+                                                                        <th class="resizable">"Тип решения"</th>
+                                                                        <th class="resizable">"Комментарий"</th>
+                                                                    </tr>
+                                                                </thead>
                                                             <tbody>
                                                                 {lines.iter().map(|line| {
                                                                     let decision_type = line.decisions.first()
@@ -377,36 +451,43 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
 
                                                                     view! {
                                                                         <tr>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md);">
+                                                                            <td>
                                                                                 <code style="font-size: var(--font-size-xs);">{line.shop_sku.clone()}</code>
                                                                             </td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md);">{line.name.clone()}</td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">
+                                                                            <td>{line.name.clone()}</td>
+                                                                            <td class="text-right">
                                                                                 <strong>{line.count}</strong>
                                                                             </td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">
+                                                                            <td class="text-right">
                                                                                 {line.price.map(|p| format!("{:.2}", p)).unwrap_or("—".to_string())}
                                                                             </td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
+                                                                            <td style="font-size: var(--font-size-xs);">
                                                                                 {line.return_reason.clone().unwrap_or("—".to_string())}
                                                                             </td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
+                                                                            <td style="font-size: var(--font-size-xs);">
                                                                                 {decision_type}
                                                                             </td>
-                                                                            <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); font-size: var(--font-size-xs);">
+                                                                            <td style="font-size: var(--font-size-xs);">
                                                                                 {comment}
                                                                             </td>
                                                                         </tr>
                                                                     }
                                                                 }).collect_view()}
                                                                 <tr style="background: var(--color-bg-secondary); font-weight: var(--font-weight-semibold);">
-                                                                    <td colspan="2" style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">"Итого:"</td>
-                                                                    <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right;">{total_items}</td>
-                                                                    <td style="border: 1px solid var(--color-border-light); padding: var(--space-md); text-align: right; color: #c62828;">{format!("{:.2}", total_amount)}</td>
-                                                                    <td colspan="3" style="border: 1px solid var(--color-border-light); padding: var(--space-md);"></td>
+                                                                    <td colspan="2" class="text-right">"Итого:"</td>
+                                                                    <td class="text-right">{total_items}</td>
+                                                                    <td class="text-right" style="color: #c62828;">{format!("{:.2}", total_amount)}</td>
+                                                                    <td colspan="3"></td>
                                                                 </tr>
                                                             </tbody>
                                                         </table>
+                                                        </div>
+                                                        {
+                                                            // Initialize column resize after table renders
+                                                            Effect::new(move || {
+                                                                init_column_resize(TABLE_ID_LINES, COLUMN_WIDTHS_KEY_LINES);
+                                                            });
+                                                        }
                                                     </div>
                                                 }.into_any()
                                             },
@@ -420,7 +501,58 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                 </div>
                                                             }.into_any()
                                                         } else if let Some(proj_data) = projections.get() {
-                                                            let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+                                                            let mut p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
+                                                            
+                                                            // Sort p904 items
+                                                            if let Some(col) = proj_sort_column.get() {
+                                                                let asc = proj_sort_asc.get();
+                                                                p904_items.sort_by(|a, b| {
+                                                                    let cmp = match col {
+                                                                        "article" => {
+                                                                            let a_val = a["article"].as_str().unwrap_or("");
+                                                                            let b_val = b["article"].as_str().unwrap_or("");
+                                                                            a_val.cmp(b_val)
+                                                                        },
+                                                                        "date" => {
+                                                                            let a_val = a["date"].as_str().unwrap_or("");
+                                                                            let b_val = b["date"].as_str().unwrap_or("");
+                                                                            a_val.cmp(b_val)
+                                                                        },
+                                                                        "price_list" => {
+                                                                            let a_val = a["price_list"].as_f64().unwrap_or(0.0);
+                                                                            let b_val = b["price_list"].as_f64().unwrap_or(0.0);
+                                                                            a_val.partial_cmp(&b_val).unwrap_or(Ordering::Equal)
+                                                                        },
+                                                                        "price_return" => {
+                                                                            let a_val = a["price_return"].as_f64().unwrap_or(0.0);
+                                                                            let b_val = b["price_return"].as_f64().unwrap_or(0.0);
+                                                                            a_val.partial_cmp(&b_val).unwrap_or(Ordering::Equal)
+                                                                        },
+                                                                        "customer_out" => {
+                                                                            let a_val = a["customer_out"].as_f64().unwrap_or(0.0);
+                                                                            let b_val = b["customer_out"].as_f64().unwrap_or(0.0);
+                                                                            a_val.partial_cmp(&b_val).unwrap_or(Ordering::Equal)
+                                                                        },
+                                                                        "total" => {
+                                                                            let a_val = a["total"].as_f64().unwrap_or(0.0);
+                                                                            let b_val = b["total"].as_f64().unwrap_or(0.0);
+                                                                            a_val.partial_cmp(&b_val).unwrap_or(Ordering::Equal)
+                                                                        },
+                                                                        _ => Ordering::Equal,
+                                                                    };
+                                                                    if asc { cmp } else { cmp.reverse() }
+                                                                });
+                                                            }
+                                                            
+                                                            // Sort handler for projections
+                                                            let handle_proj_sort = move |column: &'static str| {
+                                                                if proj_sort_column.get() == Some(column) {
+                                                                    set_proj_sort_asc.set(!proj_sort_asc.get());
+                                                                } else {
+                                                                    set_proj_sort_column.set(Some(column));
+                                                                    set_proj_sort_asc.set(true);
+                                                                }
+                                                            };
 
                                                             view! {
                                                                 <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
@@ -430,16 +562,58 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                         </h3>
                                                                         {if !p904_items.is_empty() {
                                                                             view! {
-                                                                                <div style="overflow-x: auto;">
-                                                                                    <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
+                                                                                <div class="table-container">
+                                                                                    <table class="data-table" id=TABLE_ID_PROJECTIONS>
                                                                                         <thead>
-                                                                                            <tr style="background: var(--color-bg-secondary);">
-                                                                                                <th style="padding: var(--space-md); text-align: left; border: 1px solid var(--color-border-light);">"Артикул"</th>
-                                                                                                <th style="padding: var(--space-md); text-align: left; border: 1px solid var(--color-border-light);">"Дата"</th>
-                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="price_list">"Цена прайс"</th>
-                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="price_return">"Цена возврат"</th>
-                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="customer_out (отрицательное значение - возврат)">"К клиенту"</th>
-                                                                                                <th style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);" title="total">"Итого"</th>
+                                                                                            <tr>
+                                                                                                <th class="resizable" on:click=move |_| handle_proj_sort("article")>
+                                                                                                    <span class="sortable-header">
+                                                                                                        "Артикул"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "article")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "article", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
+                                                                                                <th class="resizable" on:click=move |_| handle_proj_sort("date")>
+                                                                                                    <span class="sortable-header">
+                                                                                                        "Дата"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "date")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "date", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
+                                                                                                <th class="resizable text-right" on:click=move |_| handle_proj_sort("price_list") title="price_list">
+                                                                                                    <span class="sortable-header">
+                                                                                                        "Цена прайс"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "price_list")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "price_list", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
+                                                                                                <th class="resizable text-right" on:click=move |_| handle_proj_sort("price_return") title="price_return">
+                                                                                                    <span class="sortable-header">
+                                                                                                        "Цена возврат"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "price_return")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "price_return", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
+                                                                                                <th class="resizable text-right" on:click=move |_| handle_proj_sort("customer_out") title="customer_out (отрицательное значение - возврат)">
+                                                                                                    <span class="sortable-header">
+                                                                                                        "К клиенту"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "customer_out")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "customer_out", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
+                                                                                                <th class="resizable text-right" on:click=move |_| handle_proj_sort("total") title="total">
+                                                                                                    <span class="sortable-header">
+                                                                                                        "Итого"
+                                                                                                        <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "total")}>
+                                                                                                            {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "total", proj_sort_asc.get())}
+                                                                                                        </span>
+                                                                                                    </span>
+                                                                                                </th>
                                                                                             </tr>
                                                                                         </thead>
                                                                                         <tbody>
@@ -453,19 +627,25 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                 let total = item["total"].as_f64().unwrap_or(0.0);
 
                                                                                                 view! {
-                                                                                                    <tr style="border-bottom: 1px solid var(--color-border-lighter);">
-                                                                                                        <td style="padding: var(--space-md); border: 1px solid var(--color-border-light); font-family: monospace; font-size: var(--font-size-xs);">{article}</td>
-                                                                                                        <td style="padding: var(--space-md); border: 1px solid var(--color-border-light);">{date_formatted}</td>
-                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light);">{format!("{:.2}", price_list)}</td>
-                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); color: #e65100;">{format!("{:.2}", price_return)}</td>
-                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); color: #c62828; background: var(--color-error-bg); font-weight: var(--font-weight-semibold);">{format!("{:.2}", customer_out)}</td>
-                                                                                                        <td style="padding: var(--space-md); text-align: right; border: 1px solid var(--color-border-light); font-weight: var(--font-weight-semibold);">{format!("{:.2}", total)}</td>
+                                                                                                    <tr>
+                                                                                                        <td style="font-family: monospace; font-size: var(--font-size-xs);">{article}</td>
+                                                                                                        <td>{date_formatted}</td>
+                                                                                                        <td class="text-right">{format!("{:.2}", price_list)}</td>
+                                                                                                        <td class="text-right" style="color: #e65100;">{format!("{:.2}", price_return)}</td>
+                                                                                                        <td class="text-right" style="color: #c62828; background: var(--color-error-bg); font-weight: var(--font-weight-semibold);">{format!("{:.2}", customer_out)}</td>
+                                                                                                        <td class="text-right font-medium">{format!("{:.2}", total)}</td>
                                                                                                     </tr>
                                                                                                 }
                                                                                             }).collect::<Vec<_>>()}
                                                                                         </tbody>
                                                                                     </table>
                                                                                 </div>
+                                                                                {
+                                                                                    // Initialize column resize after table renders
+                                                                                    Effect::new(move || {
+                                                                                        init_column_resize(TABLE_ID_PROJECTIONS, COLUMN_WIDTHS_KEY_PROJECTIONS);
+                                                                                    });
+                                                                                }
                                                                             }.into_any()
                                                                         } else {
                                                                             view! {

@@ -127,6 +127,82 @@ pub fn restore_column_widths(table_id: &str, storage_key: &str) {
     }
 }
 
+/// Автоматически подбирает оптимальную ширину колонки по содержимому.
+///
+/// Использует простой подход: длина текста × 8px + padding.
+/// Анализирует содержимое всех ячеек колонки на текущей странице.
+///
+/// # Аргументы
+/// * `table_id` - ID таблицы в DOM
+/// * `col_index` - Индекс колонки (0-based)
+/// * `storage_key` - Ключ для localStorage
+///
+/// # Пример
+/// ```rust
+/// auto_fit_column("my-table-id", 2, "my_feature_column_widths");
+/// ```
+pub fn auto_fit_column(table_id: &str, col_index: u32, storage_key: &str) {
+    // Early returns для упрощения структуры
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(table) = document.get_element_by_id(table_id) else {
+        return;
+    };
+
+    // Найти заголовок колонки
+    let Ok(headers) = table.query_selector_all("th.resizable") else {
+        return;
+    };
+    let Some(th_element) = headers.get(col_index) else {
+        return;
+    };
+    let Ok(th) = th_element.dyn_into::<HtmlElement>() else {
+        return;
+    };
+
+    // Начальное значение - ширина заголовка
+    let mut max_length = th.inner_text().len();
+
+    // Проверить все строки tbody
+    // Проверить все строки tbody
+    if let Ok(Some(tbody)) = table.query_selector("tbody") {
+        if let Ok(rows) = tbody.query_selector_all("tr") {
+            for row_idx in 0..rows.length() {
+                if let Some(row) = rows.get(row_idx) {
+                    if let Some(element) = row.dyn_ref::<web_sys::Element>() {
+                        if let Ok(cells) = element.query_selector_all("td") {
+                            if let Some(cell) = cells.get(col_index) {
+                                if let Ok(cell_html) = cell.dyn_into::<HtmlElement>() {
+                                    let text_len = cell_html.inner_text().len();
+                                    max_length = max_length.max(text_len);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Расчет ширины: 8px на символ + 40px padding
+    // Минимум 60px, максимум 500px
+    let optimal_width = ((max_length as i32 * 8) + 40).clamp(60, 500);
+
+    // Установить ширину
+    let _ = th
+        .style()
+        .set_property("width", &format!("{}px", optimal_width));
+    let _ = th
+        .style()
+        .set_property("min-width", &format!("{}px", optimal_width));
+
+    // Сохранить в localStorage
+    save_column_widths(table_id, storage_key);
+}
+
 /// Инициализирует изменение ширины для всех колонок с классом "resizable".
 ///
 /// Добавляет resize-handle к каждому заголовку и обрабатывает события мыши.
@@ -178,6 +254,30 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
             continue;
         };
         handle.set_class_name("resize-handle");
+
+        // Double-click auto-fit handler
+        let table_id_dblclick = table_id_owned.clone();
+        let storage_key_dblclick = storage_key_owned.clone();
+        let col_idx = i;
+
+        let dblclick = Closure::wrap(Box::new(move |e: WebMouseEvent| {
+            e.prevent_default();
+            e.stop_propagation();
+            auto_fit_column(&table_id_dblclick, col_idx, &storage_key_dblclick);
+        }) as Box<dyn FnMut(WebMouseEvent)>);
+
+        let _ =
+            handle.add_event_listener_with_callback("dblclick", dblclick.as_ref().unchecked_ref());
+        dblclick.forget();
+
+        // Prevent click events from bubbling to prevent sorting trigger
+        let click_blocker = Closure::wrap(Box::new(move |e: WebMouseEvent| {
+            e.stop_propagation();
+        }) as Box<dyn FnMut(WebMouseEvent)>);
+
+        let _ = handle
+            .add_event_listener_with_callback("click", click_blocker.as_ref().unchecked_ref());
+        click_blocker.forget();
 
         // State for this column
         let resizing = Rc::new(RefCell::new(false));
@@ -281,4 +381,3 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
         let _ = th.append_child(&handle);
     }
 }
-
