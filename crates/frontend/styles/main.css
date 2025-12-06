@@ -30,3 +30,4 @@
 @import url('./3-components/details.css') layer(components);
 @import url('./3-components/dashboard.css') layer(components);
 @import url('./3-components/lists.css') layer(components);
+@import url('./3-components/login.css') layer(components);

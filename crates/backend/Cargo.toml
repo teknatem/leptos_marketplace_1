@@ -22,3 +22,8 @@ uuid = { workspace = true }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 async-trait = "0.1"
 urlencoding = "2.1"
+jsonwebtoken = "9"
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
+sha2 = "0.10"

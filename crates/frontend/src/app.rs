@@ -1,6 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::routes::routes::AppRoutes;
 use crate::shared::picker_aggregate::ModalService;
+use crate::system::auth::context::AuthProvider;
 use leptos::prelude::*;
 
 #[component]
@@ -11,6 +12,8 @@ pub fn App() -> impl IntoView {
     provide_context(ModalService::new());
 
     view! {
-        <AppRoutes />
+        <AuthProvider>
+            <AppRoutes />
+        </AuthProvider>
     }
 }

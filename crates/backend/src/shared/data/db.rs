@@ -1,4 +1,4 @@
-use once_cell::sync::OnceCell;
+﻿use once_cell::sync::OnceCell;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 
 static DB_CONN: OnceCell<DatabaseConnection> = OnceCell::new();
@@ -776,7 +776,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // document_raw_storage table - для хранения сырых JSON от маркетплейсов
+    // document_raw_storage table - РґР»СЏ С…СЂР°РЅРµРЅРёСЏ СЃС‹СЂС‹С… JSON РѕС‚ РјР°СЂРєРµС‚РїР»РµР№СЃРѕРІ
     let check_raw_storage = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='document_raw_storage';
@@ -807,7 +807,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индекс для быстрого поиска по marketplace + document_type + document_no
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РїРѕРёСЃРєР° РїРѕ marketplace + document_type + document_no
         let create_raw_storage_idx = r#"
             CREATE INDEX IF NOT EXISTS idx_raw_storage_lookup
             ON document_raw_storage (marketplace, document_type, document_no);
@@ -819,7 +819,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // p900_sales_register table - унифицированный регистр продаж
+    // p900_sales_register table - СѓРЅРёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ СЂРµРіРёСЃС‚СЂ РїСЂРѕРґР°Р¶
     let check_sales_register = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='p900_sales_register';
@@ -887,7 +887,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индексы для быстрого поиска
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃС‹ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РїРѕРёСЃРєР°
         let create_register_idx1 = r#"
             CREATE INDEX IF NOT EXISTS idx_sales_register_sale_date
             ON p900_sales_register (sale_date);
@@ -968,7 +968,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Таблица существует, проверяем наличие поля nomenclature_ref
+        // РўР°Р±Р»РёС†Р° СЃСѓС‰РµСЃС‚РІСѓРµС‚, РїСЂРѕРІРµСЂСЏРµРј РЅР°Р»РёС‡РёРµ РїРѕР»СЏ nomenclature_ref
         let check_nomenclature_ref = r#"
             PRAGMA table_info(p900_sales_register);
         "#;
@@ -998,7 +998,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    // p901_nomenclature_barcodes table - штрихкоды номенклатуры
+    // p901_nomenclature_barcodes table - С€С‚СЂРёС…РєРѕРґС‹ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹
     let check_barcodes_table = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='p901_nomenclature_barcodes';
@@ -1030,7 +1030,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индекс для быстрого поиска по nomenclature_ref
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РїРѕРёСЃРєР° РїРѕ nomenclature_ref
         let create_barcodes_idx1 = r#"
             CREATE INDEX IF NOT EXISTS idx_barcodes_nomenclature_ref
             ON p901_nomenclature_barcodes (nomenclature_ref);
@@ -1041,7 +1041,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индекс для поиска по артикулу
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃ РґР»СЏ РїРѕРёСЃРєР° РїРѕ Р°СЂС‚РёРєСѓР»Сѓ
         let create_barcodes_idx2 = r#"
             CREATE INDEX IF NOT EXISTS idx_barcodes_article
             ON p901_nomenclature_barcodes (article);
@@ -1052,7 +1052,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индекс для фильтрации по is_active
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃ РґР»СЏ С„РёР»СЊС‚СЂР°С†РёРё РїРѕ is_active
         let create_barcodes_idx3 = r#"
             CREATE INDEX IF NOT EXISTS idx_barcodes_is_active
             ON p901_nomenclature_barcodes (is_active);
@@ -1063,7 +1063,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индекс по source для быстрой фильтрации
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃ РїРѕ source РґР»СЏ Р±С‹СЃС‚СЂРѕР№ С„РёР»СЊС‚СЂР°С†РёРё
         let create_barcodes_idx4 = r#"
             CREATE INDEX IF NOT EXISTS idx_barcodes_source
             ON p901_nomenclature_barcodes (source);
@@ -1074,7 +1074,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Миграция: проверить, использует ли таблица старую схему (single primary key)
+        // РњРёРіСЂР°С†РёСЏ: РїСЂРѕРІРµСЂРёС‚СЊ, РёСЃРїРѕР»СЊР·СѓРµС‚ Р»Рё С‚Р°Р±Р»РёС†Р° СЃС‚Р°СЂСѓСЋ СЃС…РµРјСѓ (single primary key)
         tracing::info!("Checking p901_nomenclature_barcodes schema for migration");
 
         let check_old_schema = r#"
@@ -1094,7 +1094,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 "Old p901_nomenclature_barcodes schema detected. Performing migration..."
             );
 
-            // 1. Переименовать старую таблицу
+            // 1. РџРµСЂРµРёРјРµРЅРѕРІР°С‚СЊ СЃС‚Р°СЂСѓСЋ С‚Р°Р±Р»РёС†Сѓ
             let rename_old_table = r#"
                 ALTER TABLE p901_nomenclature_barcodes
                 RENAME TO p901_nomenclature_barcodes_backup;
@@ -1105,7 +1105,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ))
             .await?;
 
-            // 2. Создать новую таблицу с composite key
+            // 2. РЎРѕР·РґР°С‚СЊ РЅРѕРІСѓСЋ С‚Р°Р±Р»РёС†Сѓ СЃ composite key
             let create_new_table = r#"
                 CREATE TABLE p901_nomenclature_barcodes (
                     barcode TEXT NOT NULL,
@@ -1124,7 +1124,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ))
             .await?;
 
-            // 3. Скопировать данные из backup (все старые записи считаются source='1C')
+            // 3. РЎРєРѕРїРёСЂРѕРІР°С‚СЊ РґР°РЅРЅС‹Рµ РёР· backup (РІСЃРµ СЃС‚Р°СЂС‹Рµ Р·Р°РїРёСЃРё СЃС‡РёС‚Р°СЋС‚СЃСЏ source='1C')
             let migrate_data = r#"
                 INSERT INTO p901_nomenclature_barcodes
                     (barcode, source, nomenclature_ref, article, created_at, updated_at, is_active)
@@ -1144,7 +1144,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ))
             .await?;
 
-            // 4. Создать индексы для новой таблицы
+            // 4. РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃС‹ РґР»СЏ РЅРѕРІРѕР№ С‚Р°Р±Р»РёС†С‹
             let create_indexes = vec![
                 r#"CREATE INDEX IF NOT EXISTS idx_barcodes_nomenclature_ref ON p901_nomenclature_barcodes (nomenclature_ref);"#,
                 r#"CREATE INDEX IF NOT EXISTS idx_barcodes_article ON p901_nomenclature_barcodes (article);"#,
@@ -1160,7 +1160,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 .await?;
             }
 
-            // 5. Удалить backup таблицу
+            // 5. РЈРґР°Р»РёС‚СЊ backup С‚Р°Р±Р»РёС†Сѓ
             let drop_backup = r#"DROP TABLE p901_nomenclature_barcodes_backup;"#;
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
@@ -1172,7 +1172,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    // a010_ozon_fbs_posting table - документы OZON FBS
+    // a010_ozon_fbs_posting table - РґРѕРєСѓРјРµРЅС‚С‹ OZON FBS
     let check_ozon_fbs = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a010_ozon_fbs_posting';
@@ -1211,7 +1211,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // a011_ozon_fbo_posting table - документы OZON FBO
+    // a011_ozon_fbo_posting table - РґРѕРєСѓРјРµРЅС‚С‹ OZON FBO
     let check_ozon_fbo = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a011_ozon_fbo_posting';
@@ -1252,7 +1252,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Миграция: добавление полей status_norm и substatus_raw если их нет
+        // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІР»РµРЅРёРµ РїРѕР»РµР№ status_norm Рё substatus_raw РµСЃР»Рё РёС… РЅРµС‚
         let check_status_norm = r#"
             SELECT COUNT(*) as cnt FROM pragma_table_info('a011_ozon_fbo_posting')
             WHERE name='status_norm';
@@ -1280,7 +1280,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             .await?;
         }
 
-        // Миграция: добавление поля created_at_source если его нет
+        // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІР»РµРЅРёРµ РїРѕР»СЏ created_at_source РµСЃР»Рё РµРіРѕ РЅРµС‚
         let check_created_at_source = r#"
             SELECT COUNT(*) as cnt FROM pragma_table_info('a011_ozon_fbo_posting')
             WHERE name='created_at_source';
@@ -1304,7 +1304,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    // a012_wb_sales table - документы Wildberries Sales
+    // a012_wb_sales table - РґРѕРєСѓРјРµРЅС‚С‹ Wildberries Sales
     let check_wb_sales = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a012_wb_sales';
@@ -1419,7 +1419,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    // a013_ym_order table - документы Yandex Market Orders
+    // a013_ym_order table - РґРѕРєСѓРјРµРЅС‚С‹ Yandex Market Orders
     let check_ym_order = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a013_ym_order';
@@ -1447,7 +1447,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 is_error INTEGER NOT NULL DEFAULT 0,
-                -- Денормализованные поля для быстрых запросов списка
+                -- Р”РµРЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Рµ РїРѕР»СЏ РґР»СЏ Р±С‹СЃС‚СЂС‹С… Р·Р°РїСЂРѕСЃРѕРІ СЃРїРёСЃРєР°
                 status_changed_at TEXT,
                 creation_date TEXT,
                 delivery_date TEXT,
@@ -1475,7 +1475,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Миграция: добавляем денормализованные колонки если их нет
+        // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІР»СЏРµРј РґРµРЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Рµ РєРѕР»РѕРЅРєРё РµСЃР»Рё РёС… РЅРµС‚
         let columns_to_add = vec![
             ("is_error", "INTEGER NOT NULL DEFAULT 0"),
             ("status_changed_at", "TEXT"),
@@ -1522,7 +1522,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    // a013_ym_order_items table - табличная часть заказов YM
+    // a013_ym_order_items table - С‚Р°Р±Р»РёС‡РЅР°СЏ С‡Р°СЃС‚СЊ Р·Р°РєР°Р·РѕРІ YM
     let check_ym_order_items = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a013_ym_order_items';
@@ -1569,7 +1569,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // a014_ozon_transactions table - транзакции OZON
+    // a014_ozon_transactions table - С‚СЂР°РЅР·Р°РєС†РёРё OZON
     let check_ozon_transactions = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a014_ozon_transactions';
@@ -1610,7 +1610,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // a016_ym_returns table - возвраты и невыкупы Yandex Market
+    // a016_ym_returns table - РІРѕР·РІСЂР°С‚С‹ Рё РЅРµРІС‹РєСѓРїС‹ Yandex Market
     let check_ym_returns = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='a016_ym_returns';
@@ -1660,7 +1660,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         .await?;
     }
 
-    // p902_ozon_finance_realization table - финансовые данные реализации OZON
+    // p902_ozon_finance_realization table - С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ СЂРµР°Р»РёР·Р°С†РёРё OZON
     let check_p902 = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='p902_ozon_finance_realization';
@@ -1672,7 +1672,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-    // p903_wb_finance_report table - финансовые отчеты Wildberries
+    // p903_wb_finance_report table - С„РёРЅР°РЅСЃРѕРІС‹Рµ РѕС‚С‡РµС‚С‹ Wildberries
     let check_p903 = r#"
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='p903_wb_finance_report';
@@ -1687,7 +1687,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
     if p902_exists.is_empty() {
         tracing::info!("Creating p902_ozon_finance_realization table");
     } else {
-        // Проверяем, нужна ли миграция (есть ли колонка is_return)
+        // РџСЂРѕРІРµСЂСЏРµРј, РЅСѓР¶РЅР° Р»Рё РјРёРіСЂР°С†РёСЏ (РµСЃС‚СЊ Р»Рё РєРѕР»РѕРЅРєР° is_return)
         let check_is_return_column = Statement::from_string(
             DatabaseBackend::Sqlite,
             "PRAGMA table_info(p902_ozon_finance_realization);".to_string(),
@@ -1703,9 +1703,9 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         if !has_is_return {
             tracing::warn!("Migrating p902_ozon_finance_realization table - adding is_return column and updating PRIMARY KEY");
 
-            // Выполняем миграцию
+            // Р’С‹РїРѕР»РЅСЏРµРј РјРёРіСЂР°С†РёСЋ
             let migration_sql = r#"
-                -- Создаем временную таблицу с новой структурой
+                -- РЎРѕР·РґР°РµРј РІСЂРµРјРµРЅРЅСѓСЋ С‚Р°Р±Р»РёС†Сѓ СЃ РЅРѕРІРѕР№ СЃС‚СЂСѓРєС‚СѓСЂРѕР№
                 CREATE TABLE p902_ozon_finance_realization_new (
                     posting_number TEXT NOT NULL,
                     sku TEXT NOT NULL,
@@ -1744,7 +1744,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ))
             .await?;
 
-            // Копируем данные из старой таблицы
+            // РљРѕРїРёСЂСѓРµРј РґР°РЅРЅС‹Рµ РёР· СЃС‚Р°СЂРѕР№ С‚Р°Р±Р»РёС†С‹
             let copy_data_sql = r#"
                 INSERT INTO p902_ozon_finance_realization_new (
                     posting_number, sku, document_type, registrator_ref,
@@ -1774,20 +1774,20 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             ))
             .await?;
 
-            // Удаляем старую таблицу
+            // РЈРґР°Р»СЏРµРј СЃС‚Р°СЂСѓСЋ С‚Р°Р±Р»РёС†Сѓ
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "DROP TABLE p902_ozon_finance_realization;".to_string(),
             ))
             .await?;
 
-            // Переименовываем новую таблицу
+            // РџРµСЂРµРёРјРµРЅРѕРІС‹РІР°РµРј РЅРѕРІСѓСЋ С‚Р°Р±Р»РёС†Сѓ
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "ALTER TABLE p902_ozon_finance_realization_new RENAME TO p902_ozon_finance_realization;".to_string(),
             )).await?;
 
-            // Создаем индексы заново
+            // РЎРѕР·РґР°РµРј РёРЅРґРµРєСЃС‹ Р·Р°РЅРѕРІРѕ
             let create_idx1 = "CREATE INDEX IF NOT EXISTS idx_p902_accrual_date ON p902_ozon_finance_realization (accrual_date);";
             let create_idx2 = "CREATE INDEX IF NOT EXISTS idx_p902_posting_number ON p902_ozon_finance_realization (posting_number);";
             let create_idx3 = "CREATE INDEX IF NOT EXISTS idx_p902_connection_mp_ref ON p902_ozon_finance_realization (connection_mp_ref);";
@@ -1834,17 +1834,17 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 organization_ref TEXT NOT NULL,
                 posting_ref TEXT,
 
-                -- Даты
+                -- Р”Р°С‚С‹
                 accrual_date TEXT NOT NULL,
                 operation_date TEXT,
                 delivery_date TEXT,
 
-                -- Информация о доставке
+                -- РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РґРѕСЃС‚Р°РІРєРµ
                 delivery_schema TEXT,
                 delivery_region TEXT,
                 delivery_city TEXT,
 
-                -- Количество и суммы
+                -- РљРѕР»РёС‡РµСЃС‚РІРѕ Рё СЃСѓРјРјС‹
                 quantity REAL NOT NULL,
                 price REAL,
                 amount REAL NOT NULL,
@@ -1853,15 +1853,15 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
                 services_amount REAL,
                 payout_amount REAL,
 
-                -- Тип операции
+                -- РўРёРї РѕРїРµСЂР°С†РёРё
                 operation_type TEXT NOT NULL,
                 operation_type_name TEXT,
                 is_return INTEGER NOT NULL DEFAULT 0,
 
-                -- Валюта
+                -- Р’Р°Р»СЋС‚Р°
                 currency_code TEXT,
 
-                -- Технические поля
+                -- РўРµС…РЅРёС‡РµСЃРєРёРµ РїРѕР»СЏ
                 loaded_at_utc TEXT NOT NULL,
                 payload_version INTEGER NOT NULL DEFAULT 1,
                 extra TEXT,
@@ -1875,7 +1875,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         ))
         .await?;
 
-        // Создать индексы для быстрого поиска
+        // РЎРѕР·РґР°С‚СЊ РёРЅРґРµРєСЃС‹ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РїРѕРёСЃРєР°
         let create_p902_idx1 = r#"
             CREATE INDEX IF NOT EXISTS idx_p902_accrual_date
             ON p902_ozon_finance_realization (accrual_date);
@@ -1926,41 +1926,41 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
         let create_p903_table_sql = r#"
             CREATE TABLE p903_wb_finance_report (
                 -- Composite Primary Key
-                rr_dt TEXT NOT NULL,              -- Дата строки финансового отчёта
-                rrd_id INTEGER NOT NULL,          -- Внутренний ID строки отчета
+                rr_dt TEXT NOT NULL,              -- Р”Р°С‚Р° СЃС‚СЂРѕРєРё С„РёРЅР°РЅСЃРѕРІРѕРіРѕ РѕС‚С‡С‘С‚Р°
+                rrd_id INTEGER NOT NULL,          -- Р’РЅСѓС‚СЂРµРЅРЅРёР№ ID СЃС‚СЂРѕРєРё РѕС‚С‡РµС‚Р°
 
                 -- Metadata
                 connection_mp_ref TEXT NOT NULL,
                 organization_ref TEXT NOT NULL,
 
                 -- Main Fields (22 specified fields)
-                acquiring_fee REAL,               -- Комиссия за эквайринг
-                acquiring_percent REAL,           -- Процент комиссии за эквайринг
-                additional_payment REAL,          -- Дополнительные выплаты
-                bonus_type_name TEXT,             -- Тип бонуса или штрафа
-                commission_percent REAL,          -- Процент комиссии WB
-                delivery_amount REAL,             -- Сумма за доставку от покупателя
-                delivery_rub REAL,                -- Стоимость доставки для продавца
-                nm_id INTEGER,                    -- Артикул WB
-                penalty REAL,                     -- Штраф
-                ppvz_vw REAL,                     -- Услуга возврата средств
-                ppvz_vw_nds REAL,                 -- НДС по услуге возврата
-                ppvz_sales_commission REAL,       -- Комиссия WB за продажу
-                quantity INTEGER,                 -- Количество товаров
-                rebill_logistic_cost REAL,        -- Расходы на логистику
-                retail_amount REAL,               -- Общая сумма продажи
-                retail_price REAL,                -- Розничная цена за единицу
-                retail_price_withdisc_rub REAL,   -- Цена с учетом скидок
-                return_amount REAL,               -- Сумма возврата
-                sa_name TEXT,                     -- Артикул продавца
-                storage_fee REAL,                 -- Плата за хранение
-                subject_name TEXT,                -- Категория товара
-                supplier_oper_name TEXT,          -- Тип операции
-                cashback_amount REAL,             -- Сумма кэшбэка
-                ppvz_for_pay REAL,                -- К перечислению за товар
-                ppvz_kvw_prc REAL,                -- Процент комиссии
-                ppvz_kvw_prc_base REAL,           -- Базовый процент комиссии
-                srv_dbs INTEGER,                  -- Доставка силами продавца (0/1)
+                acquiring_fee REAL,               -- РљРѕРјРёСЃСЃРёСЏ Р·Р° СЌРєРІР°Р№СЂРёРЅРі
+                acquiring_percent REAL,           -- РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё Р·Р° СЌРєРІР°Р№СЂРёРЅРі
+                additional_payment REAL,          -- Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РІС‹РїР»Р°С‚С‹
+                bonus_type_name TEXT,             -- РўРёРї Р±РѕРЅСѓСЃР° РёР»Рё С€С‚СЂР°С„Р°
+                commission_percent REAL,          -- РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё WB
+                delivery_amount REAL,             -- РЎСѓРјРјР° Р·Р° РґРѕСЃС‚Р°РІРєСѓ РѕС‚ РїРѕРєСѓРїР°С‚РµР»СЏ
+                delivery_rub REAL,                -- РЎС‚РѕРёРјРѕСЃС‚СЊ РґРѕСЃС‚Р°РІРєРё РґР»СЏ РїСЂРѕРґР°РІС†Р°
+                nm_id INTEGER,                    -- РђСЂС‚РёРєСѓР» WB
+                penalty REAL,                     -- РЁС‚СЂР°С„
+                ppvz_vw REAL,                     -- РЈСЃР»СѓРіР° РІРѕР·РІСЂР°С‚Р° СЃСЂРµРґСЃС‚РІ
+                ppvz_vw_nds REAL,                 -- РќР”РЎ РїРѕ СѓСЃР»СѓРіРµ РІРѕР·РІСЂР°С‚Р°
+                ppvz_sales_commission REAL,       -- РљРѕРјРёСЃСЃРёСЏ WB Р·Р° РїСЂРѕРґР°Р¶Сѓ
+                quantity INTEGER,                 -- РљРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕРІР°СЂРѕРІ
+                rebill_logistic_cost REAL,        -- Р Р°СЃС…РѕРґС‹ РЅР° Р»РѕРіРёСЃС‚РёРєСѓ
+                retail_amount REAL,               -- РћР±С‰Р°СЏ СЃСѓРјРјР° РїСЂРѕРґР°Р¶Рё
+                retail_price REAL,                -- Р РѕР·РЅРёС‡РЅР°СЏ С†РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ
+                retail_price_withdisc_rub REAL,   -- Р¦РµРЅР° СЃ СѓС‡РµС‚РѕРј СЃРєРёРґРѕРє
+                return_amount REAL,               -- РЎСѓРјРјР° РІРѕР·РІСЂР°С‚Р°
+                sa_name TEXT,                     -- РђСЂС‚РёРєСѓР» РїСЂРѕРґР°РІС†Р°
+                storage_fee REAL,                 -- РџР»Р°С‚Р° Р·Р° С…СЂР°РЅРµРЅРёРµ
+                subject_name TEXT,                -- РљР°С‚РµРіРѕСЂРёСЏ С‚РѕРІР°СЂР°
+                supplier_oper_name TEXT,          -- РўРёРї РѕРїРµСЂР°С†РёРё
+                cashback_amount REAL,             -- РЎСѓРјРјР° РєСЌС€Р±СЌРєР°
+                ppvz_for_pay REAL,                -- Рљ РїРµСЂРµС‡РёСЃР»РµРЅРёСЋ Р·Р° С‚РѕРІР°СЂ
+                ppvz_kvw_prc REAL,                -- РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё
+                ppvz_kvw_prc_base REAL,           -- Р‘Р°Р·РѕРІС‹Р№ РїСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё
+                srv_dbs INTEGER,                  -- Р”РѕСЃС‚Р°РІРєР° СЃРёР»Р°РјРё РїСЂРѕРґР°РІС†Р° (0/1)
 
                 -- Technical fields
                 loaded_at_utc TEXT NOT NULL,
@@ -2009,7 +2009,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
 
         tracing::info!("Created p903_wb_finance_report table with indexes");
     } else {
-        // Миграция: добавить поле ppvz_sales_commission если его нет
+        // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІРёС‚СЊ РїРѕР»Рµ ppvz_sales_commission РµСЃР»Рё РµРіРѕ РЅРµС‚
         let check_column = conn
             .query_all(Statement::from_string(
                 DatabaseBackend::Sqlite,
@@ -2035,7 +2035,7 @@ pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
             tracing::info!("Migration of p903_wb_finance_report completed successfully");
         }
 
-        // Миграция: добавить новые поля если их нет
+        // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Рµ РїРѕР»СЏ РµСЃР»Рё РёС… РЅРµС‚
         let new_fields = vec![
             ("cashback_amount", "REAL"),
             ("ppvz_for_pay", "REAL"),

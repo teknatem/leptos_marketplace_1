@@ -3,6 +3,7 @@ pub mod domain;
 pub mod handlers;
 pub mod projections;
 pub mod shared;
+pub mod system;
 pub mod usecases;
 
 #[tokio::main]
@@ -121,7 +122,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Define a database path in the `target` directory in a platform-agnostic way
-    let db_path = std::path::Path::new("target").join("db").join("app.db");
+    // Get workspace root (go up 2 levels from backend crate: crates/backend -> root)
+    let current_dir = std::env::current_dir()?;
+    let workspace_root = current_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(&current_dir);
+
+    let db_path = workspace_root.join("target").join("db").join("app.db");
 
     let db_path_str = db_path
         .to_str()
@@ -131,6 +139,12 @@ async fn main() -> anyhow::Result<()> {
     shared::data::db::initialize_database(Some(db_path_str))
         .await
         .map_err(|e| anyhow::anyhow!("db init failed: {e}"))?;
+
+    // Apply auth system migration
+    system::initialization::apply_auth_migration().await?;
+
+    // Ensure admin user exists
+    system::initialization::ensure_admin_user_exists().await?;
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -512,6 +526,31 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
+        // ========================================
+        // SYSTEM AUTH ROUTES (PUBLIC)
+        // ========================================
+        .route("/api/system/auth/login", post(system::handlers::auth::login))
+        .route("/api/system/auth/refresh", post(system::handlers::auth::refresh))
+        .route("/api/system/auth/logout", post(system::handlers::auth::logout))
+        // System auth routes (protected)
+        .route("/api/system/auth/me", get(system::handlers::auth::current_user)
+            .layer(middleware::from_fn(system::auth::middleware::require_auth)))
+        // System users management (admin only)
+        .route("/api/system/users", 
+            get(system::handlers::users::list)
+                .post(system::handlers::users::create)
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)))
+        .route("/api/system/users/:id",
+            get(system::handlers::users::get_by_id)
+                .put(system::handlers::users::update)
+                .delete(system::handlers::users::delete)
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)))
+        .route("/api/system/users/:id/change-password",
+            post(system::handlers::users::change_password)
+                .layer(middleware::from_fn(system::auth::middleware::require_auth)))
+        // ========================================
+        // BUSINESS ROUTES (existing, without auth for now)
+        // ========================================
         .route(
             "/api/connection_1c",
             get(list_connection_1c_handler).post(upsert_connection_1c_handler),

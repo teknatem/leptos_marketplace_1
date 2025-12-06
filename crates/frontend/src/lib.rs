@@ -2,10 +2,11 @@ pub mod app;
 pub mod dashboards;
 pub mod domain;
 pub mod layout;
+pub mod projections;
 pub mod routes;
 pub mod shared;
+pub mod system;
 pub mod usecases;
-pub mod projections;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 
