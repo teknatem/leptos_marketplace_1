@@ -150,6 +150,7 @@ pub struct OzonTransactions {
 }
 
 impl OzonTransactions {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_for_insert(
         code: String,
         description: String,
@@ -174,6 +175,7 @@ impl OzonTransactions {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: OzonTransactionsId,
         code: String,

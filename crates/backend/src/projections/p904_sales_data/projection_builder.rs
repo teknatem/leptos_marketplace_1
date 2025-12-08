@@ -11,9 +11,6 @@ use super::repository::Model;
 /// Константа эквайринга ПРОДАЖИ (1.9%)
 const WB_ACQUIRING_RATE: f64 = 0.019;
 
-/// Константа эквайринга ВОЗВРАТА (0.53%)
-const WB_ACQUIRING_RETURN_RATE: f64 = 0.0053;
-
 pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Result<Vec<Model>> {
     let now = Utc::now().to_rfc3339();
     let id = Uuid::new_v4().to_string();
@@ -456,7 +453,9 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> Result<Vec<
 
     for line in &document.lines {
         // customer_in берём из buyer_price или amount_line
-        let customer_in = line.buyer_price.unwrap_or_else(|| line.amount_line.unwrap_or(0.0));
+        let customer_in = line
+            .buyer_price
+            .unwrap_or_else(|| line.amount_line.unwrap_or(0.0));
 
         let entry = Model {
             id: Uuid::new_v4().to_string(),

@@ -1,3 +1,18 @@
+#![allow(
+    clippy::useless_format,
+    clippy::unnecessary_map_or,
+    clippy::type_complexity,
+    clippy::manual_div_ceil,
+    clippy::unused_enumerate_index,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::too_many_arguments,
+    clippy::if_same_then_else,
+    clippy::unnecessary_cast,
+    clippy::redundant_pattern_matching,
+    clippy::option_as_ref_deref,
+    clippy::derivable_impls
+)]
+
 pub mod dashboards;
 pub mod domain;
 pub mod handlers;
@@ -121,22 +136,8 @@ async fn main() -> anyhow::Result<()> {
         Response::from_parts(parts, Body::from(bytes))
     }
 
-    // Define a database path in the `target` directory in a platform-agnostic way
-    // Get workspace root (go up 2 levels from backend crate: crates/backend -> root)
-    let current_dir = std::env::current_dir()?;
-    let workspace_root = current_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .unwrap_or(&current_dir);
-
-    let db_path = workspace_root.join("target").join("db").join("app.db");
-
-    let db_path_str = db_path
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("Invalid database path string"))?;
-
-    // Initialize database (create DB file, ensure tables/columns)
-    shared::data::db::initialize_database(Some(db_path_str))
+    // Initialize database (loads config from config.toml)
+    shared::data::db::initialize_database()
         .await
         .map_err(|e| anyhow::anyhow!("db init failed: {e}"))?;
 
@@ -148,8 +149,14 @@ async fn main() -> anyhow::Result<()> {
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::ACCEPT]);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION]);
 
     // Minimal JSON endpoints for the aggregate to enable quick testing without server_fn
     async fn list_connection_1c_handler() -> Result<

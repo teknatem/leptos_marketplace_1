@@ -57,8 +57,8 @@ impl MarketplaceType {
     }
 }
 
-impl ToString for MarketplaceType {
-    fn to_string(&self) -> String {
-        self.code().to_string()
+impl std::fmt::Display for MarketplaceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
     }
 }

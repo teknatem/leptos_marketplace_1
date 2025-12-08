@@ -173,6 +173,7 @@ impl YmReturn {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: YmReturnId,
         code: String,

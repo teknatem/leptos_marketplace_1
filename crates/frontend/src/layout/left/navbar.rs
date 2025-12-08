@@ -1,11 +1,21 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons;
+use crate::system::auth::context::use_auth;
 use leptos::prelude::*;
 
 #[component]
 pub fn Navbar() -> impl IntoView {
     let tabs_store = leptos::context::use_context::<AppGlobalContext>()
         .expect("AppGlobalContext context not found");
+    let (auth_state, _) = use_auth();
+    let is_admin = move || {
+        let state = auth_state.get();
+        state
+            .user_info
+            .as_ref()
+            .map(|u| u.is_admin)
+            .unwrap_or(false)
+    };
 
     fn icon_for(kind: &str) -> AnyView {
         icons::icon(kind)
@@ -89,6 +99,9 @@ pub fn Navbar() -> impl IntoView {
             "dollar-sign",
         ),
     ];
+
+    // Настройки (admin only)
+    let settings = [("sys_users", "Пользователи", "users")];
 
     view! {
         <nav class="main-nav-bar">
@@ -182,6 +195,26 @@ pub fn Navbar() -> impl IntoView {
                         }
                     }).collect_view()}
                 </ul>
+
+                // Настройки (admin only)
+                <Show when=is_admin>
+                    <div class="main-nav-bar-header">
+                        "Настройки"
+                    </div>
+                    <ul>
+                        {settings.iter().map(|(key, title, icon_name)| {
+                            let key = key.to_string();
+                            let title = title.to_string();
+                            let icon_name = icon_name.to_string();
+                            view! {
+                                <li on:click=move |_| tabs_store.open_tab(&key, &title)>
+                                    {icon_for(&icon_name)}
+                                    <span>{title.clone()}</span>
+                                </li>
+                            }
+                        }).collect_view()}
+                    </ul>
+                </Show>
             </>
         </nav>
     }

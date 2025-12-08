@@ -1,23 +1,30 @@
 ﻿use once_cell::sync::OnceCell;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
+use crate::shared::config;
 
 static DB_CONN: OnceCell<DatabaseConnection> = OnceCell::new();
 
-pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
-    let db_file = db_path.unwrap_or("target/db/app.db");
-    if let Some(parent) = std::path::Path::new(db_file).parent() {
+pub async fn initialize_database() -> anyhow::Result<()> {
+    // Load configuration from config.toml
+    let cfg = config::load_config()?;
+    
+    // Get database path from configuration
+    let absolute_path = config::get_database_path(&cfg)?;
+    
+    tracing::info!("Database path: {}", absolute_path.display());
+    
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = absolute_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let absolute_path = if std::path::Path::new(db_file).is_absolute() {
-        std::path::PathBuf::from(db_file)
-    } else {
-        std::env::current_dir()?.join(db_file)
-    };
+    
     // Normalize path separators and ensure proper URL form on Windows
     let normalized = absolute_path.to_string_lossy().replace('\\', "/");
     let needs_leading_slash = !normalized.starts_with('/') && normalized.contains(':');
     let prefix = if needs_leading_slash { "/" } else { "" };
     let db_url = format!("sqlite://{}{}?mode=rwc", prefix, normalized);
+    
+    tracing::info!("Connecting to database: {}", db_url);
     let conn = Database::connect(&db_url).await?;
 
     // Ensure required tables exist (minimal schema bootstrap)

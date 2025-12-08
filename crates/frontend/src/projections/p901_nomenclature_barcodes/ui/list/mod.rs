@@ -1,8 +1,8 @@
+use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
-use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NomenclatureBarcodeDto {
@@ -27,7 +27,6 @@ pub struct BarcodeListResponse {
 #[derive(Debug, Clone, PartialEq)]
 enum SortColumn {
     Barcode,
-    NomenclatureRef,
     NomenclatureName,
     Article,
     Source,
@@ -161,7 +160,6 @@ pub fn BarcodesList() -> impl IntoView {
             data.sort_by(|a, b| {
                 let cmp = match col {
                     SortColumn::Barcode => a.barcode.cmp(&b.barcode),
-                    SortColumn::NomenclatureRef => a.nomenclature_ref.cmp(&b.nomenclature_ref),
                     SortColumn::NomenclatureName => {
                         let a_name = a.nomenclature_name.as_deref().unwrap_or("");
                         let b_name = b.nomenclature_name.as_deref().unwrap_or("");
@@ -200,7 +198,8 @@ pub fn BarcodesList() -> impl IntoView {
     let export_to_csv = move |_| {
         let data = sorted_barcodes();
 
-        let mut csv = String::from("Штрихкод;ID Номенклатуры;Артикул;Источник;Создано;Обновлено;Активен\n");
+        let mut csv =
+            String::from("Штрихкод;ID Номенклатуры;Артикул;Источник;Создано;Обновлено;Активен\n");
 
         for item in data {
             let line = format!(
@@ -229,12 +228,19 @@ pub fn BarcodesList() -> impl IntoView {
                 let options = web_sys::BlobPropertyBag::new();
                 options.set_type("text/csv;charset=utf-8");
 
-                if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &options) {
+                if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &options)
+                {
                     let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
 
-                    if let Ok(Some(anchor)) = document.create_element("a").map(|e| e.dyn_into::<web_sys::HtmlAnchorElement>().ok()) {
+                    if let Ok(Some(anchor)) = document
+                        .create_element("a")
+                        .map(|e| e.dyn_into::<web_sys::HtmlAnchorElement>().ok())
+                    {
                         anchor.set_href(&url);
-                        anchor.set_download(&format!("barcodes_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S")));
+                        anchor.set_download(&format!(
+                            "barcodes_{}.csv",
+                            chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                        ));
                         let _ = anchor.click();
                         web_sys::Url::revoke_object_url(&url).ok();
                     }

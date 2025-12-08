@@ -99,7 +99,7 @@ pub async fn list_all() -> Result<Vec<User>> {
 /// Change user password
 pub async fn change_password(dto: ChangePasswordDto, requester_id: &str) -> Result<()> {
     // Get user
-    let user = repository::get_by_id(&dto.user_id)
+    let _user = repository::get_by_id(&dto.user_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("User not found"))?;
 

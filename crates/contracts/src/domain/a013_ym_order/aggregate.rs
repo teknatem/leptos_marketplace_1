@@ -181,6 +181,7 @@ impl YmOrder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: YmOrderId,
         code: String,
