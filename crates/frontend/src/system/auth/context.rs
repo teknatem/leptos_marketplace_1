@@ -13,10 +13,10 @@ pub struct AuthState {
 /// Auth context provider component
 #[component]
 pub fn AuthProvider(children: ChildrenFn) -> impl IntoView {
-    let (auth_state, set_auth_state) = create_signal(AuthState::default());
+    let (auth_state, set_auth_state) = signal(AuthState::default());
 
     // Try to restore session from localStorage on mount
-    create_effect(move |_| {
+    Effect::new(move |_| {
         spawn_local(async move {
             if let Some(access_token) = storage::get_access_token() {
                 // Validate token by fetching current user

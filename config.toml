@@ -1,0 +1,6 @@
+[database]
+# Путь к файлу базы данных
+# Относительный путь от расположения backend.exe к БД
+# target/debug/backend.exe -> ../../target/db/app.db -> target/db/app.db (workspace root)
+path = "../../target/db/app.db"
+

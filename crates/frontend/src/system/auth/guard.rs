@@ -6,7 +6,7 @@ use super::context::use_auth;
 /// Shows fallback if not authenticated
 #[component]
 pub fn RequireAuth(
-    #[prop(optional)] redirect_to: Option<String>,
+    #[prop(optional)] _redirect_to: Option<String>,
     children: ChildrenFn,
 ) -> impl IntoView {
     let (auth_state, _) = use_auth();
@@ -25,7 +25,7 @@ pub fn RequireAuth(
 /// Shows fallback if not admin
 #[component]
 pub fn RequireAdmin(
-    #[prop(optional)] redirect_to: Option<String>,
+    #[prop(optional)] _redirect_to: Option<String>,
     children: ChildrenFn,
 ) -> impl IntoView {
     let (auth_state, _) = use_auth();

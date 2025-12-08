@@ -54,6 +54,7 @@ pub fn ImportWidget() -> impl IntoView {
             }
         }
     }
+    #[allow(dead_code)]
     fn load_progress_snapshot() -> Option<ImportProgress> {
         storage()
             .and_then(|s| s.get_item(PROGRESS_KEY).ok().flatten())

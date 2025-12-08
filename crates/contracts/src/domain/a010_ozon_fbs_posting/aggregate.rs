@@ -143,6 +143,7 @@ impl OzonFbsPosting {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: OzonFbsPostingId,
         code: String,

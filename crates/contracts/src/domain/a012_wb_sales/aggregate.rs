@@ -154,6 +154,7 @@ pub struct WbSales {
 }
 
 impl WbSales {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_for_insert(
         code: String,
         description: String,
@@ -178,6 +179,7 @@ impl WbSales {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: WbSalesId,
         code: String,

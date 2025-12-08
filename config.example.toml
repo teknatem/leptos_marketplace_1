@@ -1,0 +1,71 @@
+# Leptos Marketplace Configuration Example
+# Copy this file to config.toml and adjust settings for your environment
+
+[database]
+# Путь к файлу базы данных SQLite
+# Может быть относительным или абсолютным
+
+# ============================================================
+# Development Configuration (по умолчанию)
+# ============================================================
+# Относительный путь от расположения backend.exe
+# target/debug/backend.exe -> ../../target/db/app.db -> target/db/app.db
+path = "../../target/db/app.db"
+
+# ============================================================
+# Альтернативные варианты конфигурации
+# ============================================================
+
+# Абсолютный путь (Windows)
+# path = "E:/dev/rust/leptos_marketplace_1/target/db/app.db"
+
+# Абсолютный путь (Linux/Mac)
+# path = "/home/user/projects/leptos_marketplace/target/db/app.db"
+
+# База данных рядом с исполняемым файлом
+# path = "./app.db"
+# или
+# path = "./data/app.db"
+
+# Production конфигурация
+# path = "C:/Production/MarketplaceData/database.db"
+
+# Тестовая база данных
+# path = "../../target/db/test.db"
+
+# ============================================================
+# Как это работает
+# ============================================================
+# 
+# 1. При запуске программа ищет config.toml:
+#    - Сначала рядом с backend.exe (для production)
+#    - Если не найден - использует встроенный default
+#
+# 2. Путь из конфига разрешается:
+#    - Абсолютный путь используется как есть
+#    - Относительный путь разрешается от расположения backend.exe
+#
+# 3. Build script автоматически копирует config.toml
+#    из workspace root в target/debug и target/release
+#
+# ============================================================
+# Примеры использования
+# ============================================================
+#
+# Development:
+#   1. Отредактируйте config.toml в workspace root
+#   2. Запустите: cargo run --bin backend
+#   3. config.toml будет автоматически скопирован в target/debug/
+#
+# Production:
+#   1. Скомпилируйте: cargo build --release --bin backend
+#   2. Скопируйте backend.exe в целевую директорию
+#   3. Скопируйте и отредактируйте config.toml рядом с backend.exe
+#   4. Запустите backend.exe
+#
+# Разные окружения:
+#   - Используйте разные config.toml для dev/test/prod
+#   - Храните config.example.toml в git
+#   - Добавьте config.toml в .gitignore для локальных настроек
+#
+

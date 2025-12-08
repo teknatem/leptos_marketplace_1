@@ -116,6 +116,7 @@ impl Nomenclature {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_id(
         id: NomenclatureId,
         code: String,

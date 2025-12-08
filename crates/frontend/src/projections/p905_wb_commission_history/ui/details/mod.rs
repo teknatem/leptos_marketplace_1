@@ -10,25 +10,25 @@ pub fn CommissionHistoryDetails(#[prop(into, optional)] id: Option<String>) -> i
     let is_new = id.is_none();
 
     // State
-    let (loading, set_loading) = signal(false);
+    let (_loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
-    let (success_message, set_success_message) = signal(None::<String>);
-    let (active_tab, set_active_tab) = signal("fields");
+    let (success_message, _set_success_message) = signal(None::<String>);
+    let (_active_tab, _set_active_tab) = signal("fields");
 
     // Form fields
     let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
     let (date, set_date) = signal(today);
     let (subject_id, set_subject_id) = signal("".to_string());
     let (subject_name, set_subject_name) = signal("".to_string());
-    let (parent_id, set_parent_id) = signal("".to_string());
-    let (parent_name, set_parent_name) = signal("".to_string());
+    let (_parent_id, set_parent_id) = signal("".to_string());
+    let (_parent_name, set_parent_name) = signal("".to_string());
     let (kgvp_booking, set_kgvp_booking) = signal("".to_string());
     let (kgvp_marketplace, set_kgvp_marketplace) = signal("".to_string());
-    let (kgvp_pickup, set_kgvp_pickup) = signal("".to_string());
-    let (kgvp_supplier, set_kgvp_supplier) = signal("".to_string());
-    let (kgvp_supplier_express, set_kgvp_supplier_express) = signal("".to_string());
-    let (paid_storage_kgvp, set_paid_storage_kgvp) = signal("".to_string());
-    let (raw_json, set_raw_json) = signal("".to_string());
+    let (_kgvp_pickup, set_kgvp_pickup) = signal("".to_string());
+    let (_kgvp_supplier, set_kgvp_supplier) = signal("".to_string());
+    let (_kgvp_supplier_express, set_kgvp_supplier_express) = signal("".to_string());
+    let (_paid_storage_kgvp, set_paid_storage_kgvp) = signal("".to_string());
+    let (_raw_json, set_raw_json) = signal("".to_string());
 
     // Load existing data if editing
     if let Some(ref commission_id) = id {

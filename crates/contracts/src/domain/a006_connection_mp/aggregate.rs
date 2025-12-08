@@ -276,7 +276,7 @@ impl AggregateRoot for ConnectionMP {
 // ============================================================================
 
 /// DTO для создания/обновления подключения к маркетплейсу
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConnectionMPDto {
     pub id: Option<String>,
     pub code: Option<String>,
@@ -312,27 +312,6 @@ pub struct ConnectionMPDto {
 
     #[serde(rename = "ТипАвторизации")]
     pub authorization_type: AuthorizationType,
-}
-
-impl Default for ConnectionMPDto {
-    fn default() -> Self {
-        Self {
-            id: None,
-            code: None,
-            description: String::new(),
-            comment: None,
-            marketplace_id: String::new(),
-            organization: String::new(),
-            api_key: String::new(),
-            supplier_id: None,
-            application_id: None,
-            is_used: false,
-            business_account_id: None,
-            api_key_stats: None,
-            test_mode: false,
-            authorization_type: AuthorizationType::default(),
-        }
-    }
 }
 
 /// Результат тестирования подключения к маркетплейсу
