@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "todo/sales-register/sales-register-scheme.md",
+                "file": "architecture/migration-to-standard.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "sales-register-scheme"
+              "title": "migration-to-standard"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "todo/sales-register/sales-register-scheme.md",
+                "file": "architecture/migration-to-standard.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for sales-register-scheme"
+              "title": "Backlinks for migration-to-standard"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "todo/sales-register/sales-register-scheme.md",
+                "file": "architecture/migration-to-standard.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from sales-register-scheme"
+              "title": "Outgoing links from migration-to-standard"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "todo/sales-register/sales-register-scheme.md",
+                "file": "architecture/migration-to-standard.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of sales-register-scheme"
+              "title": "Outline of migration-to-standard"
             }
           }
         ]
@@ -185,6 +185,8 @@
   },
   "active": "1ab3ea982aca7598",
   "lastOpenFiles": [
+    "projectbrief.md",
+    "todo/sales-register/sales-register-scheme.md",
     "todo/field-metadata-system.md",
     "systemPatterns.md",
     "techContext.md",
