@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPI - UI Preview</title>
+    <style>
+        /* Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+
+        /* ===== LOGIN PAGE PREVIEW ===== */
+        .preview-section {
+            padding: 2rem;
+            background: white;
+            margin-bottom: 2rem;
+        }
+
+        .preview-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 0.5rem;
+        }
+
+        /* Login Page Styles */
+        .modern-login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 600px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        .modern-login-box {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(20px);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+            width: 100%;
+            max-width: 28rem;
+            border: 1px solid rgba(226, 232, 240, 0.5);
+        }
+
+        .modern-login-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .modern-logo-wrapper {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .modern-logo-outer {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0.05) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .modern-logo-inner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgb(99, 102, 241) 0%, rgba(99, 102, 241, 0.8) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
+            color: white;
+            font-size: 32px;
+        }
+
+        .modern-login-icon h2 {
+            color: #0f172a;
+            margin: 0 0 0.5rem 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            color: rgb(148, 163, 184);
+            font-size: 0.875rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #0f172a;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+
+        .modern-input-wrapper {
+            position: relative;
+        }
+
+        .modern-input-wrapper input {
+            width: 100%;
+            height: 48px;
+            padding: 0 1rem 0 3rem;
+            border: 1px solid rgba(226, 232, 240, 0.5);
+            border-radius: 10px;
+            font-size: 0.9375rem;
+            background: rgba(241, 245, 249, 0.5);
+            color: #0f172a;
+        }
+
+        .modern-login-box button[type="submit"] {
+            width: 100%;
+            height: 48px;
+            padding: 0 1.5rem;
+            background: linear-gradient(to right, rgb(99, 102, 241) 0%, rgba(99, 102, 241, 0.8) 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+
+        /* ===== MAIN LAYOUT PREVIEW ===== */
+        .main-layout {
+            display: grid;
+            grid-template-areas:
+                "header header header"
+                "sidebar center right";
+            grid-template-columns: 240px 1fr 260px;
+            grid-template-rows: 40px 1fr;
+            height: 600px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            grid-area: header;
+            background: linear-gradient(to right, #4776da 0%, #abc5fc 100%);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1rem;
+            color: white;
+        }
+
+        .header-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+
+        .sidebar {
+            grid-area: sidebar;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid #e5e5e5;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.875rem;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(0, 123, 255, 0.1);
+        }
+
+        .sidebar-item.active {
+            background: rgba(0, 123, 255, 0.2);
+            border-left: 3px solid #007bff;
+        }
+
+        .sidebar-item-content {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sidebar-children .sidebar-item {
+            padding-left: 2rem;
+            font-size: 0.8125rem;
+        }
+
+        .center-panel {
+            grid-area: center;
+            background: #fff;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .right-panel {
+            grid-area: right;
+            background: rgb(186, 205, 253);
+            border-left: 1px solid #e5e5e5;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .tabs-container {
+            display: flex;
+            gap: 0.25rem;
+            border-bottom: 1px solid #e5e5e5;
+            padding: 0.5rem;
+            background: #eee;
+        }
+
+        .tab {
+            padding: 0.5rem 1rem;
+            background: white;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tab.active {
+            background: #007bff;
+            color: white;
+        }
+
+        .issue {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+
+        .issue-title {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-section">
+        <h1 class="preview-title">🎨 MPI UI Preview - Текущее состояние</h1>
+        <p style="color: #666; margin-bottom: 1rem;">Визуализация текущего интерфейса для оценки перед улучшениями</p>
+    </div>
+
+    <div class="preview-section">
+        <h2 class="preview-title">1. Страница входа (Login Page)</h2>
+        <div class="modern-login-container">
+            <div class="modern-login-box">
+                <div class="modern-login-icon">
+                    <div class="modern-logo-wrapper">
+                        <div class="modern-logo-outer">
+                            <div class="modern-logo-inner">📦</div>
+                        </div>
+                    </div>
+                    <h2>Вход в систему MPI</h2>
+                    <p class="subtitle">Платформа интеграции маркетплейсов</p>
+                </div>
+
+                <form>
+                    <div class="form-group">
+                        <label>Логин</label>
+                        <div class="modern-input-wrapper">
+                            <input type="text" placeholder="Введите ваш логин" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <div class="modern-input-wrapper">
+                            <input type="password" placeholder="Введите ваш пароль" />
+                        </div>
+                    </div>
+
+                    <button type="submit">Войти в систему →</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="issue">
+            <div class="issue-title">⚠️ Проблема: Использование фиолетовых цветов</div>
+            <p>Страница входа использует индиго/фиолетовую палитру (rgb(99, 102, 241)), что нарушает дизайн-требования. Нужно заменить на профессиональные цвета (синий, серый, зеленый).</p>
+        </div>
+    </div>
+
+    <div class="preview-section">
+        <h2 class="preview-title">2. Основной интерфейс (Main Layout)</h2>
+        <div class="main-layout">
+            <div class="header">
+                <div class="header-title">Integrator</div>
+                <div>
+                    <button class="icon-btn">◀</button>
+                    <button class="icon-btn">▶</button>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="sidebar-item">
+                    <div class="sidebar-item-content">
+                        📊 Сводка за месяц
+                    </div>
+                </div>
+
+                <div class="sidebar-item active">
+                    <div class="sidebar-item-content">
+                        📁 Справочники
+                    </div>
+                    <span>▼</span>
+                </div>
+                <div class="sidebar-children">
+                    <div class="sidebar-item">
+                        <div class="sidebar-item-content">
+                            🏢 Организации
+                        </div>
+                    </div>
+                    <div class="sidebar-item">
+                        <div class="sidebar-item-content">
+                            👤 Контрагенты
+                        </div>
+                    </div>
+                    <div class="sidebar-item">
+                        <div class="sidebar-item-content">
+                            📦 Номенклатура
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item">
+                    <div class="sidebar-item-content">
+                        📄 Документы
+                    </div>
+                    <span>▶</span>
+                </div>
+
+                <div class="sidebar-item">
+                    <div class="sidebar-item-content">
+                        ⚙️ Интеграции
+                    </div>
+                    <span>▶</span>
+                </div>
+            </div>
+
+            <div class="center-panel">
+                <div class="tabs-container">
+                    <div class="tab active">
+                        Организации ×
+                    </div>
+                    <div class="tab">
+                        Номенклатура ×
+                    </div>
+                </div>
+                <div style="padding: 1rem;">
+                    <h3 style="margin-bottom: 1rem;">Список организаций</h3>
+                    <p style="color: #666;">Здесь отображается список организаций с возможностью добавления, редактирования и удаления...</p>
+                </div>
+            </div>
+
+            <div class="right-panel">
+                <h4 style="margin-bottom: 1rem;">Панель информации</h4>
+                <p style="font-size: 0.875rem;">Логи и дополнительная информация...</p>
+            </div>
+        </div>
+
+        <div class="issue">
+            <div class="issue-title">⚠️ Проблемы основного интерфейса</div>
+            <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                <li>Header слишком простой - только текст "Integrator"</li>
+                <li>Нет логотипа и брендирования</li>
+                <li>Кнопки ◀ ▶ выглядят устаревшими</li>
+                <li>Sidebar анимации раскрытия могут быть плавнее</li>
+                <li>Мало микроинтеракций и hover эффектов</li>
+                <li>Отсутствует профиль пользователя в header</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="preview-section">
+        <h2 class="preview-title">💡 Предлагаемые улучшения</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem;">
+            <div style="padding: 1rem; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196F3;">
+                <h3 style="color: #1976D2; margin-bottom: 0.5rem;">🎨 Цветовая схема</h3>
+                <p style="font-size: 0.875rem;">Заменить фиолетовый на профессиональную сине-серую палитру</p>
+            </div>
+            <div style="padding: 1rem; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4CAF50;">
+                <h3 style="color: #388E3C; margin-bottom: 0.5rem;">🎯 Header</h3>
+                <p style="font-size: 0.875rem;">Добавить логотип, меню пользователя, улучшенные кнопки</p>
+            </div>
+            <div style="padding: 1rem; background: #fff3e0; border-radius: 8px; border-left: 4px solid #FF9800;">
+                <h3 style="color: #F57C00; margin-bottom: 0.5rem;">✨ Анимации</h3>
+                <p style="font-size: 0.875rem;">Плавные transitions, hover эффекты, микроинтеракции</p>
+            </div>
+            <div style="padding: 1rem; background: #f3e5f5; border-radius: 8px; border-left: 4px solid #9C27B0;">
+                <h3 style="color: #7B1FA2; margin-bottom: 0.5rem;">🌙 Темы</h3>
+                <p style="font-size: 0.875rem;">Темная тема и переключатель тем</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="preview-section">
+        <h2 class="preview-title">📋 Что делаем дальше?</h2>
+        <p style="margin-bottom: 1rem;">Выберите, какие улучшения внедрить в первую очередь:</p>
+        <ol style="margin-left: 1.5rem; line-height: 1.8;">
+            <li><strong>Исправить цветовую схему входа</strong> - убрать фиолетовый</li>
+            <li><strong>Улучшить Header</strong> - логотип, профиль, кнопки</li>
+            <li><strong>Доработать Sidebar</strong> - анимации, hover эффекты</li>
+            <li><strong>Добавить системные улучшения</strong> - кнопки, transitions, loading states</li>
+            <li><strong>Темная тема</strong> - полноценная темная тема</li>
+        </ol>
+    </div>
+</body>
+</html>
