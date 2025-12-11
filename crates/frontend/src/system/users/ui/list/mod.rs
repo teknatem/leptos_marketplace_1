@@ -266,35 +266,34 @@ fn UsersList() -> impl IntoView {
                 </div>
             </Show>
 
-            <Show
-                when=move || show_create_form.get()
-                fallback=|| view! { <></> }
-            >
-                <super::details::CreateUserForm
-                    on_close=move || show_create_form.set(false)
-                    on_created=move || {
-                        show_create_form.set(false);
-                        load_data();
-                    }
-                />
-            </Show>
+            {move || if show_create_form.get() {
+                view! {
+                    <super::details::CreateUserForm
+                        on_close=move || show_create_form.set(false)
+                        on_created=move || {
+                            show_create_form.set(false);
+                            load_data();
+                        }
+                    />
+                }.into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
 
-            <Show
-                when=move || editing_user.get().is_some()
-                fallback=|| view! { <></> }
-            >
-                {move || {
-                    editing_user
-                        .get()
-                        .map(|user| view! {
-                            <EditUserForm
-                                user=user
-                                on_close=close_edit
-                                on_saved=on_saved
-                            />
-                        })
-                }}
-            </Show>
+            {move || if editing_user.get().is_some() {
+                editing_user
+                    .get()
+                    .map(|user| view! {
+                        <EditUserForm
+                            user=user
+                            on_close=close_edit
+                            on_saved=on_saved
+                        />
+                    })
+                    .into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
 
             <Show
                 when=move || !loading.get()

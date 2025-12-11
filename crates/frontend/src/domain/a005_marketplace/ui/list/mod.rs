@@ -1,5 +1,6 @@
 use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
 use crate::shared::icons::icon;
+use crate::shared::modal::Modal;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use leptos::prelude::*;
 use std::collections::HashSet;
@@ -69,11 +70,6 @@ pub fn MarketplaceList() -> impl IntoView {
             set_editing_id.set(Some(id));
             set_show_modal.set(true);
         }
-    };
-
-    let handle_cancel = move |_| {
-        set_show_modal.set(false);
-        set_editing_id.set(None);
     };
 
     let toggle_select = move |id: String, checked: bool| {
@@ -221,21 +217,26 @@ pub fn MarketplaceList() -> impl IntoView {
                 </table>
             </div>
 
-            {move || if show_modal.get() {
-                view! {
-                    <div class="modal-overlay">
-                        <div class="modal-content">
+            <Show when=move || show_modal.get()>
+                {move || {
+                    let modal_title = if editing_id.get().is_some() { "Edit Marketplace".to_string() } else { "New Marketplace".to_string() };
+                    view! {
+                        <Modal
+                            title=modal_title
+                            on_close=Callback::new(move |_| {
+                                set_show_modal.set(false);
+                                set_editing_id.set(None);
+                            })
+                        >
                             <MarketplaceDetails
                                 id=editing_id.get()
                                 on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
-                                on_cancel=Rc::new(move |_| handle_cancel(()))
+                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
                             />
-                        </div>
-                    </div>
-                }.into_any()
-            } else {
-                view! { <></> }.into_any()
-            }}
+                        </Modal>
+                    }
+                }}
+            </Show>
         </div>
     }
 }

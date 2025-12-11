@@ -168,6 +168,57 @@ async fn main() -> anyhow::Result<()> {
             Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
         }
     }
+
+    // Пагинированный список подключений 1C
+    #[derive(serde::Deserialize)]
+    struct Connection1CListParams {
+        limit: Option<u64>,
+        offset: Option<u64>,
+        sort_by: Option<String>,
+        sort_desc: Option<bool>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct Connection1CPaginatedResponse {
+        items: Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>,
+        total: u64,
+        page: usize,
+        page_size: usize,
+        total_pages: usize,
+    }
+
+    async fn list_connection_1c_paginated_handler(
+        axum::extract::Query(params): axum::extract::Query<Connection1CListParams>,
+    ) -> Result<Json<Connection1CPaginatedResponse>, axum::http::StatusCode> {
+        let limit = params.limit.unwrap_or(100).clamp(10, 10000);
+        let offset = params.offset.unwrap_or(0);
+        let sort_by = params.sort_by.as_deref().unwrap_or("description");
+        let sort_desc = params.sort_desc.unwrap_or(false);
+
+        match domain::a001_connection_1c::service::list_paginated(
+            limit,
+            offset,
+            sort_by,
+            sort_desc,
+        )
+        .await
+        {
+            Ok((items, total)) => {
+                let page_size = limit as usize;
+                let page = (offset as usize) / page_size;
+                let total_pages = ((total as usize) + page_size - 1) / page_size;
+
+                Ok(Json(Connection1CPaginatedResponse {
+                    items,
+                    total,
+                    page,
+                    page_size,
+                    total_pages,
+                }))
+            }
+            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        }
+    }
     async fn insert_test_data_handler() -> axum::http::StatusCode {
         match domain::a001_connection_1c::service::insert_test_data().await {
             Ok(_) => axum::http::StatusCode::OK,
@@ -561,6 +612,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/connection_1c",
             get(list_connection_1c_handler).post(upsert_connection_1c_handler),
+        )
+        .route(
+            "/api/connection_1c/list",
+            get(list_connection_1c_paginated_handler),
         )
         .route(
             "/api/connection_1c/:id",

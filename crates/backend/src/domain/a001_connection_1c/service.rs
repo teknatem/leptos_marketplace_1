@@ -81,6 +81,16 @@ pub async fn list_all() -> anyhow::Result<Vec<Connection1CDatabase>> {
     repository::list_all().await
 }
 
+/// Пагинированный список подключений
+pub async fn list_paginated(
+    limit: u64,
+    offset: u64,
+    sort_by: &str,
+    sort_desc: bool,
+) -> anyhow::Result<(Vec<Connection1CDatabase>, u64)> {
+    repository::list_paginated(limit, offset, sort_by, sort_desc).await
+}
+
 /// Получение основного подключения
 pub async fn get_primary() -> anyhow::Result<Option<Connection1CDatabase>> {
     repository::get_primary().await

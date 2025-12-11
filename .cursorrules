@@ -4,6 +4,13 @@
 
 Full-stack Rust marketplace management system integrating with Wildberries and Ozon, powered by 1C:UT11 data.
 
+### UI Design Reference
+
+**bolt-mpi-ui-redesign** (`E:\dev\bolt\bolt-mpi-ui-redesign`) - эталонный проект для стилей UI:
+- Модальные окна, формы, компоненты
+- Стили: `public/themes/base.css`, `dark.css`, `light.css`
+- Ключевые размеры: input height 30px, padding 5px 12px
+
 ## 🏗️ Architecture Quick Reference
 
 ### Tech Stack
@@ -218,6 +225,7 @@ domain/{feature}/ui/
 - `memory-bank/architecture/naming-conventions.md` - Complete naming guide
 - `memory-bank/architecture/project-structure.md` - Workspace structure
 - `memory-bank/architecture/list-standard.md` - List component standard (пагинация, resize, чекбоксы)
+- `memory-bank/architecture/modal-ui-standard.md` - Modal & Forms UI standard (кнопки вверху, glassmorphism)
 
 ### Active Work
 

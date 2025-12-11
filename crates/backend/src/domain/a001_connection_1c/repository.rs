@@ -6,11 +6,9 @@ use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use sea_orm::entity::prelude::*;
-
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
-
 use crate::shared::data::db::get_connection;
+use sea_orm::entity::prelude::*;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a001_connection_1c_database")]
@@ -82,6 +80,81 @@ pub async fn list_all() -> anyhow::Result<Vec<Connection1CDatabase>> {
             .cmp(&b.base.description.to_lowercase())
     });
     Ok(items)
+}
+
+/// Пагинированный список подключений 1C
+pub async fn list_paginated(
+    limit: u64,
+    offset: u64,
+    sort_by: &str,
+    sort_desc: bool,
+) -> anyhow::Result<(Vec<Connection1CDatabase>, u64)> {
+    // Подсчет общего количества
+    let total = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .count(conn())
+        .await?;
+
+    // Получение данных с пагинацией
+    let mut query = Entity::find().filter(Column::IsDeleted.eq(false));
+
+    // Сортировка
+    query = match sort_by {
+        "description" => {
+            if sort_desc {
+                query.order_by_desc(Column::Description)
+            } else {
+                query.order_by_asc(Column::Description)
+            }
+        }
+        "url" => {
+            if sort_desc {
+                query.order_by_desc(Column::Url)
+            } else {
+                query.order_by_asc(Column::Url)
+            }
+        }
+        "login" => {
+            if sort_desc {
+                query.order_by_desc(Column::Login)
+            } else {
+                query.order_by_asc(Column::Login)
+            }
+        }
+        "is_primary" => {
+            if sort_desc {
+                query.order_by_desc(Column::IsPrimary)
+            } else {
+                query.order_by_asc(Column::IsPrimary)
+            }
+        }
+        "created_at" => {
+            if sort_desc {
+                query.order_by_desc(Column::CreatedAt)
+            } else {
+                query.order_by_asc(Column::CreatedAt)
+            }
+        }
+        _ => {
+            // По умолчанию сортировка по description
+            if sort_desc {
+                query.order_by_desc(Column::Description)
+            } else {
+                query.order_by_asc(Column::Description)
+            }
+        }
+    };
+
+    let items: Vec<Connection1CDatabase> = query
+        .limit(limit)
+        .offset(offset)
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok((items, total))
 }
 
 pub async fn get_by_id(id: Uuid) -> anyhow::Result<Option<Connection1CDatabase>> {

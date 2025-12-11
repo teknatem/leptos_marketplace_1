@@ -1,5 +1,6 @@
 /* ============================================
    Right Panel Layout Styles
+   Theme-specific styles are in theme CSS files
    ============================================ */
 
 .right {
@@ -7,13 +8,11 @@
     flex-shrink: 0;
     transition: width var(--transition-base),
                 padding var(--transition-base);
-    border-left: 1px solid var(--color-border);
     overflow: hidden;
     position: relative;
     opacity: var(--opacity-panel);
     padding-left: 0;
     padding-right: 0;
-    background-color: var(--color-panel-bg);
 }
 
 .right.hidden {
@@ -38,10 +37,6 @@
     background: transparent;
 }
 
-.right-resizer:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-
 /* Fullscreen overlay to capture mouse events while dragging */
 .resize-overlay {
     position: fixed;
@@ -52,7 +47,6 @@
 
 /* Right panel content styles */
 .right-panel {
-    background-color: var(--color-panel-bg);
     padding: var(--space-2xl);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
@@ -60,34 +54,124 @@
 
 .right-panel h3 {
     margin: 0 0 var(--space-2xl) 0;
-    color: var(--color-text-primary);
     font-size: var(--font-size-h3);
     font-weight: var(--font-weight-semibold);
 }
 
 .right-panel p {
     margin: 0 0 var(--space-lg) 0;
-    color: var(--color-text-secondary);
     line-height: var(--line-height-normal);
 }
 
 .right-panel .info-item {
-    background: var(--color-panel-info-bg);
     padding: var(--space-lg);
     margin-bottom: var(--space-md);
     border-radius: var(--radius-sm);
-    border-left: 3px solid var(--color-primary);
 }
 
 .right-panel .info-label {
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
     margin-bottom: var(--space-xs);
 }
 
 .right-panel .info-value {
-    color: var(--color-text-muted);
     font-size: 0.9rem;
+}
+
+/* ============================================
+   Right Panel Sections
+   ============================================ */
+
+.right-panel-container {
+    width: var(--sidebar-width);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.right-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+}
+
+.right-panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.right-panel-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.right-panel-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.right-panel-section {
+    margin-bottom: var(--spacing-lg);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+}
+
+.right-panel-section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+}
+
+.right-panel-section-header h3 {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.right-panel-section-body {
+    padding: var(--spacing-md);
+}
+
+.right-panel-section-body p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+
+/* Activity items */
+.activity-item {
+    display: flex;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+}
+
+.activity-time {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    min-width: 45px;
+}
+
+.activity-text {
+    font-size: var(--font-size-xs);
+    line-height: 1.4;
+}
+
+/* Stat items */
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    font-size: var(--font-size-sm);
+}
+
+.stat-label {
+    opacity: 0.8;
+}
+
+.stat-value {
+    font-weight: 600;
 }
 
 /* ============================================
@@ -107,12 +191,11 @@
     align-items: center;
     margin-bottom: var(--space-lg);
     padding-bottom: var(--space-md);
-    border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .logs-header h3 {
     margin: 0;
-    font-size: var(--font-size-h4);
+    font-size: var(--font-size-lg);
 }
 
 .logs-actions {
@@ -147,7 +230,6 @@
 .logs-table-container {
     flex: 1;
     overflow-y: auto;
-    border: 1px solid var(--color-border-light);
     border-radius: var(--radius-sm);
 }
 
@@ -161,35 +243,27 @@
 .logs-table thead {
     position: sticky;
     top: 0;
-    background-color: #f5f5f5;  /* Светло-серый фон */
     z-index: 1;
-    height: 30px;  /* Фиксированная высота шапки 30px */
+    height: 30px;
 }
 
 .logs-table th {
-    padding: 6px 8px;  /* Компактный padding для высоты 30px */
+    padding: 6px 8px;
     text-align: left;
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
-    border-bottom: 2px solid var(--color-border);
     white-space: nowrap;
-    font-size: 9px;  /* Уменьшенный шрифт для шапки */
-    line-height: 1.2;  /* Плотный межстрочный интервал */
+    font-size: 9px;
+    line-height: 1.2;
 }
 
 .logs-table td {
-    padding: 4px 8px;  /* Компактный padding */
-    border-bottom: 1px solid var(--color-border-lighter);
+    padding: 4px 8px;
     vertical-align: top;
-    line-height: 1.3;  /* Плотный межстрочный интервал */
+    line-height: 1.3;
 }
 
 .logs-table tbody tr {
-    height: 20px;  /* Компактная высота строки */
-}
-
-.logs-table tbody tr:hover {
-    background-color: #e8e8e8;  /* Светло-серый при hover */
+    height: 20px;
 }
 
 .logs-table .col-time {
@@ -215,6 +289,5 @@
 .logs-empty {
     padding: var(--space-4xl);
     text-align: center;
-    color: var(--color-text-muted);
     font-style: italic;
 }

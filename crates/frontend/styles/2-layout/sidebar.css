@@ -1,5 +1,104 @@
 /* ============================================
    Left Sidebar (Navbar) Layout Styles
+   Updated for UI Redesign with Glassmorphism
+   ============================================ */
+
+/* Main sidebar container - styles are defined in theme CSS files */
+.sidebar {
+    width: var(--sidebar-width);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width var(--transition-base);
+    flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    border: none;
+}
+
+.sidebar-header {
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.sidebar-title {
+    font-size: var(--font-size-lg);
+    font-weight: 500;
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-sm) 0;
+}
+
+/* Custom scrollbar for sidebar */
+.sidebar-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.sidebar-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* Sidebar item */
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-md);
+    cursor: pointer;
+    transition: all var(--transition-slow);
+    user-select: none;
+    height: var(--nav-item-height, 34px);
+    line-height: 1;
+}
+
+.sidebar-item-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-md);
+}
+
+.sidebar-item-content svg {
+    flex-shrink: 0;
+}
+
+/* Chevron for expandable items */
+.sidebar-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sidebar-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+/* Nested children container */
+.sidebar-children {
+    margin-left: 24px;
+}
+
+/* ============================================
+   Legacy Support - main-nav-bar classes
    ============================================ */
 
 .main-nav-bar {
@@ -12,9 +111,7 @@
     padding: 0;
     margin: 0;
     font-family: var(--font-family-base);
-    /* Stable row height for nav items - reduced by 15% */
     --nav-item-height: 34px;
-    /* Custom scrollbar styles */
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
@@ -39,7 +136,6 @@
 
 .main-nav-bar ul {
     list-style: none;
-    /* Reduced by 15%: ~10% tighter from 20px top padding */
     padding: calc(var(--space-4xl) * 0.85 - 2px) 0 0;
     margin: 0;
 }
@@ -47,7 +143,6 @@
 .main-nav-bar li {
     display: flex;
     align-items: center;
-    /* Reduced by 15%: 12px -> 10px vertical padding */
     padding: calc(var(--space-lg) * 0.85) var(--space-4xl);
     color: var(--color-text-light);
     font-size: var(--font-size-base);
@@ -76,7 +171,6 @@
 .main-nav-bar .main-nav-bar-header {
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
-    /* Reduced by 15% */
     padding: 5px 5px;
     margin-top: calc(var(--space-2xl) * 0.85);
     color: #87c48b;

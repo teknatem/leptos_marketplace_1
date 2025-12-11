@@ -29,8 +29,9 @@
 
 .form-group label {
     display: block;
-    margin-bottom: var(--space-sm);
-    font-weight: var(--font-weight-medium);
+    margin-bottom: 4px;
+    font-weight: 500;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
 }
 
@@ -40,14 +41,28 @@
 .form-group input[type="number"],
 .form-group input[type="url"],
 .form-group input[type="date"],
-.form-group select,
+.form-group select {
+    width: 100%;
+    padding: 5px 12px;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    font-family: inherit;
+    line-height: 1.4;
+    height: 30px;
+    transition: all 0.15s ease;
+    box-sizing: border-box;
+}
+
 .form-group textarea {
     width: 100%;
-    padding: var(--space-md) var(--space-xl);
+    padding: 5px 12px;
     border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-    transition: border-color var(--transition-fast);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    font-family: inherit;
+    line-height: 1.4;
+    transition: all 0.15s ease;
     box-sizing: border-box;
 }
 
@@ -78,32 +93,32 @@
 }
 
 .form-group select {
-    background-color: white;
     cursor: pointer;
     appearance: none;
     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
     background-repeat: no-repeat;
-    background-position: right var(--space-md) center;
-    background-size: 1.2em;
-    padding-right: var(--space-4xl);
+    background-position: right 10px center;
+    background-size: 1em;
+    padding-right: 32px;
 }
 
 .form-group textarea {
     resize: vertical;
     min-height: 80px;
+    height: auto;
 }
 
 /* Checkbox helpers */
 .checkbox-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--spacing-sm);
 }
 
 .checkbox-label {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--spacing-md);
     cursor: pointer;
     font-weight: normal !important;
 }

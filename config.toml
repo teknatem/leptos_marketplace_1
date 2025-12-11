@@ -1,6 +1,10 @@
-[database]
-# Путь к файлу базы данных
-# Относительный путь от расположения backend.exe к БД
-# target/debug/backend.exe -> ../../target/db/app.db -> target/db/app.db (workspace root)
-path = "../../target/db/app.db"
+# Marketplace Integrator Configuration
+# This file configures database path and other settings
 
+[database]
+# Use absolute path outside of target/ to prevent data loss on cargo clean
+# Adjust the path if needed for your environment
+path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
+
+# Alternative: relative path from project root (not recommended for production)
+# path = "data/app.db"

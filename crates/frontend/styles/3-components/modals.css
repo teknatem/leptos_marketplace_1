@@ -2,39 +2,73 @@
    Modal Component Styles
    ============================================ */
 
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--color-bg-overlay);
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: var(--z-modal);
+    z-index: 1000;
+    padding: var(--spacing-lg);
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s ease;
+}
+
+.modal {
+    border-radius: var(--border-radius-lg);
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.2s ease;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
 .modal-content {
     background: var(--color-bg-body);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-xl);
     max-width: 600px;
-    width: 90%;
+    width: 100%;
     max-height: 90vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    animation: slideUp 0.2s ease;
 }
 
 .modal-content-wide {
     background: var(--color-bg-body);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-xl);
     max-width: 1200px;
     width: 90%;
     max-height: 90vh;
     overflow: auto;
+    animation: slideUp 0.2s ease;
 }
 
 /* ============================================
@@ -42,48 +76,59 @@
    ============================================ */
 
 .modal-header {
+    padding: var(--spacing-lg);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-2xl);
-    border-bottom: 1px solid var(--color-border-light);
-    background: var(--color-bg-surface);
+    flex-shrink: 0;
+    gap: var(--spacing-md);
+}
+
+.modal-header h2,
+.modal-header h3,
+.modal-title {
+    margin: 0;
+    font-size: var(--font-size-xl);
+    font-weight: 500;
+    flex: 1;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
     flex-shrink: 0;
 }
 
-.modal-header h3 {
-    margin: 0;
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--color-text-primary);
-}
-
-.modal-header .btn-close {
+.modal-header .btn-close,
+.btn-close {
     background: none;
     border: none;
-    font-size: 32px;
+    font-size: 20px;
     line-height: 1;
     color: var(--color-text-secondary);
     cursor: pointer;
-    padding: 0;
-    width: 32px;
-    height: 32px;
+    padding: 4px;
+    min-width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-sm);
-    transition: all 0.2s;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
 }
 
-.modal-header .btn-close:hover {
+.modal-header .btn-close:hover,
+.btn-close:hover {
     background: var(--color-bg-hover);
     color: var(--color-text-primary);
 }
 
 .modal-body {
-    flex: 1;
+    padding: var(--spacing-lg);
     overflow-y: auto;
-    padding: var(--space-2xl);
+    flex: 1;
 }
 
 .modal-body form {
@@ -92,11 +137,12 @@
     gap: 0;
 }
 
+.modal-footer,
 .form-actions {
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--space-sm);
     justify-content: flex-end;
-    padding: var(--space-2xl);
+    padding: var(--spacing-lg);
     border-top: 1px solid var(--color-border-light);
     background: var(--color-bg-surface);
     flex-shrink: 0;

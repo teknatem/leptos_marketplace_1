@@ -15,6 +15,7 @@
 @import url('./1-base/utilities.css') layer(utilities);
 
 /* Import layout styles */
+@import url('./2-layout/topheader.css') layer(layout);
 @import url('./2-layout/header.css') layer(layout);
 @import url('./2-layout/footer.css') layer(layout);
 @import url('./2-layout/sidebar.css') layer(layout);
