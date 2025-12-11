@@ -207,3 +207,57 @@
   --z-modal: 1000;
   --z-overlay: 9999;
 }
+
+/* ============================================
+   Dark Theme Overrides
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Enhanced contrast for checkboxes */
+    --checkbox-bg: rgba(255, 255, 255, 0.15);
+    --checkbox-border: rgba(255, 255, 255, 0.4);
+    --checkbox-checked-bg: var(--color-primary-500);
+    --checkbox-checked-border: var(--color-primary-600);
+    
+    /* Alert backgrounds with better contrast */
+    --color-primary-50: rgba(96, 165, 250, 0.2);
+    --color-primary-200: rgba(96, 165, 250, 0.5);
+    
+    --color-warning-50: rgba(251, 191, 36, 0.25);
+    --color-warning-100: rgba(251, 191, 36, 0.6);
+    
+    --color-success-50: rgba(34, 197, 94, 0.2);
+    --color-success-100: rgba(34, 197, 94, 0.5);
+    
+    --color-error-50: rgba(239, 68, 68, 0.2);
+    --color-error-100: rgba(239, 68, 68, 0.5);
+    
+    /* Text colors for better readability */
+    --color-text-primary: rgba(255, 255, 255, 0.9);
+    --color-text-secondary: rgba(255, 255, 255, 0.7);
+    --color-text-muted: rgba(255, 255, 255, 0.5);
+    
+    /* Backgrounds */
+    --color-bg-body: rgba(0, 0, 0, 0.3);
+    --color-bg-secondary: rgba(0, 0, 0, 0.2);
+    
+    /* Borders */
+    --color-border-light: rgba(255, 255, 255, 0.2);
+    --color-border-lighter: rgba(255, 255, 255, 0.1);
+    
+    /* Progress bar for dark theme */
+    --color-neutral-200: rgba(255, 255, 255, 0.2);
+  }
+  
+  /* Checkbox styling for dark theme */
+  input[type="checkbox"] {
+    background-color: var(--checkbox-bg);
+    border: 1px solid var(--checkbox-border);
+    accent-color: var(--color-primary-500);
+  }
+  
+  input[type="checkbox"]:checked {
+    background-color: var(--checkbox-checked-bg);
+    border-color: var(--checkbox-checked-border);
+  }
+}

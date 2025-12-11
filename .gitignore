@@ -32,6 +32,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Node.js / Tailwind tooling
+node_modules/
+pnpm-debug.log*
+
 # Environment
 .env
 .env.local
