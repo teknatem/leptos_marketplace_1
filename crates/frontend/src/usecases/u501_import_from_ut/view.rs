@@ -207,329 +207,316 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div class="import-widget" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto; max-height: 80vh; overflow-y: auto;">
-            <h2>"u501: Импорт из УТ 11"</h2>
-
-            // Выбор подключения
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Подключение к 1С:"
-                </label>
-                <select
-                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
-                    on:change=move |ev| {
-                        set_selected_connection.set(event_target_value(&ev));
-                    }
-                    prop:disabled=move || is_loading.get()
-                >
-                    {move || connections.get().into_iter().map(|conn| {
-                        let id = conn.to_string_id();
-                        let id_clone = id.clone();
-                        let desc = conn.base.description.clone();
-                        view! {
-                            <option value={id}>
-                                {desc} " (" {id_clone} ")"
-                            </option>
-                        }
-                    }).collect_view()}
-                </select>
-            </div>
-
-
-
-            // Список агрегатов
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Агрегаты для импорта:"
-                </label>
-                <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a002.get()
-                            on:change=move |ev| { set_import_a002.set(event_target_checked(&ev)); }
-                        />
-                        " a002_organization - Организации"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a003.get()
-                            on:change=move |ev| { set_import_a003.set(event_target_checked(&ev)); }
-                        />
-                        " a003_counterparty - Контрагенты"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a004.get()
-                            on:change=move |ev| { set_import_a004.set(event_target_checked(&ev)); }
-                        />
-                        " a004_nomenclature - Номенклатура"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_p901.get()
-                            on:change=move |ev| { set_import_p901.set(event_target_checked(&ev)); }
-                        />
-                        " p901_barcodes - Штрихкоды номенклатуры"
-                    </label>
+        <div class="w-full flex justify-center px-6 py-8">
+            <div class="w-full max-w-5xl space-y-6">
+                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
+                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
+                        "Подключение к 1С:"
+                    </div>
+                    <select
+                        class="w-full h-10 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-body)] px-3 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-200)] focus:border-[var(--color-primary-500)] disabled:opacity-60"
+                        prop:value=move || selected_connection.get()
+                        on:change=move |ev| { set_selected_connection.set(event_target_value(&ev)); }
+                        prop:disabled=move || is_loading.get()
+                    >
+                        {move || connections.get().into_iter().map(|conn| {
+                            let id = conn.to_string_id();
+                            let id_clone = id.clone();
+                            let desc = conn.base.description.clone();
+                            view! {
+                                <option value={id}>
+                                    {desc} " (" {id_clone} ")"
+                                </option>
+                            }
+                        }).collect_view()}
+                    </select>
                 </div>
-                <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
-                </div>
-            </div>
 
-            // Дополнительные загрузки
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Дополнительные загрузки:"
-                </label>
-                <div style="padding: 12px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
-                    <label style="display: flex; align-items: center;">
+                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
+                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
+                        "Агрегаты для импорта:"
+                    </div>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                            <input
+                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                type="checkbox"
+                                prop:checked=move || import_a002.get()
+                                on:change=move |ev| { set_import_a002.set(event_target_checked(&ev)); }
+                            />
+                            <span>"Catalog_Организации"</span>
+                        </label>
+                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                            <input
+                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                type="checkbox"
+                                prop:checked=move || import_a003.get()
+                                on:change=move |ev| { set_import_a003.set(event_target_checked(&ev)); }
+                            />
+                            <span>"Catalog_Контрагенты"</span>
+                        </label>
+                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                            <input
+                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                type="checkbox"
+                                prop:checked=move || import_a004.get()
+                                on:change=move |ev| { set_import_a004.set(event_target_checked(&ev)); }
+                            />
+                            <span>"Catalog_Номенклатура"</span>
+                        </label>
+                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                            <input
+                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                type="checkbox"
+                                prop:checked=move || import_p901.get()
+                                on:change=move |ev| { set_import_p901.set(event_target_checked(&ev)); }
+                            />
+                            <span>"InformationRegister_ШтрихкодыНоменклатуры"</span>
+                        </label>
+                    </div>
+                    <div class="mt-4 text-xs text-[var(--color-text-muted)]">
+                        "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
+                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
+                        "Дополнительные загрузки:"
+                    </div>
+                    <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
                         <input
+                            class="h-4 w-4 accent-[var(--color-primary-500)]"
                             type="checkbox"
                             prop:checked=move || import_p906.get()
                             on:change=move |ev| { set_import_p906.set(event_target_checked(&ev)); }
                         />
-                        " p906_prices - Плановые цены номенклатуры"
+                        <span>"p906_prices - Плановые цены номенклатуры"</span>
                     </label>
-                    <div style="margin-top: 8px; font-size: 12px; color: #1565c0;">
+                    <div class="mt-2 text-xs text-[var(--color-text-muted)]">
                         "HTTP: /hs/mpi_api/prices_plan"
                     </div>
                 </div>
-            </div>
 
-            // Опции импорта
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Опции импорта:"
-                </label>
-                <div style="padding: 8px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffc107;">
-                    <label>
+                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
+                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
+                        "Опции импорта:"
+                    </div>
+                    <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
                         <input
+                            class="h-4 w-4 accent-[var(--color-primary-500)]"
                             type="checkbox"
                             prop:checked=move || delete_obsolete.get()
                             on:change=move |ev| { set_delete_obsolete.set(event_target_checked(&ev)); }
                         />
-                        " Удалять устаревшие записи (которых нет в 1С)"
+                        <span>"Удалять устаревшие записи (которых нет в 1С)"</span>
                     </label>
-                    <div style="margin-top: 5px; font-size: 12px; color: #856404;">
-                        "⚠️ Внимание: Записи, которых нет в источнике 1С, будут удалены из БД (жесткое удаление)"
+                    <div class="mt-4 rounded-md border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+                        <span class="font-semibold">"⚠️ Внимание: "</span>
+                        "Записи, которых нет в источнике 1С, будут удалены из БД (жесткое удаление)"
                     </div>
                 </div>
-            </div>
 
-            // Кнопка запуска
-            <div style="margin: 20px 0;">
-                <button
-                    style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-                    on:click=on_start_import
-                    prop:disabled=move || is_loading.get() || session_id.get().is_some()
-                >
-                    {move || if is_loading.get() {
-                        "Запуск..."
-                    } else if session_id.get().is_some() {
-                        "Импорт запущен"
+                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6 text-center">
+                    <button
+                        class="inline-flex items-center justify-center gap-3 rounded-lg bg-[var(--color-primary-600)] px-10 py-4 text-base font-semibold text-white shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        on:click=on_start_import
+                        prop:disabled=move || is_loading.get() || session_id.get().is_some()
+                    >
+                        <span class="text-lg">"▶"</span>
+                        <span>
+                            {move || if is_loading.get() {
+                                "Запуск..."
+                            } else if session_id.get().is_some() {
+                                "Импорт запущен"
+                            } else {
+                                "Запустить импорт"
+                            }}
+                        </span>
+                    </button>
+                </div>
+
+                {move || {
+                    let err = error_msg.get();
+                    if !err.is_empty() {
+                        view! {
+                            <div class="rounded-lg border border-[var(--color-error-100)] bg-[var(--color-error-50)] px-4 py-3 text-sm text-[var(--color-error-700)]">
+                                {err}
+                            </div>
+                        }.into_any()
                     } else {
-                        "Запустить импорт"
-                    }}
-                </button>
-            </div>
+                        view! { <div></div> }.into_any()
+                    }
+                }}
 
-            // Ошибки
-            {move || {
-                let err = error_msg.get();
-                if !err.is_empty() {
-                    view! {
-                        <div style="padding: 10px; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c00; margin: 10px 0;">
-                            {err}
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
+                {move || {
+                    if let Some(prog) = progress.get() {
+                        view! {
+                            <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6 space-y-4">
+                                <div class="text-lg font-semibold text-[var(--color-text-primary)]">"Прогресс импорта"</div>
 
-            // Прогресс
-            {move || {
-                if let Some(prog) = progress.get() {
-                    view! {
-                        <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd;">
-                            <h3>"Прогресс импорта"</h3>
-                            <div style="margin: 10px 0;">
-                                <strong>"Session ID: "</strong> {prog.session_id.clone()}
-                            </div>
-                            <div style="margin: 10px 0;">
-                                <strong>"Статус: "</strong>
-                                <span style={move || format!("color: {}; font-weight: bold;",
-                                    match prog.status {
-                                        ImportStatus::Running => "#007bff",
-                                        ImportStatus::Completed => "#28a745",
-                                        ImportStatus::CompletedWithErrors => "#ffc107",
-                                        ImportStatus::Failed => "#dc3545",
-                                        ImportStatus::Cancelled => "#6c757d",
-                                    }
-                                )}>
-                                    {format!("{:?}", prog.status)}
-                                </span>
-                            </div>
+                                <div class="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm">
+                                    <div class="text-[var(--color-text-secondary)] font-medium">"Session ID:"</div>
+                                    <div class="text-[var(--color-text-primary)]">{prog.session_id.clone()}</div>
 
-                            <div style="margin: 10px 0;">
-                                <strong>"Обработано: "</strong> {prog.total_processed} " | "
-                                <strong>"Создано: "</strong> {prog.total_inserted} " | "
-                                <strong>"Обновлено: "</strong> {prog.total_updated} " | "
-                                <strong>"Ошибок: "</strong> {prog.total_errors}
-                            </div>
-                            <div style="margin: 10px 0; font-size: 12px; color: #666;">
-                                <strong>"Последнее обновление: "</strong>
-                                {prog.updated_at.to_rfc3339()}
-                            </div>
+                                    <div class="text-[var(--color-text-secondary)] font-medium">"Статус:"</div>
+                                    <div class="text-[var(--color-text-primary)]">
+                                        {format!("{:?}", prog.status)}
+                                    </div>
 
-                            // Прогресс по агрегатам
-                            <div style="margin-top: 15px;">
-                                <h4>"Детали по агрегатам:"</h4>
-                                {prog.aggregates.iter().map(|agg| {
-                                    let percent = if let Some(total) = agg.total {
-                                        if total > 0 {
-                                            (agg.processed as f64 / total as f64 * 100.0) as i32
-                                        } else {
-                                            0
-                                        }
-                                    } else {
-                                        0
-                                    };
+                                    <div class="text-[var(--color-text-secondary)] font-medium">"Обработано:"</div>
+                                    <div class="text-[var(--color-text-primary)]">
+                                        {prog.total_processed} " | Создано: " {prog.total_inserted} " | Обновлено: " {prog.total_updated} " | Ошибок: " {prog.total_errors}
+                                    </div>
 
-                                    view! {
-                                        <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 4px; border: 1px solid #ddd;">
-                                            <div style="font-weight: bold;">
-                                                {agg.aggregate_index.clone()} " - " {agg.aggregate_name.clone()}
-                                            </div>
-                                            <div style="margin: 5px 0;">
-                                                {agg.processed} {if let Some(t) = agg.total { format!(" / {}", t) } else { String::new() }}
-                                                {if percent > 0 { format!(" ({}%)", percent) } else { String::new() }}
-                                            </div>
-                                            <div style="background: #e0e0e0; height: 20px; border-radius: 4px; overflow: hidden;">
-                                                <div style={format!("width: {}%; height: 100%; background: #007bff; transition: width 0.3s;", percent)}></div>
-                                            </div>
-                                            {agg.current_item.as_ref().map(|ci| view! {
-                                                <div style="margin-top: 5px; font-size: 12px; color: #333;">
-                                                    <strong>{"Текущий элемент: "}</strong>{ci.clone()}
-                                                </div>
-                                            })}
-                                            <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                                                "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Пропущено: " {agg.skipped} " | Ошибок: " {agg.errors}
-                                            </div>
-                                            {agg.info.as_ref().map(|info| view! {
-                                                <div style="margin-top: 5px; font-size: 11px; color: #888; font-style: italic;">
-                                                    {info.clone()}
-                                                </div>
-                                            })}
-                                        </div>
-                                    }
-                                }).collect_view()}
-                            </div>
+                                    <div class="text-[var(--color-text-secondary)] font-medium">"Обновление:"</div>
+                                    <div class="text-xs text-[var(--color-text-muted)]">{prog.updated_at.to_rfc3339()}</div>
+                                </div>
 
-                            // Ошибки
-                            {if !prog.errors.is_empty() {
-                                view! {
-                                    <div style="margin-top: 15px;">
-                                        <h4 style="color: #dc3545;">"Ошибки импорта:"</h4>
-                                        {prog.errors.iter().map(|err| {
+                                <div class="pt-2">
+                                    <div class="text-sm font-semibold text-[var(--color-text-primary)] mb-3">"Детали по агрегатам:"</div>
+                                    <div class="space-y-3">
+                                        {prog.aggregates.iter().map(|agg| {
+                                            let percent = if let Some(total) = agg.total {
+                                                if total > 0 {
+                                                    (agg.processed as f64 / total as f64 * 100.0) as i32
+                                                } else { 0 }
+                                            } else { 0 };
+
                                             view! {
-                                                <div style="margin: 5px 0; padding: 8px; background: #fee; border: 1px solid #fcc; border-radius: 4px; font-size: 12px;">
-                                                    <div style="font-weight: bold;">{err.message.clone()}</div>
-                                                    {err.details.as_ref().map(|d| view! {
-                                                        <div style="color: #666; margin-top: 3px;">{d.clone()}</div>
+                                                <div class="rounded-md border border-[var(--color-border-light)] bg-[var(--color-bg-body)] p-4">
+                                                    <div class="font-semibold text-[var(--color-text-primary)]">
+                                                        {agg.aggregate_index.clone()} " - " {agg.aggregate_name.clone()}
+                                                    </div>
+                                                    <div class="mt-1 text-sm text-[var(--color-text-secondary)]">
+                                                        {agg.processed}
+                                                        {if let Some(t) = agg.total { format!(" / {}", t) } else { String::new() }}
+                                                        {if percent > 0 { format!(" ({}%)", percent) } else { String::new() }}
+                                                    </div>
+                                                    <div class="mt-2 h-4 rounded bg-[var(--color-neutral-200)] overflow-hidden">
+                                                        <div class="h-full bg-[var(--color-primary-500)] transition-[width] duration-300" style={format!("width: {}%;", percent)}></div>
+                                                    </div>
+                                                    {agg.current_item.as_ref().map(|ci| view! {
+                                                        <div class="mt-2 text-xs text-[var(--color-text-muted)]">
+                                                            <span class="font-semibold">{"Текущий элемент: "}</span>{ci.clone()}
+                                                        </div>
+                                                    })}
+                                                    <div class="mt-2 text-xs text-[var(--color-text-muted)]">
+                                                        "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Пропущено: " {agg.skipped} " | Ошибок: " {agg.errors}
+                                                    </div>
+                                                    {agg.info.as_ref().map(|info| view! {
+                                                        <div class="mt-1 text-xs italic text-[var(--color-text-muted)]">
+                                                            {info.clone()}
+                                                        </div>
                                                     })}
                                                 </div>
                                             }
                                         }).collect_view()}
                                     </div>
-                                }.into_any()
-                            } else {
-                                view! { <div></div> }.into_any()
-                            }}
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
-
-            // Отображение пути загрузки (перемещено вниз)
-            {move || {
-                let conn_id = selected_connection.get();
-                if !conn_id.is_empty() {
-                    if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
-                        let base_url = conn.url.trim_end_matches('/');
-                        let odata_path = if base_url.contains("/odata/") {
-                            base_url.to_string()
-                        } else {
-                            format!("{}/odata/standard.odata", base_url)
-                        };
-                        let mut endpoints: Vec<String> = Vec::new();
-                        if import_a002.get() { endpoints.push(format!("{}/Catalog_Организации", odata_path)); }
-                        if import_a003.get() { endpoints.push(format!("{}/Catalog_Контрагенты", odata_path)); }
-
-                        view! {
-                            <div style="margin: 20px 0; padding: 10px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
-                                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">
-                                    "Путь загрузки:"
                                 </div>
-                                {endpoints.iter().map(|e| {
-                                    let e_clone = e.clone();
-                                    view! { <div style="font-family: monospace; font-size: 12px; color: #555; word-break: break-all;">{e_clone}</div> }
-                                }).collect_view()}
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <div></div> }.into_any()
-                    }
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
 
-            // Результаты загрузки
-            {move || {
-                if let Some(prog) = progress.get() {
-                    let is_success = matches!(prog.status, ImportStatus::Completed);
-                    let is_error = matches!(prog.status, ImportStatus::Failed | ImportStatus::CompletedWithErrors);
-                    let end = prog.completed_at.unwrap_or_else(Utc::now);
-                    let secs = (end - prog.started_at).num_seconds();
-                    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
-                    let elapsed = format!("{:02}:{:02}:{:02}", h, m, s);
-                    if is_success {
-                        view! {
-                            <div style="margin: 10px 0; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 4px;">
-                                <div><strong>{"Успех: "}</strong>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
-                                <div><strong>{"Количество элементов: "}</strong>{prog.total_processed}</div>
-                                <div><strong>{"Время работы: "}</strong>{elapsed}</div>
-                            </div>
-                        }.into_any()
-                    } else if is_error {
-                        view! {
-                            <div style="margin: 10px 0; padding: 10px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px;">
-                                <div style="font-weight: bold; color: #c62828;">{"Ошибка импорта"}</div>
-                                {if let Some(last) = prog.errors.last() {
-                                    let details = last.details.clone().unwrap_or_default();
-                                    view! { <div><div><strong>{last.message.clone()}</strong></div><div style="font-size: 12px; color: #666;">{details}</div></div> }.into_any()
+                                {if !prog.errors.is_empty() {
+                                    view! {
+                                        <div class="pt-2">
+                                            <div class="text-sm font-semibold text-[var(--color-error-700)] mb-2">"Ошибки импорта:"</div>
+                                            <div class="space-y-2">
+                                                {prog.errors.iter().map(|err| {
+                                                    view! {
+                                                        <div class="rounded-md border border-[var(--color-error-100)] bg-[var(--color-error-50)] px-4 py-3 text-sm text-[var(--color-error-700)]">
+                                                            <div class="font-semibold">{err.message.clone()}</div>
+                                                            {err.details.as_ref().map(|d| view! {
+                                                                <div class="mt-1 text-xs text-[var(--color-text-muted)]">{d.clone()}</div>
+                                                            })}
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        </div>
+                                    }.into_any()
                                 } else {
-                                    view! { <div>{"Нет подробностей ошибки"}</div> }.into_any()
+                                    view! { <div></div> }.into_any()
                                 }}
-                                <div style="margin-top: 5px; font-size: 12px; color: #666;">{"Статус: "}{format!("{:?}", prog.status)}</div>
                             </div>
                         }.into_any()
                     } else {
                         view! { <div></div> }.into_any()
                     }
-                } else { view! { <div></div> }.into_any() }
-            }}
+                }}
+
+                {move || {
+                    let conn_id = selected_connection.get();
+                    if !conn_id.is_empty() {
+                        if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
+                            let base_url = conn.url.trim_end_matches('/');
+                            let odata_path = if base_url.contains("/odata/") {
+                                base_url.to_string()
+                            } else {
+                                format!("{}/odata/standard.odata", base_url)
+                            };
+                            let mut endpoints: Vec<String> = Vec::new();
+                            if import_a002.get() { endpoints.push(format!("{}/Catalog_Организации", odata_path)); }
+                            if import_a003.get() { endpoints.push(format!("{}/Catalog_Контрагенты", odata_path)); }
+
+                            view! {
+                                <div class="rounded-lg border border-[var(--color-primary-100)] bg-[var(--color-primary-50)] p-6 space-y-2">
+                                    <div class="text-[var(--color-primary-700)] text-base font-semibold">
+                                        "Путь загрузки:"
+                                    </div>
+                                    {endpoints.iter().map(|e| {
+                                        let e_clone = e.clone();
+                                        view! {
+                                            <div class="font-mono text-xs text-[var(--color-text-secondary)] break-all">
+                                                {e_clone}
+                                            </div>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <div></div> }.into_any()
+                        }
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                }}
+
+                {move || {
+                    if let Some(prog) = progress.get() {
+                        let is_success = matches!(prog.status, ImportStatus::Completed);
+                        let is_error = matches!(prog.status, ImportStatus::Failed | ImportStatus::CompletedWithErrors);
+                        let end = prog.completed_at.unwrap_or_else(Utc::now);
+                        let secs = (end - prog.started_at).num_seconds();
+                        let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+                        let elapsed = format!("{:02}:{:02}:{:02}", h, m, s);
+
+                        if is_success {
+                            view! {
+                                <div class="rounded-lg border border-[var(--color-success-100)] bg-[var(--color-success-50)] p-6 text-[var(--color-success-700)]">
+                                    <div><span class="font-semibold">{"Успех: "}</span>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
+                                    <div><span class="font-semibold">{"Количество элементов: "}</span>{prog.total_processed}</div>
+                                    <div><span class="font-semibold">{"Время работы: "}</span>{elapsed}</div>
+                                </div>
+                            }.into_any()
+                        } else if is_error {
+                            view! {
+                                <div class="rounded-lg border border-[var(--color-error-100)] bg-[var(--color-error-50)] p-6 text-[var(--color-error-700)]">
+                                    <div class="font-semibold">{"Ошибка импорта"}</div>
+                                    {if let Some(last) = prog.errors.last() {
+                                        let details = last.details.clone().unwrap_or_default();
+                                        view! { <div class="mt-2"><div class="font-semibold">{last.message.clone()}</div><div class="mt-1 text-xs text-[var(--color-text-muted)]">{details}</div></div> }.into_any()
+                                    } else {
+                                        view! { <div class="mt-2">{"Нет подробностей ошибки"}</div> }.into_any()
+                                    }}
+                                    <div class="mt-2 text-xs text-[var(--color-text-muted)]">{"Статус: "}{format!("{:?}", prog.status)}</div>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <div></div> }.into_any()
+                        }
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                }}
+            </div>
         </div>
     }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "leptos-marketplace-ui",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}
