@@ -19,10 +19,15 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Database
-*.db
+# Database (exclude data files but keep structure)
+/data/app.db
+/data/backups/*.db
+/target/db/*.db
 *.db-shm
 *.db-wal
+
+# But keep backup scripts
+!/scripts/*.ps1
 
 # Logs
 *.log

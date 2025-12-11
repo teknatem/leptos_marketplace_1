@@ -3,7 +3,7 @@
 //};
 use crate::layout::center::tabs::Tabs;
 use crate::layout::global_context::AppGlobalContext;
-use crate::layout::left::navbar::Navbar;
+use crate::layout::left::sidebar::Sidebar;
 use crate::layout::right::panel::RightPanel;
 use crate::layout::Shell;
 use crate::system::auth::context::use_auth;
@@ -21,7 +21,7 @@ fn MainLayout() -> impl IntoView {
 
     view! {
         <Shell
-            left=|| view! { <Navbar /> }.into_any()
+            left=|| view! { <Sidebar /> }.into_any()
             center=|| view! { <Tabs /> }.into_any()
             right=|| view! { <RightPanel /> }.into_any()
         />

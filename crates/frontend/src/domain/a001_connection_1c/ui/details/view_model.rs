@@ -1,8 +1,9 @@
 use super::model;
-use contracts::domain::a001_connection_1c::aggregate::{Connection1CDatabaseDto, ConnectionTestResult};
+use contracts::domain::a001_connection_1c::aggregate::{
+    Connection1CDatabaseDto, ConnectionTestResult,
+};
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
-use std::rc::Rc;
 
 /// ViewModel for Connection1CDatabase details form
 ///
@@ -69,7 +70,7 @@ impl Connection1CDetailsViewModel {
     }
 
     /// Save form data to server
-    pub fn save_command(&self, on_saved: Rc<dyn Fn(())>) {
+    pub fn save_command(&self, on_saved: Callback<()>) {
         let current = self.form.get();
 
         // Validate
@@ -86,11 +87,10 @@ impl Connection1CDetailsViewModel {
             return;
         }
 
-        let on_saved_cb = on_saved.clone();
         let error = self.error;
         wasm_bindgen_futures::spawn_local(async move {
             match model::save_form(&current).await {
-                Ok(()) => (on_saved_cb)(()),
+                Ok(()) => on_saved.run(()),
                 Err(e) => error.set(Some(e)),
             }
         });

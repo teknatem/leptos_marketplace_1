@@ -1,321 +1,226 @@
 /* ============================================
    Table Component Styles
+   Based on bolt-mpi-ui-redesign sample
    ============================================ */
 
-/* Table theme colors */
-:root {
-    --table-header-bg: hsl(210, 15%, 55%);
-    --table-header-fg: hsl(0, 0%, 100%);
-    --table-row-odd: hsl(0, 0%, 100%);
-    --table-row-even: hsl(210, 20%, 97%);
-    --table-row-hover: hsl(210, 30%, 94%);
-    --table-row-selected: hsl(45, 100%, 90%);
-}
-
-/* Generic container for tables to enable scrolling and sticky headers */
+/* Table container with scroll and styling */
 .table-container {
-    background: var(--color-bg-panel);
-    border-radius: var(--radius-md);
-    max-height: var(--table-max-height);
-    overflow: auto;
-    position: relative;
+  overflow: auto;
+  border-radius: var(--border-radius-lg, 8px);
+  box-shadow: var(--shadow-md);
+  /* Theme-specific styles (background, border, backdrop-filter) are in theme CSS files */
 }
 
-/* Base table styles */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--color-bg-body);
-    overflow: visible;
-    table-layout: fixed;
+/* Data table base styles */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm, 13px);
 }
 
-/* Ensure sticky works within scrollable container */
-.table-container table {
-    border-collapse: separate;
-    border-spacing: 0;
+/* Sticky table header */
+.data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky, 10);
+  /* Theme-specific styles (background, border) are in theme CSS files */
 }
 
-/* Table header cell styles */
-table th {
-    padding: var(--space-md) var(--space-xl);
-    text-align: left;
-    font-weight: var(--font-weight-semibold);
-    border-bottom: 1px solid var(--color-border-light);
-    font-size: var(--font-size-sm);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+/* Table header cells */
+.data-table th {
+  padding: var(--spacing-sm, 8px) 12px;
+  text-align: left;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  /* Theme-specific colors are in theme CSS files */
 }
 
-/* Globally sticky table headers */
-thead th {
-    position: sticky;
-    top: 0;
-    z-index: var(--z-sticky);
-    background: var(--table-header-bg);
-    color: var(--table-header-fg);
-    backdrop-filter: blur(4px);
-    height: var(--table-header-height);
-    border-bottom: 2px solid rgba(0, 0, 0, 0.2);
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+/* Sortable header cursor */
+.data-table th.sortable {
+  cursor: pointer;
 }
 
-/* Sortable header styles */
-.sortable-header {
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 4px;
-    justify-content: flex-start; /* Все sortable заголовки - по левому краю */
+.data-table th.sortable:hover {
+  opacity: 0.85;
 }
 
-.sortable-header:hover {
-    opacity: 0.85;
+/* Table data cells */
+.data-table td {
+  padding: var(--spacing-sm, 8px) 12px;
+  /* Theme-specific border and colors are in theme CSS files */
 }
 
-.sort-icon {
-    font-size: 14px;
-    opacity: 0.4;
-    flex-shrink: 0;
-    color: inherit;
-    margin-left: auto;
-    margin-right: 0;
+/* Row transitions */
+.data-table tbody tr {
+  transition: background-color 0.1s ease;
 }
 
-.sort-icon.active {
-    opacity: 1;
-    color: #22c55e;
-    font-weight: bold;
-    font-size: 14px;
+/* Hover state */
+.data-table tbody tr:hover {
+  cursor: pointer;
+  /* Theme-specific background is in theme CSS files */
 }
 
-/* Resizable columns - position is inherited from thead th (sticky) */
-/* Resize handle uses the sticky positioning context */
-.resize-handle {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 6px;
-    cursor: col-resize;
-    background: transparent;
-    z-index: 2;
-    transition: background 0.15s;
+/* Selected row state */
+.data-table tbody tr.selected {
+  /* Theme-specific background is in theme CSS files */
 }
 
-.resize-handle:hover,
-.resize-handle.resizing {
-    background: rgba(255, 255, 255, 0.4);
-}
+/* ============================================
+   Striped Tables
+   ============================================ */
 
-/* During resize: prevent text selection */
-body.resizing-column {
-    cursor: col-resize !important;
-    user-select: none !important;
-}
-
-body.resizing-column * {
-    cursor: col-resize !important;
-}
-
-/* Table data cell styles */
-table td {
-    padding: var(--space-md) var(--space-xl);
-    border-bottom: 1px solid var(--color-border-lighter);
-    font-size: var(--font-size-sm);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 0; /* Forces cell to respect column width */
-}
-
-/* Table row height - applies to all rows */
-table tbody tr {
-    height: var(--table-row-height);
-}
-
-/* Hover effect for table rows */
-.table-container tbody tr:hover {
-    background: var(--color-hover-table);
-    cursor: pointer;
-}
-
-/* Tree-specific styles */
-.tree-label {
-    cursor: pointer;
-    color: var(--color-link);
-    font-size: var(--font-size-base);
-}
-
-.tree-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    color: var(--color-text-muted);
-}
-
-.tree-toggle-placeholder {
-    display: inline-block;
-    width: 16px;
-}
-
-.icon-cell-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.cell-truncate {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Enhanced Table Styles */
-
-/* Zebra Striping */
 .table-striped tbody tr:nth-of-type(odd) {
-    background-color: rgba(0, 0, 0, 0.02);
+  /* Theme-specific background is in theme CSS files */
+}
+
+.table-striped tbody tr:nth-of-type(even) {
+  /* Theme-specific background is in theme CSS files */
 }
 
 .table-striped tbody tr:hover {
-    background-color: var(--color-hover-table);
-}
-
-/* Sticky Columns */
-.sticky-left {
-    position: sticky;
-    left: 0;
-    background: var(--color-bg-body);
-    z-index: 1;
-    border-right: 1px solid var(--color-border-light);
-}
-
-/* Ensure sticky header stays above sticky column */
-thead th.sticky-left {
-    z-index: calc(var(--z-sticky) + 1);
-    background: var(--color-table-header-bg);
-}
-
-/* Alignment Utilities */
-.text-right {
-    text-align: right;
-}
-
-.text-center {
-    text-align: center;
-}
-
-.text-left {
-    text-align: left;
-}
-
-/* Все заголовки th всегда выровнены по левому краю */
-th.text-right,
-th.text-center,
-th.text-left {
-    text-align: left !important;
-}
-
-/* Checkbox column */
-.checkbox-cell {
-    width: 40px;
-    text-align: center;
-    padding: 4px !important;
-}
-
-/* Data table specific styles for sticky header */
-.data-table {
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-.data-table thead th {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 10;
-    background: var(--table-header-bg, #667788);
-    color: var(--table-header-fg, white);
-    padding: 6px 8px;
-}
-
-/* Ensure resizable headers stay sticky */
-.data-table thead th.resizable {
-    position: sticky !important;
-    top: 0 !important;
-}
-
-/* Table body row styles */
-.data-table tbody tr {
-    transition: background-color 0.15s ease;
-    cursor: pointer;
-}
-
-.data-table tbody tr:nth-child(odd) {
-    background-color: var(--table-row-odd);
-}
-
-.data-table tbody tr:nth-child(even) {
-    background-color: var(--table-row-even);
-}
-
-.data-table tbody tr:hover {
-    background-color: var(--table-row-hover);
-}
-
-.data-table tbody tr.selected {
-    background-color: var(--table-row-selected) !important;
-}
-
-/* Compact cell padding for data tables */
-.data-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  /* Theme-specific background is in theme CSS files */
 }
 
 /* ============================================
-   Totals Row in Header (sticky)
+   Totals Rows (Sticky)
    ============================================ */
 
-/* Строка итогов в thead - под заголовками, sticky */
 .totals-header-row td {
-    position: sticky;
-    top: var(--table-header-height, 32px);
-    z-index: 9;
-    background: #f0f4f8;
-    font-weight: 600;
-    font-size: var(--font-size-xs);
-    padding: 4px 8px;
-    border-bottom: 2px solid #ddd;
-    color: #2d3748;
-    white-space: nowrap;
+  position: sticky;
+  top: var(--table-header-height, 32px);
+  z-index: 9;
+  font-weight: 600;
+  /* Theme-specific styles are in theme CSS files */
 }
 
-.totals-header-row td.text-right {
-    text-align: right;
-}
-
-/* Resizable column headers - sticky already creates positioning context */
-th.resizable {
-    min-width: 60px;
+.totals-row {
+  font-weight: 600;
+  /* Theme-specific styles are in theme CSS files */
 }
 
 /* ============================================
-   A016 YM Returns - Border Radius Test
+   Sticky Columns
    ============================================ */
 
-/* Remove border-radius from table container for A016 */
-.table-container:has(#a016-ym-returns-table) {
-    border-radius: 0;
+.sticky-left {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  /* Theme-specific background is in theme CSS files */
 }
 
-/* Apply 3px border-radius to all th cells in A016 table */
-#a016-ym-returns-table thead th {
-    border-radius: 5px;
+thead th.sticky-left {
+  z-index: 11;
+}
+
+/* ============================================
+   List Container Integration
+   ============================================ */
+
+.list-container .table-container {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+/* ============================================
+   Picker Table Styles
+   ============================================ */
+
+.picker-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.picker-table thead th {
+  background: var(--color-bg-secondary);
+  padding: var(--spacing-md, 12px);
+  text-align: left;
+  border-bottom: 2px solid var(--color-border);
+  font-weight: 600;
+}
+
+.picker-table tbody td {
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.picker-table tbody tr:hover {
+  background-color: var(--color-bg-hover);
+  cursor: pointer;
+}
+
+.picker-table tbody tr.selected {
+  background-color: var(--color-primary-light);
+}
+
+/* ============================================
+   Logs Table (Monospace)
+   ============================================ */
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  font-family: 'Courier New', monospace;
+}
+
+.logs-table thead {
+  position: sticky;
+  top: 0;
+  background-color: #f5f5f5;
+  z-index: 10;
+}
+
+.logs-table th,
+.logs-table td {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+
+/* ============================================
+   Resizable Columns
+   ============================================ */
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 1;
+}
+
+.resize-handle:hover {
+  background-color: rgba(59, 130, 246, 0.3);
+}
+
+.resize-handle.resizing {
+  background-color: rgba(59, 130, 246, 0.5);
+}
+
+/* Make th relative for resize handle positioning */
+table th {
+  position: relative;
+}
+
+/* ============================================
+   Checkbox Column
+   ============================================ */
+
+.checkbox-column {
+  width: 40px;
+  text-align: center;
+}
+
+.checkbox-column input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
 }

@@ -1,7 +1,25 @@
 /* ============================================
    Center Area Layout Styles
+   Updated for new UI design structure
    ============================================ */
 
+/* App layout - root container */
+.app-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* App body - main flex container for sidebar, content, and panel */
+.app-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0; /* Important for flex children to shrink */
+}
+
+/* Legacy main-content for backward compatibility */
 .main-content {
     display: flex;
     flex-grow: 1;
@@ -10,33 +28,50 @@
     overflow: hidden;
 }
 
+/* Left sidebar container */
 .left {
     width: var(--sidebar-width);
     flex-shrink: 0;
     transition: width var(--transition-base);
-    border-right: 1px solid var(--color-border-dark);
     overflow-y: auto;
     overflow-x: hidden;
     height: 100%;
-    opacity: var(--opacity-sidebar);
-}
-
-.center {
-    flex-grow: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Center area dimming when tabs are open */
-.center.dimmed {
-    opacity: var(--opacity-dimmed);
 }
 
 .left.hidden {
     width: 0;
     border: none;
     min-width: 0;
+}
+
+/* App main - main content area wrapper */
+.app-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0; /* Allow shrinking */
+}
+
+/* App content - scrollable content area */
+.app-content {
+    flex: 1;
+    overflow: auto;
+    background: transparent;
+}
+
+/* Center content wrapper */
+.center {
+    flex-grow: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Center area dimming when tabs are open */
+.center.dimmed {
+    opacity: var(--opacity-dimmed);
 }
 
 /* Content area styles */

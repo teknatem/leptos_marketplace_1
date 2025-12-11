@@ -7,7 +7,7 @@
 
 mod model;
 mod view;
-mod view_model;
+pub mod view_model;
 
 pub use view::Connection1CDetails;
 pub use view_model::Connection1CDetailsViewModel;
