@@ -176,6 +176,10 @@
   --gradient-navbar-hover: linear-gradient(90deg, rgba(94, 224, 109, 0.9) 0%, rgba(249, 228, 137, 0.1) 100%);
   --gradient-header: linear-gradient(to right, #4776da 0%, #abc5fc 100%);
 
+  /* Navbar Section Colors */
+  --color-navbar-section-header: #87c48b;
+  --color-navbar-section-header-hover: #a0d9a4;
+
   /* Right panel background */
   --color-panel-bg: rgb(186, 205, 253);
   --color-panel-info-bg: rgba(255, 255, 255, 0.7);
