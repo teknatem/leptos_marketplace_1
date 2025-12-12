@@ -45,6 +45,18 @@
   --color-neutral-800: #262626;
   --color-neutral-900: #171717;
 
+  /* Additional Color Variables for Light Theme */
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-surface: #ffffff;
+  --color-background: #f9fafb;
+  --color-hover: rgba(0, 0, 0, 0.04);
+  --color-border-lighter: #e5e7eb;
+  --color-code-bg: #f3f4f6;
+  --color-warning: #f59e0b;
+  --color-warning-text: #92400e;
+
   /* Navbar Section Colors for Light Theme */
   --color-navbar-section-header: #5a8a5d;
   --color-navbar-section-header-hover: #4a7a4d;
