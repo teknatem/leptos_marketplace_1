@@ -207,14 +207,14 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div class="w-full flex justify-center px-6 py-8">
-            <div class="w-full max-w-5xl space-y-6">
-                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
-                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
-                        "Подключение к 1С:"
-                    </div>
+        <div class="import-ut11-container">
+            <div class="import-ut11-header">
+                <h1 class="import-ut11-title">"u501: Импорт из УТ 11"</h1>
+            </div>
+            <div class="import-ut11-content">
+                <div class="import-section">
+                    <h2 class="import-section-title">"Подключение к 1С:"</h2>
                     <select
-                        class="w-full h-10 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-body)] px-3 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-200)] focus:border-[var(--color-primary-500)] disabled:opacity-60"
                         prop:value=move || selected_connection.get()
                         on:change=move |ev| { set_selected_connection.set(event_target_value(&ev)); }
                         prop:disabled=move || is_loading.get()
@@ -232,41 +232,39 @@ pub fn ImportWidget() -> impl IntoView {
                     </select>
                 </div>
 
-                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
-                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
-                        "Агрегаты для импорта:"
-                    </div>
-                    <div class="space-y-3">
-                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                <div class="import-section">
+                    <h2 class="import-section-title">"Агрегаты для импорта:"</h2>
+                    <div class="import-checkboxes-list">
+                        <label class="import-checkbox-item">
                             <input
-                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                class="import-checkbox"
                                 type="checkbox"
                                 prop:checked=move || import_a002.get()
                                 on:change=move |ev| { set_import_a002.set(event_target_checked(&ev)); }
                             />
                             <span>"Catalog_Организации"</span>
                         </label>
-                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                        <label class="import-checkbox-item">
                             <input
-                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                class="import-checkbox"
                                 type="checkbox"
                                 prop:checked=move || import_a003.get()
                                 on:change=move |ev| { set_import_a003.set(event_target_checked(&ev)); }
                             />
                             <span>"Catalog_Контрагенты"</span>
                         </label>
-                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                        <label class="import-checkbox-item">
                             <input
-                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                class="import-checkbox"
                                 type="checkbox"
                                 prop:checked=move || import_a004.get()
                                 on:change=move |ev| { set_import_a004.set(event_target_checked(&ev)); }
                             />
                             <span>"Catalog_Номенклатура"</span>
                         </label>
-                        <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                        <label class="import-checkbox-item">
                             <input
-                                class="h-4 w-4 accent-[var(--color-primary-500)]"
+                                class="import-checkbox"
                                 type="checkbox"
                                 prop:checked=move || import_p901.get()
                                 on:change=move |ev| { set_import_p901.set(event_target_checked(&ev)); }
@@ -274,51 +272,49 @@ pub fn ImportWidget() -> impl IntoView {
                             <span>"InformationRegister_ШтрихкодыНоменклатуры"</span>
                         </label>
                     </div>
-                    <div class="mt-4 text-xs text-[var(--color-text-muted)]">
+                    <div class="import-aggregates-summary">
                         "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
-                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
-                        "Дополнительные загрузки:"
-                    </div>
-                    <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
-                        <input
-                            class="h-4 w-4 accent-[var(--color-primary-500)]"
-                            type="checkbox"
-                            prop:checked=move || import_p906.get()
-                            on:change=move |ev| { set_import_p906.set(event_target_checked(&ev)); }
-                        />
-                        <span>"p906_prices - Плановые цены номенклатуры"</span>
-                    </label>
-                    <div class="mt-2 text-xs text-[var(--color-text-muted)]">
-                        "HTTP: /hs/mpi_api/prices_plan"
+                <div class="import-section">
+                    <h2 class="import-section-title">"Дополнительные загрузки:"</h2>
+                    <div class="import-additional-load">
+                        <label class="import-checkbox-item">
+                            <input
+                                class="import-checkbox"
+                                type="checkbox"
+                                prop:checked=move || import_p906.get()
+                                on:change=move |ev| { set_import_p906.set(event_target_checked(&ev)); }
+                            />
+                            <span>"p906_prices - Плановые цены номенклатуры"</span>
+                        </label>
+                        <div class="import-load-url">
+                            "HTTP: /hs/mpi_api/prices_plan"
+                        </div>
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6">
-                    <div class="mb-4 text-[var(--color-primary)] text-base font-semibold">
-                        "Опции импорта:"
-                    </div>
-                    <label class="flex items-center gap-3 text-sm text-[var(--color-text-primary)]">
+                <div class="import-section">
+                    <h2 class="import-section-title">"Опции импорта:"</h2>
+                    <label class="import-checkbox-item">
                         <input
-                            class="h-4 w-4 accent-[var(--color-primary-500)]"
+                            class="import-checkbox"
                             type="checkbox"
                             prop:checked=move || delete_obsolete.get()
                             on:change=move |ev| { set_delete_obsolete.set(event_target_checked(&ev)); }
                         />
                         <span>"Удалять устаревшие записи (которых нет в 1С)"</span>
                     </label>
-                    <div class="mt-4 rounded-md border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-                        <span class="font-semibold">"⚠️ Внимание: "</span>
-                        "Записи, которых нет в источнике 1С, будут удалены из БД (жесткое удаление)"
+                    <div class="import-warning">
+                        <span>"⚠️"</span>
+                        <span>"Внимание: Записи, которых нет в источнике 1С, будут удалены из БД (жесткое удаление)"</span>
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-bg-secondary)] p-6 text-center">
+                <div class="import-action-container">
                     <button
-                        class="inline-flex items-center justify-center gap-3 rounded-lg bg-[var(--color-primary-600)] px-10 py-4 text-base font-semibold text-white shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        class="import-start-button btn btn-primary"
                         on:click=on_start_import
                         prop:disabled=move || is_loading.get() || session_id.get().is_some()
                     >
@@ -457,18 +453,18 @@ pub fn ImportWidget() -> impl IntoView {
                             if import_a003.get() { endpoints.push(format!("{}/Catalog_Контрагенты", odata_path)); }
 
                             view! {
-                                <div class="rounded-lg border border-[var(--color-primary-100)] bg-[var(--color-primary-50)] p-6 space-y-2">
-                                    <div class="text-[var(--color-primary-700)] text-base font-semibold">
-                                        "Путь загрузки:"
+                                <div class="import-section">
+                                    <h2 class="import-section-title">"Путь загрузки:"</h2>
+                                    <div class="import-paths-list">
+                                        {endpoints.iter().map(|e| {
+                                            let e_clone = e.clone();
+                                            view! {
+                                                <div class="import-path-item">
+                                                    {e_clone}
+                                                </div>
+                                            }
+                                        }).collect_view()}
                                     </div>
-                                    {endpoints.iter().map(|e| {
-                                        let e_clone = e.clone();
-                                        view! {
-                                            <div class="font-mono text-xs text-[var(--color-text-secondary)] break-all">
-                                                {e_clone}
-                                            </div>
-                                        }
-                                    }).collect_view()}
                                 </div>
                             }.into_any()
                         } else {

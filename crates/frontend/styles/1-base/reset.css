@@ -4,7 +4,11 @@
 
 body {
     margin: var(--space-0);
-    font-family: var(--font-family-base);
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    font-size: var(--font-size-base);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -17,4 +21,10 @@ body {
 *::before,
 *::after {
     box-sizing: border-box;
+}
+
+/* Reset only specific elements, not everything */
+h1, h2, h3, h4, h5, h6, p, ul, ol, li {
+    margin: 0;
+    padding: 0;
 }

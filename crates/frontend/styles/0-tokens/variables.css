@@ -187,6 +187,14 @@
   /* Hover states */
   --color-hover-bg: #f5f5f5;
   --color-hover-table: #e3f2fd;
+  --color-hover: rgba(0, 0, 0, 0.04);
+  
+  /* Additional semantic colors */
+  --color-surface: #ffffff;
+  --color-background: #f9fafb;
+  --color-text-tertiary: #9ca3af;
+  --color-code-bg: #f3f4f6;
+  --color-warning-text: #92400e;
 
   /* ===== Opacity ===== */
   --opacity-disabled: 0.6;
