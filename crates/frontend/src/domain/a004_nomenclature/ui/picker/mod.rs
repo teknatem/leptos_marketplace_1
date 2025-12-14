@@ -177,7 +177,7 @@ where
 
             <div style="padding: 16px 20px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 12px; background: #f9f9f9;">
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click=handle_select
                     disabled={move || selected_id.get().is_none()}
                     style="padding: 10px 24px; font-size: 14px;"
@@ -186,7 +186,7 @@ where
                     {"Выбрать"}
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| on_cancel(())
                     style="padding: 10px 24px; font-size: 14px;"
                 >

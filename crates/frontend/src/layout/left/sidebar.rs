@@ -1,10 +1,10 @@
 //! Sidebar component with collapsible menu items
 //! Based on bolt-mpi-ui-redesign/src/components/Sidebar.tsx
 
-use leptos::prelude::*;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::system::auth::context::use_auth;
+use leptos::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]
 struct MenuGroup {
@@ -21,9 +21,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "dashboards",
             label: "Дашборды",
             icon: "bar-chart",
-            items: vec![
-                ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
-            ],
+            items: vec![("d400_monthly_summary", "Сводка за месяц", "bar-chart")],
             admin_only: false,
         },
         MenuGroup {
@@ -67,8 +65,16 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 ("u501_import_from_ut", "Импорт из УТ 11", "import"),
                 ("u502_import_from_ozon", "Импорт из OZON", "import"),
                 ("u503_import_from_yandex", "Импорт из Yandex", "import"),
-                ("u504_import_from_wildberries", "Импорт из Wildberries", "import"),
-                ("u506_import_from_lemanapro", "Импорт из ЛеманаПро", "import"),
+                (
+                    "u504_import_from_wildberries",
+                    "Импорт из Wildberries",
+                    "import",
+                ),
+                (
+                    "u506_import_from_lemanapro",
+                    "Импорт из ЛеманаПро",
+                    "import",
+                ),
             ],
             admin_only: false,
         },
@@ -76,9 +82,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "operations",
             label: "Операции",
             icon: "layers",
-            items: vec![
-                ("u505_match_nomenclature", "Сопоставление", "layers"),
-            ],
+            items: vec![("u505_match_nomenclature", "Сопоставление", "layers")],
             admin_only: false,
         },
         MenuGroup {
@@ -88,10 +92,18 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             items: vec![
                 ("p900_sales_register", "Регистр продаж", "database"),
                 ("p901_barcodes", "Штрихкоды номенклатуры", "barcode"),
-                ("p902_ozon_finance_realization", "OZON Finance Realization", "dollar-sign"),
+                (
+                    "p902_ozon_finance_realization",
+                    "OZON Finance Realization",
+                    "dollar-sign",
+                ),
                 ("p903_wb_finance_report", "WB Finance Report", "dollar-sign"),
                 ("p904_sales_data", "Sales Data", "dollar-sign"),
-                ("p905_commission_history", "WB Commission History", "percent"),
+                (
+                    "p905_commission_history",
+                    "WB Commission History",
+                    "percent",
+                ),
                 ("p906_nomenclature_prices", "Плановые цены", "dollar-sign"),
             ],
             admin_only: false,
@@ -100,9 +112,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "settings",
             label: "Настройки",
             icon: "settings",
-            items: vec![
-                ("sys_users", "Пользователи", "users"),
-            ],
+            items: vec![("sys_users", "Пользователи", "users")],
             admin_only: true,
         },
     ]
@@ -112,7 +122,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
 pub fn Sidebar() -> impl IntoView {
     let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let (auth_state, _) = use_auth();
-    
+
     let is_admin = move || {
         let state = auth_state.get();
         state
@@ -121,7 +131,7 @@ pub fn Sidebar() -> impl IntoView {
             .map(|u| u.is_admin)
             .unwrap_or(false)
     };
-    
+
     // Initially expanded groups (matching the sample)
     let expanded_groups = RwSignal::new(vec![
         "dashboards".to_string(),
@@ -131,33 +141,32 @@ pub fn Sidebar() -> impl IntoView {
         "operations".to_string(),
         "information".to_string(),
     ]);
-    
+
     let groups = get_menu_groups();
-    
+
     view! {
-        <div class="sidebar">
-            <div class="sidebar-content">
-                {groups.into_iter().filter_map(|group| {
+        <div class="panel-left__content">
+            {groups.into_iter().filter_map(|group| {
                     let is_admin_only = group.admin_only;
-                    
+
                     // Skip admin-only groups if user is not admin
                     if is_admin_only && !is_admin() {
                         return None;
                     }
-                    
+
                     let group_id = group.id.to_string();
                     let has_children = !group.items.is_empty();
-                    
+
                     let group_id_stored = StoredValue::new(group_id.clone());
                     let group_id_for_exp = group_id.clone();
                     let group_id_for_click = group_id.clone();
-                    
+
                     Some(view! {
                         <div>
                             // Parent item
                             <div
-                                class="sidebar-item"
-                                class:active=move || {
+                                class="panel-left__item"
+                                class:panel-left__item--active=move || {
                                     let gid = group_id_stored.get_value();
                                     !has_children && ctx.active.get().as_ref().map(|a| a == &gid).unwrap_or(false)
                                 }
@@ -177,36 +186,36 @@ pub fn Sidebar() -> impl IntoView {
                                     }
                                 }
                             >
-                                <div class="sidebar-item-content">
+                                <div class="panel-left__item-content">
                                     {icon(group.icon)}
                                     <span>{group.label}</span>
                                 </div>
                                 {has_children.then(|| {
                                     let gid_exp = group_id_for_exp.clone();
                                     view! {
-                                        <div 
-                                            class="sidebar-chevron"
-                                            class:expanded=move || expanded_groups.get().contains(&gid_exp)
+                                        <div
+                                            class="panel-left__chevron"
+                                            class:panel-left__chevron--expanded=move || expanded_groups.get().contains(&gid_exp)
                                         >
                                             {icon("chevron-right")}
                                         </div>
                                     }
                                 })}
                             </div>
-                            
+
                             // Children
                             {has_children.then(|| {
                                 let gid_show = group_id.clone();
                                 let items_stored = StoredValue::new(group.items.clone());
                                 view! {
                                     <Show when=move || expanded_groups.get().contains(&gid_show)>
-                                        <div class="sidebar-children">
+                                        <div class="panel-left__children">
                                             {items_stored.get_value().into_iter().map(|(id, label, icon_name)| {
                                                 let item_id = StoredValue::new(id.to_string());
                                                 view! {
                                                     <div
-                                                        class="sidebar-item"
-                                                        class:active=move || {
+                                                        class="panel-left__item"
+                                                        class:panel-left__item--active=move || {
                                                             let iid = item_id.get_value();
                                                             ctx.active.get().as_ref().map(|a| a == &iid).unwrap_or(false)
                                                         }
@@ -215,7 +224,7 @@ pub fn Sidebar() -> impl IntoView {
                                                             ctx.open_tab(id, label);
                                                         }
                                                     >
-                                                        <div class="sidebar-item-content">
+                                                        <div class="panel-left__item-content">
                                                             {icon(icon_name)}
                                                             <span>{label}</span>
                                                         </div>
@@ -229,7 +238,6 @@ pub fn Sidebar() -> impl IntoView {
                         </div>
                     })
                 }).collect_view()}
-            </div>
         </div>
     }
 }

@@ -306,14 +306,14 @@ pub fn Connection1CList() -> impl IntoView {
 
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <button
-                        class="btn btn-primary"
+                        class="button button--primary"
                         on:click=move |_| handle_create_new()
                     >
                         {icon("plus")}
                         " Новое"
                     </button>
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=move |_| load_connections()
                         prop:disabled=move || loading.get()
                     >
@@ -347,10 +347,10 @@ pub fn Connection1CList() -> impl IntoView {
 
                     view! {
                         <div class="table-container" style="overflow: auto; max-height: calc(100vh - 200px); position: relative; margin-top: 10px;">
-                            <table id="connection-1c-table" class="data-table table-striped" style="min-width: 1200px; table-layout: fixed;">
+                            <table id="connection-1c-table" class="table__data table--striped" style="min-width: 1200px; table-layout: fixed;">
                                 <thead>
                                     <tr>
-                                        <th class="checkbox-cell" style="width: 40px; min-width: 40px;">
+                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
                                             <input
                                                 type="checkbox"
                                                 on:change=toggle_all
@@ -358,20 +358,20 @@ pub fn Connection1CList() -> impl IntoView {
                                             />
                                         </th>
                                         <th class="resizable" style="width: 250px; min-width: 120px;" on:click=move |_| toggle_sort("description")>
-                                            <span class="sortable-header">"Наименование" <span class={get_sort_class("description", &current_sort_field)}>{get_sort_indicator("description", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Наименование" <span class={get_sort_class("description", &current_sort_field)}>{get_sort_indicator("description", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 300px; min-width: 150px;" on:click=move |_| toggle_sort("url")>
-                                            <span class="sortable-header">"URL" <span class={get_sort_class("url", &current_sort_field)}>{get_sort_indicator("url", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"URL" <span class={get_sort_class("url", &current_sort_field)}>{get_sort_indicator("url", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 120px; min-width: 80px;" on:click=move |_| toggle_sort("login")>
-                                            <span class="sortable-header">"Логин" <span class={get_sort_class("login", &current_sort_field)}>{get_sort_indicator("login", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Логин" <span class={get_sort_class("login", &current_sort_field)}>{get_sort_indicator("login", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 200px; min-width: 100px;">"Комментарий"</th>
                                         <th class="resizable text-center" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("is_primary")>
-                                            <span class="sortable-header" style="justify-content: center;">"Основное" <span class={get_sort_class("is_primary", &current_sort_field)}>{get_sort_indicator("is_primary", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: center;">"Основное" <span class={get_sort_class("is_primary", &current_sort_field)}>{get_sort_indicator("is_primary", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 130px; min-width: 100px;" on:click=move |_| toggle_sort("created_at")>
-                                            <span class="sortable-header">"Создано" <span class={get_sort_class("created_at", &current_sort_field)}>{get_sort_indicator("created_at", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Создано" <span class={get_sort_class("created_at", &current_sort_field)}>{get_sort_indicator("created_at", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
                                 </thead>
@@ -396,7 +396,7 @@ pub fn Connection1CList() -> impl IntoView {
 
                                         view! {
                                             <tr on:click=on_row_click.clone()>
-                                                <td class="checkbox-cell" on:click=move |e| e.stop_propagation()>
+                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
                                                     <input
                                                         type="checkbox"
                                                         prop:checked=move || is_selected(&id_check)

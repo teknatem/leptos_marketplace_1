@@ -9,7 +9,7 @@
 
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
-use crate::shared::theme::ThemeSelector;
+use crate::shared::theme::ThemeSelect;
 use crate::system::auth::context::{do_logout, use_auth};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -24,7 +24,7 @@ pub fn TopHeader() -> impl IntoView {
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
     // Get auth context for user info
-    let (auth_state, _set_auth_state) = use_auth();
+    let (auth_state, set_auth_state) = use_auth();
 
     let toggle_sidebar = move |_| {
         ctx.toggle_left();
@@ -36,7 +36,7 @@ pub fn TopHeader() -> impl IntoView {
 
     let logout = move |_| {
         spawn_local(async move {
-            let _ = do_logout().await;
+            let _ = do_logout(set_auth_state).await;
         });
     };
 
@@ -47,28 +47,28 @@ pub fn TopHeader() -> impl IntoView {
     view! {
         <div class="top-header">
             // Left section - sidebar toggle and brand
-            <div class="top-header-brand">
-                <span class="top-header-title">"Marketplace Integrator"</span>
+            <div class="top-header__brand">
+                <span class="top-header__title">"Marketplace Integrator"</span>
             </div>
 
-
             // Right section - actions
-            <div class="top-header-actions">
-            <button
-            class="top-header-icon-btn"
-            on:click=toggle_sidebar
-            title=move || if is_sidebar_visible() { "Скрыть навигацию" } else { "Показать навигацию" }
-        >
-            {move || if is_sidebar_visible() {
-                icon("panel-left-close")
-            } else {
-                icon("panel-left-open")
-            }}
-        </button>
-
-        // Right panel toggle
+            <div class="top-header__actions">
+                // Left panel toggle
                 <button
-                    class="top-header-icon-btn"
+                    class="top-header__icon-btn"
+                    on:click=toggle_sidebar
+                    title=move || if is_sidebar_visible() { "Скрыть навигацию" } else { "Показать навигацию" }
+                >
+                    {move || if is_sidebar_visible() {
+                        icon("panel-left-close")
+                    } else {
+                        icon("panel-left-open")
+                    }}
+                </button>
+
+                // Right panel toggle
+                <button
+                    class="top-header__icon-btn"
                     on:click=toggle_right_panel
                     title=move || if is_right_panel_visible() { "Скрыть правую панель" } else { "Показать правую панель" }
                 >
@@ -79,21 +79,21 @@ pub fn TopHeader() -> impl IntoView {
                     }}
                 </button>
 
-        // Notifications
-                <button class="top-header-icon-btn" title="Уведомления">
+                // Notifications
+                <button class="top-header__icon-btn" title="Уведомления">
                     {icon("bell")}
                 </button>
 
                 // Settings
-                <button class="top-header-icon-btn" title="Настройки">
+                <button class="top-header__icon-btn" title="Настройки">
                     {icon("settings")}
                 </button>
 
                 // Theme selector
-                <ThemeSelector />
+                <ThemeSelect />
 
                 // User info
-                <div class="top-header-user">
+                <div class="top-header__user">
                     {icon("user")}
                     <span>
                         {move || auth_state.get().user_info
@@ -103,7 +103,7 @@ pub fn TopHeader() -> impl IntoView {
                 </div>
 
                 // Logout
-                <button class="top-header-icon-btn" on:click=logout title="Выход">
+                <button class="top-header__icon-btn" on:click=logout title="Выход">
                     {icon("log-out")}
                 </button>
             </div>

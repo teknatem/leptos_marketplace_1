@@ -574,14 +574,14 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
                     // Post/Unpost buttons
                     <button
-                        class="btn btn-success"
+                        class="button button--primary"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=post_selected
                     >
                         {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                     <button
-                        class="btn btn-warning"
+                        class="button button--warning"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=unpost_selected
                     >
@@ -592,7 +592,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                 <div style="display: flex; gap: 8px; align-items: center;">
                     // Excel export button
                     <button
-                        class="btn btn-excel"
+                        class="button button--excel"
                         on:click=move |_| {
                             let data = get_sorted_items();
                             if let Err(e) = export_to_csv(&data) {
@@ -614,14 +614,14 @@ pub fn OzonTransactionsList() -> impl IntoView {
                         }
                     }}
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=restore_settings
                         title="Восстановить настройки из базы данных"
                     >
                         "🔄"
                     </button>
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=save_settings_to_db
                         title="Сохранить настройки в базу данных"
                     >
@@ -704,7 +704,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
                 // Update button
                 <button
-                    class="btn btn-success"
+                    class="button button--primary"
                     on:click=move |_| {
                         load_transactions();
                     }

@@ -1,0 +1,17 @@
+/* ============================================
+   Design System Entry Point
+   CSS Cascade Layers Architecture
+   ============================================ */
+
+/* Define layer order (lower layers have lower priority) */
+@layer tokens, base, layout, components, utilities, compatibility;
+
+/* Import design tokens and core styles */
+@import url("./variables.css") layer(tokens);
+@import url("./base.css") layer(base);
+@import url("./layout.css") layer(layout);
+@import url("./components.css") layer(components);
+@import url("./utilities.css") layer(utilities);
+
+/* Temporary compatibility layer for legacy variables */
+@import url("./compatibility.css") layer(compatibility);

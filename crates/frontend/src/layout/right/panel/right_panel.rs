@@ -53,14 +53,14 @@ pub fn RightPanel() -> impl IntoView {
                 <h3>{"Логи системы"}</h3>
                 <div class="logs-actions">
                     <button
-                        class="btn btn-sm btn-secondary"
+                        class="button button--small button--secondary"
                         on:click=move |_| load_logs_action()
                         disabled=move || is_loading.get()
                     >
                         {move || if is_loading.get() { "Загрузка..." } else { "Обновить" }}
                     </button>
                     <button
-                        class="btn btn-sm btn-danger"
+                        class="button button--small button--secondary"
                         on:click=move |_| clear_logs_action()
                         disabled=move || is_loading.get()
                     >

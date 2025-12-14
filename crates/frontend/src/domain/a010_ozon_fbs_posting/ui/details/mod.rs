@@ -283,7 +283,7 @@ pub fn OzonFbsPostingDetail(
             <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: var(--space-md) var(--space-xl); border-radius: var(--radius-md) var(--radius-md) 0 0; margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0 calc(-1 * var(--space-xl)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
                 <h2 style="margin: 0; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--color-text-white);">"OZON FBS Posting Details"</h2>
                 <button
-                    class="btn-close"
+                    class="button--ghost"
                     on:click=move |_| on_close.run(())
                 >
                     "✕ Закрыть"

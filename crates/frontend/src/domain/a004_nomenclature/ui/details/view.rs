@@ -104,8 +104,8 @@ pub fn NomenclatureDetails(
                     view! {
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; height: 100%; overflow-y: auto; padding: 0 20px;">
                             // Left column - Main fields
-                            <div class="details-form">
-                        <div class="form-group">
+                            <div class="detail-form">
+                        <div class="form__group">
                             <label for="description">{"Наименование"}</label>
                             <input
                                 type="text"
@@ -124,7 +124,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="full_description">{"Полное наименование"}</label>
                             <input
                                 type="text"
@@ -144,7 +144,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="code">{"Код"}</label>
                             <input
                                 type="text"
@@ -163,7 +163,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="article">{"Артикул"}</label>
                             <input
                                 type="text"
@@ -183,7 +183,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="is_folder">{"Это папка"}</label>
                             <input
                                 type="checkbox"
@@ -201,7 +201,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="parent_id">{"Родитель (UUID)"}</label>
                             <input
                                 type="text"
@@ -221,7 +221,7 @@ pub fn NomenclatureDetails(
                             />
                         </div>
 
-                        <div class="form-group">
+                        <div class="form__group">
                             <label for="comment">{"Комментарий"}</label>
                             <textarea
                                 id="comment"
@@ -478,7 +478,7 @@ pub fn NomenclatureDetails(
 
             <div class="details-actions">
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click={
                         let vm = vm_clone.clone();
                         move |_| {
@@ -495,7 +495,7 @@ pub fn NomenclatureDetails(
                     {"Сохранить"}
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| on_cancel.run(())
                 >
                     {icon("cancel")}

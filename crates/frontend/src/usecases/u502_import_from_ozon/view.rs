@@ -347,7 +347,7 @@ pub fn ImportWidget() -> impl IntoView {
             <div style="margin: 20px 0;">
                 <label style="display: block; margin-bottom: 8px; font-weight: bold;">{"Период:"}</label>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="date_from">{"С даты"}</label>
                         <input
                             type="date"
@@ -361,7 +361,7 @@ pub fn ImportWidget() -> impl IntoView {
                             }
                         />
                     </div>
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="date_to">{"По дату"}</label>
                         <input
                             type="date"

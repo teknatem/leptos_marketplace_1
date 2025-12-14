@@ -193,12 +193,12 @@ fn UsersList() -> impl IntoView {
                 </div>
                 <div class="pagination-controls">
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| go_to_page(0)
                         disabled=move || state.get().page == 0
                     >"⏮"</button>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let p = state.get().page;
                             if p > 0 { go_to_page(p - 1); }
@@ -212,7 +212,7 @@ fn UsersList() -> impl IntoView {
                         }}
                     </span>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let s = state.get();
                             if s.page + 1 < s.total_pages { go_to_page(s.page + 1); }
@@ -223,7 +223,7 @@ fn UsersList() -> impl IntoView {
                         }
                     >"▶"</button>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let s = state.get();
                             if s.total_pages > 0 { go_to_page(s.total_pages - 1); }
@@ -245,11 +245,11 @@ fn UsersList() -> impl IntoView {
                         <option value="100">"100"</option>
                     </select>
                 </div>
-                <div class="header-actions">
-                    <button class="btn btn-icon-transparent" title="Обновить" on:click=move |_| load_data()>
+                <div class="header__actions">
+                    <button class="button button--icon-transparent" title="Обновить" on:click=move |_| load_data()>
                         "🔄"
                     </button>
-                    <button class="btn btn-primary" on:click=move |_| show_create_form.set(true)>
+                    <button class="button button--primary" on:click=move |_| show_create_form.set(true)>
                         "+ Новый"
                     </button>
                 </div>
@@ -300,11 +300,11 @@ fn UsersList() -> impl IntoView {
                 fallback=|| view! { <div class="loading">"Загрузка пользователей..."</div> }
             >
                 <div class="table-container">
-                    <table class="data-table" id=TABLE_ID>
+                    <table class="table__data" id=TABLE_ID>
                         <thead>
                             <tr>
                                 <th class="resizable" on:click=toggle_sort("username")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Логин"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -319,7 +319,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("full_name")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "ФИО"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -334,7 +334,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("email")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Email"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -349,7 +349,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("is_admin")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Админ"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -364,7 +364,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("is_active")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Активен"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -379,7 +379,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("created_at")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Создан"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -394,7 +394,7 @@ fn UsersList() -> impl IntoView {
                                     </span>
                                 </th>
                                 <th class="resizable" on:click=toggle_sort("last_login_at")>
-                                    <span class="sortable-header">
+                                    <span class="table__sortable-header">
                                         "Последний вход"
                                         <span class=move || get_sort_class(
                                             state.get().sort_field.as_str(),
@@ -429,7 +429,7 @@ fn UsersList() -> impl IntoView {
                                             <td>{format_ts(&user.created_at)}</td>
                                             <td>{format_ts_opt(&user.last_login_at)}</td>
                                             <td class="text-center">
-                                                <button class="btn btn-small" on:click=move |_| open_edit(user_for_edit.clone())>
+                                                <button class="button button--smallall" on:click=move |_| open_edit(user_for_edit.clone())>
                                                     "✎"
                                                 </button>
                                             </td>
@@ -497,7 +497,7 @@ where
             <div class="modal-content" on:click=move |ev| ev.stop_propagation()>
                 <div class="modal-header">
                     <h3>{format!("Редактирование: {}", user.username)}</h3>
-                    <button class="btn-close" on:click=move |_| on_close()>"×"</button>
+                    <button class="button--ghost" on:click=move |_| on_close()>"×"</button>
                 </div>
 
                 <div class="modal-body">
@@ -508,7 +508,7 @@ where
                     </Show>
 
                     <form id="edit-user-form" on:submit=on_submit>
-                    <div class="form-group">
+                    <div class="form__group">
                         <label>"Email"</label>
                         <input
                             type="email"
@@ -518,7 +518,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label>"ФИО"</label>
                         <input
                             type="text"
@@ -528,7 +528,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label>
                             <input
                                 type="checkbox"
@@ -540,7 +540,7 @@ where
                         </label>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label>
                             <input
                                 type="checkbox"
@@ -557,7 +557,7 @@ where
                 <div class="form-actions">
                     <button
                         type="button"
-                        class="btn-secondary"
+                        class="button--secondary"
                         on:click=move |_| on_close()
                         disabled=move || saving.get()
                     >

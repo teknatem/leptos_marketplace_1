@@ -78,7 +78,7 @@ pub fn JsonViewer(
                 </h3>
                 <div style="display: flex; gap: 10px;">
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=handle_copy
                         style="padding: 8px 16px; font-size: 14px;"
                         title="Копировать в буфер обмена"

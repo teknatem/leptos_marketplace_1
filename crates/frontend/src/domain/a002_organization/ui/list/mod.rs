@@ -136,16 +136,16 @@ pub fn OrganizationList() -> impl IntoView {
         <div class="content">
             <div class="header">
                 <h2>{"Организации"}</h2>
-                <div class="header-actions">
-                    <button class="btn btn-primary" on:click=move |_| handle_create_new()>
+                <div class="header__actions">
+                    <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
                         {"Новая организация"}
                     </button>
-                    <button class="btn btn-secondary" on:click=move |_| fetch()>
+                    <button class="button button--secondary" on:click=move |_| fetch()>
                         {icon("refresh")}
                         {"Обновить"}
                     </button>
-                    <button class="btn btn-danger" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
+                    <button class="button button--secondary" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
                         {icon("delete")}
                         {move || format!("Удалить ({})", selected.get().len())}
                     </button>

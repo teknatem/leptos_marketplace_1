@@ -9,15 +9,13 @@ pub fn Header() -> impl IntoView {
 
     view! {
         <header data-zone="header" class="header">
-            <div class="header-left">
-                <span class="header-title">"Integrator"</span>
-            </div>
-            <div class="header-center">
+            <div class="header__content">
+                <span class="header__title">"Integrator"</span>
                 <MegaMenuBar />
             </div>
-            <div class="header-actions">
-                <button class="icon-btn" aria-label="Toggle Left" on:click=move |_| tabs_store.toggle_left()>{"◀"}</button>
-                <button class="icon-btn" aria-label="Toggle Right" on:click=move |_| tabs_store.toggle_right()>{"▶"}</button>
+            <div class="header__actions">
+                <button class="button button--ghost" aria-label="Toggle Left" on:click=move |_| tabs_store.toggle_left()>{"◀"}</button>
+                <button class="button button--ghost" aria-label="Toggle Right" on:click=move |_| tabs_store.toggle_right()>{"▶"}</button>
             </div>
         </header>
     }

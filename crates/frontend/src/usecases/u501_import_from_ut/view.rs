@@ -314,7 +314,7 @@ pub fn ImportWidget() -> impl IntoView {
 
                 <div class="import-action-container">
                     <button
-                        class="import-start-button btn btn-primary"
+                        class="import-start-button button button--primary"
                         on:click=on_start_import
                         prop:disabled=move || is_loading.get() || session_id.get().is_some()
                     >

@@ -31,8 +31,8 @@ pub fn OrganizationDetails(
                 move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
             }
 
-            <div class="details-form">
-                <div class="form-group">
+            <div class="detail-form">
+                <div class="form__group">
                     <label for="description">{"Наименование"}</label>
                     <input
                         type="text"
@@ -51,7 +51,7 @@ pub fn OrganizationDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="full_name">{"Полное наименование"}</label>
                     <input
                         type="text"
@@ -70,7 +70,7 @@ pub fn OrganizationDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="inn">{"ИНН"}</label>
                     <input
                         type="text"
@@ -90,7 +90,7 @@ pub fn OrganizationDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="kpp">{"КПП"}</label>
                     <input
                         type="text"
@@ -110,7 +110,7 @@ pub fn OrganizationDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea
                         id="comment"
@@ -135,7 +135,7 @@ pub fn OrganizationDetails(
 
             <div class="details-actions">
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click={
                         let vm = vm_clone.clone();
                         let on_saved = on_saved.clone();
@@ -153,7 +153,7 @@ pub fn OrganizationDetails(
                     }
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| (on_cancel)(())
                 >
                     {icon("cancel")}

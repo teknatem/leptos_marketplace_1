@@ -69,7 +69,7 @@ pub fn DimensionInput(
     };
 
     view! {
-        <div class="form-group">
+        <div class="form__group">
             <label for={id.clone()}>{label}</label>
             <div style="position: relative;">
                 <input

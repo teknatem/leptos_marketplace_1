@@ -488,7 +488,7 @@ pub fn WbOrdersList() -> impl IntoView {
                             }}
 
                             <div class="table-container">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
                                             <th

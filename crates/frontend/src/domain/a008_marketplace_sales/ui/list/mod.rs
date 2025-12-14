@@ -278,13 +278,13 @@ pub fn MarketplaceSalesList() -> impl IntoView {
         <div class="content">
             <div class="header">
                 <h2>{"Продажи маркетплейсов"}</h2>
-                <div class="header-actions">
+                <div class="header__actions">
                     <SearchInput
                         value=filter_text
                         on_change=Callback::new(move |val: String| set_filter_text.set(val))
                         placeholder="Поиск по продажам...".to_string()
                     />
-                    <button class="btn btn-secondary" on:click=move |_| fetch()>
+                    <button class="button button--secondary" on:click=move |_| fetch()>
                         {icon("refresh")}
                         {"Обновить"}
                     </button>

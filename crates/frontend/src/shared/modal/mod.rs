@@ -67,7 +67,7 @@ pub fn Modal(
                                         }
                                     }
                                     <button
-                                        class="btn btn-ghost btn-close"
+                                        class="button button--ghost"
                                         on:click=handle_close
                                     >
                                         {icon("x")}

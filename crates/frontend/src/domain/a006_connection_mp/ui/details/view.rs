@@ -134,9 +134,9 @@ pub fn ConnectionMPDetails(
 
             {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
 
-            <div class="details-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; column-gap: 24px;">
+            <div class="detail-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; column-gap: 24px;">
                 // Колонка 1
-                <div class="form-group">
+                <div class="form__group">
                     <label for="description">{"Наименование"}</label>
                     <input
                         type="text"
@@ -148,7 +148,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 2
-                <div class="form-group">
+                <div class="form__group">
                     <label for="api_key">{"API Key"}</label>
                     <textarea
                         id="api_key"
@@ -165,7 +165,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 1
-                <div class="form-group">
+                <div class="form__group">
                     <label for="marketplace">{"Маркетплейс"}</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input
@@ -178,7 +178,7 @@ pub fn ConnectionMPDetails(
                         />
                         <button
                             type="button"
-                            class="btn btn-secondary"
+                            class="button button--secondary"
                             on:click=move |_| {
                                 set_show_marketplace_picker.set(true);
                                 modal.show();
@@ -191,7 +191,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 2
-                <div class="form-group">
+                <div class="form__group">
                     <label for="supplier_id">{"ID Поставщика / Client ID"}</label>
                     <input
                         type="text"
@@ -210,7 +210,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 1
-                <div class="form-group">
+                <div class="form__group">
                     <label for="organization">{"Организация"}</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input
@@ -223,7 +223,7 @@ pub fn ConnectionMPDetails(
                         />
                         <button
                             type="button"
-                            class="btn btn-secondary"
+                            class="button button--secondary"
                             on:click=move |_| {
                                 set_show_organization_picker.set(true);
                                 modal.show();
@@ -236,7 +236,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 2
-                <div class="form-group">
+                <div class="form__group">
                     <label for="application_id">{"ID Приложения"}</label>
                     <input
                         type="text"
@@ -253,7 +253,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 1
-                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <div class="form__group" style="display: flex; align-items: center; gap: 8px;">
                     <input
                         type="checkbox"
                         id="is_used"
@@ -264,7 +264,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 2
-                <div class="form-group">
+                <div class="form__group">
                     <label for="business_account_id">{"Бизнес Аккаунт ID"}</label>
                     <input
                         type="text"
@@ -282,7 +282,7 @@ pub fn ConnectionMPDetails(
                 </div>
 
                 // Колонка 1
-                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <div class="form__group" style="display: flex; align-items: center; gap: 8px;">
                     <input
                         type="checkbox"
                         id="test_mode"
@@ -295,7 +295,7 @@ pub fn ConnectionMPDetails(
                 // Колонка 2 - пустое место
                 <div></div>
 
-                <div class="form-group" style="grid-column: 1 / -1;">
+                <div class="form__group" style="grid-column: 1 / -1;">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea
                         id="comment"
@@ -444,7 +444,7 @@ pub fn ConnectionMPDetails(
 
             <div class="details-actions">
                 <button
-                    class="btn btn-warning"
+                    class="button button--warning"
                     on:click=handle_test
                     disabled=move || is_testing.get()
                 >
@@ -452,14 +452,14 @@ pub fn ConnectionMPDetails(
                     {move || if is_testing.get() { "Тестирование..." } else { "Тест подключения" }}
                 </button>
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click=handle_save
                 >
                     {icon("save")}
                     {"Сохранить"}
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| on_cancel(())
                 >
                     {"Отмена"}

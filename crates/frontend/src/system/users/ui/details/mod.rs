@@ -58,7 +58,7 @@ where
             <div class="modal-content" on:click=move |ev| ev.stop_propagation()>
                 <div class="modal-header">
                     <h3>"Создать пользователя"</h3>
-                    <button class="btn-close" on:click=move |_| on_close()>"×"</button>
+                    <button class="button--ghost" on:click=move |_| on_close()>"×"</button>
                 </div>
 
                 <div class="modal-body">
@@ -69,7 +69,7 @@ where
                     </Show>
 
                     <form id="create-user-form" on:submit=on_submit>
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="username">"Логин *"</label>
                         <input
                             type="text"
@@ -81,7 +81,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="password">"Пароль *"</label>
                         <input
                             type="password"
@@ -93,7 +93,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="email">"Email"</label>
                         <input
                             type="email"
@@ -104,7 +104,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="full_name">"ФИО"</label>
                         <input
                             type="text"
@@ -115,7 +115,7 @@ where
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label>
                             <input
                                 type="checkbox"
@@ -132,7 +132,7 @@ where
                 <div class="form-actions">
                     <button
                         type="button"
-                        class="btn-secondary"
+                        class="button--secondary"
                         on:click=move |_| on_close()
                         disabled=move || is_saving.get()
                     >
@@ -141,7 +141,7 @@ where
                     <button
                         type="submit"
                         form="create-user-form"
-                        class="btn-primary"
+                        class="button button--primary"
                         disabled=move || is_saving.get()
                     >
                         {move || if is_saving.get() { "Сохранение..." } else { "Создать" }}
