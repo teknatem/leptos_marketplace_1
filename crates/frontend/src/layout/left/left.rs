@@ -8,7 +8,7 @@ pub fn Left(children: Children) -> impl IntoView {
     let is_open = move || tabs_store.left_open.get();
 
     view! {
-        <div data-zone="left" class="left" class:hidden=move || !is_open()>
+        <div data-zone="left" class="panel-left" class:hidden=move || !is_open()>
             {children()}
         </div>
     }

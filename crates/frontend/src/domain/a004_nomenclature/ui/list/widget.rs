@@ -1,10 +1,10 @@
+use super::super::details::NomenclatureDetails;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::excel_importer::{ColumnDef, DataType, ExcelData, ExcelImporter};
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a004_nomenclature::ImportResult;
-use super::super::details::NomenclatureDetails;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -61,7 +61,8 @@ async fn send_import_data(excel_data: ExcelData) -> Result<ImportResult, String>
     opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
 
-    let body = serde_json::to_string(&excel_data).map_err(|e| format!("Ошибка сериализации: {e}"))?;
+    let body =
+        serde_json::to_string(&excel_data).map_err(|e| format!("Ошибка сериализации: {e}"))?;
     opts.set_body(&wasm_bindgen::JsValue::from_str(&body));
 
     let url = format!("{}/api/nomenclature/import-excel", api_base());
@@ -91,7 +92,8 @@ async fn send_import_data(excel_data: ExcelData) -> Result<ImportResult, String>
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let result: ImportResult = serde_json::from_str(&text).map_err(|e| format!("Parse error: {e}"))?;
+    let result: ImportResult =
+        serde_json::from_str(&text).map_err(|e| format!("Parse error: {e}"))?;
     Ok(result)
 }
 
@@ -358,7 +360,9 @@ pub fn NomenclatureList() -> impl IntoView {
             return false;
         }
         let selected = selected_ids.get();
-        visible_items.iter().all(|item| selected.contains(&item.base.id.0.to_string()))
+        visible_items
+            .iter()
+            .all(|item| selected.contains(&item.base.id.0.to_string()))
     };
 
     // Обработка импорта из Excel
@@ -381,14 +385,12 @@ pub fn NomenclatureList() -> impl IntoView {
                             result.not_found_articles.join(", ")
                         )
                     };
-                    web_sys::window()
-                        .and_then(|w| Some(w.alert_with_message(&msg).ok()));
+                    web_sys::window().and_then(|w| Some(w.alert_with_message(&msg).ok()));
                     load_clone();
                 }
                 Err(e) => {
                     let msg = format!("Ошибка импорта: {}", e);
-                    web_sys::window()
-                        .and_then(|w| Some(w.alert_with_message(&msg).ok()));
+                    web_sys::window().and_then(|w| Some(w.alert_with_message(&msg).ok()));
                 }
             }
         });
@@ -416,11 +418,18 @@ pub fn NomenclatureList() -> impl IntoView {
             return;
         }
 
-        let filename = format!("nomenclature_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
-        
+        let filename = format!(
+            "nomenclature_{}.csv",
+            chrono::Utc::now().format("%Y%m%d_%H%M%S")
+        );
+
         if let Err(e) = export_to_excel(&items, &filename) {
-            web_sys::window()
-                .and_then(|w| Some(w.alert_with_message(&format!("Ошибка экспорта: {}", e)).ok()));
+            web_sys::window().and_then(|w| {
+                Some(
+                    w.alert_with_message(&format!("Ошибка экспорта: {}", e))
+                        .ok(),
+                )
+            });
         }
     };
 
@@ -470,21 +479,19 @@ pub fn NomenclatureList() -> impl IntoView {
                     />
                     <span>{"Только из маркетплейсов"}</span>
                 </label>
-                <button class="btn btn-secondary" on:click=move |_| load()>
+                <button class="button button--secondary" on:click=move |_| load()>
                     {icon("refresh")}
                     {"Обновить"}
                 </button>
                 <button
-                    class="btn"
-                    style="background: #4CAF50; color: white;"
+                    class="button button--primary"
                     on:click=move |_| set_show_excel_importer.set(true)
                 >
                     {icon("upload")}
                     {"Импорт из Excel"}
                 </button>
                 <button
-                    class="btn"
-                    style="background: #2196F3; color: white;"
+                    class="button button--primary"
                     on:click=move |_| handle_excel_export()
                 >
                     {icon("download")}

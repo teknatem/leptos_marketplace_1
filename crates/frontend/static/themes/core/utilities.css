@@ -1,0 +1,340 @@
+/* ============================================
+   Utility Classes
+   Minimal utilities - main customization via Tailwind
+   ============================================ */
+
+/* ============================================
+   Width Utilities (for tables)
+   ============================================ */
+
+.th-w-10p,
+.td-w-10p {
+  width: 10%;
+}
+
+.th-w-14p,
+.td-w-14p {
+  width: 14%;
+}
+
+.th-w-15p,
+.td-w-15p {
+  width: 15%;
+}
+
+.th-w-20p,
+.td-w-20p {
+  width: 20%;
+}
+
+.th-w-35p,
+.td-w-35p {
+  width: 35%;
+}
+
+.th-w-46p,
+.td-w-46p {
+  width: 46%;
+}
+
+/* ============================================
+   Text Utilities
+   ============================================ */
+
+.text-success {
+  color: var(--color-success-700);
+}
+
+.text-warning {
+  color: var(--color-warning-700);
+}
+
+.text-error {
+  color: var(--color-error-700);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   Spacing Utilities
+   ============================================ */
+
+.p-0-8 {
+  padding: 0 var(--spacing-md);
+}
+
+.p-6-8 {
+  padding: 6px var(--spacing-md);
+}
+
+/* ============================================
+   Display & Layout (CSS Variable Based)
+   ============================================ */
+
+.gap-sm {
+  gap: var(--spacing-sm);
+}
+
+.gap-md {
+  gap: var(--spacing-md);
+}
+
+.gap-lg {
+  gap: var(--spacing-lg);
+}
+
+/* ============================================
+   Font Weights (CSS Variable Based)
+   ============================================ */
+
+.font-medium {
+  font-weight: var(--font-weight-medium);
+}
+
+.font-semibold {
+  font-weight: var(--font-weight-semibold);
+}
+
+.font-bold {
+  font-weight: var(--font-weight-bold);
+}
+
+/* ============================================
+   Document Layout Utilities
+   ============================================ */
+
+.document-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.document-content {
+  flex: 1;
+  overflow: auto;
+  background: transparent;
+  padding: var(--spacing-xl);
+}
+
+.document-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.document-inner-narrow {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   Info/Warning Boxes
+   ============================================ */
+
+.info-box {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--info-box-bg);
+  border: 1px solid var(--info-box-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-sm);
+}
+
+.warning-box {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--warning-box-bg);
+  border: 1px solid var(--warning-box-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.warning-box__text {
+  font-size: var(--font-size-sm);
+  color: var(--warning-box-text-color);
+  line-height: 1.4;
+}
+
+.warning-box__icon {
+  color: var(--color-warning-700);
+  flex-shrink: 0;
+}
+
+.code-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--code-box-bg);
+  border: 1px solid var(--code-box-border);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: var(--font-size-sm);
+  color: var(--code-box-text);
+  line-height: 1.5;
+}
+
+/* ============================================
+   Form Sections
+   ============================================ */
+
+.form-section {
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.form-actions-center {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+}
+
+/* ============================================
+   Checkbox/Radio Lists
+   ============================================ */
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.checkbox-list__item {
+  margin-left: var(--spacing-xl);
+  margin-top: var(--spacing-xs);
+}
+
+.checkbox-list__item--mono {
+  font-family: monospace;
+}
+
+/* ============================================
+   Background Colors (CSS Variable Based)
+   ============================================ */
+
+.bg-surface {
+  background: var(--color-surface);
+}
+
+.bg-secondary {
+  background: var(--color-bg-secondary);
+}
+
+/* ============================================
+   Page Layout Utilities
+   ============================================ */
+
+.page {
+  padding: var(--spacing-lg);
+}
+
+.page__actions {
+  margin-bottom: var(--spacing-md);
+}
+
+.loading {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+/* ============================================
+   Form & Content Layout Utilities
+   ============================================ */
+
+.summary-box {
+  padding: var(--spacing-md);
+  background-color: var(--color-warning-50);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+}
+
+.section-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-primary);
+}
+
+.section-title--spaced {
+  margin-top: var(--spacing-xl);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.form-grid--simple {
+  margin-bottom: 0;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.button-group {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.badge-group {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.totals-row {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--color-neutral-100);
+  border-radius: var(--radius-md);
+  display: flex;
+  justify-content: space-between;
+  font-weight: 500;
+}
+
+.text-negative {
+  color: var(--color-error-700);
+  font-weight: 500;
+}
+
+.json-preview {
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-md);
+  background-color: var(--color-neutral-100);
+  border-radius: var(--radius-md);
+  overflow: auto;
+  max-height: 400px;
+}
+
+/* ============================================
+   Placeholder Content
+   ============================================ */
+
+.placeholder {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--color-neutral-600);
+}
+
+.placeholder__title {
+  font-size: var(--font-size-xl);
+  margin-bottom: var(--spacing-md);
+}

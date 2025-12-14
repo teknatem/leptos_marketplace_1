@@ -509,7 +509,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         <div class="content">
             <div class="header">
                 <h2>{"Товары маркетплейсов"}</h2>
-                <div class="header-actions">
+                <div class="header__actions">
                     <SearchInput
                         value=filter_text
                         on_change=Callback::new(move |val: String| set_filter_text.set(val))
@@ -536,11 +536,11 @@ pub fn MarketplaceProductList() -> impl IntoView {
                             }
                         }).collect_view()}
                     </select>
-                    <button class="btn btn-primary" on:click=move |_| handle_create_new()>
+                    <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
                         {"Новый товар"}
                     </button>
-                    <button class="btn btn-success" on:click=move |_| {
+                    <button class="button button--primary" on:click=move |_| {
                         wasm_bindgen_futures::spawn_local(async move {
                             match fill_test_data().await {
                                 Ok(_) => fetch(),
@@ -551,15 +551,15 @@ pub fn MarketplaceProductList() -> impl IntoView {
                         {icon("download")}
                         {"Заполнить"}
                     </button>
-                    <button class="btn btn-secondary" on:click=move |_| fetch()>
+                    <button class="button button--secondary" on:click=move |_| fetch()>
                         {icon("refresh")}
                         {"Обновить"}
                     </button>
-                    <button class="btn btn-success" on:click=move |_| handle_export()>
+                    <button class="button button--primary" on:click=move |_| handle_export()>
                         {icon("excel")}
                         {"Excel"}
                     </button>
-                    <button class="btn btn-danger" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
+                    <button class="button button--secondary" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
                         {icon("delete")}
                         {move || format!("Удалить ({})", selected.get().len())}
                     </button>

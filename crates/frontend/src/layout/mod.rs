@@ -7,7 +7,6 @@ pub mod right;
 pub mod top_header;
 
 use crate::shared::picker_aggregate::ModalRenderer;
-use crate::shared::theme::ThemeProvider;
 use leptos::prelude::*;
 use top_header::TopHeader;
 
@@ -35,37 +34,35 @@ where
     // for sidebar/panel visibility control
 
     view! {
-        <ThemeProvider>
-            <div class="app-layout">
-                // Top header with toggle controls
-                <TopHeader />
+        <div class="app-layout">
+            // Top header with toggle controls
+            <TopHeader />
 
-                // Main body with sidebar, content, and right panel
-                <div class="app-body">
-                    // Left sidebar - uses ctx.left_open for visibility
-                    <left::Left>
-                        {left()}
-                    </left::Left>
+            // Main body with sidebar, content, and right panel
+            <div class="app-body">
+                // Left sidebar - uses ctx.left_open for visibility
+                <left::Left>
+                    {left()}
+                </left::Left>
 
-                    // Main content area
-                    <div class="app-main">
-                        <div class="app-content">
-                            <center::Center>
-                                {center()}
-                            </center::Center>
-                        </div>
+                // Main content area
+                <div class="app-main">
+                    <div class="app-content">
+                        <center::Center>
+                            {center()}
+                        </center::Center>
                     </div>
-
-                    // Right panel - uses ctx.right_open for visibility
-                    <right::Right>
-                        {right()}
-                    </right::Right>
                 </div>
 
-                // Modal renderer for picker dialogs
-                <ModalRenderer />
+                // Right panel - uses ctx.right_open for visibility
+                <right::Right>
+                    {right()}
+                </right::Right>
             </div>
-        </ThemeProvider>
+
+            // Modal renderer for picker dialogs
+            <ModalRenderer />
+        </div>
     }
 }
 

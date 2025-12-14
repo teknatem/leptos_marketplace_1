@@ -144,14 +144,14 @@ where
 
             <div class="picker-actions">
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click=handle_confirm
                     disabled=move || selected_id.get().is_none()
                 >
                     "Выбрать"
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| on_cancel(())
                 >
                     "Отмена"

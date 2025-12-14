@@ -30,8 +30,8 @@ pub fn CounterpartyDetails(
                 move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
             }
 
-            <div class="details-form">
-                <div class="form-group">
+            <div class="detail-form">
+                <div class="form__group">
                     <label for="description">{"Наименование"}</label>
                     <input
                         type="text"
@@ -50,7 +50,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="code">{"Код"}</label>
                     <input
                         type="text"
@@ -69,7 +69,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="is_folder">{"Это папка"}</label>
                     <input
                         type="checkbox"
@@ -87,7 +87,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="parent_id">{"Родитель (UUID)"}</label>
                     <input
                         type="text"
@@ -107,7 +107,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="inn">{"ИНН"}</label>
                     <input
                         type="text"
@@ -127,7 +127,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="kpp">{"КПП"}</label>
                     <input
                         type="text"
@@ -147,7 +147,7 @@ pub fn CounterpartyDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea id="comment"
                         prop:value={
@@ -169,7 +169,7 @@ pub fn CounterpartyDetails(
                     move || {
                         if let Some(updated_at) = vm.form.get().updated_at {
                             view! {
-                                <div class="form-group">
+                                <div class="form__group">
                                     <label>{"Последнее обновление"}</label>
                                     <div class="readonly-field">
                                         {format!("{}", updated_at.format("%Y-%m-%d %H:%M:%S"))}
@@ -183,7 +183,7 @@ pub fn CounterpartyDetails(
                 }
 
                 <div class="form-actions">
-                    <button class="btn btn-primary"
+                    <button class="button button--primary"
                         disabled={
                             let vm = vm_clone.clone();
                             move || !vm.is_form_valid()()
@@ -199,7 +199,7 @@ pub fn CounterpartyDetails(
                         {icon("save")}
                         {"Сохранить"}
                     </button>
-                    <button class="btn btn-secondary" on:click=move |_| on_cancel(())>
+                    <button class="button button--secondary" on:click=move |_| on_cancel(())>
                         {icon("cancel")}
                         {"Отмена"}
                     </button>

@@ -286,7 +286,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
 
                     view! {
                         <div style="overflow-y: auto; max-height: calc(100vh - 180px); border: 1px solid #e0e0e0;">
-                            <table class="data-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85em;">
+                            <table class="table__data table--striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85em;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg);">
                                     <tr>
                                         <th style="min-width: 90px; width: 90px; border: 1px solid #e0e0e0; padding: 4px 6px; cursor: pointer; user-select: none; font-weight: 600;"

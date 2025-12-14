@@ -113,7 +113,7 @@ pub fn ExcelImporter(
                         {"Импорт из Excel"}
                     </h2>
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=handle_cancel
                         style="padding: 6px 16px; font-size: 14px;"
                     >

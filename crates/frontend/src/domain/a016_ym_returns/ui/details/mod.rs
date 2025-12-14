@@ -210,7 +210,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                 </div>
                 <div class="detail-form-header-right">
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=move |_| on_close.run(())
                     >
                         "✕ Закрыть"
@@ -400,11 +400,11 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                         </div>
 
                                                         <div class="table-container">
-                                                            <table class="data-table" id=TABLE_ID_LINES>
+                                                            <table class="table__data" id=TABLE_ID_LINES>
                                                                 <thead>
                                                                     <tr>
                                                                         <th class="resizable" on:click=move |_| handle_lines_sort("shop_sku")>
-                                                                            <span class="sortable-header">
+                                                                            <span class="table__sortable-header">
                                                                                 "Shop SKU"
                                                                                 <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "shop_sku")}>
                                                                                     {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "shop_sku", lines_sort_asc.get())}
@@ -412,7 +412,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                             </span>
                                                                         </th>
                                                                         <th class="resizable" on:click=move |_| handle_lines_sort("name")>
-                                                                            <span class="sortable-header">
+                                                                            <span class="table__sortable-header">
                                                                                 "Наименование"
                                                                                 <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "name")}>
                                                                                     {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "name", lines_sort_asc.get())}
@@ -420,7 +420,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                             </span>
                                                                         </th>
                                                                         <th class="resizable text-right" on:click=move |_| handle_lines_sort("count")>
-                                                                            <span class="sortable-header">
+                                                                            <span class="table__sortable-header">
                                                                                 "Кол-во"
                                                                                 <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "count")}>
                                                                                     {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "count", lines_sort_asc.get())}
@@ -428,7 +428,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                             </span>
                                                                         </th>
                                                                         <th class="resizable text-right" on:click=move |_| handle_lines_sort("price")>
-                                                                            <span class="sortable-header">
+                                                                            <span class="table__sortable-header">
                                                                                 "Цена"
                                                                                 <span class={move || get_sort_class(lines_sort_column.get().unwrap_or(""), "price")}>
                                                                                     {move || get_sort_indicator(lines_sort_column.get().unwrap_or(""), "price", lines_sort_asc.get())}
@@ -563,11 +563,11 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                         {if !p904_items.is_empty() {
                                                                             view! {
                                                                                 <div class="table-container">
-                                                                                    <table class="data-table" id=TABLE_ID_PROJECTIONS>
+                                                                                    <table class="table__data" id=TABLE_ID_PROJECTIONS>
                                                                                         <thead>
                                                                                             <tr>
                                                                                                 <th class="resizable" on:click=move |_| handle_proj_sort("article")>
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "Артикул"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "article")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "article", proj_sort_asc.get())}
@@ -575,7 +575,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                     </span>
                                                                                                 </th>
                                                                                                 <th class="resizable" on:click=move |_| handle_proj_sort("date")>
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "Дата"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "date")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "date", proj_sort_asc.get())}
@@ -583,7 +583,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                     </span>
                                                                                                 </th>
                                                                                                 <th class="resizable text-right" on:click=move |_| handle_proj_sort("price_list") title="price_list">
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "Цена прайс"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "price_list")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "price_list", proj_sort_asc.get())}
@@ -591,7 +591,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                     </span>
                                                                                                 </th>
                                                                                                 <th class="resizable text-right" on:click=move |_| handle_proj_sort("price_return") title="price_return">
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "Цена возврат"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "price_return")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "price_return", proj_sort_asc.get())}
@@ -599,7 +599,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                     </span>
                                                                                                 </th>
                                                                                                 <th class="resizable text-right" on:click=move |_| handle_proj_sort("customer_out") title="customer_out (отрицательное значение - возврат)">
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "К клиенту"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "customer_out")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "customer_out", proj_sort_asc.get())}
@@ -607,7 +607,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                                                     </span>
                                                                                                 </th>
                                                                                                 <th class="resizable text-right" on:click=move |_| handle_proj_sort("total") title="total">
-                                                                                                    <span class="sortable-header">
+                                                                                                    <span class="table__sortable-header">
                                                                                                         "Итого"
                                                                                                         <span class={move || get_sort_class(proj_sort_column.get().unwrap_or(""), "total")}>
                                                                                                             {move || get_sort_indicator(proj_sort_column.get().unwrap_or(""), "total", proj_sort_asc.get())}

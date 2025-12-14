@@ -393,12 +393,12 @@ pub fn CounterpartyTree() -> impl IntoView {
         <div class="content">
             <div class="header">
                 <h2>{"Контрагенты"}</h2>
-                <div class="header-actions">
-                    <button class="btn btn-primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
+                <div class="header__actions">
+                    <button class="button button--primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
                         {icon("plus")}
                         {"Новый"}
                     </button>
-                    <button class="btn btn-secondary" on:click=move |_| load()>
+                    <button class="button button--secondary" on:click=move |_| load()>
                         {icon("refresh")}
                         {"Обновить"}
                     </button>

@@ -111,7 +111,7 @@ pub async fn do_login(username: String, password: String) -> Result<(), String> 
 }
 
 /// Helper: Perform logout
-pub async fn do_logout() -> Result<(), String> {
+pub async fn do_logout(set_auth_state: WriteSignal<AuthState>) -> Result<(), String> {
     if let Some(refresh_token) = storage::get_refresh_token() {
         let _ = api::logout(refresh_token).await;
     }
@@ -120,7 +120,6 @@ pub async fn do_logout() -> Result<(), String> {
     storage::clear_tokens();
 
     // Clear auth state
-    let (_, set_auth_state) = use_auth();
     set_auth_state.set(AuthState::default());
 
     Ok(())

@@ -747,7 +747,7 @@ pub fn SalesDataList() -> impl IntoView {
 
                     view! {
                         <div style="overflow-y: auto; max-height: calc(100vh - 180px); border: 1px solid #e0e0e0;">
-                            <table class="data-table table-striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.8em;">
+                            <table class="table__data table--striped" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.8em;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: var(--color-table-header-bg);">
                                     <tr>
                                         <th style="min-width: 85px; width: 85px; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-top: none; border-bottom: 1px solid #ddd; padding: 2px 4px; cursor: pointer; user-select: none; font-weight: 600;"

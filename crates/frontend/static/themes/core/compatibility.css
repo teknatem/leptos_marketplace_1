@@ -1,0 +1,49 @@
+/* ============================================
+   Compatibility Layer (TEMPORARY)
+   Legacy variable aliases for old Leptos project
+   TODO: Remove this file after target project migration
+   ============================================ */
+
+:root {
+  /* Legacy variable aliases - map old names to new semantic tokens */
+
+  /* Primary/Secondary colors */
+  --color-primary-hover: #0056b3;
+  --color-secondary: #6c757d;
+  --color-secondary-hover: #545b62;
+
+  /* Danger = Error */
+  --color-danger: var(--color-error);
+
+  /* Background aliases */
+  --color-bg-body: var(--color-bg-primary);
+  --color-bg-panel: var(--color-surface);
+  --color-bg-header: var(--header-bg);
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Text aliases */
+  --color-text-white: #ffffff;
+  --color-text-dark: #0a0a0a;
+  --color-text-light: #f4efef;
+
+  /* Border aliases */
+  --color-border-dark: #6f6f6f;
+
+  /* Legacy component colors */
+  --color-hover-bg: var(--color-hover);
+  --color-hover-table: #e3f2fd;
+
+  /* Navbar colors (if used in target project) */
+  --color-navbar-section-header: #87c48b;
+  --color-navbar-section-header-hover: #a0d9a4;
+  --gradient-navbar: linear-gradient(
+    90deg,
+    rgba(70, 70, 70, 0.1) 0%,
+    rgba(249, 228, 137, 0.1) 100%
+  );
+  --gradient-navbar-hover: linear-gradient(
+    90deg,
+    rgba(94, 224, 109, 0.9) 0%,
+    rgba(249, 228, 137, 0.1) 100%
+  );
+}

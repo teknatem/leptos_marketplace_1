@@ -425,7 +425,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             fallback=move || {
                                 view! {
                                     <button
-                                        class="btn btn-warning"
+                                        class="button button--warning"
                                         on:click=handle_unpost
                                         prop:disabled=move || posting.get()
                                     >
@@ -437,7 +437,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             {
                                 view! {
                                     <button
-                                        class="btn btn-success"
+                                        class="button button--primary"
                                         on:click=handle_post
                                         prop:disabled=move || posting.get()
                                     >
@@ -448,7 +448,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         </Show>
                     </Show>
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=move |_| on_close.run(())
                     >
                         "Закрыть"
@@ -602,7 +602,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     <div class="field-value field-value-uuid">
                                                         <span class="uuid-short" title=conn_id.clone()>{format!("{}...", conn_id.chars().take(8).collect::<String>())}</span>
                                                         <button
-                                                            class="btn-copy-uuid"
+                                                            class="button button--ghost button--small"
                                                             on:click=move |_| {
                                                                 let uuid_copy = conn_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -624,7 +624,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     <div class="field-value field-value-uuid">
                                                         <span class="uuid-short" title=org_id.clone()>{format!("{}...", org_id.chars().take(8).collect::<String>())}</span>
                                                         <button
-                                                            class="btn-copy-uuid"
+                                                            class="button button--ghost button--small"
                                                             on:click=move |_| {
                                                                 let uuid_copy = org_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -646,7 +646,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     <div class="field-value field-value-uuid">
                                                         <span class="uuid-short" title=mp_id.clone()>{format!("{}...", mp_id.chars().take(8).collect::<String>())}</span>
                                                         <button
-                                                            class="btn-copy-uuid"
+                                                            class="button button--ghost button--small"
                                                             on:click=move |_| {
                                                                 let uuid_copy = mp_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {
@@ -712,7 +712,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     }}
                                                 </div>
 
-                                                <table class="data-table">
+                                                <table class="table__data">
                                                     <thead>
                                                         <tr>
                                                             <th>"Shop SKU"</th>
@@ -824,7 +824,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     <div class="field-value field-value-uuid">
                                                         <span class="uuid-short" title=campaign_id.clone()>{campaign_id.clone()}</span>
                                                         <button
-                                                            class="btn-copy-uuid"
+                                                            class="button button--ghost button--small"
                                                             on:click=move |_| {
                                                                 let id_copy = campaign_id.clone();
                                                                 wasm_bindgen_futures::spawn_local(async move {

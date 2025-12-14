@@ -516,7 +516,7 @@ pub fn NomenclatureTree() -> impl IntoView {
         <div class="content">
             <div class="header" style="margin-bottom: 8px; flex-shrink: 0;">
                 <h2 style="margin: 0;">{list_name}</h2>
-                <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
+                <div class="header__actions" style="display: flex; align-items: center; gap: 8px;">
                     <div style="position: relative; display: inline-flex; align-items: center;">
                         <input
                             type="text"
@@ -559,11 +559,11 @@ pub fn NomenclatureTree() -> impl IntoView {
                         />
                         <span>{"Только из маркетплейсов"}</span>
                     </label>
-                    <button class="btn btn-primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
+                    <button class="button button--primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
                         {icon("plus")}
                         {"Новый"}
                     </button>
-                    <button class="btn btn-secondary" on:click=move |_| load()>
+                    <button class="button button--secondary" on:click=move |_| load()>
                         {icon("refresh")}
                         {"Обновить"}
                     </button>

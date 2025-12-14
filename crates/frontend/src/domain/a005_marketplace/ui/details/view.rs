@@ -32,8 +32,8 @@ pub fn MarketplaceDetails(
                 move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
             }
 
-            <div class="details-form">
-                <div class="form-group">
+            <div class="detail-form">
+                <div class="form__group">
                     <label for="description">{"Наименование"}</label>
                     <input
                         type="text"
@@ -52,7 +52,7 @@ pub fn MarketplaceDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="url">{"URL"}</label>
                     <input
                         type="text"
@@ -71,7 +71,7 @@ pub fn MarketplaceDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="marketplace_type">{"Тип маркетплейса"}</label>
                     <select
                         id="marketplace_type"
@@ -124,7 +124,7 @@ pub fn MarketplaceDetails(
                     </select>
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="logo_path">{"Путь к логотипу"}</label>
                     <input
                         type="text"
@@ -146,7 +146,7 @@ pub fn MarketplaceDetails(
                     />
                 </div>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea
                         id="comment"
@@ -171,7 +171,7 @@ pub fn MarketplaceDetails(
 
             <div class="details-actions">
                 <button
-                    class="btn btn-primary"
+                    class="button button--primary"
                     on:click={
                         let vm = vm_clone.clone();
                         let on_saved = on_saved.clone();
@@ -189,7 +189,7 @@ pub fn MarketplaceDetails(
                     }
                 </button>
                 <button
-                    class="btn btn-secondary"
+                    class="button button--secondary"
                     on:click=move |_| (on_cancel)(())
                 >
                     {icon("cancel")}

@@ -764,7 +764,7 @@ pub fn OzonFboPostingList() -> impl IntoView {
                     view! {
                         <div>
                             <div class="table-container">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
                                             <th style="border: 1px solid #ddd; padding: 8px; width: 40px; text-align: center;">
@@ -978,7 +978,7 @@ pub fn OzonFboPostingList() -> impl IntoView {
                                 view! { <></> }.into_any()
                             }}
                             <div class="table-container">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
                                             <th style="border: 1px solid #ddd; padding: 8px; width: 40px;"></th>

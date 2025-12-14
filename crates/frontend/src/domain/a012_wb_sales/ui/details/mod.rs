@@ -440,7 +440,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             fallback=move || {
                                 view! {
                                     <button
-                                        class="btn btn-warning"
+                                        class="button button--warning"
                                         on:click=move |_| {
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
@@ -493,7 +493,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             {
                                 view! {
                                     <button
-                                        class="btn btn-success"
+                                        class="button button--primary"
                                         on:click=move |_| {
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
@@ -545,7 +545,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         </Show>
                     </Show>
                     <button
-                        class="btn btn-secondary"
+                        class="button button--secondary"
                         on:click=move |_| on_close.run(())
                     >
                         "✕ Закрыть"

@@ -27,7 +27,7 @@ pub fn MarketplaceProductDetails(
                     </h3>
                     <div style="display: flex; gap: 12px;">
                         <button
-                            class="btn btn-primary"
+                            class="button button--primary"
                             on:click={
                                 let vm = vm_clone.clone();
                                 let on_saved = on_saved.clone();
@@ -45,7 +45,7 @@ pub fn MarketplaceProductDetails(
                             }
                         </button>
                         <button
-                            class="btn btn-secondary"
+                            class="button button--secondary"
                             on:click=move |_| (on_cancel)(())
                         >
                             {icon("cancel")}
@@ -64,8 +64,8 @@ pub fn MarketplaceProductDetails(
                 move || vm.success_message.get().map(|msg| view! { <div class="success">{msg}</div> })
             }
 
-            <div class="details-form">
-                <div class="form-group">
+            <div class="detail-form">
+                <div class="form__group">
                     <label for="description">{"Описание"}</label>
                     <input
                         type="text"
@@ -85,7 +85,7 @@ pub fn MarketplaceProductDetails(
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="marketplace_ref">{"Маркетплейс"}</label>
                         <input
                             type="text"
@@ -106,7 +106,7 @@ pub fn MarketplaceProductDetails(
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="connection_mp_ref">{"Кабинет"}</label>
                         <input
                             type="text"
@@ -129,7 +129,7 @@ pub fn MarketplaceProductDetails(
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="marketplace_sku">{"SKU маркетплейса"}</label>
                         <input
                             type="text"
@@ -150,7 +150,7 @@ pub fn MarketplaceProductDetails(
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="article">{"Артикул"}</label>
                         <input
                             type="text"
@@ -169,7 +169,7 @@ pub fn MarketplaceProductDetails(
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="barcode">{"Штрихкод"}</label>
                         <input
                             type="text"
@@ -193,7 +193,7 @@ pub fn MarketplaceProductDetails(
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="brand">{"Бренд"}</label>
                         <input
                             type="text"
@@ -215,7 +215,7 @@ pub fn MarketplaceProductDetails(
                         />
                     </div>
 
-                    <div class="form-group">
+                    <div class="form__group">
                         <label for="category_name">{"Категория"}</label>
                         <input
                             type="text"
@@ -251,7 +251,7 @@ pub fn MarketplaceProductDetails(
                 }>
                     <legend style="font-weight: 600; color: #333; padding: 0 8px;">{"Номенклатура (1С УТ)"}</legend>
 
-                    <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="form__group" style="margin-bottom: 12px;">
                         <label for="nomenclature_ref" style="font-weight: 500;">{"Наименование"}</label>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <input
@@ -274,7 +274,7 @@ pub fn MarketplaceProductDetails(
                             />
                             <button
                                 type="button"
-                                class="btn btn-sm btn-primary"
+                                class="button button--small button--primary"
                                 on:click={
                                     let vm = vm_clone.clone();
                                     move |_| vm.search_nomenclature_by_article()
@@ -291,7 +291,7 @@ pub fn MarketplaceProductDetails(
                             </button>
                             <button
                                 type="button"
-                                class="btn btn-sm btn-secondary"
+                                class="button button--small button--secondary"
                                 on:click={
                                     let vm = vm_clone.clone();
                                     move |_| vm.open_picker()
@@ -304,7 +304,7 @@ pub fn MarketplaceProductDetails(
                             </button>
                             <button
                                 type="button"
-                                class="btn btn-sm btn-secondary"
+                                class="button button--small button--secondary"
                                 on:click={
                                     let vm = vm_clone.clone();
                                     move |_| vm.clear_nomenclature()
@@ -321,7 +321,7 @@ pub fn MarketplaceProductDetails(
                     </div>
 
                     <div class="form-row" style="gap: 12px;">
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form__group" style="flex: 1;">
                             <label for="nomenclature_code_display" style="font-weight: 500;">{"Код"}</label>
                             <input
                                 type="text"
@@ -335,7 +335,7 @@ pub fn MarketplaceProductDetails(
                                 style="background: #fff;"
                             />
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form__group" style="flex: 1;">
                             <label for="nomenclature_article_display" style="font-weight: 500;">{"Артикул"}</label>
                             <input
                                 type="text"
@@ -352,7 +352,7 @@ pub fn MarketplaceProductDetails(
                     </div>
                 </fieldset>
 
-                <div class="form-group">
+                <div class="form__group">
                     <label for="comment">{"Комментарий"}</label>
                     <textarea
                         id="comment"

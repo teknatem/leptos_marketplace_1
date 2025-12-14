@@ -352,12 +352,12 @@ pub fn YmReturnsList() -> impl IntoView {
                 // Pagination
                 <div class="pagination-controls">
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| go_to_page(0)
                         disabled=move || state.get().page == 0
                     >"⏮"</button>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let p = state.get().page;
                             if p > 0 { go_to_page(p - 1); }
@@ -371,7 +371,7 @@ pub fn YmReturnsList() -> impl IntoView {
                         }}
                     </span>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let s = state.get();
                             if s.page + 1 < s.total_pages { go_to_page(s.page + 1); }
@@ -382,7 +382,7 @@ pub fn YmReturnsList() -> impl IntoView {
                         }
                     >"▶"</button>
                     <button
-                        class="btn btn-icon-transparent"
+                        class="button button--icon-transparent"
                         on:click=move |_| {
                             let s = state.get();
                             if s.total_pages > 0 { go_to_page(s.total_pages - 1); }
@@ -409,20 +409,20 @@ pub fn YmReturnsList() -> impl IntoView {
                 // Action buttons
                 <div class="header-right">
                     <button
-                        class="btn btn-success"
+                        class="button button--primary"
                         on:click=batch_post
                         disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
                     >
                         {move || format!("✓ Post ({})", state.get().selected_ids.len())}
                     </button>
                     <button
-                        class="btn btn-warning"
+                        class="button button--warning"
                         on:click=batch_unpost
                         disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
                     >
                         {move || format!("✗ Unpost ({})", state.get().selected_ids.len())}
                     </button>
-                    <button class="btn btn-excel" on:click=export_excel>"📊 Excel"</button>
+                    <button class="button button--excel" on:click=export_excel>"📊 Excel"</button>
                 </div>
             </div>
 
@@ -518,7 +518,7 @@ pub fn YmReturnsList() -> impl IntoView {
                     </select>
                 </div>
 
-                <button class="btn btn-primary" on:click=move |_| load_data()>
+                <button class="button button--primary" on:click=move |_| load_data()>
                     {move || if loading.get() { "⏳ Загрузка..." } else { "🔄 Обновить" }}
                 </button>
             </div>
@@ -538,10 +538,10 @@ pub fn YmReturnsList() -> impl IntoView {
 
             // Table
             <div class="table-container">
-                <table id=TABLE_ID class="data-table">
+                <table id=TABLE_ID class="table__data">
                     <thead>
                         <tr>
-                            <th class="checkbox-cell">
+                            <th class="table__cell--checkbox">
                                 <input
                                     type="checkbox"
                                     on:change=toggle_select_all
@@ -553,31 +553,31 @@ pub fn YmReturnsList() -> impl IntoView {
                                 />
                             </th>
                             <th class="resizable" on:click=toggle_sort("created_at_source")>
-                                <span class="sortable-header">
+                                <span class="table__sortable-header">
                                     "Дата"
                                     <span class={move || get_sort_class("created_at_source", &state.get().sort_field)}>{move || get_sort_indicator("created_at_source", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("return_id")>
-                                <span class="sortable-header">
+                                <span class="table__sortable-header">
                                     "Return №"
                                     <span class={move || get_sort_class("return_id", &state.get().sort_field)}>{move || get_sort_indicator("return_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("order_id")>
-                                <span class="sortable-header">
+                                <span class="table__sortable-header">
                                     "Order №"
                                     <span class={move || get_sort_class("order_id", &state.get().sort_field)}>{move || get_sort_indicator("order_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("return_type")>
-                                <span class="sortable-header">
+                                <span class="table__sortable-header">
                                     "Тип"
                                     <span class={move || get_sort_class("return_type", &state.get().sort_field)}>{move || get_sort_indicator("return_type", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
                             </th>
                             <th class="resizable" on:click=toggle_sort("refund_status")>
-                                <span class="sortable-header">
+                                <span class="table__sortable-header">
                                     "Статус"
                                     <span class={move || get_sort_class("refund_status", &state.get().sort_field)}>{move || get_sort_indicator("refund_status", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </span>
@@ -588,7 +588,7 @@ pub fn YmReturnsList() -> impl IntoView {
                         </tr>
                         // Totals row
                         <tr class="totals-header-row">
-                            <td class="checkbox-cell"></td>
+                            <td class="table__cell--checkbox"></td>
                             <td>
                                 {move || format!("Записей: {}", items.get().len())}
                             </td>
@@ -649,7 +649,7 @@ pub fn YmReturnsList() -> impl IntoView {
                                     <tr
                                         class=move || if is_selected { "selected" } else { "" }
                                     >
-                                        <td class="checkbox-cell">
+                                        <td class="table__cell--checkbox">
                                             <input
                                                 type="checkbox"
                                                 prop:checked=is_selected

@@ -696,14 +696,14 @@ pub fn YmOrderList() -> impl IntoView {
 
                     // Post/Unpost buttons
                     <button
-                        class="btn btn-success"
+                        class="button button--primary"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=post_selected
                     >
                         {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                     <button
-                        class="btn btn-warning"
+                        class="button button--warning"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=unpost_selected
                     >
@@ -722,14 +722,14 @@ pub fn YmOrderList() -> impl IntoView {
                         }
                     }}
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=restore_settings
                         title="Восстановить настройки из базы данных"
                     >
                         "🔄"
                     </button>
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=save_settings_to_db
                         title="Сохранить настройки в базу данных"
                     >
@@ -831,7 +831,7 @@ pub fn YmOrderList() -> impl IntoView {
 
                 // Update button
                 <button
-                    class="btn btn-success"
+                    class="button button--primary"
                     on:click=move |_| {
                         load_orders();
                     }
@@ -918,7 +918,7 @@ pub fn YmOrderList() -> impl IntoView {
                                 </span>
                                 <div style="margin-left: auto;">
                                     <button
-                                        class="btn btn-secondary"
+                                        class="button button--secondary"
                                         on:click=move |_| state.update(|s| s.selected_ids.clear())
                                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                                     >
@@ -949,10 +949,10 @@ pub fn YmOrderList() -> impl IntoView {
 
                     view! {
                         <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
-                            <table id="ym-orders-table" class="data-table table-striped" style="min-width: 1400px; table-layout: fixed;">
+                            <table id="ym-orders-table" class="table__data table--striped" style="min-width: 1400px; table-layout: fixed;">
                                 <thead>
                                     <tr>
-                                        <th class="checkbox-cell" style="width: 40px; min-width: 40px;">
+                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
                                             <input
                                                 type="checkbox"
                                                 on:change=toggle_all
@@ -960,34 +960,34 @@ pub fn YmOrderList() -> impl IntoView {
                                             />
                                         </th>
                                         <th style="width: 130px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
-                                            <span class="sortable-header">"Order №" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Order №" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("creation_date")>
-                                            <span class="sortable-header">"Дата заказа" <span class={get_sort_class("creation_date", &current_sort_field)}>{get_sort_indicator("creation_date", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Дата заказа" <span class={get_sort_class("creation_date", &current_sort_field)}>{get_sort_indicator("creation_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("delivery_date")>
-                                            <span class="sortable-header">"Дата доставки" <span class={get_sort_class("delivery_date", &current_sort_field)}>{get_sort_indicator("delivery_date", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Дата доставки" <span class={get_sort_class("delivery_date", &current_sort_field)}>{get_sort_indicator("delivery_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 130px; min-width: 100px; cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
-                                            <span class="sortable-header">"Статус" <span class={get_sort_class("status_norm", &current_sort_field)}>{get_sort_indicator("status_norm", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Статус" <span class={get_sort_class("status_norm", &current_sort_field)}>{get_sort_indicator("status_norm", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 70px; min-width: 60px; text-align: center; cursor: pointer;" on:click=move |_| toggle_sort("is_error")>
-                                            <span class="sortable-header" style="justify-content: center;">"Ошибка" <span class={get_sort_class("is_error", &current_sort_field)}>{get_sort_indicator("is_error", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: center;">"Ошибка" <span class={get_sort_class("is_error", &current_sort_field)}>{get_sort_indicator("is_error", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 60px; min-width: 50px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 70px; min-width: 60px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_qty")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Кол-во" <span class={get_sort_class("total_qty", &current_sort_field)}>{get_sort_indicator("total_qty", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Кол-во" <span class={get_sort_class("total_qty", &current_sort_field)}>{get_sort_indicator("total_qty", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_amount")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Сумма" <span class={get_sort_class("total_amount", &current_sort_field)}>{get_sort_indicator("total_amount", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Сумма" <span class={get_sort_class("total_amount", &current_sort_field)}>{get_sort_indicator("total_amount", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("delivery_total")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Доставка" <span class={get_sort_class("delivery_total", &current_sort_field)}>{get_sort_indicator("delivery_total", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Доставка" <span class={get_sort_class("delivery_total", &current_sort_field)}>{get_sort_indicator("delivery_total", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("subsidies_total")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Субсидии" <span class={get_sort_class("subsidies_total", &current_sort_field)}>{get_sort_indicator("subsidies_total", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Субсидии" <span class={get_sort_class("subsidies_total", &current_sort_field)}>{get_sort_indicator("subsidies_total", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
                                 </thead>
@@ -1050,7 +1050,7 @@ pub fn YmOrderList() -> impl IntoView {
 
                                         view! {
                                             <tr on:click=on_row_click.clone() style=row_style>
-                                                <td class="checkbox-cell" on:click=move |e| e.stop_propagation()>
+                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
                                                     <input
                                                         type="checkbox"
                                                         prop:checked=move || is_selected(&id_check)

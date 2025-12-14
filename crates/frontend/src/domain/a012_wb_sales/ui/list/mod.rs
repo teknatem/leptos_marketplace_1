@@ -769,14 +769,14 @@ pub fn WbSalesList() -> impl IntoView {
 
                     // Post/Unpost buttons
                     <button
-                        class="btn btn-success"
+                        class="button button--primary"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=post_selected
                     >
                         {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
                     </button>
                     <button
-                        class="btn btn-warning"
+                        class="button button--warning"
                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                         on:click=unpost_selected
                     >
@@ -787,7 +787,7 @@ pub fn WbSalesList() -> impl IntoView {
                 <div style="display: flex; gap: 8px; align-items: center;">
                     // Excel export button
                     <button
-                        class="btn btn-excel"
+                        class="button button--excel"
                         on:click=move |_| {
                             let data = get_items();
                             if let Err(e) = export_to_csv(&data) {
@@ -809,14 +809,14 @@ pub fn WbSalesList() -> impl IntoView {
                         }
                     }}
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=restore_settings
                         title="Восстановить настройки из базы данных"
                     >
                         "🔄"
                     </button>
                     <button
-                        class="btn btn-icon btn-icon-transparent"
+                        class="button button--ghost button--small"
                         on:click=save_settings_to_db
                         title="Сохранить настройки в базу данных"
                     >
@@ -914,7 +914,7 @@ pub fn WbSalesList() -> impl IntoView {
 
                 // Update button
                 <button
-                    class="btn btn-success"
+                    class="button button--primary"
                     on:click=move |_| {
                         load_sales();
                     }
@@ -1000,7 +1000,7 @@ pub fn WbSalesList() -> impl IntoView {
                                 </span>
                                 <div style="margin-left: auto;">
                                     <button
-                                        class="btn btn-secondary"
+                                        class="button button--secondary"
                                         on:click=move |_| state.update(|s| s.selected_ids.clear())
                                         prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
                                     >
@@ -1037,10 +1037,10 @@ pub fn WbSalesList() -> impl IntoView {
 
                     view! {
                         <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
-                            <table id="wb-sales-table" class="data-table table-striped" style="min-width: 1740px; table-layout: fixed;">
+                            <table id="wb-sales-table" class="table__data table--striped" style="min-width: 1740px; table-layout: fixed;">
                                 <thead>
                                     <tr>
-                                        <th class="checkbox-cell" style="width: 40px; min-width: 40px;">
+                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
                                             <input
                                                 type="checkbox"
                                                 on:change=toggle_all
@@ -1048,49 +1048,49 @@ pub fn WbSalesList() -> impl IntoView {
                                             />
                                         </th>
                                         <th class="resizable" style="width: 130px; min-width: 80px;" on:click=move |_| toggle_sort("document_no")>
-                                            <span class="sortable-header">"SRID" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"SRID" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 140px; min-width: 100px;" on:click=move |_| toggle_sort("sale_id")>
-                                            <span class="sortable-header">"Sale ID" <span class={get_sort_class("sale_id", &current_sort_field)}>{get_sort_indicator("sale_id", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Sale ID" <span class={get_sort_class("sale_id", &current_sort_field)}>{get_sort_indicator("sale_id", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("sale_date")>
-                                            <span class="sortable-header">"Дата" <span class={get_sort_class("sale_date", &current_sort_field)}>{get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Дата" <span class={get_sort_class("sale_date", &current_sort_field)}>{get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("operation_date")>
-                                            <span class="sortable-header">"Операция" <span class={get_sort_class("operation_date", &current_sort_field)}>{get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Операция" <span class={get_sort_class("operation_date", &current_sort_field)}>{get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 140px; min-width: 80px;" on:click=move |_| toggle_sort("organization_name")>
-                                            <span class="sortable-header">"Организация" <span class={get_sort_class("organization_name", &current_sort_field)}>{get_sort_indicator("organization_name", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Организация" <span class={get_sort_class("organization_name", &current_sort_field)}>{get_sort_indicator("organization_name", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 100px; min-width: 60px;" on:click=move |_| toggle_sort("supplier_article")>
-                                            <span class="sortable-header">"Артикул" <span class={get_sort_class("supplier_article", &current_sort_field)}>{get_sort_indicator("supplier_article", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Артикул" <span class={get_sort_class("supplier_article", &current_sort_field)}>{get_sort_indicator("supplier_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("marketplace_article")>
-                                            <span class="sortable-header">"Арт. МП" <span class={get_sort_class("marketplace_article", &current_sort_field)}>{get_sort_indicator("marketplace_article", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Арт. МП" <span class={get_sort_class("marketplace_article", &current_sort_field)}>{get_sort_indicator("marketplace_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("nomenclature_article")>
-                                            <span class="sortable-header">"Арт. 1С" <span class={get_sort_class("nomenclature_article", &current_sort_field)}>{get_sort_indicator("nomenclature_article", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Арт. 1С" <span class={get_sort_class("nomenclature_article", &current_sort_field)}>{get_sort_indicator("nomenclature_article", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("nomenclature_code")>
-                                            <span class="sortable-header">"Код" <span class={get_sort_class("nomenclature_code", &current_sort_field)}>{get_sort_indicator("nomenclature_code", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Код" <span class={get_sort_class("nomenclature_code", &current_sort_field)}>{get_sort_indicator("nomenclature_code", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="min-width: 150px;" on:click=move |_| toggle_sort("name")>
-                                            <span class="sortable-header">"Название" <span class={get_sort_class("name", &current_sort_field)}>{get_sort_indicator("name", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Название" <span class={get_sort_class("name", &current_sort_field)}>{get_sort_indicator("name", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable text-right" style="width: 55px; min-width: 45px;" on:click=move |_| toggle_sort("qty")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Кол" <span class={get_sort_class("qty", &current_sort_field)}>{get_sort_indicator("qty", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Кол" <span class={get_sort_class("qty", &current_sort_field)}>{get_sort_indicator("qty", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable text-right" style="width: 90px; min-width: 70px;" on:click=move |_| toggle_sort("amount_line")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"К выплате" <span class={get_sort_class("amount_line", &current_sort_field)}>{get_sort_indicator("amount_line", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"К выплате" <span class={get_sort_class("amount_line", &current_sort_field)}>{get_sort_indicator("amount_line", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable text-right" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("total_price")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Полная" <span class={get_sort_class("total_price", &current_sort_field)}>{get_sort_indicator("total_price", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Полная" <span class={get_sort_class("total_price", &current_sort_field)}>{get_sort_indicator("total_price", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable text-right" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("finished_price")>
-                                            <span class="sortable-header" style="justify-content: flex-end;">"Итог" <span class={get_sort_class("finished_price", &current_sort_field)}>{get_sort_indicator("finished_price", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Итог" <span class={get_sort_class("finished_price", &current_sort_field)}>{get_sort_indicator("finished_price", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th class="resizable" style="width: 60px; min-width: 45px;" on:click=move |_| toggle_sort("event_type")>
-                                            <span class="sortable-header">"Тип" <span class={get_sort_class("event_type", &current_sort_field)}>{get_sort_indicator("event_type", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Тип" <span class={get_sort_class("event_type", &current_sort_field)}>{get_sort_indicator("event_type", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
                                 </thead>
@@ -1127,7 +1127,7 @@ pub fn WbSalesList() -> impl IntoView {
 
                                         view! {
                                             <tr on:click=on_row_click.clone()>
-                                                <td class="checkbox-cell" on:click=move |e| e.stop_propagation()>
+                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
                                                     <input
                                                         type="checkbox"
                                                         prop:checked=move || is_selected(&id_check)

@@ -527,7 +527,7 @@ pub fn OzonReturnsList() -> impl IntoView {
                         <div>
                             <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
                             <div class="table-container">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
                                             <th style="border: 1px solid #ddd; padding: 8px; width: 40px; text-align: center;">
@@ -741,7 +741,7 @@ pub fn OzonReturnsList() -> impl IntoView {
                         <div>
                             <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
                             <div class="table-container">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
                                     <thead>
                                         <tr style="background: #f5f5f5;">
                                             <th style="border: 1px solid #ddd; padding: 8px; width: 40px;"></th>

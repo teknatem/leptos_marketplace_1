@@ -49,7 +49,7 @@ pub fn Connection1CDetails(
                                     <h2 class="modal-title">{modal_title}</h2>
                                     <div class="modal-header-actions" style="display: flex; gap: var(--spacing-sm); align-items: center;">
                                         <button
-                                            class="btn btn-test"
+                                            class="button button--secondary"
                                             on:click={
                                                 let vm = vm.clone();
                                                 move |_| vm.test_command()
@@ -66,7 +66,7 @@ pub fn Connection1CDetails(
                                             }
                                         </button>
                                         <button
-                                            class="btn btn-primary"
+                                            class="button button--primary"
                                             on:click={
                                                 let vm = vm.clone();
                                                 move |_| vm.save_command(on_saved)
@@ -80,7 +80,7 @@ pub fn Connection1CDetails(
                                             "Save"
                                         </button>
                                         <button
-                                            class="btn btn-ghost btn-close"
+                                            class="button button--ghost"
                                             on:click=move |_| on_close.run(())
                                         >
                                             {icon("x")}
@@ -92,11 +92,11 @@ pub fn Connection1CDetails(
                                     move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
                                 }
 
-                                <div class="details-form">
-                                    <div class="form-group">
-                                        <label class="form-label" for="description">{"Description"}</label>
+                                <div class="detail-form">
+                                    <div class="form__group">
+                                        <label class="form__label" for="description">{"Description"}</label>
                                         <input
-                                            class="form-input"
+                                            class="form__input"
                                             type="text"
                                             id="description"
                                             prop:value={
@@ -113,10 +113,10 @@ pub fn Connection1CDetails(
                                         />
                                     </div>
 
-                                    <div class="form-group">
-                                        <label class="form-label" for="url">{"URL"}</label>
+                                    <div class="form__group">
+                                        <label class="form__label" for="url">{"URL"}</label>
                                         <input
-                                            class="form-input"
+                                            class="form__input"
                                             type="url"
                                             id="url"
                                             prop:value={
@@ -133,10 +133,10 @@ pub fn Connection1CDetails(
                                         />
                                     </div>
 
-                                    <div class="form-group">
-                                        <label class="form-label" for="login">{"Login"}</label>
+                                    <div class="form__group">
+                                        <label class="form__label" for="login">{"Login"}</label>
                                         <input
-                                            class="form-input"
+                                            class="form__input"
                                             type="text"
                                             id="login"
                                             prop:value={
@@ -153,10 +153,10 @@ pub fn Connection1CDetails(
                                         />
                                     </div>
 
-                                    <div class="form-group">
-                                        <label class="form-label" for="password">{"Password"}</label>
+                                    <div class="form__group">
+                                        <label class="form__label" for="password">{"Password"}</label>
                                         <input
-                                            class="form-input"
+                                            class="form__input"
                                             type="password"
                                             id="password"
                                             prop:value={
@@ -173,10 +173,10 @@ pub fn Connection1CDetails(
                                         />
                                     </div>
 
-                                    <div class="form-group">
-                                        <label class="form-label" for="comment">{"Comment"}</label>
+                                    <div class="form__group">
+                                        <label class="form__label" for="comment">{"Comment"}</label>
                                         <textarea
-                                            class="form-textarea"
+                                            class="form__textarea"
                                             id="comment"
                                             prop:value={
                                                 let vm = vm.clone();
@@ -197,7 +197,7 @@ pub fn Connection1CDetails(
                                     </div>
 
                                     <div class="form-group checkbox-group">
-                                        <label class="checkbox-label">
+                                        <label class="form__checkbox-wrapper">
                                             <input
                                                 type="checkbox"
                                                 prop:checked={
@@ -211,7 +211,7 @@ pub fn Connection1CDetails(
                                                     }
                                                 }
                                             />
-                                            <span class="checkbox-text">{"Primary Connection"}</span>
+                                            <span class="form__checkbox-label">{"Primary Connection"}</span>
                                         </label>
                                         <small class="help-text">
                                             {"Only one connection can be marked as primary"}

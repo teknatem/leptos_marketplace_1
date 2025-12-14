@@ -374,7 +374,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                             }}
 
                             <div style="overflow-y: auto; max-height: calc(100vh - 200px); border: 1px solid #ddd;">
-                                <table class="data-table" style="width: 100%; border-collapse: collapse; margin: 0;">
+                                <table class="table__data" style="width: 100%; border-collapse: collapse; margin: 0;">
                                     <thead style="position: sticky; top: 0; z-index: 10; background: #f5f5f5;">
                                         <tr style="background: #f5f5f5;">
                                             <th
