@@ -115,7 +115,7 @@
   --header-border: rgba(255, 255, 255, 0.15);
 
   /* Top Header Colors */
-  --top-header-bg: rgba(232, 245, 233, 0.95);
+  --top-header-bg: rgba(232, 245, 233, 0.25);
   --top-header-text: #212121;
   --top-header-border: rgba(76, 175, 80, 0.2);
   --top-header-btn-hover: rgba(76, 175, 80, 0.1);
@@ -162,10 +162,16 @@
   /* Color scale tokens used by core utilities */
   --color-primary-100: #c8e6c9;
   --color-primary-700: #2e7d32;
+  --color-success-600: #43a047;
   --color-success-700: #2e7d32;
   --color-warning-50: #ffecb3;
+  --color-warning-500: #ffa726;
+  --color-warning-600: #fb8c00;
   --color-warning-700: #f57f17;
+  --color-error-600: #e53935;
   --color-error-700: #c62828;
+  --color-info-600: #039be5;
+  --color-info-700: #0277bd;
   --color-neutral-100: #eeeeee;
   --color-neutral-600: #6b7280;
 

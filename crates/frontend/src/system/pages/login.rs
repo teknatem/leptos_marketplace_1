@@ -56,11 +56,7 @@ pub fn LoginPage() -> impl IntoView {
             <div class="login__card">
                 <div class="login__header">
                     <div class="login__logo">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(96, 165, 250, 0.2)" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M2 17L12 22L22 17" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M2 12L12 17L22 12" />
-                        </svg>
+                        <img src="assets/images/gears.svg" alt="Integrator" width="64" height="64" />
                     </div>
                     <h1 class="login__title">"Integrator"</h1>
                     <p class="login__subtitle">"Войдите в систему"</p>

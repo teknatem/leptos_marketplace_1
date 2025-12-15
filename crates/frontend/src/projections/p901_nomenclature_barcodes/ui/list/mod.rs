@@ -267,8 +267,27 @@ pub fn BarcodesList() -> impl IntoView {
     };
 
     view! {
-        <div style="padding: 20px;">
-            <h2>"p901: Штрихкоды номенклатуры"</h2>
+        <div class="document-container">
+            <div class="document-content">
+                <div class="document-inner">
+                    // Заголовок страницы
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg); padding-bottom: var(--spacing-md); border-bottom: 1px solid var(--color-border);">
+                        <h2 style="margin: 0; font-size: var(--font-size-xl); color: var(--color-text-primary);">"Штрихкоды номенклатуры"</h2>
+                        <div class="button-group">
+                            <button
+                                class="button button--primary"
+                                on:click=move |_| load_barcodes()
+                            >
+                                "Обновить"
+                            </button>
+                            <button
+                                class="button button--secondary"
+                                on:click=export_to_csv
+                            >
+                                "Экспорт в Excel"
+                            </button>
+                        </div>
+                    </div>
 
             // Модальное окно для деталей номенклатуры
             {move || {
@@ -294,18 +313,18 @@ pub fn BarcodesList() -> impl IntoView {
                 }
             }}
 
-            // Фильтры и управление
-            <div style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            // Фильтры
+            <div class="form-section" style="background: var(--color-background-secondary); padding: var(--spacing-md); border-radius: var(--radius-md); margin-bottom: var(--spacing-lg);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
                     // Поиск по штрихкоду
-                    <div>
-                        <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: bold;">
+                    <div class="form__group">
+                        <label class="form__label">
                             "Поиск по штрихкоду:"
                         </label>
                         <input
+                            class="form__input"
                             type="text"
                             placeholder="Введите штрихкод..."
-                            style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"
                             prop:value=move || search_barcode.get()
                             on:input=move |ev| {
                                 set_search_barcode.set(event_target_value(&ev));
@@ -314,14 +333,14 @@ pub fn BarcodesList() -> impl IntoView {
                     </div>
 
                     // Поиск по артикулу
-                    <div>
-                        <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: bold;">
+                    <div class="form__group">
+                        <label class="form__label">
                             "Поиск по артикулу:"
                         </label>
                         <input
+                            class="form__input"
                             type="text"
                             placeholder="Введите артикул..."
-                            style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"
                             prop:value=move || search_article.get()
                             on:input=move |ev| {
                                 set_search_article.set(event_target_value(&ev));
@@ -330,12 +349,12 @@ pub fn BarcodesList() -> impl IntoView {
                     </div>
 
                     // Фильтр по источнику
-                    <div>
-                        <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: bold;">
+                    <div class="form__group">
+                        <label class="form__label">
                             "Источник:"
                         </label>
                         <select
-                            style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;"
+                            class="form__select"
                             on:change=move |ev| {
                                 set_filter_source.set(event_target_value(&ev));
                             }
@@ -350,38 +369,31 @@ pub fn BarcodesList() -> impl IntoView {
 
                     // Чекбокс неактивных
                     <div style="display: flex; align-items: flex-end;">
-                        <label style="display: flex; align-items: center; gap: 5px;">
+                        <label class="form__checkbox-wrapper">
                             <input
+                                class="form__checkbox"
                                 type="checkbox"
                                 prop:checked=move || include_inactive.get()
                                 on:change=move |ev| {
                                     set_include_inactive.set(event_target_checked(&ev));
                                 }
                             />
-                            <span>"Показать неактивные"</span>
+                            <span class="form__checkbox-label">"Показать неактивные"</span>
                         </label>
                     </div>
                 </div>
 
-                <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; gap: 10px;">
-                        <button
-                            style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                            on:click=move |_| load_barcodes()
-                        >
-                            "Применить фильтры"
-                        </button>
-                        <button
-                            style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                            on:click=export_to_csv
-                        >
-                            "Экспорт в Excel (CSV)"
-                        </button>
-                    </div>
+                <div style="margin-top: var(--spacing-md); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md);">
+                    <button
+                        class="button button--primary"
+                        on:click=move |_| load_barcodes()
+                    >
+                        "Применить фильтры"
+                    </button>
 
                     // Пагинация
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        <div style="font-size: 14px; color: #666;">
+                    <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
+                        <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
                             {move || {
                                 let current_offset = offset.get();
                                 let current_limit = limit.get();
@@ -391,16 +403,16 @@ pub fn BarcodesList() -> impl IntoView {
                                 format!("Показано: {}-{} из {}", start, end, total)
                             }}
                         </div>
-                        <div style="display: flex; gap: 5px;">
+                        <div class="button-group">
                             <button
-                                style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;"
+                                class="button button--secondary"
                                 on:click=go_to_prev_page
                                 prop:disabled=move || offset.get() == 0
                             >
                                 "← Назад"
                             </button>
                             <button
-                                style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;"
+                                class="button button--secondary"
                                 on:click=go_to_next_page
                                 prop:disabled=move || {
                                     let current_offset = offset.get();
@@ -420,12 +432,13 @@ pub fn BarcodesList() -> impl IntoView {
             {move || {
                 if let Some(err) = error.get() {
                     view! {
-                        <div style="padding: 10px; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c00; margin: 10px 0;">
-                            {err}
+                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                            <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
                         </div>
                     }.into_any()
                 } else {
-                    view! { <div></div> }.into_any()
+                    view! { <></> }.into_any()
                 }
             }}
 
@@ -433,100 +446,86 @@ pub fn BarcodesList() -> impl IntoView {
             {move || {
                 if loading.get() {
                     view! {
-                        <div style="padding: 20px; text-align: center;">
-                            "Загрузка..."
+                        <div class="info-box" style="text-align: center; margin-bottom: var(--spacing-md);">
+                            <span class="info-box__text">"Загрузка..."</span>
                         </div>
                     }.into_any()
                 } else {
-                    view! { <div></div> }.into_any()
+                    view! { <></> }.into_any()
                 }
             }}
 
             // Таблица
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <thead>
-                        <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+            <div class="table">
+                <table class="table__data table--striped">
+                    <thead class="table__head">
+                        <tr>
                             <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                                class="table__header-cell table__header-cell--sortable"
                                 on:click=move |_| handle_column_click(SortColumn::Barcode)
                             >
                                 "Штрихкод" {sort_indicator(SortColumn::Barcode)}
                             </th>
-                            //<th
-                            //    style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
-                            //    on:click=move |_| handle_column_click(SortColumn::NomenclatureRef)
-                            //>
-                            //    "ID Номенклатуры" {sort_indicator(SortColumn::NomenclatureRef)}
-                            //</th>
                             <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                                class="table__header-cell table__header-cell--sortable"
                                 on:click=move |_| handle_column_click(SortColumn::NomenclatureName)
                             >
                                 "Наименование" {sort_indicator(SortColumn::NomenclatureName)}
                             </th>
                             <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                                class="table__header-cell table__header-cell--sortable"
                                 on:click=move |_| handle_column_click(SortColumn::Article)
                             >
                                 "Артикул" {sort_indicator(SortColumn::Article)}
                             </th>
                             <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                                class="table__header-cell table__header-cell--sortable"
                                 on:click=move |_| handle_column_click(SortColumn::Source)
                             >
                                 "Источник" {sort_indicator(SortColumn::Source)}
                             </th>
                             <th
-                                style="padding: 12px; text-align: left; cursor: pointer; user-select: none; font-weight: 600; color: #495057;"
+                                class="table__header-cell table__header-cell--sortable"
                                 on:click=move |_| handle_column_click(SortColumn::UpdatedAt)
                             >
                                 "Обновлено" {sort_indicator(SortColumn::UpdatedAt)}
                             </th>
-                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #495057;">"Активен"</th>
+                            <th class="table__header-cell table__header-cell--center">"Активен"</th>
                         </tr>
                     </thead>
                     <tbody>
                         {move || {
-                            sorted_barcodes().into_iter().enumerate().map(|(idx, item)| {
-                                // Базовый цвет фона
-                                let base_bg_color = if idx % 2 == 0 { "#fff" } else { "#f9f9f9" };
-
-                                // Если nomenclature_ref отсутствует - подсвечиваем строку желтым
-                                let bg_color = if item.nomenclature_ref.is_none() {
-                                    "#fff3cd"  // Светло-желтый фон для строк без номенклатуры
-                                } else {
-                                    base_bg_color
-                                };
-
+                            sorted_barcodes().into_iter().map(|item| {
                                 let has_no_nomenclature = item.nomenclature_ref.is_none();
                                 let nomenclature_ref_for_link = item.nomenclature_ref.clone();
 
                                 view! {
-                                    <tr style={format!("background: {}; border-bottom: 1px solid #eee;", bg_color)}>
-                                        <td style="padding: 10px; font-family: monospace;">
+                                    <tr
+                                        class="table__row"
+                                        class:table__row--warning=has_no_nomenclature
+                                    >
+                                        <td class="table__cell" style="font-family: monospace;">
                                             {item.barcode.clone()}
                                             {if has_no_nomenclature {
                                                 view! {
                                                     <span
-                                                        style="margin-left: 6px; padding: 2px 5px; background: #f0ad4e; color: white; font-size: 10px; border-radius: 3px;"
+                                                        style="margin-left: var(--spacing-xs); padding: 2px 5px; background: var(--color-warning); color: white; font-size: var(--font-size-xs); border-radius: var(--radius-sm);"
                                                         title="Не привязан к номенклатуре"
                                                     >
                                                         "!"
                                                     </span>
                                                 }.into_any()
                                             } else {
-                                                view! { <span></span> }.into_any()
+                                                view! { <></> }.into_any()
                                             }}
                                         </td>
-                                        //<td style="padding: 10px; font-family: monospace; font-size: 11px;">{item.nomenclature_ref.clone()}</td>
-                                        <td style="padding: 10px;">
+                                        <td class="table__cell">
                                             {if let Some(nom_ref) = nomenclature_ref_for_link {
                                                 if let Some(name) = item.nomenclature_name.clone() {
                                                     view! {
                                                         <a
                                                             href="#"
-                                                            style="color: #007bff; text-decoration: none; cursor: pointer;"
+                                                            style="color: var(--color-primary); text-decoration: none; cursor: pointer;"
                                                             on:click=move |ev| {
                                                                 ev.prevent_default();
                                                                 set_selected_nomenclature_id.set(Some(nom_ref.clone()));
@@ -536,19 +535,19 @@ pub fn BarcodesList() -> impl IntoView {
                                                         </a>
                                                     }.into_any()
                                                 } else {
-                                                    view! { <span style="color: #999;">"-"</span> }.into_any()
+                                                    view! { <span style="color: var(--color-text-tertiary);">"-"</span> }.into_any()
                                                 }
                                             } else {
                                                 view! {
-                                                    <span style="color: #f0ad4e; font-weight: 500;">
+                                                    <span style="color: var(--color-warning); font-weight: 500;">
                                                         "Не привязан"
                                                     </span>
                                                 }.into_any()
                                             }}
                                         </td>
-                                        <td style="padding: 10px;">{item.article.clone().unwrap_or_else(|| "-".to_string())}</td>
-                                        <td style="padding: 10px;">
-                                            <span style={format!("padding: 2px 8px; border-radius: 3px; background: {}; color: white; font-size: 11px;",
+                                        <td class="table__cell">{item.article.clone().unwrap_or_else(|| "-".to_string())}</td>
+                                        <td class="table__cell">
+                                            <span style={format!("padding: 2px 8px; border-radius: var(--radius-sm); background: {}; color: white; font-size: var(--font-size-xs);",
                                                 match item.source.as_str() {
                                                     "1C" => "#6c757d",
                                                     "OZON" => "#0088cc",
@@ -560,12 +559,12 @@ pub fn BarcodesList() -> impl IntoView {
                                                 {item.source.clone()}
                                             </span>
                                         </td>
-                                        <td style="padding: 10px; font-size: 12px;">{format_datetime(&item.updated_at)}</td>
-                                        <td style="padding: 10px; text-align: center;">
+                                        <td class="table__cell" style="font-size: var(--font-size-sm);">{format_datetime(&item.updated_at)}</td>
+                                        <td class="table__cell table__cell--center">
                                             {if item.is_active {
-                                                view! { <span style="color: #28a745; font-weight: bold;">"✓"</span> }.into_any()
+                                                view! { <span style="color: var(--color-success); font-weight: bold;">"✓"</span> }.into_any()
                                             } else {
-                                                view! { <span style="color: #dc3545; font-weight: bold;">"✗"</span> }.into_any()
+                                                view! { <span style="color: var(--color-error); font-weight: bold;">"✗"</span> }.into_any()
                                             }}
                                         </td>
                                     </tr>
@@ -574,6 +573,8 @@ pub fn BarcodesList() -> impl IntoView {
                         }}
                     </tbody>
                 </table>
+            </div>
+                </div>
             </div>
         </div>
     }
