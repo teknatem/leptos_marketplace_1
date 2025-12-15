@@ -133,9 +133,12 @@ pub fn OrganizationList() -> impl IntoView {
     fetch();
 
     view! {
-        <div class="content">
+        <div class="page">
+            // Page header with title and action buttons
             <div class="header">
-                <h2>{"Организации"}</h2>
+                <div class="header__content">
+                    <h1 class="header__title">{"Организации"}</h1>
+                </div>
                 <div class="header__actions">
                     <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
@@ -152,74 +155,84 @@ pub fn OrganizationList() -> impl IntoView {
                 </div>
             </div>
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
+                    {move || error.get().map(|e| view! {
+                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
+                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                            <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                        </div>
+                    })}
 
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>{"Код"}</th>
-                            <th>{"Наименование"}</th>
-                            <th>{"ИНН"}</th>
-                            <th>{"КПП"}</th>
-                            <th>{"Комментарий"}</th>
-                            <th>{"Создано"}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {move || items.get().into_iter().map(|row| {
-                            let id = row.id.clone();
-                            view! {
-                                <tr on:click=move |_| handle_edit(id.clone())>
-                                    <td>
-                                        <input type="checkbox"
-                                            prop:checked={
-                                                let selected = selected.get();
-                                                selected.contains(&id)
-                                            }
-                                            on:click=move |ev| ev.stop_propagation()
-                                            on:change={
-                                                let id2 = id.clone();
-                                                move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    toggle_select(id2.clone(), checked);
-                                                }
-                                            }
-                                        />
-                                    </td>
-                                    <td>{row.code}</td>
-                                    <td>{row.description}</td>
-                                    <td>{row.inn}</td>
-                                    <td>{row.kpp}</td>
-                                    <td>{row.comment}</td>
-                                    <td>{row.created_at}</td>
+                    <div class="table">
+                        <table class="table__data table--striped">
+                            <thead class="table__head">
+                                <tr>
+                                    <th class="table__header-cell table__cell--checkbox"></th>
+                                    <th class="table__header-cell">{"Код"}</th>
+                                    <th class="table__header-cell">{"Наименование"}</th>
+                                    <th class="table__header-cell">{"ИНН"}</th>
+                                    <th class="table__header-cell">{"КПП"}</th>
+                                    <th class="table__header-cell">{"Комментарий"}</th>
+                                    <th class="table__header-cell">{"Создано"}</th>
                                 </tr>
-                            }
-                        }).collect_view()}
-                    </tbody>
-                </table>
-            </div>
+                            </thead>
+                            <tbody>
+                                {move || items.get().into_iter().map(|row| {
+                                    let id = row.id.clone();
+                                    let is_selected = selected.get().contains(&id);
+                                    view! {
+                                        <tr
+                                            class="table__row"
+                                            class:table__row--selected=is_selected
+                                            on:click=move |_| handle_edit(id.clone())
+                                        >
+                                            <td class="table__cell table__cell--checkbox">
+                                                <input type="checkbox"
+                                                    prop:checked={
+                                                        let selected = selected.get();
+                                                        selected.contains(&id)
+                                                    }
+                                                    on:click=move |ev| ev.stop_propagation()
+                                                    on:change={
+                                                        let id2 = id.clone();
+                                                        move |ev| {
+                                                            let checked = event_target_checked(&ev);
+                                                            toggle_select(id2.clone(), checked);
+                                                        }
+                                                    }
+                                                />
+                                            </td>
+                                            <td class="table__cell">{row.code}</td>
+                                            <td class="table__cell">{row.description}</td>
+                                            <td class="table__cell">{row.inn}</td>
+                                            <td class="table__cell">{row.kpp}</td>
+                                            <td class="table__cell">{row.comment}</td>
+                                            <td class="table__cell">{row.created_at}</td>
+                                        </tr>
+                                    }
+                                }).collect_view()}
+                            </tbody>
+                        </table>
+                    </div>
 
-            <Show when=move || show_modal.get()>
-                {move || {
-                    let modal_title = if editing_id.get().is_some() { "Edit Organization".to_string() } else { "New Organization".to_string() };
-                    view! {
-                        <Modal
-                            title=modal_title
-                            on_close=Callback::new(move |_| {
-                                set_show_modal.set(false);
-                                set_editing_id.set(None);
-                            })
-                        >
-                            <OrganizationDetails
-                                id=editing_id.get()
-                                on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
-                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
-                            />
-                        </Modal>
-                    }
-                }}
+                    <Show when=move || show_modal.get()>
+                        {move || {
+                            let modal_title = if editing_id.get().is_some() { "Edit Organization".to_string() } else { "New Organization".to_string() };
+                            view! {
+                                <Modal
+                                    title=modal_title
+                                    on_close=Callback::new(move |_| {
+                                        set_show_modal.set(false);
+                                        set_editing_id.set(None);
+                                    })
+                                >
+                                    <OrganizationDetails
+                                        id=editing_id.get()
+                                        on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
+                                        on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
+                                    />
+                                </Modal>
+                            }
+                        }}
             </Show>
         </div>
     }

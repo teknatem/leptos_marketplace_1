@@ -7,12 +7,15 @@
 //! - Theme selector
 //! - Notifications and settings buttons
 
+mod windows_dropdown;
+
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::theme::ThemeSelect;
 use crate::system::auth::context::{do_logout, use_auth};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use windows_dropdown::WindowsDropdown;
 
 /// TopHeader component - main application top bar.
 ///
@@ -46,16 +49,21 @@ pub fn TopHeader() -> impl IntoView {
 
     view! {
         <div class="top-header">
-            // Left section - sidebar toggle and brand
+            // Left section - brand
             <div class="top-header__brand">
-                <span class="top-header__title">"Marketplace Integrator"</span>
+                <span class="top-header__title">"Integrator"</span>
+            </div>
+
+            // Center section - windows dropdown
+            <div class="top-header__center">
+                <WindowsDropdown />
             </div>
 
             // Right section - actions
             <div class="top-header__actions">
                 // Left panel toggle
                 <button
-                    class="top-header__icon-btn"
+                    class="top-header__icon-button"
                     on:click=toggle_sidebar
                     title=move || if is_sidebar_visible() { "Скрыть навигацию" } else { "Показать навигацию" }
                 >
@@ -68,7 +76,7 @@ pub fn TopHeader() -> impl IntoView {
 
                 // Right panel toggle
                 <button
-                    class="top-header__icon-btn"
+                    class="top-header__icon-button"
                     on:click=toggle_right_panel
                     title=move || if is_right_panel_visible() { "Скрыть правую панель" } else { "Показать правую панель" }
                 >
@@ -80,12 +88,12 @@ pub fn TopHeader() -> impl IntoView {
                 </button>
 
                 // Notifications
-                <button class="top-header__icon-btn" title="Уведомления">
+                <button class="top-header__icon-button" title="Уведомления">
                     {icon("bell")}
                 </button>
 
                 // Settings
-                <button class="top-header__icon-btn" title="Настройки">
+                <button class="top-header__icon-button" title="Настройки">
                     {icon("settings")}
                 </button>
 
@@ -103,7 +111,7 @@ pub fn TopHeader() -> impl IntoView {
                 </div>
 
                 // Logout
-                <button class="top-header__icon-btn" on:click=logout title="Выход">
+                <button class="top-header__icon-button" on:click=logout title="Выход">
                     {icon("log-out")}
                 </button>
             </div>

@@ -43,6 +43,22 @@
     <script src="assets/particle-animation.js" defer></script>
 </head>
 <body>
+    <!-- Load saved theme immediately to prevent flash -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('app_theme') || 'dark';
+            
+            // Set data-theme attribute on body
+            document.body.setAttribute('data-theme', savedTheme);
+            
+            // Update theme stylesheet
+            const link = document.getElementById('theme-stylesheet');
+            if (link) {
+                link.href = 'static/themes/' + savedTheme + '/' + savedTheme + '.css';
+            }
+        })();
+    </script>
+    
     <link data-trunk rel="rust" data-target-name="frontend" />
 </body>
 </html>

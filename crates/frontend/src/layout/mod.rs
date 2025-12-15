@@ -47,11 +47,9 @@ where
 
                 // Main content area
                 <div class="app-main">
-                    <div class="app-content">
-                        <center::Center>
-                            {center()}
-                        </center::Center>
-                    </div>
+                    <center::Center>
+                        {center()}
+                    </center::Center>
                 </div>
 
                 // Right panel - uses ctx.right_open for visibility

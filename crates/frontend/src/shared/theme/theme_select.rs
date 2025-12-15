@@ -1,26 +1,73 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
-/// ThemeSelect component for switching themes
-#[component]
-pub fn ThemeSelect() -> impl IntoView {
-    let current_theme = RwSignal::new("dark".to_string());
-    let is_open = RwSignal::new(false);
+const THEME_STORAGE_KEY: &str = "app_theme";
+const DEFAULT_THEME: &str = "dark";
 
-    let change_theme = move |theme: String| {
-        // Update theme stylesheet
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                if let Some(link) = document.get_element_by_id("theme-stylesheet") {
-                    if let Ok(link_element) = link.dyn_into::<web_sys::HtmlLinkElement>() {
-                        let _ = link_element
-                            .set_href(&format!("static/themes/{}/{}.css", theme, theme));
-                        current_theme.set(theme.clone());
-                        is_open.set(false);
-                    }
+/// Get saved theme from localStorage
+fn get_saved_theme() -> String {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(theme)) = storage.get_item(THEME_STORAGE_KEY) {
+                return theme;
+            }
+        }
+    }
+    DEFAULT_THEME.to_string()
+}
+
+/// Save theme to localStorage
+fn save_theme(theme: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let _ = storage.set_item(THEME_STORAGE_KEY, theme);
+        }
+    }
+}
+
+/// Apply theme to the document
+fn apply_theme(theme: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            // Set data-theme attribute on body for CSS selectors
+            if let Some(body) = document.body() {
+                let _ = body.set_attribute("data-theme", theme);
+            }
+
+            // Update theme stylesheet link
+            if let Some(link) = document.get_element_by_id("theme-stylesheet") {
+                if let Ok(link_element) = link.dyn_into::<web_sys::HtmlLinkElement>() {
+                    let _ =
+                        link_element.set_href(&format!("static/themes/{}/{}.css", theme, theme));
                 }
             }
         }
+    }
+}
+
+/// ThemeSelect component for switching themes
+#[component]
+pub fn ThemeSelect() -> impl IntoView {
+    // Load saved theme on mount
+    let saved_theme = get_saved_theme();
+    let current_theme = RwSignal::new(saved_theme.clone());
+    let is_open = RwSignal::new(false);
+
+    // Apply saved theme on mount
+    Effect::new(move |_| {
+        apply_theme(&saved_theme);
+    });
+
+    let change_theme = move |theme: String| {
+        // Update theme stylesheet
+        apply_theme(&theme);
+
+        // Save theme to localStorage
+        save_theme(&theme);
+
+        // Update current theme signal
+        current_theme.set(theme);
+        is_open.set(false);
     };
 
     let toggle_dropdown = move |_| {

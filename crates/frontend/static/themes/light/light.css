@@ -162,10 +162,16 @@
   /* Color scale tokens used by core utilities */
   --color-primary-100: #dbeafe;
   --color-primary-700: #1e40af;
-  --color-success-700: #2e7d32;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
   --color-warning-50: #fffbeb;
-  --color-warning-700: #ef6c00;
-  --color-error-700: #c62828;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-info-600: #0284c7;
+  --color-info-700: #0369a1;
   --color-neutral-100: #f3f4f6;
   --color-neutral-600: #6b7280;
 

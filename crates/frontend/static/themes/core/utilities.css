@@ -73,6 +73,10 @@
    Display & Layout (CSS Variable Based)
    ============================================ */
 
+.hidden {
+  display: none !important;
+}
+
 .gap-sm {
   gap: var(--spacing-sm);
 }
@@ -102,30 +106,18 @@
 }
 
 /* ============================================
-   Document Layout Utilities
+   Page Layout Utilities
    ============================================ */
 
-.document-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.document-content {
+.page {
   flex: 1;
   overflow: auto;
-  background: transparent;
   padding: var(--spacing-xl);
-}
-
-.document-inner {
-  max-width: 1200px;
   margin: 0 auto;
 }
 
-.document-inner-narrow {
+.page--narrow {
   max-width: 800px;
-  margin: 0 auto;
 }
 
 /* ============================================

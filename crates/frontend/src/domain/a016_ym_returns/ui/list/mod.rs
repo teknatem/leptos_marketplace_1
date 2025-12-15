@@ -5,6 +5,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::date_utils::format_datetime;
+use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
@@ -342,28 +343,36 @@ pub fn YmReturnsList() -> impl IntoView {
     };
 
     view! {
-        <div class="list-container">
-            // Header Row 1 - Title, Pagination, Actions
-            <div class="list-header-row gradient-header">
+        <div style="display: flex; flex-direction: column; height: 100%; width: 100%;">
+            // Заголовок страницы с пагинацией в центре
+            <div class="list-header-row gradient-header" style="padding: 8px 12px; flex-shrink: 0;">
                 <div class="header-left">
-                    <h2 class="list-title">"📦 YM Returns (A016)"</h2>
+                    <h2 class="list-title">"YM Returns"</h2>
                 </div>
 
-                // Pagination
-                <div class="pagination-controls">
+                // Пагинация в центре
+                <div style="display: flex; align-items: center; gap: 8px;">
                     <button
-                        class="button button--icon-transparent"
+                        class="button button--primary"
+                        style="min-width: 32px; padding: 4px 8px;"
                         on:click=move |_| go_to_page(0)
                         disabled=move || state.get().page == 0
-                    >"⏮"</button>
+                        title="В начало"
+                    >
+                        {icon("chevrons-left")}
+                    </button>
                     <button
-                        class="button button--icon-transparent"
+                        class="button button--primary"
+                        style="min-width: 32px; padding: 4px 8px;"
                         on:click=move |_| {
                             let p = state.get().page;
                             if p > 0 { go_to_page(p - 1); }
                         }
                         disabled=move || state.get().page == 0
-                    >"◀"</button>
+                        title="Назад"
+                    >
+                        {icon("chevron-left")}
+                    </button>
                     <span class="pagination-info">
                         {move || {
                             let s = state.get();
@@ -371,7 +380,8 @@ pub fn YmReturnsList() -> impl IntoView {
                         }}
                     </span>
                     <button
-                        class="button button--icon-transparent"
+                        class="button button--primary"
+                        style="min-width: 32px; padding: 4px 8px;"
                         on:click=move |_| {
                             let s = state.get();
                             if s.page + 1 < s.total_pages { go_to_page(s.page + 1); }
@@ -380,9 +390,13 @@ pub fn YmReturnsList() -> impl IntoView {
                             let s = state.get();
                             s.page + 1 >= s.total_pages
                         }
-                    >"▶"</button>
+                        title="Вперёд"
+                    >
+                        {icon("chevron-right")}
+                    </button>
                     <button
-                        class="button button--icon-transparent"
+                        class="button button--primary"
+                        style="min-width: 32px; padding: 4px 8px;"
                         on:click=move |_| {
                             let s = state.get();
                             if s.total_pages > 0 { go_to_page(s.total_pages - 1); }
@@ -391,7 +405,10 @@ pub fn YmReturnsList() -> impl IntoView {
                             let s = state.get();
                             s.page + 1 >= s.total_pages
                         }
-                    >"⏭"</button>
+                        title="В конец"
+                    >
+                        {icon("chevrons-right")}
+                    </button>
                     <select
                         class="page-size-select"
                         on:change=move |ev| {
@@ -406,142 +423,156 @@ pub fn YmReturnsList() -> impl IntoView {
                     </select>
                 </div>
 
-                // Action buttons
+                // Кнопки действий справа
                 <div class="header-right">
+                    <button
+                        class="button button--primary"
+                        on:click=move |_| load_data()
+                        disabled=move || loading.get()
+                    >
+                        {icon("refresh-cw")}
+                        {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                    </button>
                     <button
                         class="button button--primary"
                         on:click=batch_post
                         disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
                     >
-                        {move || format!("✓ Post ({})", state.get().selected_ids.len())}
+                        {icon("check")}
+                        {move || format!("Post ({})", state.get().selected_ids.len())}
                     </button>
                     <button
                         class="button button--warning"
                         on:click=batch_unpost
                         disabled=move || state.get().selected_ids.is_empty() || posting_in_progress.get()
                     >
-                        {move || format!("✗ Unpost ({})", state.get().selected_ids.len())}
+                        {icon("x")}
+                        {move || format!("Unpost ({})", state.get().selected_ids.len())}
                     </button>
-                    <button class="button button--excel" on:click=export_excel>"📊 Excel"</button>
+                    <button class="button button--secondary" on:click=export_excel>
+                        {icon("download")}
+                        "Excel"
+                    </button>
                 </div>
             </div>
 
-            // Header Row 2 - Filters
-            <div class="list-header-row filters-row">
-                <div class="filter-group">
-                    <label>"Период:"</label>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_from)
-                        on_change=move |val| {
-                            state.update(|s| { s.date_from = val; s.page = 0; });
-                            load_data();
-                        }
-                    />
-                    <span>" — "</span>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_to)
-                        on_change=move |val| {
-                            state.update(|s| { s.date_to = val; s.page = 0; });
-                            load_data();
-                        }
-                    />
-                    <MonthSelector
-                        on_select=Callback::new(move |(from, to)| {
-                            state.update(|s| {
-                                s.date_from = from;
-                                s.date_to = to;
-                                s.page = 0;
-                            });
-                            load_data();
-                        })
-                    />
-                </div>
+            // Фильтры
+            <div class="form-section" style="background: var(--color-background-secondary); padding: 12px; margin: 8px 12px; border-radius: 4px; flex-shrink: 0;">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px;">
+                    <div class="form__group" style="grid-column: span 1;">
+                        <label class="form__label">"Период:"</label>
+                        <div style="display: flex; gap: var(--spacing-xs); align-items: center; flex-wrap: nowrap;">
+                            <DateInput
+                                value=Signal::derive(move || state.get().date_from)
+                                on_change=move |val| {
+                                    state.update(|s| { s.date_from = val; s.page = 0; });
+                                    load_data();
+                                }
+                            />
+                            <span style="white-space: nowrap;">" — "</span>
+                            <DateInput
+                                value=Signal::derive(move || state.get().date_to)
+                                on_change=move |val| {
+                                    state.update(|s| { s.date_to = val; s.page = 0; });
+                                    load_data();
+                                }
+                            />
+                            <MonthSelector
+                                on_select=Callback::new(move |(from, to)| {
+                                    state.update(|s| {
+                                        s.date_from = from;
+                                        s.date_to = to;
+                                        s.page = 0;
+                                    });
+                                    load_data();
+                                })
+                            />
+                        </div>
+                    </div>
 
-                <div class="filter-group">
-                    <label>"Return ID:"</label>
-                    <input
-                        type="text"
-                        class="filter-input"
-                        placeholder="Поиск..."
-                        prop:value=move || state.get().search_return_id
-                        on:input=move |ev| {
-                            state.update(|s| {
-                                s.search_return_id = event_target_value(&ev);
-                                s.page = 0;
-                            });
-                        }
-                        on:keydown=move |ev| {
-                            if ev.key() == "Enter" {
+                    <div class="form__group">
+                        <label class="form__label">"Return ID:"</label>
+                        <input
+                            type="text"
+                            class="form__input"
+                            placeholder="Поиск..."
+                            prop:value=move || state.get().search_return_id
+                            on:input=move |ev| {
+                                state.update(|s| {
+                                    s.search_return_id = event_target_value(&ev);
+                                    s.page = 0;
+                                });
+                            }
+                            on:keydown=move |ev| {
+                                if ev.key() == "Enter" {
+                                    load_data();
+                                }
+                            }
+                        />
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">"Order ID:"</label>
+                        <input
+                            type="text"
+                            class="form__input"
+                            placeholder="Поиск..."
+                            prop:value=move || state.get().search_order_id
+                            on:input=move |ev| {
+                                state.update(|s| {
+                                    s.search_order_id = event_target_value(&ev);
+                                    s.page = 0;
+                                });
+                            }
+                            on:keydown=move |ev| {
+                                if ev.key() == "Enter" {
+                                    load_data();
+                                }
+                            }
+                        />
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">"Тип:"</label>
+                        <select
+                            class="form__select"
+                            on:change=move |ev| {
+                                let val = event_target_value(&ev);
+                                state.update(|s| {
+                                    s.filter_type = if val.is_empty() { None } else { Some(val) };
+                                    s.page = 0;
+                                });
                                 load_data();
                             }
-                        }
-                    />
+                        >
+                            <option value="">"Все"</option>
+                            <option value="RETURN">"Возврат"</option>
+                            <option value="UNREDEEMED">"Невыкуп"</option>
+                        </select>
+                    </div>
                 </div>
-
-                <div class="filter-group">
-                    <label>"Order ID:"</label>
-                    <input
-                        type="text"
-                        class="filter-input"
-                        placeholder="Поиск..."
-                        prop:value=move || state.get().search_order_id
-                        on:input=move |ev| {
-                            state.update(|s| {
-                                s.search_order_id = event_target_value(&ev);
-                                s.page = 0;
-                            });
-                        }
-                        on:keydown=move |ev| {
-                            if ev.key() == "Enter" {
-                                load_data();
-                            }
-                        }
-                    />
-                </div>
-
-                <div class="filter-group">
-                    <label>"Тип:"</label>
-                    <select
-                        class="filter-select"
-                        on:change=move |ev| {
-                            let val = event_target_value(&ev);
-                            state.update(|s| {
-                                s.filter_type = if val.is_empty() { None } else { Some(val) };
-                                s.page = 0;
-                            });
-                            load_data();
-                        }
-                    >
-                        <option value="">"Все"</option>
-                        <option value="RETURN">"Возврат"</option>
-                        <option value="UNREDEEMED">"Невыкуп"</option>
-                    </select>
-                </div>
-
-                <button class="button button--primary" on:click=move |_| load_data()>
-                    {move || if loading.get() { "⏳ Загрузка..." } else { "🔄 Обновить" }}
-                </button>
             </div>
 
             // Error message
             {move || {
                 if let Some(err) = error.get() {
                     view! {
-                        <div class="error-message">
-                            <strong>"Ошибка: "</strong>{err}
+                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin: 0 12px 8px 12px;">
+                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                            <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
                         </div>
                     }.into_any()
                 } else {
-                    view! { <div></div> }.into_any()
+                    view! { <></> }.into_any()
                 }
             }}
 
             // Table
-            <div class="table-container">
-                <table id=TABLE_ID class="table__data">
-                    <thead>
+            <div class="table" style="margin: 0 12px 12px 12px; flex: 1; overflow: hidden;">
+                <table id=TABLE_ID class="table__data table--striped">
+                    <thead class="table__head">
                         <tr>
-                            <th class="table__cell--checkbox">
+                            <th class="table__header-cell table__header-cell--checkbox">
                                 <input
                                     type="checkbox"
                                     on:change=toggle_select_all
@@ -552,49 +583,39 @@ pub fn YmReturnsList() -> impl IntoView {
                                     }
                                 />
                             </th>
-                            <th class="resizable" on:click=toggle_sort("created_at_source")>
-                                <span class="table__sortable-header">
-                                    "Дата"
-                                    <span class={move || get_sort_class("created_at_source", &state.get().sort_field)}>{move || get_sort_indicator("created_at_source", &state.get().sort_field, state.get().sort_ascending)}</span>
-                                </span>
+                            <th class="table__header-cell table__header-cell--sortable resizable" on:click=toggle_sort("created_at_source")>
+                                "Дата"
+                                <span class={move || get_sort_class("created_at_source", &state.get().sort_field)}>{move || get_sort_indicator("created_at_source", &state.get().sort_field, state.get().sort_ascending)}</span>
                             </th>
-                            <th class="resizable" on:click=toggle_sort("return_id")>
-                                <span class="table__sortable-header">
-                                    "Return №"
-                                    <span class={move || get_sort_class("return_id", &state.get().sort_field)}>{move || get_sort_indicator("return_id", &state.get().sort_field, state.get().sort_ascending)}</span>
-                                </span>
+                            <th class="table__header-cell table__header-cell--sortable resizable" on:click=toggle_sort("return_id")>
+                                "Return №"
+                                <span class={move || get_sort_class("return_id", &state.get().sort_field)}>{move || get_sort_indicator("return_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                             </th>
-                            <th class="resizable" on:click=toggle_sort("order_id")>
-                                <span class="table__sortable-header">
-                                    "Order №"
-                                    <span class={move || get_sort_class("order_id", &state.get().sort_field)}>{move || get_sort_indicator("order_id", &state.get().sort_field, state.get().sort_ascending)}</span>
-                                </span>
+                            <th class="table__header-cell table__header-cell--sortable resizable" on:click=toggle_sort("order_id")>
+                                "Order №"
+                                <span class={move || get_sort_class("order_id", &state.get().sort_field)}>{move || get_sort_indicator("order_id", &state.get().sort_field, state.get().sort_ascending)}</span>
                             </th>
-                            <th class="resizable" on:click=toggle_sort("return_type")>
-                                <span class="table__sortable-header">
-                                    "Тип"
-                                    <span class={move || get_sort_class("return_type", &state.get().sort_field)}>{move || get_sort_indicator("return_type", &state.get().sort_field, state.get().sort_ascending)}</span>
-                                </span>
+                            <th class="table__header-cell table__header-cell--sortable resizable" on:click=toggle_sort("return_type")>
+                                "Тип"
+                                <span class={move || get_sort_class("return_type", &state.get().sort_field)}>{move || get_sort_indicator("return_type", &state.get().sort_field, state.get().sort_ascending)}</span>
                             </th>
-                            <th class="resizable" on:click=toggle_sort("refund_status")>
-                                <span class="table__sortable-header">
-                                    "Статус"
-                                    <span class={move || get_sort_class("refund_status", &state.get().sort_field)}>{move || get_sort_indicator("refund_status", &state.get().sort_field, state.get().sort_ascending)}</span>
-                                </span>
+                            <th class="table__header-cell table__header-cell--sortable resizable" on:click=toggle_sort("refund_status")>
+                                "Статус"
+                                <span class={move || get_sort_class("refund_status", &state.get().sort_field)}>{move || get_sort_indicator("refund_status", &state.get().sort_field, state.get().sort_ascending)}</span>
                             </th>
-                            <th class="resizable text-right">"Шт."</th>
-                            <th class="resizable text-right">"Сумма"</th>
-                            <th class="text-center">"✓"</th>
+                            <th class="table__header-cell table__header-cell--right resizable">"Шт."</th>
+                            <th class="table__header-cell table__header-cell--right resizable">"Сумма"</th>
+                            <th class="table__header-cell table__header-cell--center">"✓"</th>
                         </tr>
                         // Totals row
-                        <tr class="totals-header-row">
-                            <td class="table__cell--checkbox"></td>
-                            <td>
+                        <tr style="background: var(--color-background-tertiary); font-weight: 500;">
+                            <td class="table__header-cell table__header-cell--checkbox"></td>
+                            <td class="table__header-cell">
                                 {move || format!("Записей: {}", items.get().len())}
                             </td>
-                            <td></td>
-                            <td></td>
-                            <td>
+                            <td class="table__header-cell"></td>
+                            <td class="table__header-cell"></td>
+                            <td class="table__header-cell">
                                 {move || {
                                     let data = items.get();
                                     let returns = data.iter().filter(|r| r.return_type == "RETURN").count();
@@ -602,20 +623,20 @@ pub fn YmReturnsList() -> impl IntoView {
                                     format!("Возвр: {} / Невык: {}", returns, unredeemed)
                                 }}
                             </td>
-                            <td></td>
-                            <td class="text-right">
+                            <td class="table__header-cell"></td>
+                            <td class="table__header-cell table__header-cell--right">
                                 {move || {
                                     let sum: i32 = items.get().iter().map(|i| i.total_items).sum();
                                     format!("{}", sum)
                                 }}
                             </td>
-                            <td class="text-right">
+                            <td class="table__header-cell table__header-cell--right">
                                 {move || {
                                     let sum: f64 = items.get().iter().map(|i| i.total_amount).sum();
                                     format_number(sum)
                                 }}
                             </td>
-                            <td></td>
+                            <td class="table__header-cell"></td>
                         </tr>
                     </thead>
                     <tbody>
@@ -626,10 +647,10 @@ pub fn YmReturnsList() -> impl IntoView {
                                 let id_for_checkbox = id.clone();
                                 let is_selected = state.get().selected_ids.contains(&id);
 
-                                let return_type_class = match item.return_type.as_str() {
-                                    "UNREDEEMED" => "badge badge-warning",
-                                    "RETURN" => "badge badge-info",
-                                    _ => "badge",
+                                let return_type_style = match item.return_type.as_str() {
+                                    "UNREDEEMED" => "background: var(--color-warning); color: white;",
+                                    "RETURN" => "background: var(--color-info); color: white;",
+                                    _ => "background: var(--color-border); color: var(--color-text-primary);",
                                 };
                                 let return_type_label = match item.return_type.as_str() {
                                     "UNREDEEMED" => "Невыкуп".to_string(),
@@ -638,44 +659,45 @@ pub fn YmReturnsList() -> impl IntoView {
                                 };
                                 let refund_status = item.refund_status.clone();
 
-                                let status_class = match item.refund_status.as_str() {
-                                    "REFUNDED" => "badge badge-success",
-                                    "NOT_REFUNDED" => "badge badge-danger",
-                                    "REFUND_IN_PROGRESS" => "badge badge-warning",
-                                    _ => "badge",
+                                let status_style = match item.refund_status.as_str() {
+                                    "REFUNDED" => "background: var(--color-success); color: white;",
+                                    "NOT_REFUNDED" => "background: var(--color-error); color: white;",
+                                    "REFUND_IN_PROGRESS" => "background: var(--color-warning); color: white;",
+                                    _ => "background: var(--color-border); color: var(--color-text-primary);",
                                 };
 
                                 view! {
                                     <tr
-                                        class=move || if is_selected { "selected" } else { "" }
+                                        class="table__row"
+                                        class:table__row--selected=is_selected
                                     >
-                                        <td class="table__cell--checkbox">
+                                        <td class="table__cell table__cell--checkbox">
                                             <input
                                                 type="checkbox"
                                                 prop:checked=is_selected
                                                 on:change=move |_| toggle_select(id_for_checkbox.clone())
                                             />
                                         </td>
-                                        <td on:click=move |_| open_detail(id_for_click.clone())>
+                                        <td class="table__cell" style="cursor: pointer;" on:click=move |_| open_detail(id_for_click.clone())>
                                             {format_datetime(&item.created_at_source)}
                                         </td>
-                                        <td on:click=move |_| open_detail(id.clone()) class="font-bold text-primary">
+                                        <td class="table__cell" style="cursor: pointer; font-weight: 600; color: var(--color-primary);" on:click=move |_| open_detail(id.clone())>
                                             {item.return_id}
                                         </td>
-                                        <td>{item.order_id}</td>
-                                        <td>
-                                            <span class=return_type_class>{return_type_label}</span>
+                                        <td class="table__cell">{item.order_id}</td>
+                                        <td class="table__cell">
+                                            <span style={format!("padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--font-size-xs); {}", return_type_style)}>{return_type_label}</span>
                                         </td>
-                                        <td>
-                                            <span class=status_class>{refund_status}</span>
+                                        <td class="table__cell">
+                                            <span style={format!("padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--font-size-xs); {}", status_style)}>{refund_status}</span>
                                         </td>
-                                        <td class="text-right">{item.total_items}</td>
-                                        <td class="text-right font-medium">{format_number(item.total_amount)}</td>
-                                        <td class="text-center">
+                                        <td class="table__cell table__cell--right">{item.total_items}</td>
+                                        <td class="table__cell table__cell--right" style="font-weight: 500;">{format_number(item.total_amount)}</td>
+                                        <td class="table__cell table__cell--center">
                                             {if item.is_posted {
-                                                view! { <span class="text-success">"✓"</span> }.into_any()
+                                                view! { <span style="color: var(--color-success); font-weight: bold;">"✓"</span> }.into_any()
                                             } else {
-                                                view! { <span class="text-muted">"—"</span> }.into_any()
+                                                view! { <span style="color: var(--color-text-tertiary);">"—"</span> }.into_any()
                                             }}
                                         </td>
                                     </tr>

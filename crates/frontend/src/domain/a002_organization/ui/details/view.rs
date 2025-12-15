@@ -16,25 +16,58 @@ pub fn OrganizationDetails(
     let vm_clone = vm.clone();
 
     view! {
-        <div class="details-container organization-details">
-            <div class="details-header">
-                <h3>
+        <div>
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 class="modal-title">
                     {
                         let vm = vm_clone.clone();
                         move || if vm.is_edit_mode()() { "Редактирование организации" } else { "Новая организация" }
                     }
                 </h3>
+                <div style="display: flex; gap: var(--spacing-sm);">
+                    <button
+                        class="button button--primary"
+                        on:click={
+                            let vm = vm_clone.clone();
+                            let on_saved = on_saved.clone();
+                            move |_| vm.save_command(on_saved.clone())
+                        }
+                        disabled={
+                            let vm = vm_clone.clone();
+                            move || !vm.is_form_valid()()
+                        }
+                    >
+                        {icon("save")}
+                        {
+                            let vm = vm_clone.clone();
+                            move || if vm.is_edit_mode()() { "Сохранить" } else { "Создать" }
+                        }
+                    </button>
+                    <button
+                        class="button button--secondary"
+                        on:click=move |_| (on_cancel)(())
+                    >
+                        {icon("cancel")}
+                        {"Отмена"}
+                    </button>
+                </div>
             </div>
 
-            {
-                let vm = vm_clone.clone();
-                move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
-            }
+            <div class="modal-body" style="border: none;">
+                {
+                    let vm = vm_clone.clone();
+                    move || vm.error.get().map(|e| view! {
+                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                            <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                        </div>
+                    })
+                }
 
-            <div class="detail-form">
                 <div class="form__group">
-                    <label for="description">{"Наименование"}</label>
+                    <label class="form__label" for="description">{"Наименование"}</label>
                     <input
+                        class="form__input"
                         type="text"
                         id="description"
                         prop:value={
@@ -47,32 +80,14 @@ pub fn OrganizationDetails(
                                 vm.form.update(|f| f.description = event_target_value(&ev));
                             }
                         }
-                        placeholder="Введите краткое наименование"
+                        placeholder="Введите наименование организации"
                     />
                 </div>
 
                 <div class="form__group">
-                    <label for="full_name">{"Полное наименование"}</label>
+                    <label class="form__label" for="inn">{"ИНН"}</label>
                     <input
-                        type="text"
-                        id="full_name"
-                        prop:value={
-                            let vm = vm_clone.clone();
-                            move || vm.form.get().full_name
-                        }
-                        on:input={
-                            let vm = vm_clone.clone();
-                            move |ev| {
-                                vm.form.update(|f| f.full_name = event_target_value(&ev));
-                            }
-                        }
-                        placeholder="Введите полное наименование организации"
-                    />
-                </div>
-
-                <div class="form__group">
-                    <label for="inn">{"ИНН"}</label>
-                    <input
+                        class="form__input"
                         type="text"
                         id="inn"
                         prop:value={
@@ -91,8 +106,9 @@ pub fn OrganizationDetails(
                 </div>
 
                 <div class="form__group">
-                    <label for="kpp">{"КПП"}</label>
+                    <label class="form__label" for="kpp">{"КПП"}</label>
                     <input
+                        class="form__input"
                         type="text"
                         id="kpp"
                         prop:value={
@@ -111,8 +127,9 @@ pub fn OrganizationDetails(
                 </div>
 
                 <div class="form__group">
-                    <label for="comment">{"Комментарий"}</label>
+                    <label class="form__label" for="comment">{"Комментарий"}</label>
                     <textarea
+                        class="form__textarea"
                         id="comment"
                         prop:value={
                             let vm = vm_clone.clone();
@@ -131,34 +148,6 @@ pub fn OrganizationDetails(
                         rows="3"
                     />
                 </div>
-            </div>
-
-            <div class="details-actions">
-                <button
-                    class="button button--primary"
-                    on:click={
-                        let vm = vm_clone.clone();
-                        let on_saved = on_saved.clone();
-                        move |_| vm.save_command(on_saved.clone())
-                    }
-                    disabled={
-                        let vm = vm_clone.clone();
-                        move || !vm.is_form_valid()()
-                    }
-                >
-                    {icon("save")}
-                    {
-                        let vm = vm_clone.clone();
-                        move || if vm.is_edit_mode()() { "Сохранить" } else { "Создать" }
-                    }
-                </button>
-                <button
-                    class="button button--secondary"
-                    on:click=move |_| (on_cancel)(())
-                >
-                    {icon("cancel")}
-                    {"Отмена"}
-                </button>
             </div>
         </div>
     }

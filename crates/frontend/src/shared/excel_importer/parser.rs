@@ -22,7 +22,7 @@ pub async fn read_excel_from_file(file: web_sys::File) -> Result<Vec<Vec<String>
     uint8_array.copy_to(&mut bytes);
 
     // Парсим через JS функцию
-    let result = parse_excel_file(&bytes)
+    let result = unsafe { parse_excel_file(&bytes) }
         .map_err(|e| format!("Ошибка парсинга Excel: {:?}", e))?;
 
     // Конвертируем JsValue в Vec<Vec<String>>
@@ -55,9 +55,7 @@ fn parse_js_array_to_vec(js_value: JsValue) -> Result<Vec<Vec<String>>, String> 
             } else {
                 cell.as_string().unwrap_or_else(|| {
                     // Пытаемся преобразовать в строку
-                    format!("{:?}", cell)
-                        .trim_matches('"')
-                        .to_string()
+                    format!("{:?}", cell).trim_matches('"').to_string()
                 })
             };
             row.push(cell_str);
