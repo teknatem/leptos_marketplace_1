@@ -481,6 +481,7 @@
   flex-direction: column;
   height: 100%;
   background: var(--color-bg-primary);
+  padding: var(--spacing-sm);
 }
 
 .list-container .table-container {
@@ -488,6 +489,7 @@
   min-height: 0;
   max-height: none;
   overflow: auto;
+  border-radius: var(--radius-lg);
 }
 
 .list-header-row {
@@ -538,10 +540,10 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--pagination-controls-bg);
+  /*background: var(--pagination-controls-bg);
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid var(--pagination-controls-border);
+  border: 1px solid var(--pagination-controls-border);*/
 }
 
 .pagination-btn {
@@ -555,7 +557,7 @@
   background: var(--pagination-btn-bg);
   border: 1px solid var(--pagination-btn-border);
   border-radius: 4px;
-  color: var(--list-header-text);
+  color: var(--pagination-text);
   cursor: pointer;
   transition: all var(--transition-fast);
   font-weight: 500;
@@ -586,7 +588,7 @@
   border: 1px solid var(--page-size-select-border);
   border-radius: 4px;
   background: var(--page-size-select-bg);
-  color: var(--list-header-text);
+  color: var(--pagination-text);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
@@ -658,7 +660,80 @@
   border-color: var(--color-primary);
 }
 
-/* Filter Panel */
+/* ============================================
+   Page Header
+   ============================================ */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--spacing-md);
+  flex-wrap: nowrap;
+  min-height: 48px;
+  overflow-x: auto;
+}
+
+.page-header__content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.page-header__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.page-header__text {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.page-header__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+.page-header__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.page-header__badge {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+/* ============================================
+   Filter Panel
+   ============================================ */
+
 .filter-panel {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
@@ -668,23 +743,38 @@
 }
 
 .filter-panel-header {
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  transition: background var(--transition-fast);
+}
+
+.filter-panel-header__left {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   cursor: pointer;
   user-select: none;
-  background: var(--color-bg-secondary);
-  transition: background var(--transition-fast);
+  flex-shrink: 0;
 }
 
-.filter-panel-header:hover {
-  background: var(--color-hover);
+.filter-panel-header__left:hover {
+  opacity: 0.8;
+}
+
+.filter-panel-header__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
 }
 
 .filter-panel-content {
   background: var(--color-surface);
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
 }
 
 .filter-panel__chevron {
@@ -714,9 +804,9 @@
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
 }
 
 .filter-tags {
