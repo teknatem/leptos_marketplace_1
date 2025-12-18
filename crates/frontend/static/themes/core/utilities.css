@@ -112,7 +112,7 @@
 .page {
   flex: 1;
   overflow: auto;
-  padding: var(--spacing-xl);
+  padding: 0;
   margin: 0 auto;
 }
 
@@ -225,10 +225,6 @@
 /* ============================================
    Page Layout Utilities
    ============================================ */
-
-.page {
-  padding: var(--spacing-lg);
-}
 
 .page__actions {
   margin-bottom: var(--spacing-md);

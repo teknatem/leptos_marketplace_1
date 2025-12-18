@@ -13,8 +13,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
-  padding: 5px 16px;
-  height: 30px;
+  padding: 4px 16px;
+  height: 28px;
   font-size: var(--font-size-base);
   font-weight: 500;
   line-height: 1;
@@ -122,11 +122,14 @@
    ============================================ */
 
 .form__group {
-  margin-bottom: var(--spacing-md);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
-  background: var(--form-group-bg);
-  border: 1px solid var(--form-group-border);
+  margin-bottom: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .form__label {
@@ -254,6 +257,16 @@
 
 .form__radio-label {
   font-size: var(--font-size-base);
+}
+
+/* Date Input and Month Selector */
+.date-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.month-selector {
+  flex-shrink: 0;
 }
 
 /* ============================================
@@ -493,9 +506,14 @@
 }
 
 .table__data {
-  width: 100%;
+  width: 99%;
   border-collapse: collapse;
   font-size: var(--font-size-base);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: var(--spacing-sm);
+  margin-left: 0.5%;
+  margin-right: 0.5%;
 }
 
 .table__head {
@@ -1144,7 +1162,7 @@ th.resizable {
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
@@ -1178,12 +1196,12 @@ th.resizable {
   padding: var(--spacing-xs) var(--spacing-md);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--color-text-primary);
-  height: 32px;
-  min-width: 80px;
+  height: 30px;
+  min-width: 400px;
 }
 
 .windows-dropdown__trigger:hover {
@@ -1211,8 +1229,8 @@ th.resizable {
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  min-width: 280px;
-  max-width: 400px;
+  min-width: 400px;
+  max-width: 600px;
   background: var(--windows-dropdown-bg, var(--color-surface));
   backdrop-filter: blur(12px);
   border: 1px solid var(--color-border);
@@ -1240,7 +1258,7 @@ th.resizable {
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   text-align: left;
 }
 

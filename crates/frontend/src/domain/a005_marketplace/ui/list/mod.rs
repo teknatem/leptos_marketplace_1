@@ -1,8 +1,13 @@
+pub mod state;
+
+use self::state::create_state;
 use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
 use crate::shared::icons::icon;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::modal::Modal;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use leptos::prelude::*;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -37,9 +42,29 @@ fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+impl Sortable for MarketplaceRow {
+    fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
+        match field {
+            "code" => self.code.to_lowercase().cmp(&other.code.to_lowercase()),
+            "description" => self
+                .description
+                .to_lowercase()
+                .cmp(&other.description.to_lowercase()),
+            "url" => self.url.to_lowercase().cmp(&other.url.to_lowercase()),
+            "comment" => self
+                .comment
+                .to_lowercase()
+                .cmp(&other.comment.to_lowercase()),
+            "created_at" => self.created_at.cmp(&other.created_at),
+            _ => Ordering::Equal,
+        }
+    }
+}
+
 #[component]
 #[allow(non_snake_case)]
 pub fn MarketplaceList() -> impl IntoView {
+    let state = create_state();
     let (items, set_items) = signal::<Vec<MarketplaceRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let (show_modal, set_show_modal) = signal(false);
@@ -83,6 +108,26 @@ pub fn MarketplaceList() -> impl IntoView {
     };
 
     let clear_selection = move || set_selected.set(HashSet::new());
+
+    let toggle_sort = move |field: &'static str| {
+        move |_| {
+            state.update(|s| {
+                if s.sort_field == field {
+                    s.sort_ascending = !s.sort_ascending;
+                } else {
+                    s.sort_field = field.to_string();
+                    s.sort_ascending = true;
+                }
+            });
+        }
+    };
+
+    let sorted_items = move || {
+        let mut items_vec = items.get();
+        let s = state.get();
+        sort_list(&mut items_vec, &s.sort_field, s.sort_ascending);
+        items_vec
+    };
 
     let delete_selected = move || {
         let ids: Vec<String> = selected.get().into_iter().collect();
@@ -164,25 +209,56 @@ pub fn MarketplaceList() -> impl IntoView {
             {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
 
             <div class="table-container">
-                <table>
-                    <thead>
+                <table class="table__data table--striped">
+                    <thead class="table__head">
                         <tr>
-                            <th></th>
-                            <th>{"Логотип"}</th>
-                            <th>{"Код"}</th>
-                            <th>{"Наименование"}</th>
-                            <th>{"URL"}</th>
-                            <th>{"Комментарий"}</th>
-                            <th>{"Создано"}</th>
+                            <th class="table__header-cell table__header-cell--checkbox"></th>
+                            <th class="table__header-cell">{"Логотип"}</th>
+                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("code")>
+                                "Код"
+                                <span class={move || get_sort_class(&state.get().sort_field, "code")}>
+                                    {move || get_sort_indicator(&state.get().sort_field, "code", state.get().sort_ascending)}
+                                </span>
+                            </th>
+                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("description")>
+                                "Наименование"
+                                <span class={move || get_sort_class(&state.get().sort_field, "description")}>
+                                    {move || get_sort_indicator(&state.get().sort_field, "description", state.get().sort_ascending)}
+                                </span>
+                            </th>
+                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("url")>
+                                "URL"
+                                <span class={move || get_sort_class(&state.get().sort_field, "url")}>
+                                    {move || get_sort_indicator(&state.get().sort_field, "url", state.get().sort_ascending)}
+                                </span>
+                            </th>
+                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("comment")>
+                                "Комментарий"
+                                <span class={move || get_sort_class(&state.get().sort_field, "comment")}>
+                                    {move || get_sort_indicator(&state.get().sort_field, "comment", state.get().sort_ascending)}
+                                </span>
+                            </th>
+                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("created_at")>
+                                "Создано"
+                                <span class={move || get_sort_class(&state.get().sort_field, "created_at")}>
+                                    {move || get_sort_indicator(&state.get().sort_field, "created_at", state.get().sort_ascending)}
+                                </span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {move || items.get().into_iter().map(|row| {
+                        {move || sorted_items().into_iter().map(|row| {
                             let id = row.id.clone();
+                            let id_for_selected = id.clone();
+                            let id_for_click = id.clone();
                             let logo_path = row.logo_path.clone();
                             view! {
-                                <tr on:click=move |_| handle_edit(id.clone())>
-                                    <td>
+                                <tr
+                                    class="table__row"
+                                    class:table__row--selected={move || selected.get().contains(&id_for_selected)}
+                                    on:click=move |_| handle_edit(id_for_click.clone())
+                                >
+                                    <td class="table__cell table__cell--checkbox">
                                         <input type="checkbox"
                                             prop:checked={
                                                 let selected = selected.get();
@@ -198,18 +274,18 @@ pub fn MarketplaceList() -> impl IntoView {
                                             }
                                         />
                                     </td>
-                                    <td>
+                                    <td class="table__cell">
                                         {move || if let Some(ref path) = logo_path {
                                             view! { <img src={path.clone()} alt="logo" style="max-width: 32px; max-height: 32px;" /> }.into_any()
                                         } else {
                                             view! { <span>{"-"}</span> }.into_any()
                                         }}
                                     </td>
-                                    <td>{row.code}</td>
-                                    <td>{row.description}</td>
-                                    <td>{row.url}</td>
-                                    <td>{row.comment}</td>
-                                    <td>{row.created_at}</td>
+                                    <td class="table__cell">{row.code}</td>
+                                    <td class="table__cell">{row.description}</td>
+                                    <td class="table__cell">{row.url}</td>
+                                    <td class="table__cell">{row.comment}</td>
+                                    <td class="table__cell">{row.created_at}</td>
                                 </tr>
                             }
                         }).collect_view()}

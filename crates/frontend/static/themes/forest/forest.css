@@ -19,7 +19,7 @@
   /* Background Colors */
   --color-bg-primary: rgba(255, 255, 255, 0.7);
   --color-bg-secondary: rgba(200, 230, 201, 0.2);
-  --color-surface: rgba(255, 255, 255, 0.9);
+  --color-surface: rgba(255, 255, 255, 0.1);
   --color-code-bg: rgba(200, 230, 201, 0.2);
 
   /* Border Colors */
@@ -203,18 +203,18 @@
   --list-header-text: #ffffff;
   --list-header-border: rgba(0, 0, 0, 0.1);
 
-  --pagination-controls-bg: rgba(255, 255, 255, 0.12);
-  --pagination-controls-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-bg: rgba(255, 255, 255, 0.1);
-  --pagination-btn-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-bg: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-border: rgba(255, 255, 255, 0.3);
-  --pagination-text: rgba(255, 255, 255, 0.95);
+  --pagination-controls-bg: rgba(76, 175, 80, 0.08);
+  --pagination-controls-border: rgba(76, 175, 80, 0.25);
+  --pagination-btn-bg: rgba(255, 255, 255, 0.95);
+  --pagination-btn-border: rgba(76, 175, 80, 0.3);
+  --pagination-btn-hover-bg: rgba(67, 160, 71, 0.15);
+  --pagination-btn-hover-border: rgba(67, 160, 71, 0.5);
+  --pagination-text: #2e7d32;
 
-  --page-size-select-bg: rgba(255, 255, 255, 0.1);
-  --page-size-select-border: rgba(255, 255, 255, 0.2);
-  --page-size-select-hover-bg: rgba(255, 255, 255, 0.15);
-  --page-size-select-hover-border: rgba(255, 255, 255, 0.3);
+  --page-size-select-bg: rgba(255, 255, 255, 0.95);
+  --page-size-select-border: rgba(76, 175, 80, 0.3);
+  --page-size-select-hover-bg: rgba(67, 160, 71, 0.15);
+  --page-size-select-hover-border: rgba(67, 160, 71, 0.5);
   --page-size-option-bg: #ffffff;
   --page-size-option-fg: #333333;
 

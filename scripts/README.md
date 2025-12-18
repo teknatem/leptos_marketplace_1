@@ -1,23 +1,76 @@
-# Database Backup Scripts
+# Project Utility Scripts
 
 ## Overview
 
-This directory contains scripts for backing up and restoring the marketplace database.
+This directory contains utility scripts for the marketplace project:
 
-## Problem
+- **Database Management**: Backup and restore scripts
+- **Code Analysis**: Scripts for collecting and analyzing codebase
+
+---
+
+## Code Collection Script
+
+### Purpose
+
+The `collect_crates.py` script collects all code files from the `crates/` directory into a single text file, optimized for analysis by LLM (Language Learning Models).
+
+### Usage
+
+```powershell
+# Run from project root
+python scripts\collect_crates.py
+```
+
+### Output
+
+- File: `scripts/crates_dump.txt`
+- Format: Each file is preceded by a header with full path, size, and encoding
+- Statistics: Summary at the beginning with file counts by extension
+
+### Included File Types
+
+- `.rs` - Rust source code
+- `.toml` - Configuration files
+- `.md` - Documentation
+- `.css` - Stylesheets
+- `.js` - JavaScript
+- `.html` - HTML templates
+
+### Excluded Directories
+
+- `target/` - Build artifacts
+- `node_modules/` - Node.js dependencies
+- `.git/` - Git metadata
+
+### Use Cases
+
+- Analyzing codebase structure
+- Preparing code for LLM review
+- Documentation generation
+- Code auditing
+- Quick codebase overview
+
+---
+
+## Database Backup Scripts
+
 The default database location (`target/db/app.db`) can be **deleted** when running:
+
 - `cargo clean`
 - Clearing build artifacts
 - Switching git branches with different build states
 
-## Solution
+### Solution
+
 1. **config.toml** moves database to `data/app.db` (outside target/)
 2. **Automatic backups** before each run
 3. **Manual backup/restore scripts**
 
-## Quick Start
+### Quick Start
 
-### 1. Initial Setup (First Time Only)
+#### 1. Initial Setup (First Time Only)
+
 ```powershell
 # Copy your current database to the new location
 Copy-Item "target\db\app.db" "data\app.db"
@@ -26,34 +79,37 @@ Copy-Item "target\db\app.db" "data\app.db"
 Copy-Item "crates\backend\target\db\app.db" "data\app.db"
 ```
 
-### 2. Daily Usage
+#### 2. Daily Usage
 
 **Before starting work:**
+
 ```powershell
 .\scripts\auto_backup.ps1
 ```
 
 **Manual backup anytime:**
+
 ```powershell
 .\scripts\backup_db.ps1
 ```
 
 **Restore from backup:**
+
 ```powershell
 .\scripts\restore_db.ps1
 # Then select from list of available backups
 ```
 
-## Files
+## All Scripts
 
-| File | Purpose |
-|------|---------|
-| `config.toml` | Configures database path (outside target/) |
-| `backup_db.ps1` | Creates timestamped backup |
-| `restore_db.ps1` | Restores database from backup |
-| `auto_backup.ps1` | Auto-backup if database changed |
+| File                | Purpose                                                    |
+| ------------------- | ---------------------------------------------------------- |
+| `collect_crates.py` | Collects all code files from crates/ into single text file |
+| `backup_db.ps1`     | Creates timestamped database backup                        |
+| `restore_db.ps1`    | Restores database from backup                              |
+| `auto_backup.ps1`   | Auto-backup if database changed                            |
 
-## Backup Location
+### Backup Location
 
 ```
 leptos_marketplace_1/
@@ -65,13 +121,13 @@ leptos_marketplace_1/
 │       └── app_latest.db               # Most recent backup
 ```
 
-## Backup Retention
+### Backup Retention
 
 - Keeps **last 30 backups** automatically
 - Older backups are automatically deleted
 - `app_latest.db` is always the most recent
 
-## Integration with Development
+### Integration with Development
 
 Add to your workflow:
 
@@ -83,7 +139,7 @@ Add to your workflow:
 .\run_backend.ps1
 ```
 
-## Scheduled Backups (Optional)
+### Scheduled Backups (Optional)
 
 Create a Windows Task Scheduler task to run `backup_db.ps1` daily:
 
@@ -94,7 +150,7 @@ $Trigger = New-ScheduledTaskTrigger -Daily -At 9am
 Register-ScheduledTask -TaskName "Marketplace DB Backup" -Action $Action -Trigger $Trigger
 ```
 
-## Emergency Recovery
+### Emergency Recovery
 
 If you lost data:
 
@@ -103,9 +159,10 @@ If you lost data:
 3. Select the backup to restore
 4. Your current DB is automatically backed up before restore
 
-## .gitignore
+### .gitignore
 
 Database files are excluded from git:
+
 ```
 /data/app.db
 /data/backups/*.db
@@ -113,4 +170,3 @@ Database files are excluded from git:
 ```
 
 But scripts and config are tracked for team sharing.
-
