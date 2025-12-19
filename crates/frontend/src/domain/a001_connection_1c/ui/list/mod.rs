@@ -5,6 +5,7 @@ use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::modal::Modal;
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
@@ -142,21 +143,6 @@ pub fn Connection1CList() -> impl IntoView {
         load_connections();
     };
 
-    // Пагинация: переход на страницу
-    let go_to_page = move |new_page: usize| {
-        state.update(|s| s.page = new_page);
-        load_connections();
-    };
-
-    // Пагинация: изменение размера страницы
-    let change_page_size = move |new_size: usize| {
-        state.update(|s| {
-            s.page_size = new_size;
-            s.page = 0;
-        });
-        load_connections();
-    };
-
     // Переключение выбора одного элемента
     let toggle_selection = move |id: String| {
         state.update(|s| {
@@ -208,128 +194,33 @@ pub fn Connection1CList() -> impl IntoView {
     };
 
     view! {
-        <div class="connection-1c-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            // Header - Row 1: Title with Pagination and Actions
-            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">
-                        {icon("database")}
-                        " 1C Подключения"
-                    </h2>
-
-                    // === PAGINATION CONTROLS ===
-                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px;">
-                        // First page
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| go_to_page(0)
-                            title="Первая страница"
-                        >
-                            "⏮"
-                        </button>
-
-                        // Previous page
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                if current > 0 {
-                                    go_to_page(current - 1);
-                                }
-                            }
-                            title="Предыдущая страница"
-                        >
-                            "◀"
-                        </button>
-
-                        // Page info
-                        <span style="color: white; font-size: 12px; font-weight: 500; min-width: 100px; text-align: center;">
-                            {move || {
-                                let page = state.with(|s| s.page);
-                                let total_pages = state.with(|s| s.total_pages);
-                                let total = state.with(|s| s.total_count);
-                                format!("{} / {} ({})", page + 1, total_pages.max(1), total)
-                            }}
-                        </span>
-
-                        // Next page
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                if current < max_page {
-                                    go_to_page(current + 1);
-                                }
-                            }
-                            title="Следующая страница"
-                        >
-                            "▶"
-                        </button>
-
-                        // Last page
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                go_to_page(max_page);
-                            }
-                            title="Последняя страница"
-                        >
-                            "⏭"
-                        </button>
-
-                        // Divider
-                        <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
-
-                        // Page size selector
-                        <select
-                            style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer;"
-                            prop:value=move || state.with(|s| s.page_size.to_string())
-                            on:change=move |ev| {
-                                if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-                                    change_page_size(size);
-                                }
-                            }
-                        >
-                            <option value="50" style="color: black;">"50"</option>
-                            <option value="100" style="color: black;">"100"</option>
-                            <option value="200" style="color: black;">"200"</option>
-                        </select>
-                        <span style="color: rgba(255,255,255,0.8); font-size: 10px;">"на стр."</span>
-                    </div>
-                    // === END PAGINATION ===
+        <div class="page">
+            // Page header with title and action buttons
+            <div class="header">
+                <div class="header__content">
+                    <h1 class="header__title">{"1C Подключения"}</h1>
                 </div>
-
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button
-                        class="button button--primary"
-                        on:click=move |_| handle_create_new()
-                    >
+                <div class="header__actions">
+                    <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
-                        " Новое"
+                        {"Новое"}
                     </button>
-                    <button
-                        class="button button--secondary"
-                        on:click=move |_| load_connections()
-                        prop:disabled=move || loading.get()
-                    >
+                    <button class="button button--secondary" on:click=move |_| load_connections() prop:disabled=move || loading.get()>
                         {icon("refresh")}
-                        " Обновить"
+                        {"Обновить"}
                     </button>
                 </div>
             </div>
 
             // Error message
             {move || error.get().map(|err| view! {
-                <div class="error-message" style="padding: 12px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828; margin: 10px 0;">{err}</div>
+                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
+                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                    <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
+                </div>
             })}
 
-            // Loading indicator
+            // Loading indicator or table
             {move || {
                 if loading.get() {
                     view! {
@@ -347,9 +238,9 @@ pub fn Connection1CList() -> impl IntoView {
                     });
 
                     view! {
-                        <div class="table-container" style="overflow: auto; max-height: calc(100vh - 200px); position: relative; margin-top: 10px;">
+                        <div class="table">
                             <table id="connection-1c-table" class="table__data table--striped" style="min-width: 1200px; table-layout: fixed;">
-                                <thead>
+                                <thead class="table__head">
                                     <tr>
                                         <th class="table__header-cell table__header-cell--checkbox">
                                             <input
@@ -359,20 +250,20 @@ pub fn Connection1CList() -> impl IntoView {
                                                 prop:checked=move || all_selected()
                                             />
                                         </th>
-                                        <th class="resizable" style="width: 250px; min-width: 120px;" on:click=move |_| toggle_sort("description")>
+                                        <th class="table__header-cell resizable" style="width: 250px; min-width: 120px;" on:click=move |_| toggle_sort("description")>
                                             <span class="table__sortable-header">"Наименование" <span class={get_sort_class("description", &current_sort_field)}>{get_sort_indicator("description", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th class="resizable" style="width: 300px; min-width: 150px;" on:click=move |_| toggle_sort("url")>
+                                        <th class="table__header-cell resizable" style="width: 300px; min-width: 150px;" on:click=move |_| toggle_sort("url")>
                                             <span class="table__sortable-header">"URL" <span class={get_sort_class("url", &current_sort_field)}>{get_sort_indicator("url", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th class="resizable" style="width: 120px; min-width: 80px;" on:click=move |_| toggle_sort("login")>
+                                        <th class="table__header-cell resizable" style="width: 120px; min-width: 80px;" on:click=move |_| toggle_sort("login")>
                                             <span class="table__sortable-header">"Логин" <span class={get_sort_class("login", &current_sort_field)}>{get_sort_indicator("login", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th class="resizable" style="width: 200px; min-width: 100px;">"Комментарий"</th>
-                                        <th class="resizable text-center" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("is_primary")>
+                                        <th class="table__header-cell resizable" style="width: 200px; min-width: 100px;">"Комментарий"</th>
+                                        <th class="table__header-cell resizable text-center" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("is_primary")>
                                             <span class="table__sortable-header" style="justify-content: center;">"Основное" <span class={get_sort_class("is_primary", &current_sort_field)}>{get_sort_indicator("is_primary", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
-                                        <th class="resizable" style="width: 130px; min-width: 100px;" on:click=move |_| toggle_sort("created_at")>
+                                        <th class="table__header-cell resizable" style="width: 130px; min-width: 100px;" on:click=move |_| toggle_sort("created_at")>
                                             <span class="table__sortable-header">"Создано" <span class={get_sort_class("created_at", &current_sort_field)}>{get_sort_indicator("created_at", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
@@ -392,22 +283,18 @@ pub fn Connection1CList() -> impl IntoView {
                                         let id_toggle = id.clone();
                                         let id_row = id.clone();
 
-                                        let on_row_click = move |_| {
-                                            handle_edit(id_row.clone());
-                                        };
-
                                         view! {
-                                            <tr on:click=on_row_click.clone()>
+                                            <tr class="table__row" on:click=move |_| handle_edit(id_row.clone())>
                                                 <TableCheckbox
                                                     checked=Signal::derive(move || is_selected(&id_check))
                                                     on_change=Callback::new(move |_checked| toggle_selection(id_toggle.clone()))
                                                 />
-                                                <td class="cell-truncate">{description}</td>
-                                                <td class="cell-truncate" style="color: #1565c0; font-size: 12px;">{url}</td>
-                                                <td class="cell-truncate">{login}</td>
-                                                <td class="cell-truncate">{comment}</td>
-                                                <td class="text-center">{if is_primary { "✓" } else { "" }}</td>
-                                                <td style="font-size: 12px;">{created_at}</td>
+                                                <td class="table__cell cell-truncate">{description}</td>
+                                                <td class="table__cell cell-truncate" style="color: #1565c0; font-size: 12px;">{url}</td>
+                                                <td class="table__cell cell-truncate">{login}</td>
+                                                <td class="table__cell cell-truncate">{comment}</td>
+                                                <td class="table__cell text-center">{if is_primary { "✓" } else { "" }}</td>
+                                                <td class="table__cell" style="font-size: 12px;">{created_at}</td>
                                             </tr>
                                         }
                                     }).collect::<Vec<_>>()}
@@ -418,19 +305,34 @@ pub fn Connection1CList() -> impl IntoView {
                 }
             }}
 
-            <Connection1CDetails
-                id=editing_id.into()
-                show=show_modal.into()
-                on_saved=Callback::new(move |_| {
-                    set_show_modal.set(false);
-                    set_editing_id.set(None);
-                    load_connections();
-                })
-                on_close=Callback::new(move |_| {
-                    set_show_modal.set(false);
-                    set_editing_id.set(None);
-                })
-            />
+            // Modal dialog for details
+            <Show when=move || show_modal.get()>
+                {move || {
+                    view! {
+                        <Modal
+                            title="".to_string()
+                            on_close=Callback::new(move |_| {
+                                set_show_modal.set(false);
+                                set_editing_id.set(None);
+                            })
+                        >
+                            <Connection1CDetails
+                                id=editing_id.get().into()
+                                show=true.into()
+                                on_saved=Callback::new(move |_| {
+                                    set_show_modal.set(false);
+                                    set_editing_id.set(None);
+                                    load_connections();
+                                })
+                                on_close=Callback::new(move |_| {
+                                    set_show_modal.set(false);
+                                    set_editing_id.set(None);
+                                })
+                            />
+                        </Modal>
+                    }
+                }}
+            </Show>
         </div>
     }
 }
