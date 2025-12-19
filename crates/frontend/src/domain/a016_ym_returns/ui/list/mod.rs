@@ -1,10 +1,12 @@
 pub mod state;
 
-use self::state::create_state;
+use self::state::{create_state, ServerTotals};
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table_checkbox::TableCheckbox;
+use crate::shared::components::table_totals_row::TableTotalsRow;
 use crate::shared::components::ui::badge::Badge;
 use crate::shared::components::ui::button::Button;
 use crate::shared::date_utils::format_datetime;
@@ -33,6 +35,8 @@ pub struct PaginatedResponse {
     pub page: usize,
     pub page_size: usize,
     pub total_pages: usize,
+    /// Серверные итоги по всему датасету
+    pub totals: Option<ServerTotals>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +136,7 @@ pub fn YmReturnsList() -> impl IntoView {
                                 state.update(|s| {
                                     s.total_count = data.total;
                                     s.total_pages = data.total_pages;
+                                    s.server_totals = data.totals;
                                     s.is_loaded = true;
                                 });
                                 set_loading.set(false);
@@ -852,37 +857,34 @@ pub fn YmReturnsList() -> impl IntoView {
                                 <th class="table__header-cell table__header-cell--right resizable">"Сумма"</th>
                                 <th class="table__header-cell table__header-cell--center">"✓"</th>
                             </tr>
-                            // Totals row
-                            <tr style="background: var(--color-background-tertiary); font-weight: 500;">
-                                <td class="table__header-cell table__header-cell--checkbox"></td>
-                                <td class="table__header-cell">
-                                    {move || format!("Записей: {}", items.get().len())}
-                                </td>
-                                <td class="table__header-cell"></td>
-                                <td class="table__header-cell"></td>
-                                <td class="table__header-cell">
-                                    {move || {
-                                        let data = items.get();
-                                        let returns = data.iter().filter(|r| r.return_type == "RETURN").count();
-                                        let unredeemed = data.iter().filter(|r| r.return_type == "UNREDEEMED").count();
-                                        format!("Возвр: {} / Невык: {}", returns, unredeemed)
-                                    }}
-                                </td>
-                                <td class="table__header-cell"></td>
-                                <td class="table__header-cell table__header-cell--right">
-                                    {move || {
-                                        let sum: i32 = items.get().iter().map(|i| i.total_items).sum();
-                                        format!("{}", sum)
-                                    }}
-                                </td>
-                                <td class="table__header-cell table__header-cell--right">
-                                    {move || {
-                                        let sum: f64 = items.get().iter().map(|i| i.total_amount).sum();
-                                        format_number(sum)
-                                    }}
-                                </td>
-                                <td class="table__header-cell"></td>
-                            </tr>
+                            // Totals row - серверные итоги по всему датасету
+                            {move || {
+                                if let Some(totals) = state.get().server_totals {
+                                    view! {
+                                        <TableTotalsRow>
+                                            <td class="table__cell table__cell--checkbox"></td>
+                                            <td>
+                                                {format!("Записей: {}", totals.total_records)}
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td>
+                                                {format!("Возвр: {} / Невык: {}", totals.returns_count, totals.unredeemed_count)}
+                                            </td>
+                                            <td></td>
+                                            <td class="table__cell--right">
+                                                {totals.sum_items}
+                                            </td>
+                                            <td class="table__cell--right">
+                                                {format_number(totals.sum_amount)}
+                                            </td>
+                                            <td></td>
+                                        </TableTotalsRow>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }
+                            }}
                         </thead>
                         <tbody>
                             {move || {
@@ -890,6 +892,7 @@ pub fn YmReturnsList() -> impl IntoView {
                                     let id = item.id.clone();
                                     let id_for_click = id.clone();
                                     let id_for_checkbox = id.clone();
+                                    let id_for_checkbox2 = id.clone();
                                     let is_selected = state.get().selected_ids.contains(&id);
 
                                     let return_type_style = match item.return_type.as_str() {
@@ -916,13 +919,10 @@ pub fn YmReturnsList() -> impl IntoView {
                                             class="table__row"
                                             class:table__row--selected=is_selected
                                         >
-                                            <td class="table__cell table__cell--checkbox">
-                                                <input
-                                                    type="checkbox"
-                                                    prop:checked=is_selected
-                                                    on:change=move |_| toggle_select(id_for_checkbox.clone())
-                                                />
-                                            </td>
+                                            <TableCheckbox
+                                                checked=Signal::derive(move || state.get().selected_ids.contains(&id_for_checkbox))
+                                                on_change=Callback::new(move |_checked| toggle_select(id_for_checkbox2.clone()))
+                                            />
                                             <td class="table__cell" style="cursor: pointer;" on:click=move |_| open_detail(id_for_click.clone())>
                                                 {format_datetime(&item.created_at_source)}
                                             </td>

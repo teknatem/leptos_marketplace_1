@@ -1,5 +1,6 @@
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct YmReturnsState {
@@ -27,6 +28,19 @@ pub struct YmReturnsState {
     // Поиск
     pub search_return_id: String,
     pub search_order_id: String,
+
+    // Серверные итоги
+    pub server_totals: Option<ServerTotals>,
+}
+
+/// Серверные итоги по датасету
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerTotals {
+    pub total_records: usize,
+    pub sum_items: i32,
+    pub sum_amount: f64,
+    pub returns_count: usize,
+    pub unredeemed_count: usize,
 }
 
 impl Default for YmReturnsState {
@@ -63,6 +77,8 @@ impl Default for YmReturnsState {
             // Поиск
             search_return_id: String::new(),
             search_order_id: String::new(),
+            // Итоги
+            server_totals: None,
         }
     }
 }
@@ -70,4 +86,3 @@ impl Default for YmReturnsState {
 pub fn create_state() -> RwSignal<YmReturnsState> {
     RwSignal::new(YmReturnsState::default())
 }
-

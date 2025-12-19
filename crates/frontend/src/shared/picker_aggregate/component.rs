@@ -33,7 +33,7 @@ where
     T: TableDisplayable + Clone + Send + Sync + 'static,
 {
     let (selected_id, set_selected_id) = signal::<Option<String>>(initial_selected_id.clone());
-    let title = title.unwrap_or_else(|| "Выбор элемента".to_string());
+    let _title = title.unwrap_or_else(|| "Выбор элемента".to_string());
 
     let loading_signal = loading.unwrap_or_else(|| {
         let (r, _) = signal(false);
@@ -81,40 +81,40 @@ where
     let on_confirm_dblclick = on_confirm.clone();
 
     view! {
-        <div class="picker-container">
-            <div class="picker-header">
-                <h3>{title}</h3>
-            </div>
-
-            <div class="picker-content">
+        <div class="picker">
+            <div class="picker__content">
                 {move || {
                     if loading_signal.get() {
-                        view! { <div class="picker-loading">"Загрузка..."</div> }.into_any()
+                        view! { <div class="picker__loading">"Загрузка..."</div> }.into_any()
                     } else if let Some(err) = error_signal.get() {
                         view! {
-                            <div class="picker-error">
-                                <p>"Ошибка загрузки: " {err}</p>
+                            <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
+                                <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                                <span class="warning-box__text" style="color: var(--color-error);">
+                                    {"Ошибка загрузки: "} {err}
+                                </span>
                             </div>
                         }.into_any()
                     } else {
                         items.with(|items_vec| {
                             if items_vec.is_empty() {
                                 view! {
-                                    <div class="picker-empty">"Нет доступных элементов"</div>
+                                    <div class="picker__empty">"Нет доступных элементов"</div>
                                 }.into_any()
                             } else {
                                 view! {
-                                    <table class="picker-table">
-                                        <thead>
+                                    <table class="picker__table table__data table--striped">
+                                        <thead class="table__head">
                                             <tr>
-                                                <th>"Описание"</th>
-                                                <th>"Код"</th>
+                                                <th class="table__header-cell">"Описание"</th>
+                                                <th class="table__header-cell">"Код"</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {items_vec.iter().enumerate().map(|(_idx, item)| {
                                                 let item_id = item.id();
                                                 let item_id_for_selected = item_id.clone();
+                                                let item_id_for_selected2 = item_id.clone();
                                                 let item_id_for_click = item_id.clone();
                                                 let item_for_dblclick = item.clone();
                                                 let on_confirm_clone = on_confirm_dblclick.clone();
@@ -123,13 +123,14 @@ where
                                                 view! {
                                                     <tr
                                                         node_ref=if is_initially_selected { selected_row_ref } else { NodeRef::new() }
-                                                        class="picker-row"
-                                                        class:selected=move || selected_id.get().as_ref() == Some(&item_id_for_selected)
+                                                        class="picker__row table__row"
+                                                        class:picker__row--selected=move || selected_id.get().as_ref() == Some(&item_id_for_selected)
+                                                        class:table__row--selected=move || selected_id.get().as_ref() == Some(&item_id_for_selected2)
                                                         on:click=move |_| handle_row_click(item_id_for_click.clone())
                                                         on:dblclick=move |_| on_confirm_clone(Some(item_for_dblclick.clone()))
                                                     >
-                                                        <td>{item.description()}</td>
-                                                        <td>{item.code()}</td>
+                                                        <td class="table__cell">{item.description()}</td>
+                                                        <td class="table__cell">{item.code()}</td>
                                                     </tr>
                                                 }
                                             }).collect_view()}
@@ -142,7 +143,7 @@ where
                 }}
             </div>
 
-            <div class="picker-actions">
+            <div class="picker__actions">
                 <button
                     class="button button--primary"
                     on:click=handle_confirm

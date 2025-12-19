@@ -64,15 +64,16 @@ where
     };
 
     view! {
-        <div class="picker-container">
-            <div class="picker-header">
-                <h3>{"Выбор маркетплейса"}</h3>
-            </div>
+        <div class="picker">
+            {move || error.get().map(|e| view! {
+                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                </div>
+            })}
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
-
-            <div class="picker-content">
-                <div class="picker-list">
+            <div class="picker__content">
+                <div class="picker__grid">
                     {move || items.get().into_iter().map(|item| {
                         let item_id = item.id.clone();
                         let is_selected = move || {
@@ -81,8 +82,8 @@ where
 
                         view! {
                             <div
-                                class="picker-item"
-                                class:selected={is_selected}
+                                class="picker__item"
+                                class:picker__item--selected={is_selected}
                                 on:click={
                                     let id = item.id.clone();
                                     move |_| set_selected_id.set(Some(id.clone()))
@@ -93,23 +94,23 @@ where
                                     move |_| on_selected(Some(item.clone()))
                                 }
                             >
-                                <div class="picker-item-logo">
+                                <div class="picker__item-logo">
                                     {
                                         if let Some(logo) = &item.logo_path {
                                             view! {
-                                                <img src={logo.clone()} alt={item.description.clone()} />
+                                                <img class="picker__item-image" src={logo.clone()} alt={item.description.clone()} />
                                             }.into_any()
                                         } else {
                                             view! {
-                                                <div class="picker-item-icon">{icon("store")}</div>
+                                                <div class="picker__item-icon">{icon("store")}</div>
                                             }.into_any()
                                         }
                                     }
                                 </div>
-                                <div class="picker-item-description">
+                                <div class="picker__item-description">
                                     {item.description.clone()}
                                 </div>
-                                <div class="picker-item-code">
+                                <div class="picker__item-code">
                                     {item.code.clone()}
                                 </div>
                             </div>
@@ -118,7 +119,7 @@ where
                 </div>
             </div>
 
-            <div class="picker-actions">
+            <div class="picker__actions">
                 <button
                     class="button button--primary"
                     on:click=handle_select

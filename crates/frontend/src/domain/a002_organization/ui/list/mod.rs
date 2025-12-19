@@ -1,4 +1,5 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
+use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::modal::Modal;
 use contracts::domain::a002_organization::aggregate::Organization;
@@ -166,7 +167,25 @@ pub fn OrganizationList() -> impl IntoView {
                         <table class="table__data table--striped">
                             <thead class="table__head">
                                 <tr>
-                                    <th class="table__header-cell table__cell--checkbox"></th>
+                                    <th class="table__header-cell table__header-cell--checkbox">
+                                        <input
+                                            type="checkbox"
+                                            class="table__checkbox"
+                                            on:change=move |ev| {
+                                                let checked = event_target_checked(&ev);
+                                                let current_items = items.get();
+                                                if checked {
+                                                    set_selected.update(|s| {
+                                                        for item in current_items.iter() {
+                                                            s.insert(item.id.clone());
+                                                        }
+                                                    });
+                                                } else {
+                                                    set_selected.set(HashSet::new());
+                                                }
+                                            }
+                                        />
+                                    </th>
                                     <th class="table__header-cell">{"Код"}</th>
                                     <th class="table__header-cell">{"Наименование"}</th>
                                     <th class="table__header-cell">{"ИНН"}</th>
@@ -178,29 +197,20 @@ pub fn OrganizationList() -> impl IntoView {
                             <tbody>
                                 {move || items.get().into_iter().map(|row| {
                                     let id = row.id.clone();
+                                    let id_for_click = id.clone();
+                                    let id_for_checkbox = id.clone();
+                                    let id_for_toggle = id.clone();
                                     let is_selected = selected.get().contains(&id);
                                     view! {
                                         <tr
                                             class="table__row"
                                             class:table__row--selected=is_selected
-                                            on:click=move |_| handle_edit(id.clone())
+                                            on:click=move |_| handle_edit(id_for_click.clone())
                                         >
-                                            <td class="table__cell table__cell--checkbox">
-                                                <input type="checkbox"
-                                                    prop:checked={
-                                                        let selected = selected.get();
-                                                        selected.contains(&id)
-                                                    }
-                                                    on:click=move |ev| ev.stop_propagation()
-                                                    on:change={
-                                                        let id2 = id.clone();
-                                                        move |ev| {
-                                                            let checked = event_target_checked(&ev);
-                                                            toggle_select(id2.clone(), checked);
-                                                        }
-                                                    }
-                                                />
-                                            </td>
+                                            <TableCheckbox
+                                                checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
+                                                on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
+                                            />
                                             <td class="table__cell">{row.code}</td>
                                             <td class="table__cell">{row.description}</td>
                                             <td class="table__cell">{row.inn}</td>

@@ -216,6 +216,15 @@ pub struct WbSalesListItemDto {
     pub operation_date: Option<String>,
 }
 
+/// Серверные итоги по датасету WB Sales
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesTotals {
+    pub total_records: usize,
+    pub sum_quantity: i32,
+    pub sum_for_pay: f64,
+    pub sum_retail_amount: f64,
+}
+
 /// Paginated response for WB Sales list
 #[derive(Debug, Clone, Serialize)]
 pub struct PaginatedWbSalesResponse {
@@ -224,6 +233,8 @@ pub struct PaginatedWbSalesResponse {
     pub page: usize,
     pub page_size: usize,
     pub total_pages: usize,
+    /// Серверные итоги по всему датасету
+    pub totals: Option<WbSalesTotals>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -271,7 +282,7 @@ pub async fn list_sales(
     };
 
     // Execute SQL query (no caching, direct DB query)
-    let result = list_sql(list_query).await.map_err(|e| {
+    let result = list_sql(list_query.clone()).await.map_err(|e| {
         tracing::error!("Failed to list Wildberries sales: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -348,13 +359,84 @@ pub async fn list_sales(
         })
         .collect();
 
+    // Рассчитать итоги по всему датасету (с учётом фильтров)
+    let totals = calculate_wb_sales_totals(&list_query).await.ok();
+
     Ok(Json(PaginatedWbSalesResponse {
         items,
         total,
         page,
         page_size,
         total_pages,
+        totals,
     }))
+}
+
+/// Рассчитать итоги по всему датасету WB Sales (с учётом фильтров)
+async fn calculate_wb_sales_totals(
+    query: &a012_wb_sales::repository::WbSalesListQuery,
+) -> Result<WbSalesTotals, anyhow::Error> {
+    use sea_orm::ConnectionTrait;
+
+    let db = get_connection();
+
+    // Build WHERE clause (такой же как в list_sql)
+    let mut conditions = vec!["is_deleted = 0".to_string()];
+
+    if let Some(ref date_from) = query.date_from {
+        conditions.push(format!("sale_date >= '{}'", date_from));
+    }
+    if let Some(ref date_to) = query.date_to {
+        conditions.push(format!("sale_date <= '{}'", date_to));
+    }
+    if let Some(ref org_id) = query.organization_id {
+        if !org_id.is_empty() {
+            conditions.push(format!("organization_ref = '{}'", org_id));
+        }
+    }
+    if let Some(ref sale_id) = query.search_sale_id {
+        if !sale_id.is_empty() {
+            conditions.push(format!("sale_id LIKE '%{}%'", sale_id));
+        }
+    }
+    if let Some(ref srid) = query.search_srid {
+        if !srid.is_empty() {
+            conditions.push(format!("srid LIKE '%{}%'", srid));
+        }
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Запрос итогов
+    let totals_sql = format!(
+        "SELECT 
+            COUNT(*) as total_records,
+            COALESCE(SUM(qty), 0) as sum_quantity,
+            COALESCE(SUM(finished_price), 0.0) as sum_for_pay,
+            COALESCE(SUM(total_price), 0.0) as sum_retail_amount
+        FROM a012_wb_sales 
+        WHERE {}",
+        where_clause
+    );
+
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, totals_sql);
+    let result = db.query_one(stmt).await?;
+
+    if let Some(row) = result {
+        Ok(WbSalesTotals {
+            total_records: row.try_get::<i64>("", "total_records").unwrap_or(0) as usize,
+            sum_quantity: row.try_get::<f64>("", "sum_quantity").unwrap_or(0.0) as i32,
+            sum_for_pay: row.try_get::<f64>("", "sum_for_pay").unwrap_or(0.0),
+            sum_retail_amount: row.try_get::<f64>("", "sum_retail_amount").unwrap_or(0.0),
+        })
+    } else {
+        Ok(WbSalesTotals {
+            total_records: 0,
+            sum_quantity: 0,
+            sum_for_pay: 0.0,
+            sum_retail_amount: 0.0,
+        })
+    }
 }
 
 /// Handler для получения детальной информации о Wildberries Sale

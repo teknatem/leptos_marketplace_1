@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
+use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::modal::Modal;
@@ -212,7 +213,25 @@ pub fn MarketplaceList() -> impl IntoView {
                 <table class="table__data table--striped">
                     <thead class="table__head">
                         <tr>
-                            <th class="table__header-cell table__header-cell--checkbox"></th>
+                            <th class="table__header-cell table__header-cell--checkbox">
+                                <input
+                                    type="checkbox"
+                                    class="table__checkbox"
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        let current_items = items.get();
+                                        if checked {
+                                            set_selected.update(|s| {
+                                                for item in current_items.iter() {
+                                                    s.insert(item.id.clone());
+                                                }
+                                            });
+                                        } else {
+                                            set_selected.set(HashSet::new());
+                                        }
+                                    }
+                                />
+                            </th>
                             <th class="table__header-cell">{"Логотип"}</th>
                             <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("code")>
                                 "Код"
@@ -249,6 +268,8 @@ pub fn MarketplaceList() -> impl IntoView {
                     <tbody>
                         {move || sorted_items().into_iter().map(|row| {
                             let id = row.id.clone();
+                            let id_for_checkbox = id.clone();
+                            let id_for_toggle = id.clone();
                             let id_for_selected = id.clone();
                             let id_for_click = id.clone();
                             let logo_path = row.logo_path.clone();
@@ -258,22 +279,10 @@ pub fn MarketplaceList() -> impl IntoView {
                                     class:table__row--selected={move || selected.get().contains(&id_for_selected)}
                                     on:click=move |_| handle_edit(id_for_click.clone())
                                 >
-                                    <td class="table__cell table__cell--checkbox">
-                                        <input type="checkbox"
-                                            prop:checked={
-                                                let selected = selected.get();
-                                                selected.contains(&id)
-                                            }
-                                            on:click=move |ev| ev.stop_propagation()
-                                            on:change={
-                                                let id2 = id.clone();
-                                                move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    toggle_select(id2.clone(), checked);
-                                                }
-                                            }
-                                        />
-                                    </td>
+                                    <TableCheckbox
+                                        checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
+                                        on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
+                                    />
                                     <td class="table__cell">
                                         {move || if let Some(ref path) = logo_path {
                                             view! { <img src={path.clone()} alt="logo" style="max-width: 32px; max-height: 32px;" /> }.into_any()

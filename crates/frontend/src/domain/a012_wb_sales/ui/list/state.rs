@@ -1,6 +1,7 @@
 use super::WbSalesDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct WbSalesState {
@@ -20,6 +21,17 @@ pub struct WbSalesState {
     // Search fields
     pub search_sale_id: String,
     pub search_srid: String,
+    // Серверные итоги
+    pub server_totals: Option<WbSalesTotals>,
+}
+
+/// Серверные итоги по датасету WB Sales
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WbSalesTotals {
+    pub total_records: usize,
+    pub sum_quantity: i32,
+    pub sum_for_pay: f64,
+    pub sum_retail_amount: f64,
 }
 
 impl Default for WbSalesState {
@@ -57,6 +69,8 @@ impl Default for WbSalesState {
             // Search defaults
             search_sale_id: String::new(),
             search_srid: String::new(),
+            // Итоги
+            server_totals: None,
         }
     }
 }
@@ -66,4 +80,3 @@ impl Default for WbSalesState {
 pub fn create_state() -> RwSignal<WbSalesState> {
     RwSignal::new(WbSalesState::default())
 }
-

@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
+use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
@@ -350,9 +351,10 @@ pub fn Connection1CList() -> impl IntoView {
                             <table id="connection-1c-table" class="table__data table--striped" style="min-width: 1200px; table-layout: fixed;">
                                 <thead>
                                     <tr>
-                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
+                                        <th class="table__header-cell table__header-cell--checkbox">
                                             <input
                                                 type="checkbox"
+                                                class="table__checkbox"
                                                 on:change=toggle_all
                                                 prop:checked=move || all_selected()
                                             />
@@ -396,13 +398,10 @@ pub fn Connection1CList() -> impl IntoView {
 
                                         view! {
                                             <tr on:click=on_row_click.clone()>
-                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
-                                                    <input
-                                                        type="checkbox"
-                                                        prop:checked=move || is_selected(&id_check)
-                                                        on:change=move |_| toggle_selection(id_toggle.clone())
-                                                    />
-                                                </td>
+                                                <TableCheckbox
+                                                    checked=Signal::derive(move || is_selected(&id_check))
+                                                    on_change=Callback::new(move |_checked| toggle_selection(id_toggle.clone()))
+                                                />
                                                 <td class="cell-truncate">{description}</td>
                                                 <td class="cell-truncate" style="color: #1565c0; font-size: 12px;">{url}</td>
                                                 <td class="cell-truncate">{login}</td>
