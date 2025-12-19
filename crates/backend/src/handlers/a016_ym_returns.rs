@@ -2,10 +2,12 @@ use axum::{extract::Query, Json};
 use chrono::NaiveDate;
 use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use contracts::domain::common::AggregateId;
+use sea_orm::Statement;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a016_ym_returns;
+use crate::shared::data::db::get_connection;
 use crate::shared::data::raw_storage;
 
 /// DTO для списка возвратов (минимальные поля)
@@ -23,6 +25,16 @@ pub struct YmReturnListItemDto {
     pub is_posted: bool,
 }
 
+/// Серверные итоги по датасету
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnsTotals {
+    pub total_records: usize,
+    pub sum_items: i32,
+    pub sum_amount: f64,
+    pub returns_count: usize,
+    pub unredeemed_count: usize,
+}
+
 /// Ответ с пагинацией
 #[derive(Debug, Clone, Serialize)]
 pub struct PaginatedYmReturnsResponse {
@@ -31,6 +43,8 @@ pub struct PaginatedYmReturnsResponse {
     pub page: usize,
     pub page_size: usize,
     pub total_pages: usize,
+    /// Серверные итоги по всему датасету (с учётом фильтров)
+    pub totals: Option<YmReturnsTotals>,
 }
 
 /// Параметры запроса списка
@@ -74,7 +88,7 @@ pub async fn list_returns(
         offset,
     };
 
-    let result = list_sql(list_query).await.map_err(|e| {
+    let result = list_sql(list_query.clone()).await.map_err(|e| {
         tracing::error!("Failed to list Yandex Market returns: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -86,13 +100,100 @@ pub async fn list_returns(
         0
     };
 
+    // Рассчитать итоги по всему датасету (с учётом фильтров)
+    let totals = calculate_totals(&list_query).await.ok();
+
     Ok(Json(PaginatedYmReturnsResponse {
         items: result.items,
         total,
         page,
         page_size,
         total_pages,
+        totals,
     }))
+}
+
+/// Рассчитать итоги по всему датасету (с учётом фильтров)
+async fn calculate_totals(
+    query: &a016_ym_returns::repository::YmReturnsListQuery,
+) -> Result<YmReturnsTotals, anyhow::Error> {
+    use sea_orm::ConnectionTrait;
+
+    let db = get_connection();
+
+    // Build WHERE clause (такой же как в list_sql)
+    let mut conditions = vec!["is_deleted = 0".to_string()];
+
+    if let Some(ref date_from) = query.date_from {
+        conditions.push(format!(
+            "json_extract(state_json, '$.created_at_source') >= '{}'",
+            date_from
+        ));
+    }
+    if let Some(ref date_to) = query.date_to {
+        conditions.push(format!(
+            "json_extract(state_json, '$.created_at_source') <= '{}T23:59:59'",
+            date_to
+        ));
+    }
+    if let Some(ref return_type) = query.return_type {
+        conditions.push(format!(
+            "json_extract(header_json, '$.return_type') = '{}'",
+            return_type
+        ));
+    }
+    if let Some(ref search_return_id) = query.search_return_id {
+        if !search_return_id.is_empty() {
+            conditions.push(format!(
+                "CAST(return_id AS TEXT) LIKE '%{}%'",
+                search_return_id
+            ));
+        }
+    }
+    if let Some(ref search_order_id) = query.search_order_id {
+        if !search_order_id.is_empty() {
+            conditions.push(format!(
+                "CAST(order_id AS TEXT) LIKE '%{}%'",
+                search_order_id
+            ));
+        }
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Запрос итогов
+    let totals_sql = format!(
+        "SELECT 
+            COUNT(*) as total_records,
+            COALESCE(SUM(json_extract(state_json, '$.total_items')), 0) as sum_items,
+            COALESCE(SUM(json_extract(state_json, '$.total_amount')), 0.0) as sum_amount,
+            SUM(CASE WHEN json_extract(header_json, '$.return_type') = 'RETURN' THEN 1 ELSE 0 END) as returns_count,
+            SUM(CASE WHEN json_extract(header_json, '$.return_type') = 'UNREDEEMED' THEN 1 ELSE 0 END) as unredeemed_count
+        FROM a016_ym_returns 
+        WHERE {}",
+        where_clause
+    );
+
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, totals_sql);
+    let result = db.query_one(stmt).await?;
+
+    if let Some(row) = result {
+        Ok(YmReturnsTotals {
+            total_records: row.try_get::<i64>("", "total_records").unwrap_or(0) as usize,
+            sum_items: row.try_get::<i64>("", "sum_items").unwrap_or(0) as i32,
+            sum_amount: row.try_get::<f64>("", "sum_amount").unwrap_or(0.0),
+            returns_count: row.try_get::<i64>("", "returns_count").unwrap_or(0) as usize,
+            unredeemed_count: row.try_get::<i64>("", "unredeemed_count").unwrap_or(0) as usize,
+        })
+    } else {
+        Ok(YmReturnsTotals {
+            total_records: 0,
+            sum_items: 0,
+            sum_amount: 0.0,
+            returns_count: 0,
+            unredeemed_count: 0,
+        })
+    }
 }
 
 /// Handler для получения всех возвратов (без пагинации, для обратной совместимости)

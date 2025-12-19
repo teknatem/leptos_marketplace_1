@@ -1,4 +1,5 @@
 use crate::domain::a006_connection_mp::ui::details::ConnectionMPDetails;
+use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::modal::Modal;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
@@ -140,9 +141,12 @@ pub fn ConnectionMPList() -> impl IntoView {
     fetch();
 
     view! {
-        <div class="content">
+        <div class="page">
+            // Page header with title and action buttons
             <div class="header">
-                <h2>{"Подключения маркетплейсов"}</h2>
+                <div class="header__content">
+                    <h1 class="header__title">{"Подключения маркетплейсов"}</h1>
+                </div>
                 <div class="header__actions">
                     <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
@@ -159,52 +163,69 @@ pub fn ConnectionMPList() -> impl IntoView {
                 </div>
             </div>
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
+            {move || error.get().map(|e| view! {
+                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
+                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                </div>
+            })}
 
-            <div class="table-container">
-                <table>
-                    <thead>
+            <div class="table">
+                <table class="table__data table--striped">
+                    <thead class="table__head">
                         <tr>
-                            <th></th>
-                            //<th>{"Код"}</th>
-                            <th>{"Наименование"}</th>
-                            <th>{"Маркетплейс"}</th>
-                            <th>{"Организация"}</th>
-                            <th>{"Используется"}</th>
-                            <th>{"Тестовый режим"}</th>
-                            <th>{"Комментарий"}</th>
-                            <th>{"Создано"}</th>
+                            <th class="table__header-cell table__header-cell--checkbox">
+                                <input
+                                    type="checkbox"
+                                    class="table__checkbox"
+                                    on:change=move |ev| {
+                                        let checked = event_target_checked(&ev);
+                                        let current_items = items.get();
+                                        if checked {
+                                            set_selected.update(|s| {
+                                                for item in current_items.iter() {
+                                                    s.insert(item.id.clone());
+                                                }
+                                            });
+                                        } else {
+                                            set_selected.set(HashSet::new());
+                                        }
+                                    }
+                                />
+                            </th>
+                            <th class="table__header-cell">{"Наименование"}</th>
+                            <th class="table__header-cell">{"Маркетплейс"}</th>
+                            <th class="table__header-cell">{"Организация"}</th>
+                            <th class="table__header-cell">{"Используется"}</th>
+                            <th class="table__header-cell">{"Тестовый режим"}</th>
+                            <th class="table__header-cell">{"Комментарий"}</th>
+                            <th class="table__header-cell">{"Создано"}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {move || items.get().into_iter().map(|row| {
                             let id = row.id.clone();
+                            let id_for_click = id.clone();
+                            let id_for_checkbox = id.clone();
+                            let id_for_toggle = id.clone();
+                            let is_selected = selected.get().contains(&id);
                             view! {
-                                <tr on:click=move |_| handle_edit(id.clone())>
-                                    <td>
-                                        <input type="checkbox"
-                                            prop:checked={
-                                                let selected = selected.get();
-                                                selected.contains(&id)
-                                            }
-                                            on:click=move |ev| ev.stop_propagation()
-                                            on:change={
-                                                let id2 = id.clone();
-                                                move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    toggle_select(id2.clone(), checked);
-                                                }
-                                            }
-                                        />
-                                    </td>
-                                    //<td>{row.code}</td>
-                                    <td>{row.description}</td>
-                                    <td>{row.marketplace}</td>
-                                    <td>{row.organization}</td>
-                                    <td>{if row.is_used { "Да" } else { "Нет" }}</td>
-                                    <td>{if row.test_mode { "Да" } else { "Нет" }}</td>
-                                    <td>{row.comment}</td>
-                                    <td>{row.created_at}</td>
+                                <tr
+                                    class="table__row"
+                                    class:table__row--selected=is_selected
+                                    on:click=move |_| handle_edit(id_for_click.clone())
+                                >
+                                    <TableCheckbox
+                                        checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
+                                        on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
+                                    />
+                                    <td class="table__cell">{row.description}</td>
+                                    <td class="table__cell">{row.marketplace}</td>
+                                    <td class="table__cell">{row.organization}</td>
+                                    <td class="table__cell">{if row.is_used { "Да" } else { "Нет" }}</td>
+                                    <td class="table__cell">{if row.test_mode { "Да" } else { "Нет" }}</td>
+                                    <td class="table__cell">{row.comment}</td>
+                                    <td class="table__cell">{row.created_at}</td>
                                 </tr>
                             }
                         }).collect_view()}
@@ -214,7 +235,11 @@ pub fn ConnectionMPList() -> impl IntoView {
 
             <Show when=move || show_modal.get()>
                 {move || {
-                    let modal_title = if editing_id.get().is_some() { "Edit Marketplace Connection".to_string() } else { "New Marketplace Connection".to_string() };
+                    let modal_title = if editing_id.get().is_some() {
+                        "Редактирование подключения".to_string()
+                    } else {
+                        "Новое подключение".to_string()
+                    };
                     view! {
                         <Modal
                             title=modal_title
@@ -225,8 +250,15 @@ pub fn ConnectionMPList() -> impl IntoView {
                         >
                             <ConnectionMPDetails
                                 id=editing_id.get()
-                                on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
-                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
+                                on_saved=Rc::new(move |_| {
+                                    set_show_modal.set(false);
+                                    set_editing_id.set(None);
+                                    fetch();
+                                })
+                                on_cancel=Rc::new(move |_| {
+                                    set_show_modal.set(false);
+                                    set_editing_id.set(None);
+                                })
                             />
                         </Modal>
                     }

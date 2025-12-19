@@ -1,9 +1,10 @@
 pub mod state;
 
-use self::state::create_state;
+use self::state::{create_state, WbSalesTotals};
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
+use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::list_utils::{
     format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
 };
@@ -17,9 +18,7 @@ use serde_json::json;
 use std::cmp::Ordering;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{
-    Blob, BlobPropertyBag, HtmlAnchorElement, Url,
-};
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -36,6 +35,8 @@ pub struct PaginatedResponse {
     pub page: usize,
     pub page_size: usize,
     pub total_pages: usize,
+    /// Серверные итоги по всему датасету
+    pub totals: Option<WbSalesTotals>,
 }
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
@@ -285,6 +286,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             s.sales = items;
                                             s.total_count = paginated.total;
                                             s.total_pages = paginated.total_pages;
+                                            s.server_totals = paginated.totals;
                                             s.is_loaded = true;
                                         });
                                         set_loading.set(false);
@@ -1040,9 +1042,10 @@ pub fn WbSalesList() -> impl IntoView {
                             <table id="wb-sales-table" class="table__data table--striped" style="min-width: 1740px; table-layout: fixed;">
                                 <thead>
                                     <tr>
-                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
+                                        <th class="table__header-cell table__header-cell--checkbox">
                                             <input
                                                 type="checkbox"
+                                                class="table__checkbox"
                                                 on:change=toggle_all
                                                 prop:checked=move || all_selected()
                                             />
@@ -1127,13 +1130,10 @@ pub fn WbSalesList() -> impl IntoView {
 
                                         view! {
                                             <tr on:click=on_row_click.clone()>
-                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
-                                                    <input
-                                                        type="checkbox"
-                                                        prop:checked=move || is_selected(&id_check)
-                                                        on:change=move |_| toggle_selection(id_toggle.clone())
-                                                    />
-                                                </td>
+                                                <TableCheckbox
+                                                    checked=Signal::derive(move || is_selected(&id_check))
+                                                    on_change=Callback::new(move |_checked| toggle_selection(id_toggle.clone()))
+                                                />
                                                 <td class="cell-truncate">{doc_no}</td>
                                                 <td class="cell-truncate" style="color: #6a1b9a;">{sale_id}</td>
                                                 <td>{date}</td>
