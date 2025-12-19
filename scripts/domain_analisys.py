@@ -77,14 +77,14 @@ def collect_metrics(root_dir):
         # --- 1. Contracts ---
         contracts_agg_path = FILE_PATHS["contracts"]["aggregate.rs"].format(root=root_dir, agg=agg)
         agg_metrics["contracts"]["aggregate.rs"] = get_file_size(contracts_agg_path)
-        processed_files.add(contracts_agg_path)
+        processed_files.add(os.path.normpath(contracts_agg_path))
         
         # --- 2. Backend ---
         for filename, path_template in FILE_PATHS["backend"].items():
             filepath = path_template.format(root=root_dir, agg=agg)
             size = get_file_size(filepath)
             agg_metrics["backend"][filename] = size
-            processed_files.add(filepath)
+            processed_files.add(os.path.normpath(filepath))
         
         # --- 3. Frontend ---
         
@@ -113,7 +113,7 @@ def collect_metrics(root_dir):
         handler_path = os.path.join(handlers_search_dir, f'{agg}.rs')
         if os.path.exists(handler_path):
             agg_metrics["handlers"]["handler_file"] = get_file_size(handler_path)
-            processed_files.add(handler_path)
+            processed_files.add(os.path.normpath(handler_path))
             # If the handler is A001, its handlers are often bundled in main.rs, which is 60k bytes.
             # However, for consistency and granular monitoring, we only track the specific handler file if it exists.
 
@@ -125,7 +125,7 @@ def collect_metrics(root_dir):
             for file in files:
                 if file.endswith('.rs'):
                     filepath = os.path.join(root, file)
-                    if filepath not in processed_files:
+                    if os.path.normpath(filepath) not in processed_files:
                         contracts_misc_size += get_file_size(filepath)
         agg_metrics["contracts"]["misc"] = contracts_misc_size
         
@@ -139,7 +139,7 @@ def collect_metrics(root_dir):
                     filepath = os.path.join(root, file)
                     
                     # 5.2.1 Check against explicit processed set
-                    if filepath in processed_files:
+                    if os.path.normpath(filepath) in processed_files:
                         continue
                         
                     # 5.2.2 Check against exclusion patterns (UseCases)
