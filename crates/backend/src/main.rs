@@ -28,11 +28,9 @@ async fn main() -> anyhow::Result<()> {
     use axum::middleware::{self, Next};
     use axum::response::Response;
     use axum::{
-        extract::{Path, Query},
         routing::{get, post},
-        Json, Router,
+        Router,
     };
-    use serde_json::json;
     use std::net::SocketAddr;
     use tokio::net::TcpListener;
     use tower_http::cors::{Any, CorsLayer};
@@ -158,951 +156,174 @@ async fn main() -> anyhow::Result<()> {
         ])
         .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION]);
 
-    // Minimal JSON endpoints for the aggregate to enable quick testing without server_fn
-    async fn list_connection_1c_handler() -> Result<
-        Json<Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>>,
-        axum::http::StatusCode,
-    > {
-        match domain::a001_connection_1c::service::list_all().await {
-            Ok(v) => Ok(Json(v)),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    // Пагинированный список подключений 1C
-    #[derive(serde::Deserialize)]
-    struct Connection1CListParams {
-        limit: Option<u64>,
-        offset: Option<u64>,
-        sort_by: Option<String>,
-        sort_desc: Option<bool>,
-    }
-
-    #[derive(serde::Serialize)]
-    struct Connection1CPaginatedResponse {
-        items: Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>,
-        total: u64,
-        page: usize,
-        page_size: usize,
-        total_pages: usize,
-    }
-
-    async fn list_connection_1c_paginated_handler(
-        axum::extract::Query(params): axum::extract::Query<Connection1CListParams>,
-    ) -> Result<Json<Connection1CPaginatedResponse>, axum::http::StatusCode> {
-        let limit = params.limit.unwrap_or(100).clamp(10, 10000);
-        let offset = params.offset.unwrap_or(0);
-        let sort_by = params.sort_by.as_deref().unwrap_or("description");
-        let sort_desc = params.sort_desc.unwrap_or(false);
-
-        match domain::a001_connection_1c::service::list_paginated(
-            limit,
-            offset,
-            sort_by,
-            sort_desc,
-        )
-        .await
-        {
-            Ok((items, total)) => {
-                let page_size = limit as usize;
-                let page = (offset as usize) / page_size;
-                let total_pages = ((total as usize) + page_size - 1) / page_size;
-
-                Ok(Json(Connection1CPaginatedResponse {
-                    items,
-                    total,
-                    page,
-                    page_size,
-                    total_pages,
-                }))
-            }
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-    async fn insert_test_data_handler() -> axum::http::StatusCode {
-        match domain::a001_connection_1c::service::insert_test_data().await {
-            Ok(_) => axum::http::StatusCode::OK,
-            Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-
-    async fn get_connection_1c_by_id_handler(
-        Path(id): Path<String>,
-    ) -> Result<
-        Json<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>,
-        axum::http::StatusCode,
-    > {
-        let uuid = match uuid::Uuid::parse_str(&id) {
-            Ok(uuid) => uuid,
-            Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-        };
-        match domain::a001_connection_1c::service::get_by_id(uuid).await {
-            Ok(Some(v)) => Ok(Json(v)),
-            Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn upsert_connection_1c_handler(
-        Json(dto): Json<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabaseDto>,
-    ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-        // Определяем операцию: create или update
-        let result = if dto.id.is_some() {
-            domain::a001_connection_1c::service::update(dto)
-                .await
-                .map(|_| uuid::Uuid::nil().to_string())
-        } else {
-            domain::a001_connection_1c::service::create(dto)
-                .await
-                .map(|id| id.to_string())
-        };
-
-        match result {
-            Ok(id) => Ok(Json(json!({"id": id}))),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn test_connection_1c_handler(
-        Json(dto): Json<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabaseDto>,
-    ) -> Result<
-        Json<contracts::domain::a001_connection_1c::aggregate::ConnectionTestResult>,
-        axum::http::StatusCode,
-    > {
-        match domain::a001_connection_1c::service::test_connection(dto).await {
-            Ok(result) => Ok(Json(result)),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    // Nomenclature search handler
-    #[derive(serde::Deserialize)]
-    struct SearchNomenclatureQuery {
-        article: String,
-    }
-
-    async fn search_nomenclature_by_article(
-        Query(query): Query<SearchNomenclatureQuery>,
-    ) -> Result<
-        Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
-        axum::http::StatusCode,
-    > {
-        match domain::a004_nomenclature::repository::find_by_article(query.article.trim()).await {
-            Ok(items) => Ok(Json(items)),
-            Err(e) => {
-                tracing::error!("Failed to search nomenclature by article: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    // Organization handlers
-    async fn list_organization_handler() -> Result<
-        Json<Vec<contracts::domain::a002_organization::aggregate::Organization>>,
-        axum::http::StatusCode,
-    > {
-        match domain::a002_organization::service::list_all().await {
-            Ok(v) => Ok(Json(v)),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn get_organization_by_id_handler(
-        Path(id): Path<String>,
-    ) -> Result<
-        Json<contracts::domain::a002_organization::aggregate::Organization>,
-        axum::http::StatusCode,
-    > {
-        let uuid = match uuid::Uuid::parse_str(&id) {
-            Ok(uuid) => uuid,
-            Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-        };
-        match domain::a002_organization::service::get_by_id(uuid).await {
-            Ok(Some(v)) => Ok(Json(v)),
-            Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn upsert_organization_handler(
-        Json(dto): Json<contracts::domain::a002_organization::aggregate::OrganizationDto>,
-    ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-        let result = if dto.id.is_some() {
-            domain::a002_organization::service::update(dto)
-                .await
-                .map(|_| uuid::Uuid::nil().to_string())
-        } else {
-            domain::a002_organization::service::create(dto)
-                .await
-                .map(|id| id.to_string())
-        };
-
-        match result {
-            Ok(id) => Ok(Json(json!({"id": id}))),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn delete_organization_handler(
-        Path(id): Path<String>,
-    ) -> Result<(), axum::http::StatusCode> {
-        let uuid = match uuid::Uuid::parse_str(&id) {
-            Ok(uuid) => uuid,
-            Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-        };
-        match domain::a002_organization::service::delete(uuid).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-            Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    }
-
-    async fn insert_organization_test_data_handler() -> axum::http::StatusCode {
-        match domain::a002_organization::service::insert_test_data().await {
-            Ok(_) => axum::http::StatusCode::OK,
-            Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-
-    // UseCase u501: Import from UT handlers
-    use once_cell::sync::Lazy;
-    use std::sync::Arc;
-    static IMPORT_EXECUTOR: Lazy<Arc<usecases::u501_import_from_ut::ImportExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u501_import_from_ut::ProgressTracker::new());
-            Arc::new(usecases::u501_import_from_ut::ImportExecutor::new(tracker))
-        });
-
-    async fn start_import_handler(
-        Json(request): Json<contracts::usecases::u501_import_from_ut::ImportRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u501_import_from_ut::ImportResponse>,
-        axum::http::StatusCode,
-    > {
-        match IMPORT_EXECUTOR.start_import(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start import: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_import_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u501_import_from_ut::progress::ImportProgress>,
-        axum::http::StatusCode,
-    > {
-        match IMPORT_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
-    // UseCase u502: Import from OZON handlers
-    static OZON_IMPORT_EXECUTOR: Lazy<Arc<usecases::u502_import_from_ozon::ImportExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u502_import_from_ozon::ProgressTracker::new());
-            Arc::new(usecases::u502_import_from_ozon::ImportExecutor::new(
-                tracker,
-            ))
-        });
-
-    async fn start_ozon_import_handler(
-        Json(request): Json<contracts::usecases::u502_import_from_ozon::ImportRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u502_import_from_ozon::ImportResponse>,
-        axum::http::StatusCode,
-    > {
-        match OZON_IMPORT_EXECUTOR.start_import(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start OZON import: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_ozon_import_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u502_import_from_ozon::progress::ImportProgress>,
-        axum::http::StatusCode,
-    > {
-        match OZON_IMPORT_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
-    // UseCase u503: Import from Yandex Market handlers
-    static YANDEX_IMPORT_EXECUTOR: Lazy<Arc<usecases::u503_import_from_yandex::ImportExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u503_import_from_yandex::ProgressTracker::new());
-            Arc::new(usecases::u503_import_from_yandex::ImportExecutor::new(
-                tracker,
-            ))
-        });
-
-    async fn start_yandex_import_handler(
-        Json(request): Json<contracts::usecases::u503_import_from_yandex::ImportRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u503_import_from_yandex::ImportResponse>,
-        axum::http::StatusCode,
-    > {
-        match YANDEX_IMPORT_EXECUTOR.start_import(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start Yandex Market import: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_yandex_import_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u503_import_from_yandex::progress::ImportProgress>,
-        axum::http::StatusCode,
-    > {
-        match YANDEX_IMPORT_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
-    // UseCase u504: Import from Wildberries handlers
-    static WB_IMPORT_EXECUTOR: Lazy<Arc<usecases::u504_import_from_wildberries::ImportExecutor>> =
-        Lazy::new(|| {
-            let tracker = Arc::new(usecases::u504_import_from_wildberries::ProgressTracker::new());
-            Arc::new(usecases::u504_import_from_wildberries::ImportExecutor::new(
-                tracker,
-            ))
-        });
-
-    async fn start_wildberries_import_handler(
-        Json(request): Json<contracts::usecases::u504_import_from_wildberries::ImportRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u504_import_from_wildberries::ImportResponse>,
-        axum::http::StatusCode,
-    > {
-        match WB_IMPORT_EXECUTOR.start_import(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start Wildberries import: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_wildberries_import_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u504_import_from_wildberries::progress::ImportProgress>,
-        axum::http::StatusCode,
-    > {
-        match WB_IMPORT_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
-    // UseCase u505: Match Nomenclature handlers
-    static MATCH_NOMENCLATURE_EXECUTOR: Lazy<
-        Arc<usecases::u505_match_nomenclature::MatchExecutor>,
-    > = Lazy::new(|| {
-        let tracker = Arc::new(usecases::u505_match_nomenclature::ProgressTracker::new());
-        Arc::new(usecases::u505_match_nomenclature::MatchExecutor::new(
-            tracker,
-        ))
-    });
-
-    async fn start_match_nomenclature_handler(
-        Json(request): Json<contracts::usecases::u505_match_nomenclature::MatchRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u505_match_nomenclature::MatchResponse>,
-        axum::http::StatusCode,
-    > {
-        match MATCH_NOMENCLATURE_EXECUTOR.start_matching(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start nomenclature matching: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_match_nomenclature_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u505_match_nomenclature::progress::MatchProgress>,
-        axum::http::StatusCode,
-    > {
-        match MATCH_NOMENCLATURE_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
-    // UseCase u506: Import from LemanaPro handlers
-    static LEMANAPRO_IMPORT_EXECUTOR: Lazy<
-        Arc<usecases::u506_import_from_lemanapro::ImportExecutor>,
-    > = Lazy::new(|| {
-        let tracker = Arc::new(usecases::u506_import_from_lemanapro::ProgressTracker::new());
-        Arc::new(usecases::u506_import_from_lemanapro::ImportExecutor::new(
-            tracker,
-        ))
-    });
-
-    async fn start_lemanapro_import_handler(
-        Json(request): Json<contracts::usecases::u506_import_from_lemanapro::ImportRequest>,
-    ) -> Result<
-        Json<contracts::usecases::u506_import_from_lemanapro::ImportResponse>,
-        axum::http::StatusCode,
-    > {
-        match LEMANAPRO_IMPORT_EXECUTOR.start_import(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(e) => {
-                tracing::error!("Failed to start LemanaPro import: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
-    async fn get_lemanapro_import_progress_handler(
-        Path(session_id): Path<String>,
-    ) -> Result<
-        Json<contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress>,
-        axum::http::StatusCode,
-    > {
-        match LEMANAPRO_IMPORT_EXECUTOR.get_progress(&session_id) {
-            Some(progress) => Ok(Json(progress)),
-            None => Err(axum::http::StatusCode::NOT_FOUND),
-        }
-    }
-
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         // ========================================
         // SYSTEM AUTH ROUTES (PUBLIC)
         // ========================================
-        .route("/api/system/auth/login", post(system::handlers::auth::login))
-        .route("/api/system/auth/refresh", post(system::handlers::auth::refresh))
-        .route("/api/system/auth/logout", post(system::handlers::auth::logout))
+        .route(
+            "/api/system/auth/login",
+            post(system::handlers::auth::login),
+        )
+        .route(
+            "/api/system/auth/refresh",
+            post(system::handlers::auth::refresh),
+        )
+        .route(
+            "/api/system/auth/logout",
+            post(system::handlers::auth::logout),
+        )
         // System auth routes (protected)
-        .route("/api/system/auth/me", get(system::handlers::auth::current_user)
-            .layer(middleware::from_fn(system::auth::middleware::require_auth)))
+        .route(
+            "/api/system/auth/me",
+            get(system::handlers::auth::current_user)
+                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
+        )
         // System users management (admin only)
-        .route("/api/system/users", 
+        .route(
+            "/api/system/users",
             get(system::handlers::users::list)
                 .post(system::handlers::users::create)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)))
-        .route("/api/system/users/:id",
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/users/:id",
             get(system::handlers::users::get_by_id)
                 .put(system::handlers::users::update)
                 .delete(system::handlers::users::delete)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)))
-        .route("/api/system/users/:id/change-password",
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/users/:id/change-password",
             post(system::handlers::users::change_password)
-                .layer(middleware::from_fn(system::auth::middleware::require_auth)))
+                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
+        )
         // ========================================
         // BUSINESS ROUTES (existing, without auth for now)
         // ========================================
         .route(
             "/api/connection_1c",
-            get(list_connection_1c_handler).post(upsert_connection_1c_handler),
+            get(handlers::a001_connection_1c::list_all).post(handlers::a001_connection_1c::upsert),
         )
         .route(
             "/api/connection_1c/list",
-            get(list_connection_1c_paginated_handler),
+            get(handlers::a001_connection_1c::list_paginated),
         )
         .route(
             "/api/connection_1c/:id",
-            get(get_connection_1c_by_id_handler),
+            get(handlers::a001_connection_1c::get_by_id),
         )
-        .route("/api/connection_1c/test", post(test_connection_1c_handler))
+        .route(
+            "/api/connection_1c/test",
+            post(handlers::a001_connection_1c::test_connection),
+        )
         .route(
             "/api/connection_1c/testdata",
-            post(insert_test_data_handler),
+            post(handlers::a001_connection_1c::insert_test_data),
         )
         .route(
             "/api/organization",
-            get(list_organization_handler).post(upsert_organization_handler),
+            get(handlers::a002_organization::list_all).post(handlers::a002_organization::upsert),
         )
         .route(
             "/api/organization/:id",
-            get(get_organization_by_id_handler).delete(delete_organization_handler),
+            get(handlers::a002_organization::get_by_id).delete(handlers::a002_organization::delete),
         )
         .route(
             "/api/organization/testdata",
-            post(insert_organization_test_data_handler),
+            post(handlers::a002_organization::insert_test_data),
         )
         // Counterparty handlers
         .route(
             "/api/counterparty",
-            get(|| async {
-                match domain::a003_counterparty::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a003_counterparty::aggregate::CounterpartyDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a003_counterparty::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a003_counterparty::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                    }
-                },
-            ),
+            get(handlers::a003_counterparty::list_all).post(handlers::a003_counterparty::upsert),
         )
         .route(
             "/api/counterparty/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a003_counterparty::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a003_counterparty::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a003_counterparty::get_by_id).delete(handlers::a003_counterparty::delete),
         )
         // Nomenclature handlers
         .route(
             "/api/nomenclature",
-            get(|| async {
-                match domain::a004_nomenclature::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a004_nomenclature::aggregate::NomenclatureDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a004_nomenclature::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a004_nomenclature::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                    }
-                },
-            ),
+            get(handlers::a004_nomenclature::list_all).post(handlers::a004_nomenclature::upsert),
         )
         .route(
             "/api/nomenclature/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a004_nomenclature::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a004_nomenclature::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a004_nomenclature::get_by_id).delete(handlers::a004_nomenclature::delete),
         )
         .route(
             "/api/nomenclature/import-excel",
-            post(|Json(excel_data): Json<domain::a004_nomenclature::excel_import::ExcelData>| async move {
-                tracing::info!("Received Excel import request with {} rows", excel_data.metadata.row_count);
-
-                // Импортируем данные из ExcelData (backend делает маппинг полей)
-                let result = match domain::a004_nomenclature::excel_import::import_nomenclature_from_excel_data(excel_data).await {
-                    Ok(result) => result,
-                    Err(e) => {
-                        tracing::error!("Excel import error: {}", e);
-                        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-                    }
-                };
-
-                Ok(Json(result))
-            }),
+            post(handlers::a004_nomenclature::import_excel),
         )
         .route(
             "/api/nomenclature/dimensions",
-            get(|| async {
-                match domain::a004_nomenclature::repository::get_distinct_dimension_values().await {
-                    Ok(values) => Ok(Json(values)),
-                    Err(e) => {
-                        tracing::error!("Failed to get dimension values: {}", e);
-                        Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                    }
-                }
-            }),
+            get(handlers::a004_nomenclature::get_dimensions),
         )
         .route(
             "/api/nomenclature/search",
-            get(search_nomenclature_by_article),
+            get(handlers::a004_nomenclature::search_by_article),
         )
         // Marketplace handlers
         .route(
             "/api/marketplace",
-            get(|| async {
-                match domain::a005_marketplace::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a005_marketplace::aggregate::MarketplaceDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a005_marketplace::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a005_marketplace::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                    }
-                },
-            ),
+            get(handlers::a005_marketplace::list_all).post(handlers::a005_marketplace::upsert),
         )
         .route(
             "/api/marketplace/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a005_marketplace::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a005_marketplace::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a005_marketplace::get_by_id).delete(handlers::a005_marketplace::delete),
         )
         .route(
             "/api/marketplace/testdata",
-            post(|| async {
-                match domain::a005_marketplace::service::insert_test_data().await {
-                    Ok(_) => axum::http::StatusCode::OK,
-                    Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                }
-            }),
+            post(handlers::a005_marketplace::insert_test_data),
         )
         // Connection MP handlers
         .route(
             "/api/connection_mp",
-            get(|| async {
-                match domain::a006_connection_mp::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a006_connection_mp::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a006_connection_mp::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(e) => {
-                            tracing::error!("Failed to save connection_mp: {}", e);
-                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }
-                },
-            ),
+            get(handlers::a006_connection_mp::list_all).post(handlers::a006_connection_mp::upsert),
         )
         .route(
             "/api/connection_mp/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a006_connection_mp::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a006_connection_mp::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a006_connection_mp::get_by_id)
+                .delete(handlers::a006_connection_mp::delete),
         )
         .route(
             "/api/connection_mp/test",
-            post(
-                |Json(dto): Json<
-                    contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto,
-                >| async move {
-                    match domain::a006_connection_mp::service::test_connection(dto).await {
-                        Ok(result) => Ok(Json(result)),
-                        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                    }
-                },
-            ),
+            post(handlers::a006_connection_mp::test_connection),
         )
         // Marketplace product handlers
         .route(
             "/api/marketplace_product",
-            get(|| async {
-                match domain::a007_marketplace_product::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a007_marketplace_product::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a007_marketplace_product::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(e) => {
-                            tracing::error!("Failed to save marketplace_product: {}", e);
-                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }
-                },
-            ),
+            get(handlers::a007_marketplace_product::list_all)
+                .post(handlers::a007_marketplace_product::upsert),
         )
         .route(
             "/api/marketplace_product/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a007_marketplace_product::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a007_marketplace_product::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a007_marketplace_product::get_by_id)
+                .delete(handlers::a007_marketplace_product::delete),
         )
         .route(
             "/api/marketplace_product/testdata",
-            post(|| async {
-                match domain::a007_marketplace_product::service::insert_test_data().await {
-                    Ok(_) => axum::http::StatusCode::OK,
-                    Err(e) => {
-                        tracing::error!("Failed to insert test data: {}", e);
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-                    }
-                }
-            }),
+            post(handlers::a007_marketplace_product::insert_test_data),
         )
         // Marketplace sales handlers
         .route(
             "/api/marketplace_sales",
-            get(|| async {
-                match domain::a008_marketplace_sales::service::list_all().await {
-                    Ok(v) => Ok(Json(v)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a008_marketplace_sales::aggregate::MarketplaceSalesDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a008_marketplace_sales::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a008_marketplace_sales::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(e) => {
-                            tracing::error!("Failed to save marketplace_sales: {}", e);
-                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }
-                },
-            ),
+            get(handlers::a008_marketplace_sales::list_all)
+                .post(handlers::a008_marketplace_sales::upsert),
         )
         .route(
             "/api/marketplace_sales/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a008_marketplace_sales::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => Ok(Json(v)),
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a008_marketplace_sales::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a008_marketplace_sales::get_by_id)
+                .delete(handlers::a008_marketplace_sales::delete),
         )
         // OZON Returns handlers
         .route(
             "/api/ozon_returns",
-            get(|| async {
-                match domain::a009_ozon_returns::service::list_all().await {
-                    Ok(aggregates) => {
-                        let list_dtos: Vec<_> = aggregates
-                            .into_iter()
-                            .map(|agg| agg.to_list_dto())
-                            .collect();
-                        Ok(Json(list_dtos))
-                    }
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(dto): Json<
-                    contracts::domain::a009_ozon_returns::aggregate::OzonReturnsDto,
-                >| async move {
-                    let result = if dto.id.is_some() {
-                        domain::a009_ozon_returns::service::update(dto)
-                            .await
-                            .map(|_| uuid::Uuid::nil().to_string())
-                    } else {
-                        domain::a009_ozon_returns::service::create(dto)
-                            .await
-                            .map(|id| id.to_string())
-                    };
-                    match result {
-                        Ok(id) => Ok(Json(json!({"id": id}))),
-                        Err(e) => {
-                            tracing::error!("Failed to save ozon_returns: {}", e);
-                            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }
-                },
-            ),
+            get(handlers::a009_ozon_returns::list_all).post(handlers::a009_ozon_returns::upsert),
         )
         .route(
             "/api/ozon_returns/:id",
-            get(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a009_ozon_returns::service::get_by_id(uuid).await {
-                    Ok(Some(v)) => {
-                        let detail_dto = v.to_detail_dto();
-                        Ok(Json(detail_dto))
-                    }
-                    Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .delete(|Path(id): Path<String>| async move {
-                let uuid = match uuid::Uuid::parse_str(&id) {
-                    Ok(uuid) => uuid,
-                    Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
-                };
-                match domain::a009_ozon_returns::service::delete(uuid).await {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            }),
+            get(handlers::a009_ozon_returns::get_by_id).delete(handlers::a009_ozon_returns::delete),
         )
         // OZON Transactions handlers
         .route(
@@ -1131,79 +352,65 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::a014_ozon_transactions::get_projections),
         )
         // UseCase u501: Import from UT
-        .route("/api/u501/import/start", post(start_import_handler))
+        .route(
+            "/api/u501/import/start",
+            post(handlers::usecases::u501_start_import),
+        )
         .route(
             "/api/u501/import/:session_id/progress",
-            get(get_import_progress_handler),
+            get(handlers::usecases::u501_get_progress),
         )
         // UseCase u502: Import from OZON
-        .route("/api/u502/import/start", post(start_ozon_import_handler))
+        .route(
+            "/api/u502/import/start",
+            post(handlers::usecases::u502_start_import),
+        )
         .route(
             "/api/u502/import/:session_id/progress",
-            get(get_ozon_import_progress_handler),
+            get(handlers::usecases::u502_get_progress),
         )
         // UseCase u503: Import from Yandex Market
-        .route("/api/u503/import/start", post(start_yandex_import_handler))
+        .route(
+            "/api/u503/import/start",
+            post(handlers::usecases::u503_start_import),
+        )
         .route(
             "/api/u503/import/:session_id/progress",
-            get(get_yandex_import_progress_handler),
+            get(handlers::usecases::u503_get_progress),
         )
         // UseCase u504: Import from Wildberries
         .route(
             "/api/u504/import/start",
-            post(start_wildberries_import_handler),
+            post(handlers::usecases::u504_start_import),
         )
         .route(
             "/api/u504/import/:session_id/progress",
-            get(get_wildberries_import_progress_handler),
+            get(handlers::usecases::u504_get_progress),
         )
         // UseCase u505: Match Nomenclature
         .route(
             "/api/u505/match/start",
-            post(start_match_nomenclature_handler),
+            post(handlers::usecases::u505_start_matching),
         )
         .route(
             "/api/u505/match/:session_id/progress",
-            get(get_match_nomenclature_progress_handler),
+            get(handlers::usecases::u505_get_progress),
         )
         // UseCase u506: Import from LemanaPro
         .route(
             "/api/u506/import/start",
-            post(start_lemanapro_import_handler),
+            post(handlers::usecases::u506_start_import),
         )
         .route(
             "/api/u506/import/:session_id/progress",
-            get(get_lemanapro_import_progress_handler),
+            get(handlers::usecases::u506_get_progress),
         )
         // Logs handlers
         .route(
             "/api/logs",
-            get(|| async {
-                match shared::logger::repository::get_all_logs().await {
-                    Ok(logs) => Ok(Json(logs)),
-                    Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            })
-            .post(
-                |Json(req): Json<contracts::shared::logger::CreateLogRequest>| async move {
-                    match shared::logger::repository::log_event(
-                        &req.source,
-                        &req.category,
-                        &req.message,
-                    )
-                    .await
-                    {
-                        Ok(_) => axum::http::StatusCode::OK,
-                        Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    }
-                },
-            )
-            .delete(|| async {
-                match shared::logger::repository::clear_all_logs().await {
-                    Ok(_) => axum::http::StatusCode::OK,
-                    Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                }
-            }),
+            get(handlers::logs::list_all)
+                .post(handlers::logs::create)
+                .delete(handlers::logs::clear_all),
         )
         // P900 Sales Register handlers
         .route(
@@ -1270,10 +477,7 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::p903_wb_finance_report::get_raw_json),
         )
         // P904 Sales Data handlers
-        .route(
-            "/api/p904/sales-data",
-            get(handlers::p904_sales_data::list),
-        )
+        .route("/api/p904/sales-data", get(handlers::p904_sales_data::list))
         // D400 Monthly Summary Dashboard
         .route(
             "/api/d400/monthly_summary",

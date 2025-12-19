@@ -2,13 +2,13 @@
   "a001_connection_1c": {
     "contracts": {
       "aggregate.rs": 5930,
-      "misc": 5950
+      "misc": 20
     },
     "backend": {
       "repository.rs": 8071,
       "service.rs": 6890,
       "posting.rs": 0,
-      "misc": 15000
+      "misc": 39
     },
     "frontend": {
       "details": 23817,
@@ -18,19 +18,19 @@
       "misc": 33
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 4127
     }
   },
   "a002_organization": {
     "contracts": {
       "aggregate.rs": 6698,
-      "misc": 6804
+      "misc": 106
     },
     "backend": {
       "repository.rs": 5262,
       "service.rs": 3619,
       "posting.rs": 0,
-      "misc": 8950
+      "misc": 69
     },
     "frontend": {
       "details": 13190,
@@ -40,19 +40,19 @@
       "misc": 115
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2493
     }
   },
   "a003_counterparty": {
     "contracts": {
       "aggregate.rs": 5387,
-      "misc": 5478
+      "misc": 91
     },
     "backend": {
       "repository.rs": 5025,
       "service.rs": 1639,
       "posting.rs": 0,
-      "misc": 6733
+      "misc": 69
     },
     "frontend": {
       "details": 16376,
@@ -62,19 +62,19 @@
       "misc": 33
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2203
     }
   },
   "a004_nomenclature": {
     "contracts": {
       "aggregate.rs": 9703,
-      "misc": 10418
+      "misc": 715
     },
     "backend": {
       "repository.rs": 12133,
       "service.rs": 1656,
       "posting.rs": 0,
-      "misc": 13881
+      "misc": 92
     },
     "frontend": {
       "details": 45684,
@@ -84,19 +84,19 @@
       "misc": 65
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 4212
     }
   },
   "a005_marketplace": {
     "contracts": {
       "aggregate.rs": 6277,
-      "misc": 6297
+      "misc": 20
     },
     "backend": {
       "repository.rs": 5284,
       "service.rs": 4300,
       "posting.rs": 0,
-      "misc": 9623
+      "misc": 39
     },
     "frontend": {
       "details": 15216,
@@ -106,19 +106,19 @@
       "misc": 113
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2460
     }
   },
   "a006_connection_mp": {
     "contracts": {
       "aggregate.rs": 9655,
-      "misc": 9818
+      "misc": 163
     },
     "backend": {
       "repository.rs": 6531,
       "service.rs": 4986,
       "posting.rs": 0,
-      "misc": 11556
+      "misc": 39
     },
     "frontend": {
       "details": 34034,
@@ -128,19 +128,19 @@
       "misc": 107
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2788
     }
   },
   "a007_marketplace_product": {
     "contracts": {
       "aggregate.rs": 9553,
-      "misc": 9573
+      "misc": 20
     },
     "backend": {
       "repository.rs": 7888,
       "service.rs": 13136,
       "posting.rs": 0,
-      "misc": 21063
+      "misc": 39
     },
     "frontend": {
       "details": 38855,
@@ -150,19 +150,19 @@
       "misc": 33
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2806
     }
   },
   "a008_marketplace_sales": {
     "contracts": {
       "aggregate.rs": 8713,
-      "misc": 8733
+      "misc": 20
     },
     "backend": {
       "repository.rs": 6475,
       "service.rs": 1771,
       "posting.rs": 0,
-      "misc": 8285
+      "misc": 39
     },
     "frontend": {
       "details": 0,
@@ -172,19 +172,19 @@
       "misc": 15
     },
     "handlers": {
-      "handler_file": 0
+      "handler_file": 2378
     }
   },
   "a009_ozon_returns": {
     "contracts": {
       "aggregate.rs": 16559,
-      "misc": 16579
+      "misc": 20
     },
     "backend": {
       "repository.rs": 7904,
       "service.rs": 1941,
       "posting.rs": 2154,
-      "misc": 12056
+      "misc": 57
     },
     "frontend": {
       "details": 45559,
@@ -194,19 +194,19 @@
       "misc": 33
     },
     "handlers": {
-      "handler_file": 1322
+      "handler_file": 3834
     }
   },
   "a010_ozon_fbs_posting": {
     "contracts": {
       "aggregate.rs": 7550,
-      "misc": 7572
+      "misc": 22
     },
     "backend": {
       "repository.rs": 8292,
       "service.rs": 2722,
       "posting.rs": 2228,
-      "misc": 13301
+      "misc": 59
     },
     "frontend": {
       "details": 57922,
@@ -222,13 +222,13 @@
   "a011_ozon_fbo_posting": {
     "contracts": {
       "aggregate.rs": 7373,
-      "misc": 7395
+      "misc": 22
     },
     "backend": {
       "repository.rs": 7781,
       "service.rs": 2000,
       "posting.rs": 1879,
-      "misc": 11719
+      "misc": 59
     },
     "frontend": {
       "details": 61624,
@@ -244,13 +244,13 @@
   "a012_wb_sales": {
     "contracts": {
       "aggregate.rs": 8535,
-      "misc": 8557
+      "misc": 22
     },
     "backend": {
       "repository.rs": 16701,
       "service.rs": 5291,
       "posting.rs": 2336,
-      "misc": 24387
+      "misc": 59
     },
     "frontend": {
       "details": 121135,
@@ -266,13 +266,13 @@
   "a013_ym_order": {
     "contracts": {
       "aggregate.rs": 10291,
-      "misc": 10313
+      "misc": 22
     },
     "backend": {
       "repository.rs": 24255,
       "service.rs": 14797,
       "posting.rs": 3444,
-      "misc": 42555
+      "misc": 59
     },
     "frontend": {
       "details": 77650,
@@ -288,13 +288,13 @@
   "a014_ozon_transactions": {
     "contracts": {
       "aggregate.rs": 10259,
-      "misc": 10279
+      "misc": 20
     },
     "backend": {
       "repository.rs": 14261,
       "service.rs": 10140,
       "posting.rs": 3538,
-      "misc": 34649
+      "misc": 6710
     },
     "frontend": {
       "details": 82544,
@@ -310,13 +310,13 @@
   "a015_wb_orders": {
     "contracts": {
       "aggregate.rs": 9474,
-      "misc": 9659
+      "misc": 185
     },
     "backend": {
       "repository.rs": 11217,
       "service.rs": 5228,
       "posting.rs": 1907,
-      "misc": 18411
+      "misc": 59
     },
     "frontend": {
       "details": 98170,
@@ -332,13 +332,13 @@
   "a016_ym_returns": {
     "contracts": {
       "aggregate.rs": 9217,
-      "misc": 9239
+      "misc": 22
     },
     "backend": {
       "repository.rs": 12878,
       "service.rs": 1608,
       "posting.rs": 2126,
-      "misc": 16671
+      "misc": 59
     },
     "frontend": {
       "details": 57925,
