@@ -5,7 +5,6 @@ use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
-use crate::shared::modal::Modal;
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
@@ -60,7 +59,6 @@ pub fn Connection1CList() -> impl IntoView {
     let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (show_modal, set_show_modal) = signal(false);
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
 
     let load_connections = move || {
@@ -183,14 +181,21 @@ pub fn Connection1CList() -> impl IntoView {
     // Проверка, выбран ли элемент
     let is_selected = move |id: &str| state.with(|s| s.selected_ids.contains(&id.to_string()));
 
-    let handle_create_new = move || {
-        set_editing_id.set(None);
-        set_show_modal.set(true);
+    let handle_create_new = move |_| {
+        set_editing_id.set(Some(String::new())); // Пустая строка = создание
     };
 
     let handle_edit = move |id: String| {
         set_editing_id.set(Some(id));
-        set_show_modal.set(true);
+    };
+
+    let handle_saved = move |_| {
+        set_editing_id.set(None); // Закрываем модалку
+        load_connections(); // Обновляем список
+    };
+
+    let handle_close = move |_| {
+        set_editing_id.set(None); // Просто закрываем
     };
 
     view! {
@@ -201,7 +206,7 @@ pub fn Connection1CList() -> impl IntoView {
                     <h1 class="header__title">{"1C Подключения"}</h1>
                 </div>
                 <div class="header__actions">
-                    <button class="button button--primary" on:click=move |_| handle_create_new()>
+                    <button class="button button--primary" on:click=handle_create_new>
                         {icon("plus")}
                         {"Новое"}
                     </button>
@@ -305,34 +310,12 @@ pub fn Connection1CList() -> impl IntoView {
                 }
             }}
 
-            // Modal dialog for details
-            <Show when=move || show_modal.get()>
-                {move || {
-                    view! {
-                        <Modal
-                            title="".to_string()
-                            on_close=Callback::new(move |_| {
-                                set_show_modal.set(false);
-                                set_editing_id.set(None);
-                            })
-                        >
-                            <Connection1CDetails
-                                id=editing_id.get().into()
-                                show=true.into()
-                                on_saved=Callback::new(move |_| {
-                                    set_show_modal.set(false);
-                                    set_editing_id.set(None);
-                                    load_connections();
-                                })
-                                on_close=Callback::new(move |_| {
-                                    set_show_modal.set(false);
-                                    set_editing_id.set(None);
-                                })
-                            />
-                        </Modal>
-                    }
-                }}
-            </Show>
+            // Details modal (controlled by editing_id)
+            <Connection1CDetails
+                id=editing_id.into()
+                on_saved=Callback::new(handle_saved)
+                on_close=Callback::new(handle_close)
+            />
         </div>
     }
 }

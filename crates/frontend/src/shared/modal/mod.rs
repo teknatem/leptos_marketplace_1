@@ -52,33 +52,15 @@ pub fn Modal(
     view! {
         <div class="modal-overlay" on:click=handle_overlay_click>
             <div class="modal" on:click=stop_propagation>
-                {
-                    // Only render header if title is provided
-                    if !title.is_empty() {
-                        view! {
-                            <div class="modal-header">
-                                <h2 class="modal-title">{title}</h2>
-                                <div class="modal-header-actions">
-                                    {
-                                        if let Some(buttons_fn) = action_buttons {
-                                            buttons_fn().into_any()
-                                        } else {
-                                            view! { <></> }.into_any()
-                                        }
-                                    }
-                                    <button
-                                        class="button button--ghost"
-                                        on:click=handle_close
-                                    >
-                                        {icon("x")}
-                                    </button>
-                                </div>
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <></> }.into_any()
-                    }
-                }
+                <div class="modal-header">
+                    <h2 class="modal-title">{title}</h2>
+                    <div class="modal-header-actions">
+                        {move || action_buttons.as_ref().map(|buttons| buttons())}
+                        <button class="button button--icon modal__close" on:click=handle_close>
+                            {icon("x")}
+                        </button>
+                    </div>
+                </div>
                 <div class="modal-body">
                     {children()}
                 </div>

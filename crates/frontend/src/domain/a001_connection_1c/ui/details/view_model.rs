@@ -29,6 +29,14 @@ impl Connection1CDetailsViewModel {
         }
     }
 
+    /// Reset form to default state
+    pub fn reset_form(&self) {
+        self.form.set(Connection1CDatabaseDto::default());
+        self.error.set(None);
+        self.test_result.set(None);
+        self.is_testing.set(false);
+    }
+
     pub fn is_edit_mode(&self) -> impl Fn() -> bool + '_ {
         move || self.form.get().id.is_some()
     }
@@ -42,8 +50,8 @@ impl Connection1CDetailsViewModel {
         }
     }
 
-    /// Load form data from server if ID is provided
-    pub fn load_if_needed(&self, id: Option<String>) {
+    /// Load form data from server if ID is provided, otherwise reset to default
+    pub fn load_or_reset(&self, id: Option<String>) {
         if let Some(existing_id) = id {
             let form = self.form;
             let error = self.error;
@@ -66,6 +74,9 @@ impl Connection1CDetailsViewModel {
                     Err(e) => error.set(Some(format!("Failed to load: {}", e))),
                 }
             });
+        } else {
+            // Создание нового - сбрасываем форму
+            self.reset_form();
         }
     }
 
