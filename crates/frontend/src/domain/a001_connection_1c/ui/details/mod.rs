@@ -1,9 +1,9 @@
 //! Connection1C Details UI Module
-//! 
+//!
 //! Simplified MVVM pattern implementation:
 //! - model.rs: API functions (fetch, save, test)
 //! - view_model.rs: ViewModel with commands and state management
-//! - view.rs: Leptos component (pure UI)
+//! - view.rs: Leptos component with Modal
 
 mod model;
 mod view;
