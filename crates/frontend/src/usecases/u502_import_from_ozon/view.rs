@@ -10,6 +10,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
 use std::collections::HashMap;
+use thaw::*;
 
 #[component]
 pub fn ImportWidget() -> impl IntoView {
@@ -19,14 +20,14 @@ pub fn ImportWidget() -> impl IntoView {
     let (error_msg, set_error_msg) = signal(String::new());
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<ImportProgress>);
-    let (import_a007, set_import_a007) = signal(true);
-    let (import_a008, set_import_a008) = signal(false);
-    let (import_a009, set_import_a009) = signal(false);
-    let (import_a010, set_import_a010) = signal(false); // OZON FBS Posting
-    let (import_a011, set_import_a011) = signal(false); // OZON FBO Posting
-    let (import_a014, set_import_a014) = signal(false); // OZON Transactions
-    let (import_p902, set_import_p902) = signal(false); // OZON Finance Realization
-                                                        // Даты периода (по умолчанию вчера)
+    let import_a007 = RwSignal::new(true);
+    let import_a008 = RwSignal::new(false);
+    let import_a009 = RwSignal::new(false);
+    let import_a010 = RwSignal::new(false); // OZON FBS Posting
+    let import_a011 = RwSignal::new(false); // OZON FBO Posting
+    let import_a014 = RwSignal::new(false); // OZON Transactions
+    let import_p902 = RwSignal::new(false); // OZON Finance Realization
+                                            // Даты периода (по умолчанию вчера)
     let now = Utc::now().date_naive();
     let yesterday = now - chrono::Duration::days(1);
     let (date_from, set_date_from) = signal(yesterday);
@@ -236,306 +237,269 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div class="import-widget" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto; max-height: 80vh; overflow-y: auto;">
-            <h2>"u502: Импорт из OZON"</h2>
+        <div style="padding: 20px; max-width: 900px; margin: 0 auto;">
+            <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px;">
+                "u502: Импорт из OZON"
+            </h1>
 
-            // Выбор подключения
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Подключение к маркетплейсу:"
-                </label>
-                <select
-                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
-                    on:change=move |ev| {
-                        set_selected_connection.set(event_target_value(&ev));
-                    }
-                    prop:disabled=move || is_loading.get()
-                >
-                    {move || connections.get().into_iter().map(|conn| {
-                        let id = conn.to_string_id();
-                        let id_clone = id.clone();
-                        let desc = conn.base.description.clone();
-                        view! {
-                            <option value={id}>
-                                {desc} " (" {id_clone} ")"
-                            </option>
+            <Space vertical=true>
+                // Выбор подключения
+                <div style="padding: 16px; background: var(--color-background-secondary); border-radius: 8px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px;">
+                        "Подключение к маркетплейсу:"
+                    </label>
+                    <select
+                        style="width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; background: var(--color-background-primary);"
+                        on:change=move |ev| {
+                            set_selected_connection.set(event_target_value(&ev));
                         }
-                    }).collect_view()}
-                </select>
-            </div>
-
-            // Список агрегатов
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">
-                    "Агрегаты для импорта:"
-                </label>
-                <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a007.get()
-                            on:change=move |ev| { set_import_a007.set(event_target_checked(&ev)); }
-                        />
-                        " a007_marketplace_product - Товары маркетплейса"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a008.get()
-                            on:change=move |ev| { set_import_a008.set(event_target_checked(&ev)); }
-                        />
-                        " a008_marketplace_sales - Продажи (фин. транзакции)"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a009.get()
-                            on:change=move |ev| { set_import_a009.set(event_target_checked(&ev)); }
-                        />
-                        " a009_ozon_returns - Возвраты OZON"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a010.get()
-                            on:change=move |ev| { set_import_a010.set(event_target_checked(&ev)); }
-                        />
-                        " a010_ozon_fbs_posting - OZON FBS Документы продаж (→ P900)"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a011.get()
-                            on:change=move |ev| { set_import_a011.set(event_target_checked(&ev)); }
-                        />
-                        " a011_ozon_fbo_posting - OZON FBO Документы продаж (→ P900)"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_a014.get()
-                            on:change=move |ev| { set_import_a014.set(event_target_checked(&ev)); }
-                        />
-                        " a014_ozon_transactions - Транзакции OZON"
-                    </label>
-                    <br/>
-                    <label>
-                        <input
-                            type="checkbox"
-                            prop:checked=move || import_p902.get()
-                            on:change=move |ev| { set_import_p902.set(event_target_checked(&ev)); }
-                        />
-                        " p902_ozon_finance_realization - Финансовые данные реализации OZON (P902)"
-                    </label>
-                </div>
-                <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list, POST /v3/posting/fbs/list, POST /v3/posting/fbo/list, POST /v1/finance/realization/posting"
-                </div>
-                <div style="margin-top: 5px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 12px;">
-                    "💡 a010/a011 автоматически создают записи в P900 Sales Register при импорте"
-                    <br/>
-                    "💡 p902 загружает данные ПО МЕСЯЦАМ (берется месяц из 'С даты', игнорируя 'По дату')"
-                </div>
-            </div>
-
-            // Период
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 8px; font-weight: bold;">{"Период:"}</label>
-                <div class="form-row">
-                    <div class="form__group">
-                        <label for="date_from">{"С даты"}</label>
-                        <input
-                            type="date"
-                            id="date_from"
-                            prop:value=move || date_from.get().format("%Y-%m-%d").to_string()
-                            on:change=move |ev| {
-                                let value = event_target_value(&ev);
-                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
-                                    set_date_from.set(d);
-                                }
+                        prop:disabled=move || is_loading.get()
+                    >
+                        {move || connections.get().into_iter().map(|conn| {
+                            let id = conn.to_string_id();
+                            let id_clone = id.clone();
+                            let desc = conn.base.description.clone();
+                            view! {
+                                <option value={id}>
+                                    {desc} " (" {id_clone} ")"
+                                </option>
                             }
-                        />
+                        }).collect_view()}
+                    </select>
+                </div>
+
+                // Список агрегатов
+                <div style="padding: 16px; background: var(--color-background-secondary); border-radius: 8px;">
+                    <label style="display: block; margin-bottom: 12px; font-weight: 600; font-size: 14px;">
+                        "Агрегаты для импорта:"
+                    </label>
+                    <Space vertical=true>
+                        <Checkbox checked=import_a007 label="a007_marketplace_product - Товары маркетплейса"/>
+                        <Checkbox checked=import_a008 label="a008_marketplace_sales - Продажи (фин. транзакции)"/>
+                        <Checkbox checked=import_a009 label="a009_ozon_returns - Возвраты OZON"/>
+                        <Checkbox checked=import_a010 label="a010_ozon_fbs_posting - OZON FBS Документы продаж (→ P900)"/>
+                        <Checkbox checked=import_a011 label="a011_ozon_fbo_posting - OZON FBO Документы продаж (→ P900)"/>
+                        <Checkbox checked=import_a014 label="a014_ozon_transactions - Транзакции OZON"/>
+                        <Checkbox checked=import_p902 label="p902_ozon_finance_realization - Финансовые данные реализации OZON (P902)"/>
+                    </Space>
+                    <div style="margin-top: 10px; font-size: 11px; color: var(--color-text-secondary);">
+                        "API: POST /v3/product/list, POST /v3/product/info/list, POST /v3/finance/transaction/list, POST /v1/returns/list, POST /v3/posting/fbs/list, POST /v3/posting/fbo/list, POST /v1/finance/realization/posting"
                     </div>
-                    <div class="form__group">
-                        <label for="date_to">{"По дату"}</label>
-                        <input
-                            type="date"
-                            id="date_to"
-                            prop:value=move || date_to.get().format("%Y-%m-%d").to_string()
-                            on:change=move |ev| {
-                                let value = event_target_value(&ev);
-                                if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
-                                    set_date_to.set(d);
-                                }
-                            }
-                        />
+                    <div style="margin-top: 8px; padding: 10px; background: rgba(255, 193, 7, 0.15); border-left: 3px solid #ffc107; border-radius: 4px; font-size: 12px;">
+                        "💡 a010/a011 автоматически создают записи в P900 Sales Register при импорте"
+                        <br/>
+                        "💡 p902 загружает данные ПО МЕСЯЦАМ (берется месяц из 'С даты', игнорируя 'По дату')"
                     </div>
                 </div>
-                <div style="margin-top: 5px; font-size: 12px; color: #666;">{"По умолчанию выбран вчерашний день."}</div>
-            </div>
 
-            // Кнопка запуска
-            <div style="margin: 20px 0;">
-                <button
-                    style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;"
-                    on:click=on_start_import
-                    prop:disabled=move || is_loading.get() || session_id.get().is_some()
-                >
-                    {move || if is_loading.get() {
-                        "Запуск..."
-                    } else if session_id.get().is_some() {
-                        "Импорт запущен"
-                    } else {
-                        "Запустить импорт"
-                    }}
-                </button>
-            </div>
-
-            // Ошибки
-            {move || {
-                let err = error_msg.get();
-                if !err.is_empty() {
-                    view! {
-                        <div style="padding: 10px; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c00; margin: 10px 0;">
-                            {err}
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
-
-            // Прогресс
-            {move || {
-                if let Some(prog) = progress.get() {
-                    view! {
-                        <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd;">
-                            <h3>"Прогресс импорта"</h3>
-                            <div style="margin: 10px 0;">
-                                <strong>"Session ID: "</strong> {prog.session_id.clone()}
-                            </div>
-                            <div style="margin: 10px 0;">
-                                <strong>"Статус: "</strong>
-                                <span style={move || format!("color: {}; font-weight: bold;",
-                                    match prog.status {
-                                        ImportStatus::Running => "#007bff",
-                                        ImportStatus::Completed => "#28a745",
-                                        ImportStatus::CompletedWithErrors => "#ffc107",
-                                        ImportStatus::Failed => "#dc3545",
-                                        ImportStatus::Cancelled => "#6c757d",
+                // Период
+                <div style="padding: 16px; background: var(--color-background-secondary); border-radius: 8px;">
+                    <label style="display: block; margin-bottom: 12px; font-weight: 600; font-size: 14px;">{"Период:"}</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form__group">
+                            <label for="date_from" style="display: block; margin-bottom: 6px; font-size: 13px;">{"С даты"}</label>
+                            <input
+                                type="date"
+                                id="date_from"
+                                prop:value=move || date_from.get().format("%Y-%m-%d").to_string()
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                        set_date_from.set(d);
                                     }
-                                )}>
-                                    {format!("{:?}", prog.status)}
-                                </span>
-                            </div>
-
-                            <div style="margin: 10px 0;">
-                                <strong>"Обработано: "</strong> {prog.total_processed} " | "
-                                <strong>"Создано: "</strong> {prog.total_inserted} " | "
-                                <strong>"Обновлено: "</strong> {prog.total_updated} " | "
-                                <strong>"Ошибок: "</strong> {prog.total_errors}
-                            </div>
-                            <div style="margin: 10px 0; font-size: 12px; color: #666;">
-                                <strong>"Последнее обновление: "</strong>
-                                {prog.updated_at.to_rfc3339()}
-                            </div>
-
-                            // Прогресс по агрегатам
-                            <div style="margin-top: 15px;">
-                                <h4>"Детали по агрегатам:"</h4>
-                                {prog.aggregates.iter().map(|agg| {
-                                    let percent = if let Some(total) = agg.total {
-                                        if total > 0 {
-                                            (agg.processed as f64 / total as f64 * 100.0) as i32
-                                        } else {
-                                            0
-                                        }
-                                    } else {
-                                        0
-                                    };
-
-                                    view! {
-                                        <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 4px; border: 1px solid #ddd;">
-                                            <div style="font-weight: bold;">
-                                                {agg.aggregate_index.clone()} " - " {agg.aggregate_name.clone()}
-                                            </div>
-                                            <div style="margin: 5px 0;">
-                                                {agg.processed} {if let Some(t) = agg.total { format!(" / {}", t) } else { String::new() }}
-                                                {if percent > 0 { format!(" ({}%)", percent) } else { String::new() }}
-                                            </div>
-                                            <div style="background: #e0e0e0; height: 20px; border-radius: 4px; overflow: hidden;">
-                                                <div style={format!("width: {}%; height: 100%; background: #007bff; transition: width 0.3s;", percent)}></div>
-                                            </div>
-                                            {agg.current_item.as_ref().map(|ci| view! {
-                                                <div style="margin-top: 5px; font-size: 12px; color: #333;">
-                                                    <strong>{"Текущий элемент: "}</strong>{ci.clone()}
-                                                </div>
-                                            })}
-                                            <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                                                "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Ошибок: " {agg.errors}
-                                            </div>
-                                        </div>
-                                    }
-                                }).collect_view()}
-                            </div>
-
-                            // Ошибки
-                            {if !prog.errors.is_empty() {
-                                view! {
-                                    <div style="margin-top: 15px;">
-                                        <h4 style="color: #dc3545;">"Ошибки импорта:"</h4>
-                                        {prog.errors.iter().map(|err| {
-                                            view! {
-                                                <div style="margin: 5px 0; padding: 8px; background: #fee; border: 1px solid #fcc; border-radius: 4px; font-size: 12px;">
-                                                    <div style="font-weight: bold;">{err.message.clone()}</div>
-                                                    {err.details.as_ref().map(|d| view! {
-                                                        <div style="color: #666; margin-top: 3px;">{d.clone()}</div>
-                                                    })}
-                                                </div>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! { <div></div> }.into_any()
-                            }}
+                                }
+                                style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
+                            />
                         </div>
-                    }.into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
+                        <div class="form__group">
+                            <label for="date_to" style="display: block; margin-bottom: 6px; font-size: 13px;">{"По дату"}</label>
+                            <input
+                                type="date"
+                                id="date_to"
+                                prop:value=move || date_to.get().format("%Y-%m-%d").to_string()
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    if let Ok(d) = chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d") {
+                                        set_date_to.set(d);
+                                    }
+                                }
+                                style="width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
+                            />
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 11px; color: var(--color-text-secondary);">{"По умолчанию выбран вчерашний день."}</div>
+                </div>
 
-            // Отображение пути загрузки (перемещено вниз)
-            {move || {
-                let conn_id = selected_connection.get();
-                if !conn_id.is_empty() {
-                    if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
+                // Кнопка запуска
+                <div>
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=on_start_import
+                        disabled=Signal::derive(move || is_loading.get() || session_id.get().is_some())
+                    >
+                        {move || if is_loading.get() {
+                            "⏳ Запуск..."
+                        } else if session_id.get().is_some() {
+                            "✓ Импорт запущен"
+                        } else {
+                            "▶ Запустить импорт"
+                        }}
+                    </Button>
+                </div>
+
+                // Ошибки
+                {move || {
+                    let err = error_msg.get();
+                    if !err.is_empty() {
                         view! {
-                            <div style="margin: 20px 0; padding: 10px; background: #e3f2fd; border-radius: 4px; border: 1px solid #90caf9;">
-                                <div style="font-weight: bold; margin-bottom: 5px; color: #1976d2;">
-                                    "API подключения:"
-                                </div>
-                                <div style="font-family: monospace; font-size: 12px; color: #555;">
-                                    "Client-Id: " {conn.application_id.clone().unwrap_or_else(|| "—".to_string())}
-                                </div>
-                                <div style="font-family: monospace; font-size: 12px; color: #555;">
-                                    "Api-Key: ****"
-                                </div>
+                            <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; color: var(--color-error); display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">"⚠"</span>
+                                <span>{err}</span>
                             </div>
                         }.into_any()
                     } else {
                         view! { <div></div> }.into_any()
                     }
+                }}
+
+                // Прогресс
+                {move || {
+                    if let Some(prog) = progress.get() {
+                        view! {
+                            <div style="padding: 16px; background: var(--color-background-secondary); border-radius: 8px; border: 1px solid var(--color-border);">
+                                <h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">"Прогресс импорта"</h3>
+                                <div style="margin: 8px 0; font-size: 13px;">
+                                    <strong>"Session ID: "</strong>
+                                    <span style="font-family: monospace; font-size: 11px;">{prog.session_id.clone()}</span>
+                                </div>
+                                <div style="margin: 8px 0;">
+                                    <strong>"Статус: "</strong>
+                                    <span style={move || format!("color: {}; font-weight: bold; padding: 4px 8px; border-radius: 4px; background: {}; font-size: 13px;",
+                                        match prog.status {
+                                            ImportStatus::Running => "#0078d4",
+                                            ImportStatus::Completed => "#107c10",
+                                            ImportStatus::CompletedWithErrors => "#ca5010",
+                                            ImportStatus::Failed => "#d13438",
+                                            ImportStatus::Cancelled => "#605e5c",
+                                        },
+                                        match prog.status {
+                                            ImportStatus::Running => "rgba(0, 120, 212, 0.1)",
+                                            ImportStatus::Completed => "rgba(16, 124, 16, 0.1)",
+                                            ImportStatus::CompletedWithErrors => "rgba(202, 80, 16, 0.1)",
+                                            ImportStatus::Failed => "rgba(209, 52, 56, 0.1)",
+                                            ImportStatus::Cancelled => "rgba(96, 94, 92, 0.1)",
+                                        }
+                                    )}>
+                                        {format!("{:?}", prog.status)}
+                                    </span>
+                                </div>
+
+                                <div style="margin: 12px 0; padding: 10px; background: var(--color-background-primary); border-radius: 6px; font-size: 13px;">
+                                    <strong>"Обработано: "</strong> {prog.total_processed} " | "
+                                    <strong>"Создано: "</strong> {prog.total_inserted} " | "
+                                    <strong>"Обновлено: "</strong> {prog.total_updated} " | "
+                                    <strong>"Ошибок: "</strong> {prog.total_errors}
+                                </div>
+                                <div style="margin: 8px 0; font-size: 11px; color: var(--color-text-secondary);">
+                                    <strong>"Последнее обновление: "</strong>
+                                    {prog.updated_at.to_rfc3339()}
+                                </div>
+
+                                // Прогресс по агрегатам
+                                <div style="margin-top: 12px;">
+                                    <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">"Детали по агрегатам:"</h4>
+                                    <Space vertical=true>
+                                        {prog.aggregates.iter().map(|agg| {
+                                            let percent = if let Some(total) = agg.total {
+                                                if total > 0 {
+                                                    (agg.processed as f64 / total as f64 * 100.0) as i32
+                                                } else {
+                                                    0
+                                                }
+                                            } else {
+                                                0
+                                            };
+
+                                            view! {
+                                                <div style="padding: 12px; background: var(--color-background-primary); border-radius: 6px; border: 1px solid var(--color-border);">
+                                                    <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">
+                                                        {agg.aggregate_index.clone()} " - " {agg.aggregate_name.clone()}
+                                                    </div>
+                                                    <div style="margin: 6px 0; font-size: 13px;">
+                                                        {agg.processed} {if let Some(t) = agg.total { format!(" / {}", t) } else { String::new() }}
+                                                        {if percent > 0 { format!(" ({}%)", percent) } else { String::new() }}
+                                                    </div>
+                                                    <div style="background: var(--color-border); height: 16px; border-radius: 4px; overflow: hidden;">
+                                                        <div style={format!("width: {}%; height: 100%; background: var(--colorBrandForeground1); transition: width 0.3s;", percent)}></div>
+                                                    </div>
+                                                    {agg.current_item.as_ref().map(|ci| view! {
+                                                        <div style="margin-top: 6px; font-size: 11px; color: var(--color-text-secondary);">
+                                                            <strong>{"Текущий элемент: "}</strong>{ci.clone()}
+                                                        </div>
+                                                    })}
+                                                    <div style="margin-top: 6px; font-size: 11px; color: var(--color-text-secondary);">
+                                                        "Создано: " {agg.inserted} " | Обновлено: " {agg.updated} " | Ошибок: " {agg.errors}
+                                                    </div>
+                                                </div>
+                                            }
+                                        }).collect_view()}
+                                    </Space>
+                                </div>
+
+                                // Ошибки
+                                {if !prog.errors.is_empty() {
+                                    view! {
+                                        <div style="margin-top: 12px;">
+                                            <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: var(--color-error);">"Ошибки импорта:"</h4>
+                                            <Space vertical=true>
+                                                {prog.errors.iter().map(|err| {
+                                                    view! {
+                                                        <div style="padding: 10px; background: var(--color-error-50); border-left: 3px solid var(--color-error); border-radius: 4px; font-size: 12px;">
+                                                            <div style="font-weight: 600; color: var(--color-error);">{err.message.clone()}</div>
+                                                            {err.details.as_ref().map(|d| view! {
+                                                                <div style="color: var(--color-text-secondary); margin-top: 4px; font-size: 11px;">{d.clone()}</div>
+                                                            })}
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </Space>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <div></div> }.into_any()
+                                }}
+                        </div>
+                    }.into_any()
                 } else {
                     view! { <div></div> }.into_any()
                 }
             }}
+
+                // Отображение пути загрузки
+                {move || {
+                    let conn_id = selected_connection.get();
+                    if !conn_id.is_empty() {
+                        if let Some(conn) = connections.get().iter().find(|c| c.to_string_id() == conn_id) {
+                            view! {
+                                <div style="padding: 12px; background: rgba(0, 120, 212, 0.1); border-radius: 6px; border-left: 3px solid #0078d4;">
+                                    <div style="font-weight: 600; margin-bottom: 6px; color: #0078d4; font-size: 13px;">
+                                        "API подключения:"
+                                    </div>
+                                    <div style="font-family: monospace; font-size: 11px; color: var(--color-text-primary);">
+                                        "Client-Id: " {conn.application_id.clone().unwrap_or_else(|| "—".to_string())}
+                                    </div>
+                                    <div style="font-family: monospace; font-size: 11px; color: var(--color-text-primary);">
+                                        "Api-Key: ****"
+                                    </div>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <div></div> }.into_any()
+                        }
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                }}
 
             // Результаты загрузки
             {move || {
@@ -548,30 +512,41 @@ pub fn ImportWidget() -> impl IntoView {
                     let elapsed = format!("{:02}:{:02}:{:02}", h, m, s);
                     if is_success {
                         view! {
-                            <div style="margin: 10px 0; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 4px;">
-                                <div><strong>{"Успех: "}</strong>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
-                                <div><strong>{"Количество элементов: "}</strong>{prog.total_processed}</div>
-                                <div><strong>{"Время работы: "}</strong>{elapsed}</div>
+                            <div style="padding: 12px; background: rgba(16, 124, 16, 0.1); border-left: 3px solid #107c10; border-radius: 6px;">
+                                <div style="font-weight: 600; font-size: 14px; color: #107c10; margin-bottom: 8px;">{"✓ Импорт успешно завершен"}</div>
+                                <div style="font-size: 13px; margin: 4px 0;"><strong>{"Завершено: "}</strong>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
+                                <div style="font-size: 13px; margin: 4px 0;"><strong>{"Обработано элементов: "}</strong>{prog.total_processed}</div>
+                                <div style="font-size: 13px; margin: 4px 0;"><strong>{"Время работы: "}</strong>{elapsed}</div>
                             </div>
                         }.into_any()
                     } else if is_error {
                         view! {
-                            <div style="margin: 10px 0; padding: 10px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px;">
-                                <div style="font-weight: bold; color: #c62828;">{"Ошибка импорта"}</div>
+                            <div style="padding: 12px; background: var(--color-error-50); border-left: 3px solid var(--color-error); border-radius: 6px;">
+                                <div style="font-weight: 600; font-size: 14px; color: var(--color-error); margin-bottom: 8px;">{"✗ Ошибка импорта"}</div>
                                 {if let Some(last) = prog.errors.last() {
                                     let details = last.details.clone().unwrap_or_default();
-                                    view! { <div><div><strong>{last.message.clone()}</strong></div><div style="font-size: 12px; color: #666;">{details}</div></div> }.into_any()
+                                    view! {
+                                        <div>
+                                            <div style="font-weight: 600; font-size: 13px; margin: 4px 0; color: var(--color-error);">{last.message.clone()}</div>
+                                            {if !details.is_empty() {
+                                                view! { <div style="font-size: 11px; color: var(--color-text-secondary); margin-top: 4px;">{details}</div> }.into_any()
+                                            } else {
+                                                view! { <div></div> }.into_any()
+                                            }}
+                                        </div>
+                                    }.into_any()
                                 } else {
-                                    view! { <div>{"Нет подробностей ошибки"}</div> }.into_any()
+                                    view! { <div style="font-size: 13px;">{"Нет подробностей ошибки"}</div> }.into_any()
                                 }}
-                                <div style="margin-top: 5px; font-size: 12px; color: #666;">{"Статус: "}{format!("{:?}", prog.status)}</div>
+                                <div style="margin-top: 6px; font-size: 11px; color: var(--color-text-secondary);">{"Статус: "}{format!("{:?}", prog.status)}</div>
                             </div>
                         }.into_any()
                     } else {
                         view! { <div></div> }.into_any()
                     }
-                } else { view! { <div></div> }.into_any() }
+                } else { view! { <div></div> }.into_any()                 }
             }}
+            </Space>
         </div>
     }
 }

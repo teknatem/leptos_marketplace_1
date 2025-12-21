@@ -112,7 +112,10 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "settings",
             label: "Настройки",
             icon: "settings",
-            items: vec![("sys_users", "Пользователи", "users")],
+            items: vec![
+                ("sys_users", "Пользователи", "users"),
+                ("sys_thaw_test", "Тест Thaw UI", "test-tube"),
+            ],
             admin_only: true,
         },
     ]

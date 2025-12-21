@@ -32,10 +32,7 @@ pub fn export_to_excel<T: ExcelExportable>(data: &[T], filename: &str) -> Result
     for item in data {
         let row = item.to_csv_row();
         // Экранируем значения, содержащие разделители или кавычки
-        let escaped_row: Vec<String> = row
-            .iter()
-            .map(|cell| escape_csv_cell(cell))
-            .collect();
+        let escaped_row: Vec<String> = row.iter().map(|cell| escape_csv_cell(cell)).collect();
         csv_content.push_str(&escaped_row.join(";"));
         csv_content.push('\n');
     }
@@ -91,7 +88,9 @@ fn download_blob(blob: &Blob, filename: &str) -> Result<(), String> {
 
     anchor.set_href(&url);
     anchor.set_download(filename);
-    anchor.style().set_property("display", "none")
+    anchor
+        .style()
+        .set_property("display", "none")
         .map_err(|e| format!("Failed to set style: {:?}", e))?;
 
     // Добавляем в DOM, кликаем и удаляем
@@ -110,8 +109,7 @@ fn download_blob(blob: &Blob, filename: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to remove anchor: {:?}", e))?;
 
     // Освобождаем URL
-    Url::revoke_object_url(&url)
-        .map_err(|e| format!("Failed to revoke URL: {:?}", e))?;
+    Url::revoke_object_url(&url).map_err(|e| format!("Failed to revoke URL: {:?}", e))?;
 
     Ok(())
 }

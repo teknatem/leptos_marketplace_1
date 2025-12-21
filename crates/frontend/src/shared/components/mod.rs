@@ -1,4 +1,5 @@
 pub mod date_input;
+pub mod date_range_picker;
 pub mod filter_panel;
 pub mod month_selector;
 pub mod page_header;

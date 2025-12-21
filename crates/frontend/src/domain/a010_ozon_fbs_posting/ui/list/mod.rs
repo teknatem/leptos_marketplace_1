@@ -1,9 +1,9 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
-use gloo_net::http::Request;
 use super::details::OzonFbsPostingDetail;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
@@ -36,7 +36,10 @@ pub struct OzonFbsPostingDto {
 impl Sortable for OzonFbsPostingDto {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
-            "document_no" => self.document_no.to_lowercase().cmp(&other.document_no.to_lowercase()),
+            "document_no" => self
+                .document_no
+                .to_lowercase()
+                .cmp(&other.document_no.to_lowercase()),
             "delivered_at" => {
                 // Сортировка с учетом None (None идут в конец)
                 match (&self.delivered_at, &other.delivered_at) {
@@ -45,18 +48,22 @@ impl Sortable for OzonFbsPostingDto {
                     (None, Some(_)) => Ordering::Greater,
                     (None, None) => Ordering::Equal,
                 }
+            }
+            "substatus_raw" => match (&self.substatus_raw, &other.substatus_raw) {
+                (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
             },
-            "substatus_raw" => {
-                match (&self.substatus_raw, &other.substatus_raw) {
-                    (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
-                    (Some(_), None) => Ordering::Less,
-                    (None, Some(_)) => Ordering::Greater,
-                    (None, None) => Ordering::Equal,
-                }
-            },
-            "total_amount" => self.total_amount.partial_cmp(&other.total_amount).unwrap_or(Ordering::Equal),
+            "total_amount" => self
+                .total_amount
+                .partial_cmp(&other.total_amount)
+                .unwrap_or(Ordering::Equal),
             "line_count" => self.line_count.cmp(&other.line_count),
-            "description" => self.description.to_lowercase().cmp(&other.description.to_lowercase()),
+            "description" => self
+                .description
+                .to_lowercase()
+                .cmp(&other.description.to_lowercase()),
             "is_posted" => self.is_posted.cmp(&other.is_posted),
             _ => Ordering::Equal,
         }
@@ -87,7 +94,8 @@ pub fn OzonFbsPostingList() -> impl IntoView {
 
     // Статус массовых операций
     let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (operation_results, set_operation_results) = signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
+    let (operation_results, set_operation_results) =
+        signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
     let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
 
     let load_postings = move || {
@@ -106,8 +114,10 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                     if status == 200 {
                         match response.text().await {
                             Ok(text) => {
-                                log!("Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>());
+                                log!(
+                                    "Received response text (first 500 chars): {}",
+                                    text.chars().take(500).collect::<String>()
+                                );
 
                                 match serde_json::from_str::<Vec<serde_json::Value>>(&text) {
                                     Ok(data) => {
@@ -147,17 +157,23 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                                                 let line_count = lines.len();
                                                 let total_amount: f64 = lines
                                                     .iter()
-                                                    .filter_map(|line| line.get("amount_line")?.as_f64())
+                                                    .filter_map(|line| {
+                                                        line.get("amount_line")?.as_f64()
+                                                    })
                                                     .sum();
 
-                                                let is_posted = v.get("is_posted")
+                                                let is_posted = v
+                                                    .get("is_posted")
                                                     .and_then(|p| p.as_bool())
                                                     .unwrap_or(false);
 
                                                 let result = Some(OzonFbsPostingDto {
                                                     id: v.get("id")?.as_str()?.to_string(),
                                                     code: v.get("code")?.as_str()?.to_string(),
-                                                    description: v.get("description")?.as_str()?.to_string(),
+                                                    description: v
+                                                        .get("description")?
+                                                        .as_str()?
+                                                        .to_string(),
                                                     document_no: v
                                                         .get("header")?
                                                         .get("document_no")?
@@ -179,13 +195,18 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                                             })
                                             .collect();
 
-                                        log!("Successfully parsed {} postings out of {}", items.len(), total_count);
+                                        log!(
+                                            "Successfully parsed {} postings out of {}",
+                                            items.len(),
+                                            total_count
+                                        );
                                         set_postings.set(items);
                                         set_loading.set(false);
                                     }
                                     Err(e) => {
                                         log!("Failed to parse response: {:?}", e);
-                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                        set_error
+                                            .set(Some(format!("Failed to parse response: {}", e)));
                                         set_loading.set(false);
                                     }
                                 }
@@ -249,7 +270,11 @@ pub fn OzonFbsPostingList() -> impl IntoView {
         let ascending = sort_ascending.get();
         result.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         result
@@ -293,7 +318,8 @@ pub fn OzonFbsPostingList() -> impl IntoView {
         if selected.len() == items.len() && !items.is_empty() {
             set_selected_ids.set(Vec::new()); // Снять все
         } else {
-            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect()); // Выбрать все
+            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect());
+            // Выбрать все
         }
     };
 
@@ -305,9 +331,7 @@ pub fn OzonFbsPostingList() -> impl IntoView {
     };
 
     // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| {
-        selected_ids.get().contains(&id.to_string())
-    };
+    let is_selected = move |id: &str| selected_ids.get().contains(&id.to_string());
 
     // Массовое проведение
     let post_selected = move |_| {
@@ -335,13 +359,20 @@ pub fn OzonFbsPostingList() -> impl IntoView {
 
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
-                let url = format!("http://localhost:3000/api/a010/ozon-fbs-posting/{}/post", id);
+                let url = format!(
+                    "http://localhost:3000/api/a010/ozon-fbs-posting/{}/post",
+                    id
+                );
                 match Request::post(&url).send().await {
                     Ok(response) => {
                         if response.status() == 200 {
                             results.push((id.clone(), true, None));
                         } else {
-                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                            results.push((
+                                id.clone(),
+                                false,
+                                Some(format!("HTTP {}", response.status())),
+                            ));
                         }
                     }
                     Err(e) => {
@@ -364,7 +395,8 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                 Ok(response) => {
                     if response.status() == 200 {
                         if let Ok(text) = response.text().await {
-                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
+                            {
                                 let items: Vec<OzonFbsPostingDto> = data
                                     .into_iter()
                                     .filter_map(|v| {
@@ -394,14 +426,18 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                                             .filter_map(|line| line.get("amount_line")?.as_f64())
                                             .sum();
 
-                                        let is_posted = v.get("is_posted")
+                                        let is_posted = v
+                                            .get("is_posted")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false);
 
                                         Some(OzonFbsPostingDto {
                                             id: v.get("id")?.as_str()?.to_string(),
                                             code: v.get("code")?.as_str()?.to_string(),
-                                            description: v.get("description")?.as_str()?.to_string(),
+                                            description: v
+                                                .get("description")?
+                                                .as_str()?
+                                                .to_string(),
                                             document_no: v
                                                 .get("header")?
                                                 .get("document_no")?
@@ -456,13 +492,20 @@ pub fn OzonFbsPostingList() -> impl IntoView {
 
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
-                let url = format!("http://localhost:3000/api/a010/ozon-fbs-posting/{}/unpost", id);
+                let url = format!(
+                    "http://localhost:3000/api/a010/ozon-fbs-posting/{}/unpost",
+                    id
+                );
                 match Request::post(&url).send().await {
                     Ok(response) => {
                         if response.status() == 200 {
                             results.push((id.clone(), true, None));
                         } else {
-                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                            results.push((
+                                id.clone(),
+                                false,
+                                Some(format!("HTTP {}", response.status())),
+                            ));
                         }
                     }
                     Err(e) => {
@@ -485,7 +528,8 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                 Ok(response) => {
                     if response.status() == 200 {
                         if let Ok(text) = response.text().await {
-                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
+                            {
                                 let items: Vec<OzonFbsPostingDto> = data
                                     .into_iter()
                                     .filter_map(|v| {
@@ -515,14 +559,18 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                                             .filter_map(|line| line.get("amount_line")?.as_f64())
                                             .sum();
 
-                                        let is_posted = v.get("is_posted")
+                                        let is_posted = v
+                                            .get("is_posted")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false);
 
                                         Some(OzonFbsPostingDto {
                                             id: v.get("id")?.as_str()?.to_string(),
                                             code: v.get("code")?.as_str()?.to_string(),
-                                            description: v.get("description")?.as_str()?.to_string(),
+                                            description: v
+                                                .get("description")?
+                                                .as_str()?
+                                                .to_string(),
                                             document_no: v
                                                 .get("header")?
                                                 .get("document_no")?

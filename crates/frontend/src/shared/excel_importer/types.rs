@@ -158,6 +158,9 @@ impl ExcelData {
 
     /// Получить количество несопоставленных колонок
     pub fn unmapped_count(&self) -> usize {
-        self.column_mapping.iter().filter(|m| m.found.is_none()).count()
+        self.column_mapping
+            .iter()
+            .filter(|m| m.found.is_none())
+            .count()
     }
 }

@@ -1,8 +1,6 @@
-use contracts::usecases::u505_match_nomenclature::{
-    MatchRequest, MatchResponse, MatchProgress,
-};
+use contracts::usecases::u505_match_nomenclature::{MatchProgress, MatchRequest, MatchResponse};
 use serde_json;
-use wasm_bindgen::{JsValue, JsCast};
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
 /// API клиент для UseCase u505
@@ -38,7 +36,9 @@ pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, Stri
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
@@ -53,7 +53,10 @@ pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<MatchProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!("http://localhost:3000/api/u505/match/{}/progress", session_id);
+    let url = format!(
+        "http://localhost:3000/api/u505/match/{}/progress",
+        session_id
+    );
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -73,7 +76,9 @@ pub async fn get_progress(session_id: &str) -> Result<MatchProgress, String> {
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;

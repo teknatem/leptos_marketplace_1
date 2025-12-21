@@ -1,8 +1,6 @@
-use contracts::usecases::u501_import_from_ut::{
-    ImportRequest, ImportResponse, ImportProgress,
-};
+use contracts::usecases::u501_import_from_ut::{ImportProgress, ImportRequest, ImportResponse};
 use serde_json;
-use wasm_bindgen::{JsValue, JsCast};
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
 /// API клиент для UseCase u501
@@ -16,11 +14,8 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     opts.set_mode(RequestMode::Cors);
     opts.set_body(&JsValue::from_str(&body));
 
-    let request = web_sys::Request::new_with_str_and_init(
-        "/api/u501/import/start",
-        &opts,
-    )
-    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request = web_sys::Request::new_with_str_and_init("/api/u501/import/start", &opts)
+        .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     request
         .headers()
@@ -38,7 +33,9 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
@@ -73,7 +70,9 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
@@ -85,18 +84,16 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
 }
 
 /// Получить список подключений 1С
-pub async fn get_connections() -> Result<Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>, String> {
+pub async fn get_connections(
+) -> Result<Vec<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase>, String> {
     let window = window().ok_or("No window object")?;
 
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let request = web_sys::Request::new_with_str_and_init(
-        "/api/connection_1c",
-        &opts,
-    )
-    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request = web_sys::Request::new_with_str_and_init("/api/connection_1c", &opts)
+        .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
@@ -109,13 +106,14 @@ pub async fn get_connections() -> Result<Vec<contracts::domain::a001_connection_
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
 
-    let connections =
-        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+    let connections = serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(connections)
 }

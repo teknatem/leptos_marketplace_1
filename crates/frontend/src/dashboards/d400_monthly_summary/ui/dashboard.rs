@@ -2,7 +2,9 @@ use crate::dashboards::d400_monthly_summary::api;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::list_utils::format_number;
 use chrono::{Datelike, Utc};
-use contracts::dashboards::d400_monthly_summary::{DrilldownFilter, IndicatorRow, MonthlySummaryResponse};
+use contracts::dashboards::d400_monthly_summary::{
+    DrilldownFilter, IndicatorRow, MonthlySummaryResponse,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -89,22 +91,20 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
     };
 
     // Month names in Russian
-    let month_name = move || {
-        match selected_month.get() {
-            1 => "Январь",
-            2 => "Февраль",
-            3 => "Март",
-            4 => "Апрель",
-            5 => "Май",
-            6 => "Июнь",
-            7 => "Июль",
-            8 => "Август",
-            9 => "Сентябрь",
-            10 => "Октябрь",
-            11 => "Ноябрь",
-            12 => "Декабрь",
-            _ => "—",
-        }
+    let month_name = move || match selected_month.get() {
+        1 => "Январь",
+        2 => "Февраль",
+        3 => "Март",
+        4 => "Апрель",
+        5 => "Май",
+        6 => "Июнь",
+        7 => "Июль",
+        8 => "Август",
+        9 => "Сентябрь",
+        10 => "Октябрь",
+        11 => "Ноябрь",
+        12 => "Декабрь",
+        _ => "—",
     };
 
     view! {
@@ -306,4 +306,3 @@ fn DashboardRow(
         </tr>
     }
 }
-

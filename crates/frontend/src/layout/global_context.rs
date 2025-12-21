@@ -60,14 +60,14 @@ impl AppGlobalContext {
                     active_key.clone(),
                 )]))
                 .unwrap_or_default();
-                
+
                 let new_url = format!("?{}", query_string);
-                
+
                 // Use untracked to avoid creating unnecessary reactive dependencies
                 let current_search = window()
                     .and_then(|w| w.location().search().ok())
                     .unwrap_or_default();
-                
+
                 // Only update URL if it actually changed
                 if current_search != new_url {
                     if let Some(w) = window() {

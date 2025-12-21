@@ -122,7 +122,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
 
     // Загрузка списка подключений для отображения названий
     let (connections, set_connections) = signal(Vec::<(String, String)>::new());
-    
+
     // Загружаем подключения при монтировании
     spawn_local(async move {
         if let Ok(conns) = fetch_connections().await {
@@ -235,11 +235,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 .nm_id
                 .map(|n| n.to_string())
                 .unwrap_or_else(|| "-".to_string());
-            let sa_name_str = item
-                .sa_name
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("-");
+            let sa_name_str = item.sa_name.as_ref().map(|s| s.as_str()).unwrap_or("-");
             let subject_str = item
                 .subject_name
                 .as_ref()
@@ -283,11 +279,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 .storage_fee
                 .map(|s| format!("{:.2}", s).replace(".", ","))
                 .unwrap_or_else(|| "-".to_string());
-            let srid_str = item
-                .srid
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("-");
+            let srid_str = item.srid.as_ref().map(|s| s.as_str()).unwrap_or("-");
 
             csv.push_str(&format!(
                 "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};{};{};{};\"{}\";\"{}\"\n",
@@ -417,7 +409,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
 
                     style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 2; min-width: 180px;"
                 />
-                
+
                 <select
                     on:change=move |ev| {
                         set_connection_filter.set(event_target_value(&ev));
@@ -809,9 +801,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
     }
 }
 
-async fn fetch_finance_report(
-    query_params: &str,
-) -> Result<WbFinanceReportListResponse, String> {
+async fn fetch_finance_report(query_params: &str) -> Result<WbFinanceReportListResponse, String> {
     let window = web_sys::window().ok_or("No window object")?;
     let url = format!("/api/p903/finance-report{}", query_params);
 

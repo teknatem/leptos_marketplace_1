@@ -85,11 +85,11 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal::<Option<String>>(None);
     let (active_tab, set_active_tab) = signal("general");
-    
+
     // Sort state for lines table
     let (lines_sort_column, set_lines_sort_column) = signal::<Option<&'static str>>(None);
     let (lines_sort_asc, set_lines_sort_asc) = signal(true);
-    
+
     // Sort state for projections table
     let (proj_sort_column, set_proj_sort_column) = signal::<Option<&'static str>>(None);
     let (proj_sort_asc, set_proj_sort_asc) = signal(true);
@@ -111,7 +111,8 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                             Ok(text) => {
                                 match serde_json::from_str::<YmReturnDetailDto>(&text) {
                                     Ok(data) => {
-                                        let raw_payload_ref = data.source_meta.raw_payload_ref.clone();
+                                        let raw_payload_ref =
+                                            data.source_meta.raw_payload_ref.clone();
                                         let return_id = data.id.clone();
                                         set_return_data.set(Some(data));
                                         set_loading.set(false);
@@ -127,8 +128,10 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             if let Ok(json_value) =
-                                                                serde_json::from_str::<serde_json::Value>(
-                                                                    &text,
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
                                                                 )
                                                             {
                                                                 if let Ok(formatted) =
@@ -161,9 +164,14 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             if let Ok(proj_data) =
-                                                                serde_json::from_str::<serde_json::Value>(&text)
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
+                                                                )
                                                             {
-                                                                set_projections.set(Some(proj_data));
+                                                                set_projections
+                                                                    .set(Some(proj_data));
                                                             }
                                                         }
                                                     }
@@ -374,7 +382,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                         if asc { cmp } else { cmp.reverse() }
                                                     });
                                                 }
-                                                
+
                                                 let total_items: i32 = lines.iter().map(|l| l.count).sum();
                                                 let total_amount: f64 = lines.iter().filter_map(|l| l.price.map(|p| p * l.count as f64)).sum();
 
@@ -502,7 +510,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                             }.into_any()
                                                         } else if let Some(proj_data) = projections.get() {
                                                             let mut p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
-                                                            
+
                                                             // Sort p904 items
                                                             if let Some(col) = proj_sort_column.get() {
                                                                 let asc = proj_sort_asc.get();
@@ -543,7 +551,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                     if asc { cmp } else { cmp.reverse() }
                                                                 });
                                                             }
-                                                            
+
                                                             // Sort handler for projections
                                                             let handle_proj_sort = move |column: &'static str| {
                                                                 if proj_sort_column.get() == Some(column) {

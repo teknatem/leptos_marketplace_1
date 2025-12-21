@@ -1,21 +1,39 @@
 use crate::domain::a002_organization::ui::{OrganizationPicker, OrganizationPickerItem};
 use crate::domain::a005_marketplace::ui::{MarketplacePicker, MarketplacePickerItem};
-use crate::shared::picker_aggregate::{Modal, ModalService};
 use crate::shared::icons::icon;
-use contracts::domain::a006_connection_mp::{ConnectionMPDto, ConnectionTestResult};
+use crate::shared::picker_aggregate::{Modal, ModalService};
+use contracts::domain::a006_connection_mp::{
+    AuthorizationType, ConnectionMPDto, ConnectionTestResult,
+};
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
-use std::rc::Rc;
+use thaw::*;
 
 #[component]
 pub fn ConnectionMPDetails(
     id: Option<String>,
-    on_saved: Rc<dyn Fn(())>,
-    on_cancel: Rc<dyn Fn(())>,
+    on_saved: Callback<()>,
+    on_cancel: Callback<()>,
 ) -> impl IntoView {
     let modal = use_context::<ModalService>().expect("ModalService not found");
 
-    let (form, set_form) = signal(ConnectionMPDto::default());
+    // RwSignal для полей формы (для двухсторонней привязки с Thaw)
+    let description = RwSignal::new(String::new());
+    let comment = RwSignal::new(String::new());
+    let api_key = RwSignal::new(String::new());
+    let supplier_id = RwSignal::new(String::new());
+    let application_id = RwSignal::new(String::new());
+    let business_account_id = RwSignal::new(String::new());
+    let api_key_stats = RwSignal::new(String::new());
+    let is_used = RwSignal::new(false);
+    let test_mode = RwSignal::new(false);
+
+    let marketplace_id = RwSignal::new(String::new());
+    let organization = RwSignal::new(String::new());
+
+    let (conn_id, set_conn_id) = signal::<Option<String>>(None);
+    let (conn_code, set_conn_code) = signal::<Option<String>>(None);
+
     let (error, set_error) = signal::<Option<String>>(None);
     let (test_result, set_test_result) = signal::<Option<ConnectionTestResult>>(None);
     let (is_testing, set_is_testing) = signal(false);
@@ -28,10 +46,27 @@ pub fn ConnectionMPDetails(
     let (organization_id, set_organization_id) = signal::<Option<String>>(None);
 
     // Load existing connection if id is provided
-    if let Some(ref conn_id) = id {
-        let id_clone = conn_id.clone();
+    if let Some(ref conn_id_val) = id {
+        let id_clone = conn_id_val.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(conn) = fetch_connection(&id_clone).await {
+                // Устанавливаем значения в RwSignal
+                description.set(conn.base.description);
+                comment.set(conn.base.comment.unwrap_or_default());
+                api_key.set(conn.api_key);
+                supplier_id.set(conn.supplier_id.unwrap_or_default());
+                application_id.set(conn.application_id.unwrap_or_default());
+                business_account_id.set(conn.business_account_id.unwrap_or_default());
+                api_key_stats.set(conn.api_key_stats.unwrap_or_default());
+                is_used.set(conn.is_used);
+                test_mode.set(conn.test_mode);
+
+                marketplace_id.set(conn.marketplace_id.clone());
+                organization.set(conn.organization.clone());
+
+                set_conn_id.set(Some(conn.base.id.as_string()));
+                set_conn_code.set(Some(conn.base.code));
+
                 // Сохраняем organization в organization_name для отображения
                 set_organization_name.set(conn.organization.clone());
 
@@ -40,51 +75,108 @@ pub fn ConnectionMPDetails(
                     set_marketplace_name.set(mp_info.name);
                     set_marketplace_code.set(mp_info.code);
                 }
-
-                let dto = ConnectionMPDto {
-                    id: Some(conn.base.id.as_string()),
-                    code: Some(conn.base.code),
-                    description: conn.base.description,
-                    comment: conn.base.comment,
-                    marketplace_id: conn.marketplace_id.clone(),
-                    organization: conn.organization,
-                    api_key: conn.api_key,
-                    supplier_id: conn.supplier_id,
-                    application_id: conn.application_id,
-                    is_used: conn.is_used,
-                    business_account_id: conn.business_account_id,
-                    api_key_stats: conn.api_key_stats,
-                    test_mode: conn.test_mode,
-                    authorization_type: conn.authorization_type,
-                };
-                set_form.set(dto);
             }
         });
     }
 
-    let handle_save = move |_| {
-        let dto = form.get();
-        let on_saved = on_saved.clone();
+    let handle_save = move |_: leptos::ev::MouseEvent| {
+        let dto = ConnectionMPDto {
+            id: conn_id.get(),
+            code: conn_code.get(),
+            description: description.get(),
+            comment: if comment.get().is_empty() {
+                None
+            } else {
+                Some(comment.get())
+            },
+            marketplace_id: marketplace_id.get(),
+            organization: organization.get(),
+            api_key: api_key.get(),
+            supplier_id: if supplier_id.get().is_empty() {
+                None
+            } else {
+                Some(supplier_id.get())
+            },
+            application_id: if application_id.get().is_empty() {
+                None
+            } else {
+                Some(application_id.get())
+            },
+            is_used: is_used.get(),
+            business_account_id: if business_account_id.get().is_empty() {
+                None
+            } else {
+                Some(business_account_id.get())
+            },
+            api_key_stats: if api_key_stats.get().is_empty() {
+                None
+            } else {
+                Some(api_key_stats.get())
+            },
+            test_mode: test_mode.get(),
+            authorization_type: AuthorizationType::default(),
+        };
+
         wasm_bindgen_futures::spawn_local(async move {
             match save_connection(dto).await {
-                Ok(_) => on_saved(()),
+                Ok(_) => on_saved.run(()),
                 Err(e) => set_error.set(Some(e)),
             }
         });
     };
 
-    let handle_test = move |_| {
+    let handle_test = move |_: leptos::ev::MouseEvent| {
         set_is_testing.set(true);
         set_test_result.set(None);
-        let dto = form.get();
+
+        let dto = ConnectionMPDto {
+            id: conn_id.get(),
+            code: conn_code.get(),
+            description: description.get(),
+            comment: if comment.get().is_empty() {
+                None
+            } else {
+                Some(comment.get())
+            },
+            marketplace_id: marketplace_id.get(),
+            organization: organization.get(),
+            api_key: api_key.get(),
+            supplier_id: if supplier_id.get().is_empty() {
+                None
+            } else {
+                Some(supplier_id.get())
+            },
+            application_id: if application_id.get().is_empty() {
+                None
+            } else {
+                Some(application_id.get())
+            },
+            is_used: is_used.get(),
+            business_account_id: if business_account_id.get().is_empty() {
+                None
+            } else {
+                Some(business_account_id.get())
+            },
+            api_key_stats: if api_key_stats.get().is_empty() {
+                None
+            } else {
+                Some(api_key_stats.get())
+            },
+            test_mode: test_mode.get(),
+            authorization_type: AuthorizationType::default(),
+        };
+
         wasm_bindgen_futures::spawn_local(async move {
             match test_connection(dto).await {
                 Ok(result) => {
                     // Debug log для проверки что приходит с сервера
-                    web_sys::console::log_1(&format!(
-                        "Test result: success={}, message={}, details={:?}", 
-                        result.success, result.message, result.details
-                    ).into());
+                    web_sys::console::log_1(
+                        &format!(
+                            "Test result: success={}, message={}, details={:?}",
+                            result.success, result.message, result.details
+                        )
+                        .into(),
+                    );
                     set_test_result.set(Some(result));
                     set_is_testing.set(false);
                 }
@@ -102,7 +194,7 @@ pub fn ConnectionMPDetails(
         set_show_marketplace_picker.set(false);
         if let Some(item) = selected {
             set_marketplace_name.set(item.description.clone());
-            set_form.update(|f| f.marketplace_id = item.id.clone());
+            marketplace_id.set(item.id.clone());
         }
     };
 
@@ -117,7 +209,7 @@ pub fn ConnectionMPDetails(
         if let Some(item) = selected {
             set_organization_id.set(Some(item.id.clone()));
             set_organization_name.set(item.description.clone());
-            set_form.update(|f| f.organization = item.description.clone());
+            organization.set(item.description.clone());
         }
     };
 
@@ -127,185 +219,167 @@ pub fn ConnectionMPDetails(
     };
 
     view! {
-        <div class="details-container connection-mp-details" style="max-width: 1200px;">
-            <div class="details-header">
-                <h3>{if id.is_some() { "Редактирование подключения" } else { "Новое подключение" }}</h3>
+        <div class="details-container connection-mp-details">
+            {move || error.get().map(|e| view! {
+                <div style="padding: 8px 12px; margin-bottom: 10px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 6px; color: var(--color-error); font-size: 13px;">
+                    {e}
+                </div>
+            })}
+
+            // Секция 1: Основная информация
+            <div style="margin-bottom: 12px;">
+                <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
+                    "Основная информация"
+                </h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Наименование"}</label>
+                        <Input
+                            value=description
+                            placeholder="Например: Озон (Сантехсистем)"
+                        />
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Маркетплейс"}</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input
+                                type="text"
+                                value=move || marketplace_name.get()
+                                readonly
+                                placeholder="Выберите"
+                                style="flex: 1; padding: 6px 10px; border: 1px solid #d1d1d1; border-radius: 4px; background: #f5f5f5;"
+                            />
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| {
+                                    set_show_organization_picker.set(false);
+                                    set_show_marketplace_picker.set(true);
+                                    modal.show();
+                                }
+                            >
+                                {icon("search")}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Организация"}</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input
+                                type="text"
+                                value=move || organization_name.get()
+                                readonly
+                                placeholder="Выберите"
+                                style="flex: 1; padding: 6px 10px; border: 1px solid #d1d1d1; border-radius: 4px; background: #f5f5f5;"
+                            />
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| {
+                                    set_show_marketplace_picker.set(false);
+                                    set_show_organization_picker.set(true);
+                                    modal.show();
+                                }
+                            >
+                                {icon("search")}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div class="form__group" style="grid-column: 1 / -1;">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Комментарий"}</label>
+                        <Textarea
+                            value=comment
+                            placeholder="Дополнительная информация"
+                        />
+                    </div>
+                </div>
             </div>
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
-
-            <div class="detail-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; column-gap: 24px;">
-                // Колонка 1
-                <div class="form__group">
-                    <label for="description">{"Наименование"}</label>
-                    <input
-                        type="text"
-                        id="description"
-                        prop:value={move || form.get().description}
-                        on:input=move |ev| set_form.update(|f| f.description = event_target_value(&ev))
-                        placeholder="Например: Озон (Сантехсистем)"
-                    />
-                </div>
-
-                // Колонка 2
-                <div class="form__group">
-                    <label for="api_key">{"API Key"}</label>
-                    <textarea
-                        id="api_key"
-                        prop:value={move || form.get().api_key}
-                        on:input=move |ev| set_form.update(|f| f.api_key = event_target_value(&ev))
-                        placeholder="Вставьте API ключ"
-                        rows="3"
-                    />
-                    <small class="help-text">
-                        {"• Wildberries: API ключ (Bearer token)"}<br/>
-                        {"• Ozon: Api-Key (в связке с Client-Id)"}<br/>
-                        {"• Яндекс.Маркет: OAuth токен (Bearer token)"}
-                    </small>
-                </div>
-
-                // Колонка 1
-                <div class="form__group">
-                    <label for="marketplace">{"Маркетплейс"}</label>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <input
-                            type="text"
-                            id="marketplace"
-                            prop:value={move || marketplace_name.get()}
-                            readonly
-                            placeholder="Выберите маркетплейс"
-                            style="flex: 1;"
+            // Секция 2: API конфигурация
+            <div style="margin-bottom: 12px;">
+                <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
+                    "API конфигурация"
+                </h4>
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                    <div class="form__group" style="grid-row: span 2;">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"API Key"}</label>
+                        <Textarea
+                            value=api_key
+                            placeholder="Вставьте API ключ"
                         />
-                        <button
-                            type="button"
-                            class="button button--secondary"
-                            on:click=move |_| {
-                                set_show_marketplace_picker.set(true);
-                                modal.show();
-                            }
-                        >
-                            {icon("search")}
-                            {"Выбрать"}
-                        </button>
+                        <small class="help-text" style="font-size: 10px; line-height: 1.2;">
+                            {"• WB: Bearer • Ozon: Api-Key • Яндекс: OAuth"}
+                        </small>
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Client ID"}</label>
+                        <Input
+                            value=supplier_id
+                            placeholder="Ozon, Яндекс"
+                        />
+                        <small class="help-text" style="font-size: 10px;">{"Ozon, Яндекс"}</small>
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"App ID"}</label>
+                        <Input
+                            value=application_id
+                            placeholder="Ozon"
+                        />
+                        <small class="help-text" style="font-size: 10px;">{"Ozon"}</small>
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Business ID"}</label>
+                        <Input
+                            value=business_account_id
+                            placeholder="Яндекс"
+                        />
+                        <small class="help-text" style="font-size: 10px;">{"Яндекс"}</small>
+                    </div>
+
+                    <div class="form__group">
+                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Stats Key"}</label>
+                        <Input
+                            value=api_key_stats
+                            placeholder="Опционально"
+                        />
                     </div>
                 </div>
+            </div>
 
-                // Колонка 2
-                <div class="form__group">
-                    <label for="supplier_id">{"ID Поставщика / Client ID"}</label>
-                    <input
-                        type="text"
-                        id="supplier_id"
-                        prop:value={move || form.get().supplier_id.clone().unwrap_or_default()}
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            set_form.update(|f| f.supplier_id = if val.is_empty() { None } else { Some(val) });
-                        }
-                        placeholder="Для Озон"
-                    />
-                    <small class="help-text">
-                        {"• Ozon: Client-Id (для всех API запросов)"}<br/>
-                        {"• Яндекс.Маркет: Campaign ID / Идентификатор магазина (для заказов и возвратов)"}
-                    </small>
+            // Секция 3: Настройки и действия
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--color-background-secondary); border-radius: 6px; margin-bottom: 12px;">
+                <div style="display: flex; gap: 24px; align-items: center;">
+                    <Checkbox checked=is_used label="Используется"/>
+
+                    <Checkbox checked=test_mode label="Тестовый режим"/>
                 </div>
 
-                // Колонка 1
-                <div class="form__group">
-                    <label for="organization">{"Организация"}</label>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <input
-                            type="text"
-                            id="organization"
-                            prop:value={move || organization_name.get()}
-                            readonly
-                            placeholder="Выберите организацию"
-                            style="flex: 1;"
-                        />
-                        <button
-                            type="button"
-                            class="button button--secondary"
-                            on:click=move |_| {
-                                set_show_organization_picker.set(true);
-                                modal.show();
-                            }
-                        >
-                            {icon("search")}
-                            {"Выбрать"}
-                        </button>
-                    </div>
-                </div>
-
-                // Колонка 2
-                <div class="form__group">
-                    <label for="application_id">{"ID Приложения"}</label>
-                    <input
-                        type="text"
-                        id="application_id"
-                        prop:value={move || form.get().application_id.clone().unwrap_or_default()}
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            set_form.update(|f| f.application_id = if val.is_empty() { None } else { Some(val) });
-                        }
-                    />
-                    <small class="help-text">
-                        {"• Ozon: Application ID / Client-Id (обязательно для всех запросов)"}
-                    </small>
-                </div>
-
-                // Колонка 1
-                <div class="form__group" style="display: flex; align-items: center; gap: 8px;">
-                    <input
-                        type="checkbox"
-                        id="is_used"
-                        prop:checked={move || form.get().is_used}
-                        on:change=move |ev| set_form.update(|f| f.is_used = event_target_checked(&ev))
-                    />
-                    <label for="is_used" style="margin: 0; cursor: pointer;">{"Используется"}</label>
-                </div>
-
-                // Колонка 2
-                <div class="form__group">
-                    <label for="business_account_id">{"Бизнес Аккаунт ID"}</label>
-                    <input
-                        type="text"
-                        id="business_account_id"
-                        prop:value={move || form.get().business_account_id.clone().unwrap_or_default()}
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            set_form.update(|f| f.business_account_id = if val.is_empty() { None } else { Some(val) });
-                        }
-                        placeholder="Для Яндекс.Маркет"
-                    />
-                    <small class="help-text">
-                        {"• Яндекс.Маркет: Business ID / БизнесАккаунтID (для работы с товарами)"}
-                    </small>
-                </div>
-
-                // Колонка 1
-                <div class="form__group" style="display: flex; align-items: center; gap: 8px;">
-                    <input
-                        type="checkbox"
-                        id="test_mode"
-                        prop:checked={move || form.get().test_mode}
-                        on:change=move |ev| set_form.update(|f| f.test_mode = event_target_checked(&ev))
-                    />
-                    <label for="test_mode" style="margin: 0; cursor: pointer;">{"Тестовый режим"}</label>
-                </div>
-
-                // Колонка 2 - пустое место
-                <div></div>
-
-                <div class="form__group" style="grid-column: 1 / -1;">
-                    <label for="comment">{"Комментарий"}</label>
-                    <textarea
-                        id="comment"
-                        prop:value={move || form.get().comment.clone().unwrap_or_default()}
-                        on:input=move |ev| {
-                            let val = event_target_value(&ev);
-                            set_form.update(|f| f.comment = if val.is_empty() { None } else { Some(val) });
-                        }
-                        rows="2"
-                    />
+                <div style="display: flex; gap: 8px;">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=handle_test
+                        disabled=Signal::derive(move || is_testing.get())
+                    >
+                        {icon("test")}
+                        {move || if is_testing.get() { " Тест..." } else { " Тест" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=handle_save
+                    >
+                        {icon("save")}
+                        " Сохранить"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| on_cancel.run(())
+                    >
+                        "Отмена"
+                    </Button>
                 </div>
             </div>
 
@@ -313,51 +387,51 @@ pub fn ConnectionMPDetails(
                 let class = if result.success { "success" } else { "error" };
                 let mp_code = marketplace_code.get();
                 view! {
-                    <div class={class} style="margin-top: 16px; padding: 16px; border-radius: 8px;">
-                        <h4 style="margin-top: 0; margin-bottom: 12px;">
+                    <div class={class} style="margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">
                             {if result.success { "✅ Тест успешен" } else { "❌ Тест не пройден" }}
                         </h4>
-                        <div style="margin-bottom: 8px;">
+                        <div style="margin-bottom: 6px;">
                             <strong>{"Статус: "}</strong>
                             {result.message.clone()}
                             {" "}
-                            <span style="color: #666; font-size: 12px;">{"("}{result.duration_ms}{"ms)"}</span>
+                            <span style="color: #666; font-size: 11px;">{"("}{result.duration_ms}{"ms)"}</span>
                         </div>
-                        
+
                         {if let Some(details) = result.details.as_ref() {
                             view! {
-                                <div style="margin-top: 12px; padding: 12px; background: rgba(255,193,7,0.1); border-left: 4px solid #ffc107; border-radius: 4px;">
-                                    <div style="font-weight: bold; margin-bottom: 4px; color: #856404;">
+                                <div style="margin-top: 8px; padding: 10px; background: rgba(255,193,7,0.1); border-left: 3px solid #ffc107; border-radius: 4px;">
+                                    <div style="font-weight: bold; margin-bottom: 4px; color: #856404; font-size: 12px;">
                                         {"📝 Подробности:"}
                                     </div>
-                                    <div style="color: #856404;">
+                                    <div style="color: #856404; font-size: 12px;">
                                     {details.clone()}
                                     </div>
                                 </div>
                             }.into_any()
                         } else if !result.success {
                             view! {
-                                <div style="margin-top: 12px; padding: 12px; background: rgba(220,53,69,0.1); border-left: 4px solid #dc3545; border-radius: 4px;">
-                                    <div style="font-weight: bold; margin-bottom: 4px; color: #721c24;">
+                                <div style="margin-top: 8px; padding: 10px; background: rgba(220,53,69,0.1); border-left: 3px solid #dc3545; border-radius: 4px;">
+                                    <div style="font-weight: bold; margin-bottom: 4px; color: #721c24; font-size: 12px;">
                                         {"⚠️ Внимание:"}
                                     </div>
-                                    <div style="color: #721c24;">
-                                        {"Подробная информация об ошибке отсутствует. Проверьте логи сервера для дополнительной информации."}
+                                    <div style="color: #721c24; font-size: 12px;">
+                                        {"Подробная информация об ошибке отсутствует. Проверьте логи сервера."}
                                     </div>
                                 </div>
                             }.into_any()
                         } else {
                             view! { <div></div> }.into_any()
                         }}
-                        
-                        <details style="margin-top: 12px;" open={!result.success}>
-                            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 8px;">
+
+                        <details style="margin-top: 10px;" open={!result.success}>
+                            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 6px; font-size: 12px;">
                                 {"📋 Информация о тестировании"}
                             </summary>
-                            <div style="margin-top: 8px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 4px; font-size: 12px;">
-                                <div style="margin-bottom: 12px;">
+                            <div style="margin-top: 6px; padding: 10px; background: rgba(0,0,0,0.03); border-radius: 4px; font-size: 11px;">
+                                <div style="margin-bottom: 10px;">
                                     <strong>{"🌐 Эндпоинт:"}</strong>
-                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px;">
+                                    <div style="font-family: monospace; margin-top: 3px; padding: 6px; background: rgba(0,0,0,0.05); border-radius: 3px; font-size: 10px;">
                                         {match mp_code.as_str() {
                                             "mp-ozon" => "POST https://api-seller.ozon.ru/v3/product/list",
                                             "mp-wb" => "GET https://suppliers-api.wildberries.ru/public/api/v1/info",
@@ -368,21 +442,21 @@ pub fn ConnectionMPDetails(
                                         }}
                                     </div>
                                 </div>
-                                
-                                <div style="margin-bottom: 12px;">
+
+                                <div style="margin-bottom: 10px;">
                                     <strong>{"📤 Отправляемые данные:"}</strong>
-                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; white-space: pre-wrap; word-break: break-all;">
+                                    <div style="font-family: monospace; margin-top: 3px; padding: 6px; background: rgba(0,0,0,0.05); border-radius: 3px; white-space: pre-wrap; word-break: break-all; font-size: 10px;">
                                         {match mp_code.as_str() {
                                             "mp-ozon" => {
                                                 format!("Headers:\n  Client-Id: {}\n  Api-Key: ****\n  Content-Type: application/json\n\nBody:\n{{\n  \"filter\": {{ \"visibility\": \"ALL\" }},\n  \"last_id\": \"\",\n  \"limit\": 1\n}}",
-                                                    form.get().application_id.clone().unwrap_or_else(|| "не указан".to_string()))
+                                                    application_id.get())
                                             },
                                             "mp-wb" => {
                                                 "Headers:\n  Authorization: ****\n  Accept: application/json\n\nQuery: ?locale=ru".to_string()
                                             },
                                             "mp-yandex" => {
                                                 format!("Headers:\n  Authorization: OAuth ****\n  Content-Type: application/json\n\nBody:\n{{\n  \"businessId\": {},\n  \"pageToken\": \"\"\n}}",
-                                                    form.get().business_account_id.clone().unwrap_or_else(|| "не указан".to_string()))
+                                                    business_account_id.get())
                                             },
                                             "mp-lemana" => {
                                                 "Headers:\n  Authorization: Bearer ****\n  Accept: application/json\n\nQuery: ?page=1&perPage=1".to_string()
@@ -391,10 +465,10 @@ pub fn ConnectionMPDetails(
                                         }}
                                     </div>
                                 </div>
-                                
-                                <div style="margin-bottom: 12px;">
+
+                                <div style="margin-bottom: 10px;">
                                     <strong>{"📥 Ожидаемый ответ:"}</strong>
-                                    <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; white-space: pre-wrap; word-break: break-all;">
+                                    <div style="font-family: monospace; margin-top: 3px; padding: 6px; background: rgba(0,0,0,0.05); border-radius: 3px; white-space: pre-wrap; word-break: break-all; font-size: 10px;">
                                         {match mp_code.as_str() {
                                             "mp-ozon" => "{\n  \"result\": {\n    \"items\": [...],\n    \"total\": 123,\n    \"last_id\": \"...\"\n  }\n}",
                                             "mp-wb" => "HTTP 204 No Content (успешная авторизация)",
@@ -404,12 +478,12 @@ pub fn ConnectionMPDetails(
                                         }}
                                     </div>
                                 </div>
-                                
+
                                 {if !result.success && result.details.is_some() {
                                     view! {
-                                        <div style="margin-bottom: 12px;">
+                                        <div style="margin-bottom: 10px;">
                                             <strong>{"❌ Фактический ответ API:"}</strong>
-                                            <div style="font-family: monospace; margin-top: 4px; padding: 8px; background: rgba(220,53,69,0.1); border: 1px solid rgba(220,53,69,0.3); border-radius: 4px; white-space: pre-wrap; word-break: break-all; color: #721c24;">
+                                            <div style="font-family: monospace; margin-top: 3px; padding: 6px; background: rgba(220,53,69,0.1); border: 1px solid rgba(220,53,69,0.3); border-radius: 3px; white-space: pre-wrap; word-break: break-all; color: #721c24; font-size: 10px;">
                                                 {result.details.clone().unwrap_or_default()}
                                             </div>
                                         </div>
@@ -417,12 +491,12 @@ pub fn ConnectionMPDetails(
                                 } else {
                                     view! { <div></div> }.into_any()
                                 }}
-                                
+
                                 {if !result.success {
                                     view! {
-                                        <div style="margin-top: 12px; padding: 8px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404;">
+                                        <div style="margin-top: 10px; padding: 6px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404; font-size: 11px;">
                                             <strong>{"💡 Подсказка:"}</strong>
-                                            <div style="margin-top: 4px;">
+                                            <div style="margin-top: 3px;">
                                                 {match mp_code.as_str() {
                                                     "mp-ozon" => "Проверьте правильность Client-Id и Api-Key. Убедитесь, что токен активен.",
                                                     "mp-wb" => "Убедитесь, что API ключ Wildberries действителен и имеет права на чтение.",
@@ -442,40 +516,17 @@ pub fn ConnectionMPDetails(
                 }
             })}
 
-            <div class="details-actions">
-                <button
-                    class="button button--warning"
-                    on:click=handle_test
-                    disabled=move || is_testing.get()
-                >
-                    {icon("test")}
-                    {move || if is_testing.get() { "Тестирование..." } else { "Тест подключения" }}
-                </button>
-                <button
-                    class="button button--primary"
-                    on:click=handle_save
-                >
-                    {icon("save")}
-                    {"Сохранить"}
-                </button>
-                <button
-                    class="button button--secondary"
-                    on:click=move |_| on_cancel(())
-                >
-                    {"Отмена"}
-                </button>
-            </div>
-
             <Modal>
                 {move || {
                     if show_marketplace_picker.get() {
-                        let selected_id = form.with(|f| {
-                            if f.marketplace_id.is_empty() {
+                        let selected_id = {
+                            let mp_id = marketplace_id.get();
+                            if mp_id.is_empty() {
                                 None
                             } else {
-                                Some(f.marketplace_id.clone())
+                                Some(mp_id)
                             }
-                        });
+                        };
                         view! {
                             <MarketplacePicker
                                 initial_selected_id=selected_id

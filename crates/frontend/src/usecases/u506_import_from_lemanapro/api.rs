@@ -1,5 +1,5 @@
-use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress;
 use contracts::usecases::u506_import_from_lemanapro::request::ImportRequest;
 use contracts::usecases::u506_import_from_lemanapro::response::ImportResponse;
@@ -98,11 +98,10 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
     if !resp.ok() {
-        let error_text = wasm_bindgen_futures::JsFuture::from(
-            resp.text().map_err(|e| format!("{e:?}"))?,
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
+        let error_text =
+            wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+                .await
+                .map_err(|e| format!("{e:?}"))?;
         let error_string = error_text
             .as_string()
             .unwrap_or_else(|| "Unknown error".to_string());
@@ -141,4 +140,3 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
-

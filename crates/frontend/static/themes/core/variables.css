@@ -132,7 +132,7 @@
   --z-header: 10;
   --z-sticky: 10;
   --z-top-header: 1100;
-  --z-modal: 1000;
+  --z-modal: 10000;
   --z-dropdown: 1200;
   --z-overlay: 9999;
 }

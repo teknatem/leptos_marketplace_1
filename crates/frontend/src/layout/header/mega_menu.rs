@@ -54,7 +54,7 @@ pub fn MegaMenuCategory(
                         let key = item.key;
                         let title = item.title;
                         let icon_name = item.icon_name;
-                        
+
                         view! {
                             <button
                                 class="mega-menu-card"
@@ -253,4 +253,3 @@ pub fn MegaMenuBar() -> impl IntoView {
         </nav>
     }
 }
-

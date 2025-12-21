@@ -1,7 +1,5 @@
-pub mod right;
 pub mod panel;
+pub mod right;
 
-pub use right::Right;
 pub use panel::RightPanel;
-
-
+pub use right::Right;

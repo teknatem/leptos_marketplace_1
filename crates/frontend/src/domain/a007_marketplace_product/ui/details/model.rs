@@ -1,9 +1,9 @@
-use contracts::domain::a007_marketplace_product::aggregate::{
-    MarketplaceProduct, MarketplaceProductDto,
-};
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::a007_marketplace_product::aggregate::{
+    MarketplaceProduct, MarketplaceProductDto,
+};
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -82,7 +82,11 @@ pub async fn search_nomenclature_by_article(article: &str) -> Result<Vec<Nomencl
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let url = format!("{}/api/nomenclature/search?article={}", api_base(), urlencoding::encode(article));
+    let url = format!(
+        "{}/api/nomenclature/search?article={}",
+        api_base(),
+        urlencoding::encode(article)
+    );
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()

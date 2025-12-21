@@ -153,21 +153,26 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
         let mut csv = String::from("\u{FEFF}");
 
         // Заголовок с точкой с запятой как разделитель
-        csv.push_str("Date;Sale Date;Posting;SKU;Qty;Amount;Commission;Payout;Price;Type;Loaded At\n");
+        csv.push_str(
+            "Date;Sale Date;Posting;SKU;Qty;Amount;Commission;Payout;Price;Type;Loaded At\n",
+        );
 
         for item in items {
             let sale_date = item.sale_date.as_ref().map(|s| s.as_str()).unwrap_or("-");
-            
+
             // Форматируем числа с запятой как десятичный разделитель
             let qty_str = format!("{:.2}", item.quantity).replace(".", ",");
             let amount_str = format!("{:.2}", item.amount).replace(".", ",");
-            let commission_str = item.commission_amount
+            let commission_str = item
+                .commission_amount
                 .map(|c| format!("{:.2}", c).replace(".", ","))
                 .unwrap_or_else(|| "-".to_string());
-            let payout_str = item.payout_amount
+            let payout_str = item
+                .payout_amount
                 .map(|p| format!("{:.2}", p).replace(".", ","))
                 .unwrap_or_else(|| "-".to_string());
-            let price_str = item.price
+            let price_str = item
+                .price
                 .map(|p| format!("{:.2}", p).replace(".", ","))
                 .unwrap_or_else(|| "-".to_string());
 
@@ -188,9 +193,9 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
         }
 
         // Создаем Blob с CSV данными
-        use wasm_bindgen::JsValue;
         use js_sys::Array;
-        
+        use wasm_bindgen::JsValue;
+
         let array = Array::new();
         array.push(&JsValue::from_str(&csv));
 
@@ -204,7 +209,10 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                         if let Ok(a) = document.create_element("a") {
                             let a: web_sys::HtmlAnchorElement = a.unchecked_into();
                             a.set_href(&url);
-                            let filename = format!("ozon_finance_realization_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+                            let filename = format!(
+                                "ozon_finance_realization_{}.csv",
+                                chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                            );
                             a.set_download(&filename);
                             a.click();
                             let _ = web_sys::Url::revoke_object_url(&url);

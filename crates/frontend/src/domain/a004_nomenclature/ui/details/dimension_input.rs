@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use leptos::ev::MouseEvent;
+use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
 #[component]
@@ -14,14 +14,15 @@ pub fn DimensionInput(
 ) -> impl IntoView {
     let (is_open, set_is_open) = signal(false);
     let (filter_text, set_filter_text) = signal(String::new());
-    
+
     // Filtered options based on current input
     let filtered_options = move || {
         let filter = filter_text.get().to_lowercase();
         if filter.is_empty() {
             options.get()
         } else {
-            options.get()
+            options
+                .get()
                 .into_iter()
                 .filter(|opt| opt.to_lowercase().contains(&filter))
                 .collect()
@@ -184,4 +185,3 @@ pub fn DimensionInput(
         </div>
     }
 }
-
