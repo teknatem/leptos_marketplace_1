@@ -146,7 +146,7 @@ pub fn DateRangePicker(
             })}
 
             // Даты и кнопки на второй строке
-            <Flex align=FlexAlign::Center gap=FlexGap::Small style="border: 1px solid; border-radius: var(--borderRadiusMedium, 4px); border-color: var(--colorNeutralStroke1, #d1d1d1);background: var(--colorNeutralBackground1, #fff);">
+            <Flex align=FlexAlign::Center gap=FlexGap::Small style="border: 1px solid var(--colorNeutralStroke1, #d1d1d1); border-radius: var(--borderRadiusMedium, 4px); background: var(--colorNeutralBackground1, #fff); min-height: 32px; height: 32px;">
                 // Поле даты "от"
                 <input
                     type="date"
@@ -155,7 +155,7 @@ pub fn DateRangePicker(
                         on_from_change(event_target_value(&ev));
                     }
                     style="
-                        padding: 4px 10px;
+                        padding: 0px 12px;
                         font-size: 0.875rem;
                         border: none;
                         background: var(--colorNeutralBackground6, #fff);
@@ -175,7 +175,7 @@ pub fn DateRangePicker(
                         on_to_change(event_target_value(&ev));
                     }
                     style="
-                        padding: 4px 10px;
+                        padding: 0px 12px;
                         font-size: 0.875rem;
                         border: none;
                         background: var(--colorNeutralBackground6, #fff);
