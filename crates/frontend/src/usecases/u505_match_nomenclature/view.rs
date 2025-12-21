@@ -1,8 +1,8 @@
+use contracts::usecases::u505_match_nomenclature::{
+    progress::MatchStatus, MatchProgress, MatchRequest,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use contracts::usecases::u505_match_nomenclature::{
-    MatchRequest, MatchProgress, progress::MatchStatus,
-};
 
 #[component]
 pub fn MatchNomenclatureView() -> impl IntoView {

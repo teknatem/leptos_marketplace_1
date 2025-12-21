@@ -35,4 +35,3 @@ impl Default for Connection1CState {
 pub fn create_state() -> RwSignal<Connection1CState> {
     RwSignal::new(Connection1CState::default())
 }
-

@@ -49,4 +49,3 @@ impl Default for YmOrderState {
 pub fn create_state() -> RwSignal<YmOrderState> {
     RwSignal::new(YmOrderState::default())
 }
-

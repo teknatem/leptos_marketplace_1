@@ -31,4 +31,3 @@ impl Default for UsersListState {
 pub fn create_state() -> RwSignal<UsersListState> {
     RwSignal::new(UsersListState::default())
 }
-

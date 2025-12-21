@@ -143,11 +143,16 @@ pub fn SalesRegisterList() -> impl IntoView {
                         let b_sku = b.seller_sku.as_deref().unwrap_or("");
                         a_sku.cmp(b_sku)
                     }
-                    SortColumn::Qty => a.qty.partial_cmp(&b.qty).unwrap_or(std::cmp::Ordering::Equal),
+                    SortColumn::Qty => a
+                        .qty
+                        .partial_cmp(&b.qty)
+                        .unwrap_or(std::cmp::Ordering::Equal),
                     SortColumn::Amount => {
                         let a_amt = a.amount_line.unwrap_or(0.0);
                         let b_amt = b.amount_line.unwrap_or(0.0);
-                        a_amt.partial_cmp(&b_amt).unwrap_or(std::cmp::Ordering::Equal)
+                        a_amt
+                            .partial_cmp(&b_amt)
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     }
                     SortColumn::Status => a.status_norm.cmp(&b.status_norm),
                 };
@@ -582,7 +587,11 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
 
     for sale in data {
         let title = sale.title.as_deref().unwrap_or("").replace("\"", "\"\"");
-        let seller_sku = sale.seller_sku.as_deref().unwrap_or("").replace("\"", "\"\"");
+        let seller_sku = sale
+            .seller_sku
+            .as_deref()
+            .unwrap_or("")
+            .replace("\"", "\"\"");
         let amount_line = sale.amount_line.unwrap_or(0.0);
         let org_ref_short = &sale.organization_ref[..8.min(sale.organization_ref.len())];
 
@@ -629,7 +638,10 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
         .map_err(|e| format!("Failed to cast to anchor: {:?}", e))?;
 
     a.set_href(&url);
-    let filename = format!("sales_register_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let filename = format!(
+        "sales_register_{}.csv",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+    );
     a.set_download(&filename);
     a.click();
 

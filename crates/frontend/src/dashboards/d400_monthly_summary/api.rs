@@ -23,4 +23,3 @@ pub async fn get_monthly_summary(year: i32, month: u32) -> Result<MonthlySummary
 
     Ok(data)
 }
-

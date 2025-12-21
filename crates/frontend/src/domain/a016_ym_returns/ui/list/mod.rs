@@ -2,8 +2,7 @@ pub mod state;
 
 use self::state::{create_state, ServerTotals};
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::components::date_input::DateInput;
-use crate::shared::components::month_selector::MonthSelector;
+use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::components::table_totals_row::TableTotalsRow;
@@ -20,6 +19,7 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use thaw::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
@@ -91,9 +91,55 @@ pub fn YmReturnsList() -> impl IntoView {
     // Filter panel expansion state
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
 
+    // RwSignal для Thaw Input/Select компонентов (инициализируем начальными значениями)
+    let search_return_id = RwSignal::new(state.get_untracked().search_return_id.clone());
+    let search_order_id = RwSignal::new(state.get_untracked().search_order_id.clone());
+    let filter_type = RwSignal::new(
+        state
+            .get_untracked()
+            .filter_type
+            .clone()
+            .unwrap_or_default(),
+    );
+
+    // Обновление state при изменении RwSignal (только в одну сторону, без обратной синхронизации)
+    Effect::new(move || {
+        let return_id = search_return_id.get();
+        untrack(move || {
+            state.update(|s| {
+                s.search_return_id = return_id;
+                s.page = 0;
+            });
+        });
+    });
+
+    Effect::new(move || {
+        let order_id = search_order_id.get();
+        untrack(move || {
+            state.update(|s| {
+                s.search_order_id = order_id;
+                s.page = 0;
+            });
+        });
+    });
+
+    Effect::new(move || {
+        let ft = filter_type.get();
+        untrack(move || {
+            state.update(|s| {
+                s.filter_type = if ft.is_empty() {
+                    None
+                } else {
+                    Some(ft.clone())
+                };
+                s.page = 0;
+            });
+        });
+    });
+
     // Load data function
     let load_data = move || {
-        let current_state = state.get();
+        let current_state = state.get_untracked(); // ✅ Без реактивности!
         set_loading.set(true);
         set_error.set(None);
 
@@ -165,6 +211,17 @@ pub fn YmReturnsList() -> impl IntoView {
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
             load_data();
+        }
+    });
+
+    // Auto-reload при изменении filter_type (Select)
+    let filter_type_first_run = StoredValue::new(true);
+    Effect::new(move || {
+        let _ = filter_type.get(); // Подписываемся на изменения
+        if !filter_type_first_run.get_value() {
+            load_data();
+        } else {
+            filter_type_first_run.set_value(false);
         }
     });
 
@@ -446,14 +503,6 @@ pub fn YmReturnsList() -> impl IntoView {
                 <div class="page-header__actions">
                     <Button
                         variant="primary".to_string()
-                        on_click=Callback::new(move |_| load_data())
-                        disabled=loading.get()
-                    >
-                        {icon("refresh")}
-                        {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
-                    </Button>
-                    <Button
-                        variant="primary".to_string()
                         on_click=Callback::new(batch_post)
                         disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
                     >
@@ -527,6 +576,19 @@ pub fn YmReturnsList() -> impl IntoView {
                             on_page_size_change=Callback::new(change_page_size)
                         />
                     </div>
+
+                    <div class="filter-panel-header__right">
+                            // Кнопка "Поиск" (Thaw Button для единого стиля)
+                            <thaw::Button
+                                appearance=ButtonAppearance::Subtle
+                                on_click=move |_| load_data()
+                                disabled=loading.get()
+                                >
+                                {icon("refresh")}
+                                {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                                </thaw::Button>
+                            </div>
+
                 </div>
 
                 <div class=move || {
@@ -537,99 +599,59 @@ pub fn YmReturnsList() -> impl IntoView {
                     }
                 }>
                     <div class="filter-panel-content">
-                        <div class="filter-grid">
-                            <div class="form__group">
-                                <label class="form__label">"Период:"</label>
-                                <div style="display: flex; gap: var(--spacing-xs); align-items: center; flex-wrap: nowrap; overflow-x: auto;">
-                                    <DateInput
-                                        value=Signal::derive(move || state.get().date_from)
-                                        on_change=move |val| {
-                                            state.update(|s| { s.date_from = val; s.page = 0; });
-                                            load_data();
-                                        }
-                                    />
-                                    <span style="white-space: nowrap;">" — "</span>
-                                    <DateInput
-                                        value=Signal::derive(move || state.get().date_to)
-                                        on_change=move |val| {
-                                            state.update(|s| { s.date_to = val; s.page = 0; });
-                                            load_data();
-                                        }
-                                    />
-                                    <MonthSelector
-                                        on_select=Callback::new(move |(from, to)| {
-                                            state.update(|s| {
-                                                s.date_from = from;
-                                                s.date_to = to;
-                                                s.page = 0;
-                                            });
-                                            load_data();
-                                        })
-                                    />
-                                </div>
-                            </div>
-
-                            <div class="form__group">
-                                <label class="form__label">"Return ID:"</label>
-                                <input
-                                    type="text"
-                                    class="form__input"
-                                    placeholder="Поиск..."
-                                    prop:value=move || state.get().search_return_id
-                                    on:input=move |ev| {
+                        <Flex gap=FlexGap::Small align=FlexAlign::End>
+                            // DateRangePicker: широкий элемент
+                            <div style="min-width: 400px;">
+                                <DateRangePicker
+                                    date_from=Signal::derive(move || state.get().date_from)
+                                    date_to=Signal::derive(move || state.get().date_to)
+                                    on_change=Callback::new(move |(from, to)| {
                                         state.update(|s| {
-                                            s.search_return_id = event_target_value(&ev);
-                                            s.page = 0;
-                                        });
-                                    }
-                                    on:keydown=move |ev| {
-                                        if ev.key() == "Enter" {
-                                            load_data();
-                                        }
-                                    }
-                                />
-                            </div>
-
-                            <div class="form__group">
-                                <label class="form__label">"Order ID:"</label>
-                                <input
-                                    type="text"
-                                    class="form__input"
-                                    placeholder="Поиск..."
-                                    prop:value=move || state.get().search_order_id
-                                    on:input=move |ev| {
-                                        state.update(|s| {
-                                            s.search_order_id = event_target_value(&ev);
-                                            s.page = 0;
-                                        });
-                                    }
-                                    on:keydown=move |ev| {
-                                        if ev.key() == "Enter" {
-                                            load_data();
-                                        }
-                                    }
-                                />
-                            </div>
-
-                            <div class="form__group">
-                                <label class="form__label">"Тип:"</label>
-                                <select
-                                    class="form__select"
-                                    on:change=move |ev| {
-                                        let val = event_target_value(&ev);
-                                        state.update(|s| {
-                                            s.filter_type = if val.is_empty() { None } else { Some(val) };
+                                            s.date_from = from;
+                                            s.date_to = to;
                                             s.page = 0;
                                         });
                                         load_data();
-                                    }
-                                >
-                                    <option value="">"Все"</option>
-                                    <option value="RETURN">"Возврат"</option>
-                                    <option value="UNREDEEMED">"Невыкуп"</option>
-                                </select>
+                                    })
+                                    label="Период:".to_string()
+                                />
                             </div>
-                        </div>
+
+                            // Return ID: узкий элемент
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Return ID:"</Label>
+                                    <Input
+                                        value=search_return_id
+                                        placeholder="Поиск..."
+                                    />
+                                </Flex>
+                            </div>
+
+                            // Order ID: узкий элемент
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Order ID:"</Label>
+                                    <Input
+                                        value=search_order_id
+                                        placeholder="Поиск..."
+                                    />
+                                </Flex>
+                            </div>
+
+                            // Тип: узкий элемент
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Тип:"</Label>
+                                    <Select value=filter_type>
+                                        <option value="">"Все"</option>
+                                        <option value="RETURN">"Возврат"</option>
+                                        <option value="UNREDEEMED">"Невыкуп"</option>
+                                    </Select>
+                                </Flex>
+                            </div>
+
+                        </Flex>
 
                         {move || {
                             let has_filters = active_filters_count.get() > 0;

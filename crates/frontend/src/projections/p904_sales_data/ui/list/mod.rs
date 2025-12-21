@@ -164,7 +164,8 @@ pub fn SalesDataList() -> impl IntoView {
     // Create local RwSignals for form fields to avoid disposed signal issues
     // Use try_with_untracked to safely handle potentially disposed signals
     let date_from = RwSignal::new(
-        state.try_with_untracked(|s| s.date_from.clone())
+        state
+            .try_with_untracked(|s| s.date_from.clone())
             .unwrap_or_else(|| {
                 let now = chrono::Utc::now().date_naive();
                 let year = now.year();
@@ -173,10 +174,11 @@ pub fn SalesDataList() -> impl IntoView {
                     .expect("Invalid date")
                     .format("%Y-%m-%d")
                     .to_string()
-            })
+            }),
     );
     let date_to = RwSignal::new(
-        state.try_with_untracked(|s| s.date_to.clone())
+        state
+            .try_with_untracked(|s| s.date_to.clone())
             .unwrap_or_else(|| {
                 let now = chrono::Utc::now().date_naive();
                 let year = now.year();
@@ -191,15 +193,17 @@ pub fn SalesDataList() -> impl IntoView {
                 .expect("Invalid date")
                 .format("%Y-%m-%d")
                 .to_string()
-            })
+            }),
     );
     let limit = RwSignal::new(
-        state.try_with_untracked(|s| s.limit.clone())
-            .unwrap_or_else(|| "1000".to_string())
+        state
+            .try_with_untracked(|s| s.limit.clone())
+            .unwrap_or_else(|| "1000".to_string()),
     );
     let cabinet_filter = RwSignal::new(
-        state.try_with_untracked(|s| s.cabinet_filter.clone())
-            .unwrap_or_else(|| "".to_string())
+        state
+            .try_with_untracked(|s| s.cabinet_filter.clone())
+            .unwrap_or_else(|| "".to_string()),
     );
 
     // Sync local signals with global state (safely handle disposed state)
@@ -310,8 +314,7 @@ pub fn SalesDataList() -> impl IntoView {
                         {
                             date_from.set(date_from_val.to_string());
                         }
-                        if let Some(date_to_val) =
-                            settings.get("date_to").and_then(|v| v.as_str())
+                        if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str())
                         {
                             date_to.set(date_to_val.to_string());
                         }
@@ -321,8 +324,7 @@ pub fn SalesDataList() -> impl IntoView {
                             cabinet_filter.set(cabinet_val.to_string());
                             log!("Restored cabinet filter: {}", cabinet_val);
                         }
-                        if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str())
-                        {
+                        if let Some(limit_val) = settings.get("limit").and_then(|v| v.as_str()) {
                             // Валидация лимита: минимум 100, по умолчанию 1000
                             let limit_num = limit_val.parse::<u32>().unwrap_or(1000);
                             if limit_num < 100 {
@@ -549,13 +551,11 @@ pub fn SalesDataList() -> impl IntoView {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
-                    if let Some(date_from_val) =
-                        settings.get("date_from").and_then(|v| v.as_str())
+                    if let Some(date_from_val) = settings.get("date_from").and_then(|v| v.as_str())
                     {
                         date_from.set(date_from_val.to_string());
                     }
-                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str())
-                    {
+                    if let Some(date_to_val) = settings.get("date_to").and_then(|v| v.as_str()) {
                         date_to.set(date_to_val.to_string());
                     }
                     if let Some(cabinet_val) =
@@ -567,7 +567,10 @@ pub fn SalesDataList() -> impl IntoView {
                         // Валидация лимита: минимум 100, по умолчанию 1000
                         let limit_num = limit_val.parse::<u32>().unwrap_or(1000);
                         if limit_num < 100 {
-                            log!("WARNING: Invalid limit {} from saved settings, using default 1000", limit_val);
+                            log!(
+                                "WARNING: Invalid limit {} from saved settings, using default 1000",
+                                limit_val
+                            );
                             limit.set("1000".to_string());
                         } else {
                             limit.set(limit_val.to_string());

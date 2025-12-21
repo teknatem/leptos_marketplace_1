@@ -69,10 +69,8 @@ fn build_tree(items: Vec<Nomenclature>) -> Vec<TreeNode> {
     }
 
     // Создаем set всех существующих ID для проверки валидности parent_id
-    let existing_ids: std::collections::HashSet<String> = items
-        .iter()
-        .map(|item| item.base.id.as_string())
-        .collect();
+    let existing_ids: std::collections::HashSet<String> =
+        items.iter().map(|item| item.base.id.as_string()).collect();
 
     // Подсчитываем папки
     let folders_count = items.iter().filter(|i| i.is_folder).count();
@@ -90,18 +88,31 @@ fn build_tree(items: Vec<Nomenclature>) -> Vec<TreeNode> {
             } else if existing_ids.contains(pid) {
                 Some(pid.clone())
             } else {
-                web_sys::console::warn_1(&format!("Item {} has invalid parent_id: {}", item.base.id.as_string(), pid).into());
+                web_sys::console::warn_1(
+                    &format!(
+                        "Item {} has invalid parent_id: {}",
+                        item.base.id.as_string(),
+                        pid
+                    )
+                    .into(),
+                );
                 None
             }
         } else {
             None
         };
 
-        children_map.entry(normalized_parent).or_insert_with(Vec::new).push(item);
+        children_map
+            .entry(normalized_parent)
+            .or_insert_with(Vec::new)
+            .push(item);
     }
 
     // Рекурсивная функция для построения узла со всеми его детьми
-    fn build_node(item: Nomenclature, children_map: &HashMap<Option<String>, Vec<Nomenclature>>) -> TreeNode {
+    fn build_node(
+        item: Nomenclature,
+        children_map: &HashMap<Option<String>, Vec<Nomenclature>>,
+    ) -> TreeNode {
         let id = item.base.id.as_string();
         let children = children_map
             .get(&Some(id.clone()))
@@ -151,14 +162,19 @@ fn build_tree(items: Vec<Nomenclature>) -> Vec<TreeNode> {
 
     sort_nodes(&mut roots);
 
-    let folders_with_children = children_map.iter()
-        .filter(|(key, _)| key.is_some())
-        .count();
+    let folders_with_children = children_map.iter().filter(|(key, _)| key.is_some()).count();
 
-    web_sys::console::log_1(&format!(
-        "build_tree: {} total items, {} root nodes, {} groups, {} folders ({} with children)",
-        existing_ids.len(), roots.len(), children_map.len(), folders_count, folders_with_children
-    ).into());
+    web_sys::console::log_1(
+        &format!(
+            "build_tree: {} total items, {} root nodes, {} groups, {} folders ({} with children)",
+            existing_ids.len(),
+            roots.len(),
+            children_map.len(),
+            folders_count,
+            folders_with_children
+        )
+        .into(),
+    );
 
     roots
 }
@@ -172,17 +188,35 @@ fn sort_tree_nodes(nodes: &mut Vec<TreeNode>, sort_field: &str, ascending: bool)
             (false, true) => return std::cmp::Ordering::Greater,
             _ => {}
         }
-        
+
         // Затем сортируем по выбранному полю
         let cmp = match sort_field {
-            "code" => a.item.base.code.to_lowercase().cmp(&b.item.base.code.to_lowercase()),
-            "article" => a.item.article.to_lowercase().cmp(&b.item.article.to_lowercase()),
-            _ => a.item.base.description.to_lowercase().cmp(&b.item.base.description.to_lowercase()),
+            "code" => a
+                .item
+                .base
+                .code
+                .to_lowercase()
+                .cmp(&b.item.base.code.to_lowercase()),
+            "article" => a
+                .item
+                .article
+                .to_lowercase()
+                .cmp(&b.item.article.to_lowercase()),
+            _ => a
+                .item
+                .base
+                .description
+                .to_lowercase()
+                .cmp(&b.item.base.description.to_lowercase()),
         };
-        
-        if ascending { cmp } else { cmp.reverse() }
+
+        if ascending {
+            cmp
+        } else {
+            cmp.reverse()
+        }
     });
-    
+
     // Рекурсивно сортируем детей
     for node in nodes.iter_mut() {
         if !node.children.is_empty() {
@@ -201,7 +235,11 @@ fn filter_tree(nodes: Vec<TreeNode>, filter: &str, show_only_mp: bool) -> Vec<Tr
             true
         } else {
             let filter_lower = filter.to_lowercase();
-            node.item.base.description.to_lowercase().contains(&filter_lower)
+            node.item
+                .base
+                .description
+                .to_lowercase()
+                .contains(&filter_lower)
                 || node.item.base.code.to_lowercase().contains(&filter_lower)
                 || node.item.article.to_lowercase().contains(&filter_lower)
         };
@@ -315,7 +353,13 @@ fn render_rows_with_lookup(
 
     // Кнопка раскрытия/закрытия
     let toggle: AnyView = if is_folder && has_children {
-        let chevron_icon = move || if expanded.get() { icon("chevron-down") } else { icon("chevron-right") };
+        let chevron_icon = move || {
+            if expanded.get() {
+                icon("chevron-down")
+            } else {
+                icon("chevron-right")
+            }
+        };
         view! { 
             <button 
                 class="tree-toggle" 
@@ -413,31 +457,30 @@ pub fn NomenclatureTree() -> impl IntoView {
     let (is_loading, set_is_loading) = signal(false);
     let (sort_field, set_sort_field) = signal::<String>("description".to_string());
     let (sort_ascending, set_sort_ascending) = signal(true);
-    
+
     // Простой debounce механизм: обновляем filter_text только после паузы ввода
     let debounce_timeout = leptos::prelude::StoredValue::new(None::<i32>);
     let handle_input_change = move |value: String| {
         set_filter_input.set(value.clone());
-        
+
         // Отменяем предыдущий таймер если есть
         if let Some(timeout_id) = debounce_timeout.get_value() {
-            web_sys::window()
-                .and_then(|w| Some(w.clear_timeout_with_handle(timeout_id)));
+            web_sys::window().and_then(|w| Some(w.clear_timeout_with_handle(timeout_id)));
         }
-        
+
         // Создаем новый таймер
         let window = web_sys::window().expect("no window");
         let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
             set_filter_text.set(value.clone());
         }) as Box<dyn Fn()>);
-        
+
         let timeout_id = window
             .set_timeout_with_callback_and_timeout_and_arguments_0(
                 closure.as_ref().unchecked_ref(),
                 300, // 300ms задержка
             )
             .expect("setTimeout failed");
-        
+
         closure.forget();
         debounce_timeout.set_value(Some(timeout_id));
     };
@@ -448,14 +491,18 @@ pub fn NomenclatureTree() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_nomenclature().await {
                 Ok(list) => {
-                    web_sys::console::log_1(&format!("Loaded {} nomenclature items", list.len()).into());
+                    web_sys::console::log_1(
+                        &format!("Loaded {} nomenclature items", list.len()).into(),
+                    );
                     let map: HashMap<String, String> = list
                         .iter()
                         .map(|c| (c.base.id.as_string(), c.base.description.clone()))
                         .collect();
                     set_id_to_label.set(map);
                     let tree = build_tree(list);
-                    web_sys::console::log_1(&format!("Built tree with {} roots", tree.len()).into());
+                    web_sys::console::log_1(
+                        &format!("Built tree with {} roots", tree.len()).into(),
+                    );
                     set_all_roots.set(tree);
                     set_error.set(None);
                     set_is_loading.set(false);
@@ -484,13 +531,13 @@ pub fn NomenclatureTree() -> impl IntoView {
     load();
 
     let list_name = Nomenclature::list_name();
-    
+
     // Проверка активности фильтра
     let is_filter_active = move || {
         let text = filter_text.get();
         !text.trim().is_empty() && text.trim().len() >= 3
     };
-    
+
     // Обработчики сортировки
     let toggle_sort = move |field: &'static str| {
         move |_| {
@@ -502,16 +549,20 @@ pub fn NomenclatureTree() -> impl IntoView {
             }
         }
     };
-    
+
     // Функция для получения индикатора сортировки
     let sort_indicator = move |field: &'static str| -> &'static str {
         if sort_field.get() == field {
-            if sort_ascending.get() { " ▲" } else { " ▼" }
+            if sort_ascending.get() {
+                " ▲"
+            } else {
+                " ▼"
+            }
         } else {
             " ⇅"
         }
     };
-    
+
     view! {
         <div class="content">
             <div class="header" style="margin-bottom: 8px; flex-shrink: 0;">

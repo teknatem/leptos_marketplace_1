@@ -69,7 +69,6 @@ pub struct WarehouseDto {
     pub warehouse_type: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeographyDto {
     pub country_name: Option<String>,
@@ -660,10 +659,10 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
 
                                                             <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Статус заказа:"</div>
                                                             <div>
-                                                                <span style=move || if order_data.state.is_cancel { 
-                                                                    "padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;" 
-                                                                } else { 
-                                                                    "padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;" 
+                                                                <span style=move || if order_data.state.is_cancel {
+                                                                    "padding: 2px 8px; background: #ffebee; color: #c62828; border-radius: 3px; font-weight: 500;"
+                                                                } else {
+                                                                    "padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 3px; font-weight: 500;"
                                                                 }>
                                                                     {if order_data.state.is_cancel { "Отменён" } else { "Активен" }}
                                                                 </span>
@@ -881,13 +880,13 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
 
                                                             <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Бренд:"</div>
                                                             <div style="font-family: var(--font-family-base); font-size: 13px; font-weight: 500;">{line.brand.clone().unwrap_or("—".to_string())}</div>
-                                                            
+
                                                             <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Категория:"</div>
                                                             <div style="font-family: var(--font-family-base); font-size: 13px;">{line.category.clone().unwrap_or("—".to_string())}</div>
-                                                            
+
                                                             <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Предмет:"</div>
                                                             <div style="font-family: var(--font-family-base); font-size: 13px;">{line.subject.clone().unwrap_or("—".to_string())}</div>
-                                                            
+
                                                             <div style="font-weight: 600; color: #555; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 13px;">"Размер:"</div>
                                                             <div style="font-family: var(--font-family-base); font-size: 13px;">{line.tech_size.clone().unwrap_or("—".to_string())}</div>
 
@@ -908,7 +907,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                     </>
                                                                 }
                                                             })}
-                                                            
+
                                                             {order_data.source_meta.income_id.map(|inc_id| {
                                                                 view! {
                                                                     <>
@@ -917,7 +916,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                                                     </>
                                                                 }
                                                             })}
-                                                            
+
                                                             {order_data.source_meta.sticker.as_ref().map(|sticker| {
                                                                 view! {
                                                                     <>

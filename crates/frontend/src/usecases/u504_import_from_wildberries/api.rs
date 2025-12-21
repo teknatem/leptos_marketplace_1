@@ -1,9 +1,9 @@
-use contracts::usecases::u504_import_from_wildberries::{
-    ImportRequest, ImportResponse, ImportProgress,
-};
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
+use contracts::usecases::u504_import_from_wildberries::{
+    ImportProgress, ImportRequest, ImportResponse,
+};
 use serde_json;
-use wasm_bindgen::{JsValue, JsCast};
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
 /// API клиент для UseCase u504
@@ -39,7 +39,9 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
@@ -54,7 +56,10 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!("http://localhost:3000/api/u504/import/{}/progress", session_id);
+    let url = format!(
+        "http://localhost:3000/api/u504/import/{}/progress",
+        session_id
+    );
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -74,7 +79,9 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
@@ -86,18 +93,17 @@ pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
 }
 
 /// Получить список подключений маркетплейсов
-pub async fn get_connections() -> Result<Vec<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>, String> {
+pub async fn get_connections(
+) -> Result<Vec<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>, String> {
     let window = window().ok_or("No window object")?;
 
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/connection_mp",
-        &opts,
-    )
-    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request =
+        web_sys::Request::new_with_str_and_init("http://localhost:3000/api/connection_mp", &opts)
+            .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
@@ -110,13 +116,14 @@ pub async fn get_connections() -> Result<Vec<contracts::domain::a006_connection_
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
 
-    let connections =
-        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+    let connections = serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(connections)
 }
@@ -129,11 +136,9 @@ pub async fn get_marketplaces() -> Result<Vec<Marketplace>, String> {
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/marketplace",
-        &opts,
-    )
-    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request =
+        web_sys::Request::new_with_str_and_init("http://localhost:3000/api/marketplace", &opts)
+            .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     request
         .headers()
@@ -151,13 +156,14 @@ pub async fn get_marketplaces() -> Result<Vec<Marketplace>, String> {
     }
 
     let json = wasm_bindgen_futures::JsFuture::from(
-        response.json().map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
     )
     .await
     .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
 
-    let marketplaces =
-        serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
+    let marketplaces = serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())?;
 
     Ok(marketplaces)
 }

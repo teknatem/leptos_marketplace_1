@@ -259,9 +259,14 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
                                                             if let Ok(proj_data) =
-                                                                serde_json::from_str::<serde_json::Value>(&text)
+                                                                serde_json::from_str::<
+                                                                    serde_json::Value,
+                                                                >(
+                                                                    &text
+                                                                )
                                                             {
-                                                                set_projections.set(Some(proj_data));
+                                                                set_projections
+                                                                    .set(Some(proj_data));
                                                             }
                                                         }
                                                     }
@@ -325,11 +330,14 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             }
                         }
                         // Перезагрузить проекции
-                        let projections_url = format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                        let projections_url =
+                            format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
                         if let Ok(resp) = Request::get(&projections_url).send().await {
                             if resp.status() == 200 {
                                 if let Ok(text) = resp.text().await {
-                                    if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Ok(proj_data) =
+                                        serde_json::from_str::<serde_json::Value>(&text)
+                                    {
                                         set_projections.set(Some(proj_data));
                                     }
                                 }
@@ -372,11 +380,14 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                             }
                         }
                         // Перезагрузить проекции (после unpost должны быть пустые)
-                        let projections_url = format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                        let projections_url =
+                            format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
                         if let Ok(resp) = Request::get(&projections_url).send().await {
                             if resp.status() == 200 {
                                 if let Ok(text) = resp.text().await {
-                                    if let Ok(proj_data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Ok(proj_data) =
+                                        serde_json::from_str::<serde_json::Value>(&text)
+                                    {
                                         set_projections.set(Some(proj_data));
                                     }
                                 }

@@ -1,11 +1,9 @@
 use crate::domain::a006_connection_mp::ui::details::ConnectionMPDetails;
-use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
-use crate::shared::modal::Modal;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::prelude::*;
 use std::collections::HashSet;
-use std::rc::Rc;
+use thaw::*;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionMPRow {
@@ -53,7 +51,7 @@ fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
 pub fn ConnectionMPList() -> impl IntoView {
     let (items, set_items) = signal::<Vec<ConnectionMPRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let (show_modal, set_show_modal) = signal(false);
+    let show_modal = RwSignal::new(false);
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
 
@@ -75,14 +73,14 @@ pub fn ConnectionMPList() -> impl IntoView {
 
     let handle_create_new = move || {
         set_editing_id.set(None);
-        set_show_modal.set(true);
+        show_modal.set(true);
     };
 
     let handle_edit = move |id: String| {
         let items_clone = items.get();
         if items_clone.iter().any(|item| item.id == id) {
             set_editing_id.set(Some(id));
-            set_show_modal.set(true);
+            show_modal.set(true);
         }
     };
 
@@ -141,129 +139,178 @@ pub fn ConnectionMPList() -> impl IntoView {
     fetch();
 
     view! {
-        <div class="page">
-            // Page header with title and action buttons
-            <div class="header">
-                <div class="header__content">
-                    <h1 class="header__title">{"Подключения маркетплейсов"}</h1>
-                </div>
-                <div class="header__actions">
-                    <button class="button button--primary" on:click=move |_| handle_create_new()>
+        <div style="padding: 20px;">
+            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                <h1 style="font-size: 24px; font-weight: bold;">{"Подключения маркетплейсов"}</h1>
+                <Space>
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=move |_| handle_create_new()
+                    >
                         {icon("plus")}
-                        {"Новое подключение"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| fetch()>
+                        " Новое подключение"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| fetch()
+                    >
                         {icon("refresh")}
-                        {"Обновить"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
+                        " Обновить"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| delete_selected()
+                        disabled=Signal::derive(move || selected.get().is_empty())
+                    >
                         {icon("delete")}
-                        {move || format!("Удалить ({})", selected.get().len())}
-                    </button>
-                </div>
-            </div>
-
+                        {move || format!(" Удалить ({})", selected.get().len())}
+                    </Button>
+                </Space>
+            </Flex>
+            <div style="margin-top: 16px;">
             {move || error.get().map(|e| view! {
-                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
-                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: var(--color-error); font-size: 18px;">"⚠"</span>
+                    <span style="color: var(--color-error);">{e}</span>
                 </div>
             })}
-
-            <div class="table">
-                <table class="table__data table--striped">
-                    <thead class="table__head">
-                        <tr>
-                            <th class="table__header-cell table__header-cell--checkbox">
-                                <input
-                                    type="checkbox"
-                                    class="table__checkbox"
-                                    on:change=move |ev| {
-                                        let checked = event_target_checked(&ev);
-                                        let current_items = items.get();
-                                        if checked {
-                                            set_selected.update(|s| {
-                                                for item in current_items.iter() {
-                                                    s.insert(item.id.clone());
-                                                }
-                                            });
-                                        } else {
-                                            set_selected.set(HashSet::new());
-                                        }
-                                    }
-                                />
-                            </th>
-                            <th class="table__header-cell">{"Наименование"}</th>
-                            <th class="table__header-cell">{"Маркетплейс"}</th>
-                            <th class="table__header-cell">{"Организация"}</th>
-                            <th class="table__header-cell">{"Используется"}</th>
-                            <th class="table__header-cell">{"Тестовый режим"}</th>
-                            <th class="table__header-cell">{"Комментарий"}</th>
-                            <th class="table__header-cell">{"Создано"}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {move || items.get().into_iter().map(|row| {
-                            let id = row.id.clone();
-                            let id_for_click = id.clone();
-                            let id_for_checkbox = id.clone();
-                            let id_for_toggle = id.clone();
-                            let is_selected = selected.get().contains(&id);
-                            view! {
-                                <tr
-                                    class="table__row"
-                                    class:table__row--selected=is_selected
-                                    on:click=move |_| handle_edit(id_for_click.clone())
-                                >
-                                    <TableCheckbox
-                                        checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
-                                        on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
-                                    />
-                                    <td class="table__cell">{row.description}</td>
-                                    <td class="table__cell">{row.marketplace}</td>
-                                    <td class="table__cell">{row.organization}</td>
-                                    <td class="table__cell">{if row.is_used { "Да" } else { "Нет" }}</td>
-                                    <td class="table__cell">{if row.test_mode { "Да" } else { "Нет" }}</td>
-                                    <td class="table__cell">{row.comment}</td>
-                                    <td class="table__cell">{row.created_at}</td>
-                                </tr>
-                            }
-                        }).collect_view()}
-                    </tbody>
-                </table>
             </div>
 
-            <Show when=move || show_modal.get()>
-                {move || {
-                    let modal_title = if editing_id.get().is_some() {
-                        "Редактирование подключения".to_string()
-                    } else {
-                        "Новое подключение".to_string()
-                    };
-                    view! {
-                        <Modal
-                            title=modal_title
-                            on_close=Callback::new(move |_| {
-                                set_show_modal.set(false);
-                                set_editing_id.set(None);
-                            })
-                        >
-                            <ConnectionMPDetails
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHeaderCell resizable=true min_width=40.0 max_width=50.0>
+                            <input
+                                type="checkbox"
+                                style="cursor: pointer;"
+                                on:change=move |ev| {
+                                    let checked = event_target_checked(&ev);
+                                    let current_items = items.get();
+                                    if checked {
+                                        set_selected.update(|s| {
+                                            for item in current_items.iter() {
+                                                s.insert(item.id.clone());
+                                            }
+                                        });
+                                    } else {
+                                        set_selected.set(HashSet::new());
+                                    }
+                                }
+                            />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>"Наименование"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=120.0>"Маркетплейс"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>"Организация"</TableHeaderCell>
+                        <TableHeaderCell>"Используется"</TableHeaderCell>
+                        <TableHeaderCell>"Тестовый режим"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>"Комментарий"</TableHeaderCell>
+                        <TableHeaderCell>"Создано"</TableHeaderCell>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {move || items.get().into_iter().map(|row| {
+                        let id = row.id.clone();
+                        let id_for_link = id.clone();
+                        let id_for_checkbox = id.clone();
+                        let id_for_toggle = id.clone();
+                        view! {
+                            <TableRow>
+                                <TableCell>
+                                    <input
+                                        type="checkbox"
+                                        style="cursor: pointer;"
+                                        prop:checked=move || selected.get().contains(&id_for_checkbox)
+                                        on:change=move |ev| {
+                                            let checked = event_target_checked(&ev);
+                                            toggle_select(id_for_toggle.clone(), checked);
+                                        }
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        <a
+                                            href="#"
+                                            style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                            on:click=move |e| {
+                                                e.prevent_default();
+                                                handle_edit(id_for_link.clone());
+                                            }
+                                        >
+                                            {row.description}
+                                        </a>
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {row.marketplace}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {row.organization}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {if row.is_used { "Да" } else { "Нет" }}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {if row.test_mode { "Да" } else { "Нет" }}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout truncate=true>
+                                        {row.comment}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {row.created_at}
+                                    </TableCellLayout>
+                                </TableCell>
+                            </TableRow>
+                        }
+                    }).collect_view()}
+                </TableBody>
+            </Table>
+
+            <Dialog open=show_modal>
+                <DialogSurface class="connection-mp-dialog">
+                    <DialogBody>
+                        <DialogTitle>
+                            {move || if editing_id.get().is_some() {
+                                "Редактирование подключения"
+                            } else {
+                                "Новое подключение"
+                            }}
+                        </DialogTitle>
+                        <DialogContent>
+                            <style>
+                                ".connection-mp-dialog.thaw-dialog-surface {
+                                    max-width: min(1400px, 95vw) !important;
+                                    width: min(1400px, 95vw) !important;
+                                }"
+                            </style>
+                            <div>
+                                <ConnectionMPDetails
                                 id=editing_id.get()
-                                on_saved=Rc::new(move |_| {
-                                    set_show_modal.set(false);
+                                on_saved=Callback::new(move |_| {
+                                    show_modal.set(false);
                                     set_editing_id.set(None);
                                     fetch();
                                 })
-                                on_cancel=Rc::new(move |_| {
-                                    set_show_modal.set(false);
+                                on_cancel=Callback::new(move |_| {
+                                    show_modal.set(false);
                                     set_editing_id.set(None);
                                 })
-                            />
-                        </Modal>
-                    }
-                }}
-            </Show>
+                                />
+                            </div>
+                        </DialogContent>
+                    </DialogBody>
+                </DialogSurface>
+            </Dialog>
         </div>
     }
 }

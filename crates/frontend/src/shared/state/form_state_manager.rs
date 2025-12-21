@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// FormStateStore manages form filter states across tab switches
 /// States are stored in memory and persist when switching between tabs
@@ -41,4 +41,3 @@ impl Default for FormStateStore {
         Self::new()
     }
 }
-

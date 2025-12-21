@@ -225,7 +225,6 @@ pub async fn fetch_dimension_values() -> Result<DimensionValuesResponse, String>
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: DimensionValuesResponse =
-        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let data: DimensionValuesResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }

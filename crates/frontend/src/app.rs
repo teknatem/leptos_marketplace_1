@@ -3,6 +3,11 @@ use crate::routes::routes::AppRoutes;
 use crate::shared::picker_aggregate::ModalService;
 use crate::system::auth::context::AuthProvider;
 use leptos::prelude::*;
+use thaw::{ConfigProvider, Theme};
+
+/// Context for Thaw UI theme management
+#[derive(Clone, Copy)]
+pub struct ThawThemeContext(pub RwSignal<Theme>);
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -11,9 +16,17 @@ pub fn App() -> impl IntoView {
     // Provide ModalService for picker components
     provide_context(ModalService::new());
 
+    // Thaw UI theme - start with dark theme
+    let theme = RwSignal::new(Theme::dark());
+
+    // Provide Thaw theme context for ThemeSelect to update
+    provide_context(ThawThemeContext(theme));
+
     view! {
-        <AuthProvider>
-            <AppRoutes />
-        </AuthProvider>
+        <ConfigProvider theme>
+            <AuthProvider>
+                <AppRoutes />
+            </AuthProvider>
+        </ConfigProvider>
     }
 }

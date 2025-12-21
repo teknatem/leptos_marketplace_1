@@ -1,7 +1,7 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
 // DTO структуры для детального представления
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,15 +119,23 @@ pub fn OzonReturnsDetail(
 
                                         // Асинхронная загрузка проекций p900
                                         let set_projections = set_projections.clone();
-                                        let set_projections_loading = set_projections_loading.clone();
+                                        let set_projections_loading =
+                                            set_projections_loading.clone();
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
-                                            let projections_url = format!("http://localhost:3000/api/projections/p900/{}", return_id);
+                                            let projections_url = format!(
+                                                "http://localhost:3000/api/projections/p900/{}",
+                                                return_id
+                                            );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
                                                         if let Ok(text) = resp.text().await {
-                                                            if let Ok(items) = serde_json::from_str::<Vec<SalesRegisterDto>>(&text) {
+                                                            if let Ok(items) = serde_json::from_str::<
+                                                                Vec<SalesRegisterDto>,
+                                                            >(
+                                                                &text
+                                                            ) {
                                                                 set_projections.set(items);
                                                             }
                                                         }
@@ -283,9 +291,7 @@ pub fn OzonReturnsDetail(
 }
 
 // Вкладка "Основное"
-fn render_general_tab(
-    data: OzonReturnsDetailDto,
-) -> impl IntoView {
+fn render_general_tab(data: OzonReturnsDetailDto) -> impl IntoView {
     let total_amount = data.price * data.quantity as f64;
     let is_posted = data.metadata.is_posted;
 

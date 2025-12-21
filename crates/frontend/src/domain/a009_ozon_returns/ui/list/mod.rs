@@ -1,9 +1,9 @@
-use leptos::prelude::*;
-use leptos::logging::log;
-use serde::{Deserialize, Serialize};
-use gloo_net::http::Request;
 use super::details::OzonReturnsDetail;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use gloo_net::http::Request;
+use leptos::logging::log;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
@@ -44,16 +44,37 @@ pub struct OzonReturnsDto {
 impl Sortable for OzonReturnsDto {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
-            "return_id" => self.return_id.to_lowercase().cmp(&other.return_id.to_lowercase()),
+            "return_id" => self
+                .return_id
+                .to_lowercase()
+                .cmp(&other.return_id.to_lowercase()),
             "return_date" => self.return_date.cmp(&other.return_date),
-            "return_type" => self.return_type.to_lowercase().cmp(&other.return_type.to_lowercase()),
-            "return_reason" => self.return_reason_name.to_lowercase().cmp(&other.return_reason_name.to_lowercase()),
-            "order_number" => self.order_number.to_lowercase().cmp(&other.order_number.to_lowercase()),
-            "posting_number" => self.posting_number.to_lowercase().cmp(&other.posting_number.to_lowercase()),
+            "return_type" => self
+                .return_type
+                .to_lowercase()
+                .cmp(&other.return_type.to_lowercase()),
+            "return_reason" => self
+                .return_reason_name
+                .to_lowercase()
+                .cmp(&other.return_reason_name.to_lowercase()),
+            "order_number" => self
+                .order_number
+                .to_lowercase()
+                .cmp(&other.order_number.to_lowercase()),
+            "posting_number" => self
+                .posting_number
+                .to_lowercase()
+                .cmp(&other.posting_number.to_lowercase()),
             "sku" => self.sku.to_lowercase().cmp(&other.sku.to_lowercase()),
-            "product_name" => self.product_name.to_lowercase().cmp(&other.product_name.to_lowercase()),
+            "product_name" => self
+                .product_name
+                .to_lowercase()
+                .cmp(&other.product_name.to_lowercase()),
             "quantity" => self.quantity.cmp(&other.quantity),
-            "price" => self.price.partial_cmp(&other.price).unwrap_or(Ordering::Equal),
+            "price" => self
+                .price
+                .partial_cmp(&other.price)
+                .unwrap_or(Ordering::Equal),
             "is_posted" => self.is_posted.cmp(&other.is_posted),
             _ => Ordering::Equal,
         }
@@ -81,7 +102,8 @@ pub fn OzonReturnsList() -> impl IntoView {
 
     // Статус массовых операций
     let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (operation_results, set_operation_results) = signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
+    let (operation_results, set_operation_results) =
+        signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
     let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
 
     let load_returns = move || {
@@ -100,8 +122,10 @@ pub fn OzonReturnsList() -> impl IntoView {
                     if status == 200 {
                         match response.text().await {
                             Ok(text) => {
-                                log!("Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>());
+                                log!(
+                                    "Received response text (first 500 chars): {}",
+                                    text.chars().take(500).collect::<String>()
+                                );
 
                                 match serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
                                     Ok(items) => {
@@ -111,7 +135,8 @@ pub fn OzonReturnsList() -> impl IntoView {
                                     }
                                     Err(e) => {
                                         log!("Failed to parse response: {:?}", e);
-                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                        set_error
+                                            .set(Some(format!("Failed to parse response: {}", e)));
                                         set_loading.set(false);
                                     }
                                 }
@@ -165,7 +190,11 @@ pub fn OzonReturnsList() -> impl IntoView {
         let ascending = sort_ascending.get();
         result.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         result
@@ -201,7 +230,8 @@ pub fn OzonReturnsList() -> impl IntoView {
         if selected.len() == items.len() && !items.is_empty() {
             set_selected_ids.set(Vec::new()); // Снять все
         } else {
-            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect()); // Выбрать все
+            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect());
+            // Выбрать все
         }
     };
 
@@ -213,9 +243,7 @@ pub fn OzonReturnsList() -> impl IntoView {
     };
 
     // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| {
-        selected_ids.get().contains(&id.to_string())
-    };
+    let is_selected = move |id: &str| selected_ids.get().contains(&id.to_string());
 
     // Массовое проведение
     let post_selected = move |_| {
@@ -249,7 +277,11 @@ pub fn OzonReturnsList() -> impl IntoView {
                         if response.status() == 200 {
                             results.push((id.clone(), true, None));
                         } else {
-                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                            results.push((
+                                id.clone(),
+                                false,
+                                Some(format!("HTTP {}", response.status())),
+                            ));
                         }
                     }
                     Err(e) => {
@@ -319,7 +351,11 @@ pub fn OzonReturnsList() -> impl IntoView {
                         if response.status() == 200 {
                             results.push((id.clone(), true, None));
                         } else {
-                            results.push((id.clone(), false, Some(format!("HTTP {}", response.status()))));
+                            results.push((
+                                id.clone(),
+                                false,
+                                Some(format!("HTTP {}", response.status())),
+                            ));
                         }
                     }
                     Err(e) => {

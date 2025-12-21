@@ -1,4 +1,6 @@
+use crate::app::ThawThemeContext;
 use leptos::prelude::*;
+use thaw::Theme;
 use wasm_bindgen::JsCast;
 
 const THEME_STORAGE_KEY: &str = "app_theme";
@@ -45,6 +47,26 @@ fn apply_theme(theme: &str) {
     }
 }
 
+/// Set CSS variable for Thaw ConfigProvider
+fn set_thaw_background(value: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            // Find .thaw-config-provider element
+            if let Some(element) = document
+                .query_selector(".thaw-config-provider")
+                .ok()
+                .flatten()
+            {
+                if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
+                    let _ = html_element
+                        .style()
+                        .set_property("--colorNeutralBackground1", value);
+                }
+            }
+        }
+    }
+}
+
 /// ThemeSelect component for switching themes
 #[component]
 pub fn ThemeSelect() -> impl IntoView {
@@ -53,9 +75,27 @@ pub fn ThemeSelect() -> impl IntoView {
     let current_theme = RwSignal::new(saved_theme.clone());
     let is_open = RwSignal::new(false);
 
-    // Apply saved theme on mount
+    // Get Thaw theme context
+    let thaw_theme_ctx = leptos::context::use_context::<ThawThemeContext>();
+
+    // Apply saved theme on mount (including Thaw theme)
     Effect::new(move |_| {
         apply_theme(&saved_theme);
+        if let Some(ctx) = thaw_theme_ctx {
+            // Sync Thaw theme with app theme
+            let thaw_theme = match saved_theme.as_str() {
+                "light" => Theme::light(),
+                "dark" => Theme::dark(),
+                "forest" => Theme::dark(), // forest uses dark Thaw theme
+                _ => Theme::dark(),
+            };
+            ctx.0.set(thaw_theme);
+
+            // Set transparent background for forest theme on mount
+            if saved_theme == "forest" {
+                set_thaw_background("transparent");
+            }
+        }
     });
 
     let change_theme = move |theme: String| {
@@ -64,6 +104,25 @@ pub fn ThemeSelect() -> impl IntoView {
 
         // Save theme to localStorage
         save_theme(&theme);
+
+        // Update Thaw theme
+        if let Some(ctx) = thaw_theme_ctx {
+            let thaw_theme = match theme.as_str() {
+                "light" => Theme::light(),
+                "dark" => Theme::dark(),
+                "forest" => Theme::dark(), // forest uses dark Thaw theme
+                _ => Theme::dark(),
+            };
+            ctx.0.set(thaw_theme);
+
+            // Set transparent background for forest theme
+            if theme == "forest" {
+                set_thaw_background("transparent");
+            } else {
+                // Reset to default for other themes
+                set_thaw_background("");
+            }
+        }
 
         // Update current theme signal
         current_theme.set(theme);
@@ -77,13 +136,17 @@ pub fn ThemeSelect() -> impl IntoView {
     view! {
         <div class="theme-select-wrapper">
             <button
-                class="button button--ghost button--smallall"
+                class="top-header__icon-button"
                 on:click=toggle_dropdown
+                title="Выбор темы"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
                 </svg>
-                "Тема"
             </button>
 
             <Show when=move || is_open.get()>

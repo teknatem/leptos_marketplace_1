@@ -1,6 +1,9 @@
 use super::dimension_input::DimensionInput;
+use super::model::{
+    fetch_barcodes_by_nomenclature, fetch_dimension_values, BarcodesByNomenclatureResponse,
+    DimensionValuesResponse,
+};
 use super::view_model::NomenclatureDetailsViewModel;
-use super::model::{fetch_barcodes_by_nomenclature, fetch_dimension_values, BarcodesByNomenclatureResponse, DimensionValuesResponse};
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use leptos::task::spawn_local;

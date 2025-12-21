@@ -256,7 +256,13 @@ fn render_rows_with_lookup(
 
     // Кнопка раскрытия/закрытия
     let toggle: AnyView = if is_folder && has_children {
-        let chevron_icon = move || if expanded.get() { icon("chevron-down") } else { icon("chevron-right") };
+        let chevron_icon = move || {
+            if expanded.get() {
+                icon("chevron-down")
+            } else {
+                icon("chevron-right")
+            }
+        };
         view! {
             <button
                 class="tree-toggle"
@@ -293,7 +299,16 @@ fn render_rows_with_lookup(
     let inn_kpp_text = if is_folder {
         String::new()
     } else {
-        format!("{}{}{}", inn, if !inn.is_empty() && !kpp.is_empty() { " / " } else { "" }, kpp)
+        format!(
+            "{}{}{}",
+            inn,
+            if !inn.is_empty() && !kpp.is_empty() {
+                " / "
+            } else {
+                ""
+            },
+            kpp
+        )
     };
     let inn_kpp_view = if is_folder {
         view! { <span>{""}</span> }.into_any()

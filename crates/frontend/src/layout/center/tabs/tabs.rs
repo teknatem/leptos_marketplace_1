@@ -2,6 +2,7 @@
 //     customers::main_table::CustomersMainTable, products::main_table::ProductsMainTable,
 // };
 // This is the component
+use crate::dashboards::MonthlySummaryDashboard;
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
@@ -20,8 +21,8 @@ use crate::domain::a013_ym_order::ui::list::YmOrderList;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
 use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
 use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
-use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
+use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::layout::center::tabs::tab::Tab as TabComponent;
 use crate::layout::global_context::{AppGlobalContext, Tab as TabData};
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
@@ -33,7 +34,6 @@ use crate::projections::p905_wb_commission_history::ui::details::CommissionHisto
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
 use crate::system::users::ui::list::UsersListPage;
-use crate::dashboards::MonthlySummaryDashboard;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
 use crate::usecases::u503_import_from_yandex;
@@ -48,29 +48,32 @@ use leptos::prelude::*;
 fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
     let tab_key = tab.key.clone();
     let tab_key_for_active_check = tab_key.clone();
-    
+
     // Check if this tab is active - this closure will be reactive
     let is_active = move || {
         let current_active = tabs_store.active.get();
         let active = current_active.as_ref() == Some(&tab_key_for_active_check);
         active
     };
-    
-    log!("🔨 TabPage CREATED for: '{}' (this should happen once per open)", tab_key);
-    
+
+    log!(
+        "🔨 TabPage CREATED for: '{}' (this should happen once per open)",
+        tab_key
+    );
+
     // Log when component is destroyed
     let tab_key_for_cleanup = tab_key.clone();
     on_cleanup(move || {
         log!("💥 TabPage DESTROYED for: '{}'", tab_key_for_cleanup);
     });
-    
+
     // Render content based on tab key
     let tab_key_for_content = tab_key.clone();
     let content = {
         let key_ref = tab_key_for_content.as_str();
         let tabs_store_for_details = tabs_store.clone();
         let key_for_close = tab_key_for_content.clone();
-        
+
         match key_ref {
             "a001_connection_1c" => {
                 log!("✅ Creating Connection1CList");
@@ -239,9 +242,9 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
         }
     };
-    
+
     view! {
-        <div 
+        <div
             class="tab-page"
             class:hidden=move || !is_active()
             data-tab-key=tab_key

@@ -54,4 +54,3 @@ impl Default for TransactionsState {
 pub fn create_state() -> RwSignal<TransactionsState> {
     RwSignal::new(TransactionsState::default())
 }
-

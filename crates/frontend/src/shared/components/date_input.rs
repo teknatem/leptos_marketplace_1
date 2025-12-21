@@ -25,4 +25,3 @@ pub fn DateInput(
         />
     }
 }
-
