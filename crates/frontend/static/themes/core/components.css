@@ -605,6 +605,21 @@
   font-size: 14px;
 }
 
+/* Стили для иконок сортировки в Thaw таблицах */
+.sort-icon {
+  display: inline-block;
+  font-size: 14px;
+  opacity: 0.3;
+  color: var(--color-text-tertiary);
+  transition: opacity 0.2s ease;
+}
+
+.sort-icon.active {
+  opacity: 1;
+  color: var(--color-success);
+  font-weight: bold;
+}
+
 /* Resizable columns */
 .table__resizer {
   position: absolute;

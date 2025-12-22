@@ -1,7 +1,9 @@
 use crate::domain::a006_connection_mp::ui::details::ConnectionMPDetails;
 use crate::shared::icons::icon;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::prelude::*;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use thaw::*;
 
@@ -42,6 +44,21 @@ impl ConnectionMPRow {
     }
 }
 
+impl Sortable for ConnectionMPRow {
+    fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
+        match field {
+            "description" => self.description.cmp(&other.description),
+            "marketplace" => self.marketplace.cmp(&other.marketplace),
+            "organization" => self.organization.cmp(&other.organization),
+            "is_used" => self.is_used.cmp(&other.is_used),
+            "test_mode" => self.test_mode.cmp(&other.test_mode),
+            "comment" => self.comment.cmp(&other.comment),
+            "created_at" => self.created_at.cmp(&other.created_at),
+            _ => Ordering::Equal,
+        }
+    }
+}
+
 fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
@@ -55,6 +72,11 @@ pub fn ConnectionMPList() -> impl IntoView {
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
 
+    // Состояние для сортировки
+    let (raw_items, set_raw_items) = signal::<Vec<ConnectionMPRow>>(Vec::new());
+    let (sort_field, set_sort_field) = signal::<String>("description".to_string());
+    let (sort_ascending, set_sort_ascending) = signal(true);
+
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_connections().await {
@@ -63,13 +85,31 @@ pub fn ConnectionMPList() -> impl IntoView {
                     for conn in v {
                         rows.push(ConnectionMPRow::from_async(conn).await);
                     }
-                    set_items.set(rows);
+                    set_raw_items.set(rows);
                     set_error.set(None);
                 }
                 Err(e) => set_error.set(Some(e)),
             }
         });
     };
+
+    // Автоматическая сортировка при изменении данных или параметров
+    Effect::new(move |_| {
+        let mut sorted = raw_items.get();
+        let field = sort_field.get();
+        let ascending = sort_ascending.get();
+
+        sorted.sort_by(|a, b| {
+            let cmp = a.compare_by_field(b, &field);
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
+        });
+
+        set_items.set(sorted);
+    });
 
     let handle_create_new = move || {
         set_editing_id.set(None);
@@ -92,6 +132,15 @@ pub fn ConnectionMPList() -> impl IntoView {
                 s.remove(&id);
             }
         });
+    };
+
+    let toggle_sort = move |field: &'static str| {
+        if sort_field.get() == field {
+            set_sort_ascending.update(|a| *a = !*a);
+        } else {
+            set_sort_field.set(field.to_string());
+            set_sort_ascending.set(true);
+        }
     };
 
     let clear_selection = move || set_selected.set(HashSet::new());
@@ -198,13 +247,97 @@ pub fn ConnectionMPList() -> impl IntoView {
                                 }
                             />
                         </TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Наименование"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=120.0>"Маркетплейс"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Организация"</TableHeaderCell>
-                        <TableHeaderCell>"Используется"</TableHeaderCell>
-                        <TableHeaderCell>"Тестовый режим"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Комментарий"</TableHeaderCell>
-                        <TableHeaderCell>"Создано"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>
+                            "Наименование"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "description")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("description");
+                                }
+                            >
+                                {move || get_sort_indicator("description", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=120.0>
+                            "Маркетплейс"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "marketplace")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("marketplace");
+                                }
+                            >
+                                {move || get_sort_indicator("marketplace", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>
+                            "Организация"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "organization")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("organization");
+                                }
+                            >
+                                {move || get_sort_indicator("organization", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell>
+                            "Используется"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "is_used")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("is_used");
+                                }
+                            >
+                                {move || get_sort_indicator("is_used", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell>
+                            "Тестовый режим"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "test_mode")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("test_mode");
+                                }
+                            >
+                                {move || get_sort_indicator("test_mode", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>
+                            "Комментарий"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "comment")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("comment");
+                                }
+                            >
+                                {move || get_sort_indicator("comment", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
+                        <TableHeaderCell>
+                            "Создано"
+                            <span
+                                class={move || get_sort_class(&sort_field.get(), "created_at")}
+                                style="cursor: pointer; margin-left: 4px;"
+                                on:click=move |e| {
+                                    e.stop_propagation();
+                                    toggle_sort("created_at");
+                                }
+                            >
+                                {move || get_sort_indicator("created_at", &sort_field.get(), sort_ascending.get())}
+                            </span>
+                        </TableHeaderCell>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -295,7 +428,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                             </style>
                             <div>
                                 <ConnectionMPDetails
-                                id=editing_id.get()
+                                id=editing_id
                                 on_saved=Callback::new(move |_| {
                                     show_modal.set(false);
                                     set_editing_id.set(None);

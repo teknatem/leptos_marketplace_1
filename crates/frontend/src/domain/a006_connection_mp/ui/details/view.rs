@@ -11,7 +11,7 @@ use thaw::*;
 
 #[component]
 pub fn ConnectionMPDetails(
-    id: Option<String>,
+    #[prop(into)] id: Signal<Option<String>>,
     on_saved: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
@@ -45,39 +45,59 @@ pub fn ConnectionMPDetails(
     // Храним ID для предвыбора в пикерах
     let (organization_id, set_organization_id) = signal::<Option<String>>(None);
 
-    // Load existing connection if id is provided
-    if let Some(ref conn_id_val) = id {
-        let id_clone = conn_id_val.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(conn) = fetch_connection(&id_clone).await {
-                // Устанавливаем значения в RwSignal
-                description.set(conn.base.description);
-                comment.set(conn.base.comment.unwrap_or_default());
-                api_key.set(conn.api_key);
-                supplier_id.set(conn.supplier_id.unwrap_or_default());
-                application_id.set(conn.application_id.unwrap_or_default());
-                business_account_id.set(conn.business_account_id.unwrap_or_default());
-                api_key_stats.set(conn.api_key_stats.unwrap_or_default());
-                is_used.set(conn.is_used);
-                test_mode.set(conn.test_mode);
+    // Реактивная загрузка данных при изменении id
+    Effect::new(move |_| {
+        match id.get() {
+            Some(conn_id_val) => {
+                // Загрузка существующего подключения
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(conn) = fetch_connection(&conn_id_val).await {
+                        description.set(conn.base.description);
+                        comment.set(conn.base.comment.unwrap_or_default());
+                        api_key.set(conn.api_key);
+                        supplier_id.set(conn.supplier_id.unwrap_or_default());
+                        application_id.set(conn.application_id.unwrap_or_default());
+                        business_account_id.set(conn.business_account_id.unwrap_or_default());
+                        api_key_stats.set(conn.api_key_stats.unwrap_or_default());
+                        is_used.set(conn.is_used);
+                        test_mode.set(conn.test_mode);
+                        marketplace_id.set(conn.marketplace_id.clone());
+                        organization.set(conn.organization.clone());
+                        set_conn_id.set(Some(conn.base.id.as_string()));
+                        set_conn_code.set(Some(conn.base.code));
+                        set_organization_name.set(conn.organization.clone());
 
-                marketplace_id.set(conn.marketplace_id.clone());
-                organization.set(conn.organization.clone());
-
-                set_conn_id.set(Some(conn.base.id.as_string()));
-                set_conn_code.set(Some(conn.base.code));
-
-                // Сохраняем organization в organization_name для отображения
-                set_organization_name.set(conn.organization.clone());
-
-                // Загружаем информацию о маркетплейсе
-                if let Ok(mp_info) = fetch_marketplace_info(&conn.marketplace_id).await {
-                    set_marketplace_name.set(mp_info.name);
-                    set_marketplace_code.set(mp_info.code);
-                }
+                        if let Ok(mp_info) = fetch_marketplace_info(&conn.marketplace_id).await {
+                            set_marketplace_name.set(mp_info.name);
+                            set_marketplace_code.set(mp_info.code);
+                        }
+                    }
+                });
             }
-        });
-    }
+            None => {
+                // Сброс формы для нового подключения
+                description.set(String::new());
+                comment.set(String::new());
+                api_key.set(String::new());
+                supplier_id.set(String::new());
+                application_id.set(String::new());
+                business_account_id.set(String::new());
+                api_key_stats.set(String::new());
+                is_used.set(false);
+                test_mode.set(false);
+                marketplace_id.set(String::new());
+                organization.set(String::new());
+                set_conn_id.set(None);
+                set_conn_code.set(None);
+                set_marketplace_name.set(String::new());
+                set_marketplace_code.set(String::new());
+                set_organization_name.set(String::new());
+                set_organization_id.set(None);
+                set_error.set(None);
+                set_test_result.set(None);
+            }
+        }
+    });
 
     let handle_save = move |_: leptos::ev::MouseEvent| {
         let dto = ConnectionMPDto {
