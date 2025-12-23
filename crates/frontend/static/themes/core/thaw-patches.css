@@ -1,0 +1,8 @@
+/* Применяется к ячейке заголовка и обычным ячейкам */
+.fixed-checkbox-column, 
+td:first-child { 
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    padding: 0 8px; /* отступы, чтобы они не раздували ячейку */
+}

@@ -13,5 +13,8 @@
 @import url("./components.css") layer(components);
 @import url("./utilities.css") layer(utilities);
 
+/* Thaw patches */
+@import url("./thaw-patches.css") layer(thaw-patches);
+
 /* Temporary compatibility layer for legacy variables */
 @import url("./compatibility.css") layer(compatibility);

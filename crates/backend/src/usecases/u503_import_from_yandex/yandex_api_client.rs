@@ -1,5 +1,6 @@
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -11,9 +12,16 @@ pub struct YandexApiClient {
 
 impl YandexApiClient {
     pub fn new() -> Self {
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(60)) // Увеличен таймаут для медленных API
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .default_headers(headers)
+                .danger_accept_invalid_certs(true) // Временно для отладки
+                .no_proxy()
                 .build()
                 .expect("Failed to create HTTP client"),
         }
@@ -77,14 +85,33 @@ impl YandexApiClient {
             url, request_query.limit, token_preview
         ));
 
-        let response = self
+        let response = match self
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
             .header("Content-Type", "application/json")
             .query(&request_query)
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Yandex Market API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу Yandex Market. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
@@ -169,14 +196,33 @@ impl YandexApiClient {
             url, body
         ));
 
-        let response = self
+        let response = match self
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
             .header("Content-Type", "application/json")
             .body(body)
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Yandex Market API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу Yandex Market. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
@@ -379,20 +425,18 @@ impl YandexApiClient {
         let page_size = 50;
 
         loop {
-            let response = self.fetch_orders_page(
-                connection,
-                date_from,
-                date_to,
-                page,
-                page_size,
-            ).await?;
+            let response = self
+                .fetch_orders_page(connection, date_from, date_to, page, page_size)
+                .await?;
 
             let orders_count = response.orders.len();
             all_orders.extend(response.orders);
 
             self.log_to_file(&format!(
                 "Fetched page {} with {} orders (total so far: {})",
-                page, orders_count, all_orders.len()
+                page,
+                orders_count,
+                all_orders.len()
             ));
 
             // Check if there are more pages
@@ -432,7 +476,9 @@ impl YandexApiClient {
         page_size: i32,
     ) -> Result<YmOrdersResponse> {
         let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Campaign ID (Идентификатор магазина) is required for Yandex Market API")
+            anyhow::anyhow!(
+                "Campaign ID (Идентификатор магазина) is required for Yandex Market API"
+            )
         })?;
 
         if connection.api_key.trim().is_empty() {
@@ -467,13 +513,32 @@ impl YandexApiClient {
             page, url, query
         ));
 
-        let response = self
+        let response = match self
             .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
             .query(&query)
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Yandex Market Orders API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу Yandex Market. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
@@ -482,7 +547,11 @@ impl YandexApiClient {
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("Yandex Market Orders API request failed: {}", body);
-            anyhow::bail!("Yandex Market Orders API failed with status {}: {}", status, body);
+            anyhow::bail!(
+                "Yandex Market Orders API failed with status {}: {}",
+                status,
+                body
+            );
         }
 
         let body = response.text().await?;
@@ -510,7 +579,9 @@ impl YandexApiClient {
         order_id: i64,
     ) -> Result<YmOrderItem> {
         let campaign_id = connection.supplier_id.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Campaign ID (Идентификатор магазина) is required for Yandex Market API")
+            anyhow::anyhow!(
+                "Campaign ID (Идентификатор магазина) is required for Yandex Market API"
+            )
         })?;
 
         if connection.api_key.trim().is_empty() {
@@ -527,12 +598,31 @@ impl YandexApiClient {
             url
         ));
 
-        let response = self
+        let response = match self
             .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Yandex Market Order Details API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу Yandex Market. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
@@ -541,7 +631,11 @@ impl YandexApiClient {
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("Yandex Market Order Details API request failed: {}", body);
-            anyhow::bail!("Yandex Market Order Details API failed with status {}: {}", status, body);
+            anyhow::bail!(
+                "Yandex Market Order Details API failed with status {}: {}",
+                status,
+                body
+            );
         }
 
         let body = response.text().await?;
@@ -554,7 +648,10 @@ impl YandexApiClient {
             }
             Err(e) => {
                 self.log_to_file(&format!("Failed to parse JSON: {}", e));
-                tracing::error!("Failed to parse Yandex Market order details response: {}", e);
+                tracing::error!(
+                    "Failed to parse Yandex Market order details response: {}",
+                    e
+                );
                 anyhow::bail!("Failed to parse order details response: {}", e)
             }
         }
@@ -843,7 +940,13 @@ impl YandexApiClient {
         loop {
             page_count += 1;
             let response = self
-                .fetch_returns_page(connection, date_from, date_to, page_token.clone(), page_size)
+                .fetch_returns_page(
+                    connection,
+                    date_from,
+                    date_to,
+                    page_token.clone(),
+                    page_size,
+                )
                 .await?;
 
             let returns_count = response.returns.len();
@@ -851,13 +954,13 @@ impl YandexApiClient {
 
             self.log_to_file(&format!(
                 "Fetched page {} with {} returns (total so far: {})",
-                page_count, returns_count, all_returns.len()
+                page_count,
+                returns_count,
+                all_returns.len()
             ));
 
             // Check if there are more pages (token-based pagination)
-            let next_token = response
-                .paging
-                .and_then(|p| p.next_page_token);
+            let next_token = response.paging.and_then(|p| p.next_page_token);
 
             if next_token.is_none() {
                 // No more pages
@@ -922,13 +1025,32 @@ impl YandexApiClient {
             url, query_params
         ));
 
-        let response = self
+        let response = match self
             .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", &connection.api_key))
             .query(&query_params)
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Yandex Market Returns API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу Yandex Market. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
