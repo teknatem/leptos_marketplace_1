@@ -1,5 +1,6 @@
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -11,10 +12,16 @@ pub struct WildberriesApiClient {
 
 impl WildberriesApiClient {
     pub fn new() -> Self {
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(60)) // Увеличен таймаут для медленных API
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .default_headers(headers)
                 .danger_accept_invalid_certs(true) // Временно для отладки
+                .no_proxy()
                 .redirect(reqwest::redirect::Policy::limited(10)) // Следовать редиректам
                 .build()
                 .expect("Failed to create HTTP client"),
@@ -1402,7 +1409,7 @@ impl WildberriesApiClient {
 
                 // Проверяем конкретные типы ошибок
                 if e.is_timeout() {
-                    anyhow::bail!("Request timeout: API не ответил в течение 30 секунд");
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
                 } else if e.is_connect() {
                     anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
                 } else if e.is_request() {
@@ -1539,7 +1546,7 @@ impl WildberriesApiClient {
                 url, date_from_str, date_to_str, page_flag
             ));
 
-            let response = self
+            let response = match self
                 .client
                 .get(url)
                 .header("Authorization", &connection.api_key)
@@ -1549,7 +1556,26 @@ impl WildberriesApiClient {
                     ("flag", &page_flag.to_string()),
                 ])
                 .send()
-                .await?;
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let error_msg = format!("HTTP request failed: {:?}", e);
+                    self.log_to_file(&error_msg);
+                    tracing::error!("Wildberries Sales API connection error: {}", e);
+
+                    // Проверяем конкретные типы ошибок
+                    if e.is_timeout() {
+                        anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                    } else if e.is_connect() {
+                        anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                    } else if e.is_request() {
+                        anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                    } else {
+                        anyhow::bail!("Unknown error: {}", e);
+                    }
+                }
+            };
 
             let status = response.status();
             self.log_to_file(&format!("Response status: {}", status));
@@ -1685,7 +1711,7 @@ impl WildberriesApiClient {
             url, date_from_str, date_to_str
         ));
 
-        let response = self
+        let response = match self
             .client
             .get(url)
             .header("Authorization", &connection.api_key)
@@ -1694,7 +1720,26 @@ impl WildberriesApiClient {
                 ("dateTo", date_to_str.as_str()),
             ])
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Wildberries Finance Report API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));
@@ -2112,12 +2157,31 @@ impl WildberriesApiClient {
             url
         ));
 
-        let response = self
+        let response = match self
             .client
             .get(url)
             .header("Authorization", &connection.api_key)
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Wildberries Commission Tariffs API connection error: {}", e);
+
+                // Проверяем конкретные типы ошибок
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                } else if e.is_request() {
+                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
 
         let status = response.status();
         self.log_to_file(&format!("Response status: {}", status));

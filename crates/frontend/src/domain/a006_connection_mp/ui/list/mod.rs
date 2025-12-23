@@ -228,7 +228,7 @@ pub fn ConnectionMPList() -> impl IntoView {
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHeaderCell resizable=true min_width=40.0 max_width=50.0>
+                        <TableHeaderCell resizable=false class="fixed-checkbox-column">
                             <input
                                 type="checkbox"
                                 style="cursor: pointer;"
@@ -348,7 +348,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                         let id_for_toggle = id.clone();
                         view! {
                             <TableRow>
-                                <TableCell>
+                                <TableCell class="fixed-checkbox-column">
                                     <input
                                         type="checkbox"
                                         style="cursor: pointer;"
