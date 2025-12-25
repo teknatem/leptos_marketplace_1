@@ -14,6 +14,7 @@
 
 - **[table-standards.md](./table-standards.md)** - Стандарты для простых и сложных таблиц
 - **[detail-form-standard.md](./detail-form-standard.md)** - Стандарты для форм детальных записей
+- **[thaw-ui-standard.md](./thaw-ui-standard.md)** - Использование компонентов Thaw UI (Leptos 0.8)
 
 ### 2. Backend компоненты
 

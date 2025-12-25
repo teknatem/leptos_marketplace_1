@@ -45,6 +45,14 @@ async fn main() -> anyhow::Result<()> {
     // 4. Ensure admin user exists
     system::initialization::ensure_admin_user_exists().await?;
 
+    // 4.1. Initialize scheduled tasks
+    let worker = system::sys_scheduled_task::initialization::initialize_scheduled_tasks().await?;
+
+    // 4.2. Start background worker for scheduled tasks
+    tokio::spawn(async move {
+        worker.run_loop().await;
+    });
+
     // 5. Configure CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)

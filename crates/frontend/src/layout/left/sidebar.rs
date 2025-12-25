@@ -114,6 +114,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             icon: "settings",
             items: vec![
                 ("sys_users", "Пользователи", "users"),
+                ("sys_scheduled_tasks", "Регламентные задания", "calendar"),
                 ("sys_thaw_test", "Тест Thaw UI", "test-tube"),
             ],
             admin_only: true,

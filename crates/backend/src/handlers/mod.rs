@@ -36,3 +36,6 @@ pub mod usecases;
 
 // Logging handlers
 pub mod logs;
+
+// System handlers
+pub mod sys_scheduled_task;

@@ -15,7 +15,7 @@ Full-stack Rust marketplace management system integrating with Wildberries and O
 
 ### Tech Stack
 
-- **Frontend**: Leptos 0.6 (Rust → WASM)
+- **Frontend**: Leptos 0.8 (Rust → WASM)
 - **Backend**: Axum (async Rust)
 - **Database**: SQLite (marketplace.db)
 - **Architecture**: DDD + Vertical Slice Architecture (VSA)

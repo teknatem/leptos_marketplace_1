@@ -13,7 +13,7 @@ use uuid::Uuid;
 /// Executor для UseCase импорта из ЛеманаПро
 pub struct ImportExecutor {
     api_client: Arc<LemanaProApiClient>,
-    progress_tracker: Arc<ProgressTracker>,
+    pub progress_tracker: Arc<ProgressTracker>,
 }
 
 impl ImportExecutor {
@@ -60,7 +60,7 @@ impl ImportExecutor {
 
         tokio::spawn(async move {
             if let Err(e) = self_clone
-                .run_import(&session_id_clone, &request_clone, &connection_clone)
+                .execute_import(&session_id_clone, &request_clone, &connection_clone)
                 .await
             {
                 tracing::error!("Import failed: {}", e);
@@ -92,7 +92,7 @@ impl ImportExecutor {
     }
 
     /// Выполнить импорт
-    async fn run_import(
+    pub async fn execute_import(
         &self,
         session_id: &str,
         request: &ImportRequest,

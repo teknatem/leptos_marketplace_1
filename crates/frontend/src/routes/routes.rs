@@ -37,6 +37,8 @@ use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesLi
 use crate::system::auth::context::use_auth;
 use crate::system::pages::login::LoginPage;
 use crate::system::pages::thaw_test::ThawTestPage;
+use crate::system::tasks::ui::details::ScheduledTaskDetails;
+use crate::system::tasks::ui::list::ScheduledTaskList;
 use crate::system::users::ui::list::UsersListPage;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
@@ -229,6 +231,13 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "sys_users" => {
                 view! { <UsersListPage /> }.into_any()
+            }
+            "sys_scheduled_tasks" => {
+                view! { <ScheduledTaskList /> }.into_any()
+            }
+            k if k.starts_with("sys_scheduled_task_detail_") => {
+                let id = k.strip_prefix("sys_scheduled_task_detail_").unwrap().to_string();
+                view! { <ScheduledTaskDetails id=id /> }.into_any()
             }
             "sys_thaw_test" => {
                 log!("✅ Creating ThawTestPage");

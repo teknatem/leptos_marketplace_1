@@ -34,6 +34,8 @@ use crate::projections::p905_wb_commission_history::ui::details::CommissionHisto
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
 use crate::system::users::ui::list::UsersListPage;
+use crate::system::tasks::ui::list::ScheduledTaskList;
+use crate::system::tasks::ui::details::ScheduledTaskDetails;
 use crate::usecases::u501_import_from_ut;
 use crate::usecases::u502_import_from_ozon;
 use crate::usecases::u503_import_from_yandex;
@@ -224,6 +226,13 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             }
             "sys_users" => {
                 view! { <UsersListPage /> }.into_any()
+            }
+            "sys_scheduled_tasks" => {
+                view! { <ScheduledTaskList /> }.into_any()
+            }
+            k if k.starts_with("sys_scheduled_task_detail_") => {
+                let id = k.strip_prefix("sys_scheduled_task_detail_").unwrap().to_string();
+                view! { <ScheduledTaskDetails id=id /> }.into_any()
             }
             k if k.starts_with("p905-commission/") => {
                 view! { <CommissionHistoryDetails id=k.strip_prefix("p905-commission/").unwrap().to_string() /> }.into_any()

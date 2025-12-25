@@ -127,3 +127,5 @@ impl UtNomenclatureOData {
 pub struct UtNomenclatureListResponse {
     pub value: Vec<UtNomenclatureOData>,
 }
+
+
