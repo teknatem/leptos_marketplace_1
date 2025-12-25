@@ -108,6 +108,73 @@ Read models, аналитика, отчеты (CQRS-подобный подхо�
 - `p905_wb_commission_history` - История комиссий Wildberries
 - `p906_nomenclature_prices` - Цены номенклатуры
 
+## Field Metadata System
+
+### Обзор
+
+Система декларативного описания метаданных агрегатов для:
+- **Single Source of Truth** — JSON как единственный источник структуры
+- **AI/LLM Context** — Подготовка данных для встроенного чата
+- **UI Generation** — Автогенерация форм и таблиц (планируется)
+
+### Архитектура
+
+```
+metadata.json ──► build.rs ──► metadata_gen.rs
+                                    │
+                                    ▼
+                           AggregateRoot trait
+                           ├── entity_metadata_info()
+                           └── field_metadata()
+```
+
+### Ключевые файлы
+
+```
+crates/contracts/
+├── build.rs                    # Генератор
+├── schemas/metadata.schema.json # JSON Schema
+└── src/
+    ├── shared/metadata/        # Rust types
+    │   ├── types.rs            # EntityMetadataInfo, FieldMetadata
+    │   ├── field_type.rs       # FieldType enum
+    │   └── validation.rs       # ValidationRules
+    └── domain/a001_*/
+        ├── metadata.json       # ИСТОЧНИК (ручное редактирование)
+        └── metadata_gen.rs     # ГЕНЕРИРУЕТСЯ (не редактировать)
+```
+
+### Использование
+
+```rust
+use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
+use contracts::domain::common::AggregateRoot;
+
+// Получить метаданные сущности
+let meta = Connection1CDatabase::entity_metadata_info();
+println!("Entity: {}", meta.ui.element_name);
+
+// AI контекст для LLM
+println!("Description: {}", meta.ai.description);
+for q in meta.ai.questions {
+    println!("Q: {}", q);
+}
+
+// Итерация по полям
+for field in Connection1CDatabase::field_metadata() {
+    println!("{}: {}", field.name, field.ui.label);
+}
+```
+
+### Добавление метаданных для aggregate
+
+1. Создать `metadata.json` (скопировать шаблон из a001)
+2. Добавить в `mod.rs`: `mod metadata_gen; pub use metadata_gen::{ENTITY_METADATA, FIELDS};`
+3. Реализовать методы trait в `aggregate.rs`
+4. `cargo build` — генерация автоматическая
+
+**См. также:** `memory-bank/architecture/metadata-system.md` — полная документация
+
 ## Domain Layer Patterns
 
 ### Ответственность слоев

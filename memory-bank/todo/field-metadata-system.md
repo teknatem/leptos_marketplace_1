@@ -1,11 +1,19 @@
 # Система метаданных полей агрегатов
 
 **Дата создания**: 2025-10-09
-**Статус**: Планирование / Ожидает реализации
+**Статус**: ✅ **РЕАЛИЗОВАНО (POC)** — 2025-12-26
+**Документация**: `memory-bank/architecture/metadata-system.md`
+
+> **Примечание**: Этот документ сохранён как исторический.
+> POC реализован на `a001_connection_1c`.
+> Актуальная документация: `memory-bank/architecture/metadata-system.md`
+
+---
 
 ## Проблема
 
 В текущей архитектуре агрегатов отсутствуют метаданные о полях:
+
 - Русские наименования полей для UI
 - Комментарии/описания полей
 - Флаги обязательности для валидации
@@ -13,6 +21,7 @@
 - Информация о вложенных структурах и таблицах
 
 **Требование**: Создать систему, которая позволит:
+
 1. Декларативно описывать метаданные полей в JSON
 2. Автоматически генерировать Rust код с метаданными
 3. Использовать метаданные для валидации, генерации UI, документации
@@ -59,6 +68,7 @@ crates/contracts/
 Система поддерживает следующие типы полей:
 
 ### 1. Примитивные типы (Primitive)
+
 ```json
 {
   "name": "url",
@@ -71,11 +81,13 @@ crates/contracts/
 ```
 
 **Rust код**:
+
 ```rust
 pub url: String,
 ```
 
 ### 2. Опциональные поля (Optional)
+
 ```json
 {
   "name": "comment",
@@ -88,11 +100,13 @@ pub url: String,
 ```
 
 **Rust код**:
+
 ```rust
 pub comment: Option<String>,
 ```
 
 ### 3. Перечисления (Enum)
+
 ```json
 {
   "name": "status",
@@ -106,11 +120,13 @@ pub comment: Option<String>,
 ```
 
 **Rust код**:
+
 ```rust
 pub status: OrderStatus,
 ```
 
 ### 4. Ссылки на другие агрегаты (AggregateRef)
+
 ```json
 {
   "name": "organization_id",
@@ -124,11 +140,13 @@ pub status: OrderStatus,
 ```
 
 **Rust код**:
+
 ```rust
 pub organization_id: OrganizationId,
 ```
 
 ### 5. Вложенные структуры (NestedStruct)
+
 ```json
 {
   "name": "contact_info",
@@ -157,6 +175,7 @@ pub organization_id: OrganizationId,
 ```
 
 **Rust код**:
+
 ```rust
 // Сгенерированная структура
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +189,7 @@ pub contact_info: Option<ContactInfo>,
 ```
 
 ### 6. Вложенные таблицы (NestedTable)
+
 ```json
 {
   "name": "items",
@@ -209,6 +229,7 @@ pub contact_info: Option<ContactInfo>,
 ```
 
 **Rust код**:
+
 ```rust
 // Сгенерированная структура
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1202,6 +1223,7 @@ fn print_field(field: &FieldInfo, indent: usize, aggregates: &HashMap<String, Ag
 ```
 
 **Вывод программы**:
+
 ```
 === Структура данных системы ===
 
@@ -1233,6 +1255,7 @@ fn print_field(field: &FieldInfo, indent: usize, aggregates: &HashMap<String, Ag
 ### Рекомендация: Коммитить metadata.rs в Git
 
 **Преимущества**:
+
 - ✅ Проект работает сразу после клонирования
 - ✅ IDE сразу видит типы и метаданные
 - ✅ Diff показывает изменения в сгенерированном коде
@@ -1241,6 +1264,7 @@ fn print_field(field: &FieldInfo, indent: usize, aggregates: &HashMap<String, Ag
 **Как обеспечить актуальность**:
 
 1. **Pre-commit hook**:
+
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
@@ -1262,6 +1286,7 @@ fi
 ```
 
 2. **CI проверка** (GitHub Actions):
+
 ```yaml
 # .github/workflows/check-metadata.yml
 name: Check Metadata Generation
@@ -1311,6 +1336,7 @@ Cargo.lock
 ### Этап 1: Базовая инфраструктура (1-2 дня)
 
 1. **Создать типы для метаданных**:
+
    - [ ] `contracts/src/domain/common/field_metadata.rs`
      - `FieldMetadata` struct
      - `FieldType` enum
@@ -1326,6 +1352,7 @@ Cargo.lock
 ### Этап 2: Генератор и Build Script (2-3 дня)
 
 3. **Создать генератор кода**:
+
    - [ ] `contracts/codegen/generator.rs` (или в build.rs)
      - `generate_metadata_rs()` - главная функция
      - `generate_nested_struct()` - генерация вложенных структур
@@ -1334,6 +1361,7 @@ Cargo.lock
      - Вспомогательные функции (extract_type_name, etc.)
 
 4. **Создать build.rs**:
+
    - [ ] `contracts/build.rs`
      - Сканирование `src/domain/a*/metadata.json`
      - Вызов генератора для каждого файла
@@ -1354,6 +1382,7 @@ Cargo.lock
 ### Этап 4: Пример на Connection1C (1 день)
 
 7. **Создать metadata.json для Connection1C**:
+
    - [ ] `contracts/src/domain/a001_connection_1c/metadata.json`
      - Описать поля: url, login, password, is_primary
      - Все простые типы (Primitive)
@@ -1427,6 +1456,7 @@ Cargo.lock
 ### 4. Генерация миграций БД
 
 Build.rs может также генерировать SQL миграции на основе metadata.json:
+
 ```sql
 -- Сгенерировано из metadata.json
 CREATE TABLE IF NOT EXISTS a007_order (
@@ -1462,16 +1492,19 @@ CREATE TABLE IF NOT EXISTS a007_order (
 ## Альтернативные решения (отклонены)
 
 ### Вариант A: Процедурный макрос
+
 - ❌ Сложнее реализовать
 - ❌ Парсинг через syn требует знания Rust AST
 - ✅ Метаданные рядом с полями (через атрибуты)
 
 ### Вариант B: Трейт с const функциями
+
 - ❌ Требует ручного дублирования метаданных в коде
 - ❌ Сложный парсинг для внешних инструментов
 - ✅ Простота реализации
 
 ### Вариант C: Только конфигурация (без генерации)
+
 - ❌ Дублирование структуры данных
 - ❌ Риск рассинхронизации JSON и кода
 - ✅ Простота парсинга
@@ -1491,6 +1524,7 @@ CREATE TABLE IF NOT EXISTS a007_order (
 **Рекомендация**: Начать с простого примера (Connection1C с примитивными типами), затем постепенно добавлять поддержку вложенных структур и таблиц.
 
 **Следующие шаги**:
+
 1. Создать PoC (proof of concept) на одном агрегате
 2. Проверить работу build.rs и перегенерации
 3. Расширить на остальные агрегаты

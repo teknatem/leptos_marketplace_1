@@ -1,6 +1,6 @@
 # Progress Tracker
 
-_Последнее обновление: 2025-12-23_
+_Последнее обновление: 2025-12-26_
 
 ## ✅ Реализовано и работает
 
@@ -152,6 +152,15 @@ _Последнее обновление: 2025-12-23_
 
 ### System Infrastructure
 
+- ✅ **Field Metadata System**
+  - Декларативное описание агрегатов в `metadata.json`
+  - Rust types: `EntityMetadataInfo`, `FieldMetadata` с `'static` lifetimes
+  - JSON Schema для валидации и IDE автодополнения
+  - `build.rs` генератор: JSON → `metadata_gen.rs`
+  - AggregateRoot trait extension: `entity_metadata_info()`, `field_metadata()`
+  - AI контекст: description, questions, related для LLM чата
+  - POC: `a001_connection_1c` агрегат полностью интегрирован
+
 - ✅ **Scheduled Tasks System**
   - Task Manager / Executor паттерн
   - Background Worker (tokio loop)
@@ -209,13 +218,21 @@ _Последнее обновление: 2025-12-23_
 
 ## 🔨 В процессе разработки
 
+### Field Metadata System
+
+- 🔄 **Расширение на остальные агрегаты**
+  - ✅ `a001_connection_1c` — POC реализован
+  - 📋 `a002_organization` — планируется
+  - 📋 `a003_counterparty` — планируется
+  - 📋 `a004_nomenclature` — планируется
+  - 📋 Остальные агрегаты (a005-a016) — планируется
+
 ### Documentation
 
-- 🔄 **Memory Bank система** (текущая задача)
+- 🔄 **Memory Bank система**
   - ✅ `.cursorrules` создан
-  - ✅ Core файлы (projectbrief, activeContext, systemPatterns, techContext, progress)
-  - 📋 Реорганизация architecture docs
-  - 📋 Очистка временных файлов
+  - ✅ Core файлы актуализированы
+  - ✅ `architecture/metadata-system.md` — документация системы метаданных
 
 ### UI Improvements
 
@@ -227,7 +244,8 @@ _Последнее обновление: 2025-12-23_
 
 ### High Priority
 
-- [ ] Коммит изменений frontend (state.rs и UI improvements)
+- [ ] Добавление метаданных для всех агрегатов (a002-a016)
+- [ ] Интеграция метаданных с Frontend (автогенерация форм)
 - [ ] Полная документация API endpoints
 - [ ] Automated testing setup
 
@@ -298,10 +316,12 @@ Database: ~40+ tables
 
 ### Current
 
-- 🔄 **Documentation phase**: Структурирование knowledge base для AI
+- 🔄 **Metadata System Rollout**: Расширение на все агрегаты
+- 🔄 **LLM Integration**: Подготовка контекста для встроенного чата
 
 ### Next
 
+- 📋 **Frontend Integration**: Автогенерация UI на основе метаданных
 - 📋 **Refinement phase**: Polish, optimization, testing
 - 📋 **Production ready**: Deployment strategy, packaging
 
