@@ -1,6 +1,9 @@
+use crate::domain::common::{
+    AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
+};
+use crate::shared::metadata::{EntityMetadataInfo, FieldMetadata};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::domain::common::{AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin};
 
 // ============================================================================
 // ID Type
@@ -66,11 +69,7 @@ impl Connection1CDatabase {
         password: String,
         is_primary: bool,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            Connection1CDatabaseId::new_v4(),
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(Connection1CDatabaseId::new_v4(), code, description);
         base.comment = comment;
 
         Self {
@@ -175,6 +174,14 @@ impl AggregateRoot for Connection1CDatabase {
 
     fn origin() -> Origin {
         Origin::Self_
+    }
+
+    fn entity_metadata_info() -> Option<&'static EntityMetadataInfo> {
+        Some(&super::ENTITY_METADATA)
+    }
+
+    fn field_metadata() -> Option<&'static [FieldMetadata]> {
+        Some(super::FIELDS)
     }
 }
 

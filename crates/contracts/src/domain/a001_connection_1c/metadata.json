@@ -1,0 +1,191 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "Connection1CDatabase",
+  "entity_index": "a001",
+  "collection_name": "connection_1c",
+  "table_name": "a001_connection_1c_database",
+
+  "ui": {
+    "element_name": "Подключение 1С",
+    "element_name_en": "1C Connection",
+    "list_name": "Подключения 1С",
+    "list_name_en": "1C Connections",
+    "icon": "database"
+  },
+
+  "ai": {
+    "description": "Настройки подключения к базе данных 1С:Управление торговлей. Используется для импорта справочников (номенклатура, организации, контрагенты) через OData API. Обычно в системе одно основное подключение, помеченное флагом is_primary.",
+    "questions": [
+      "Как подключиться к 1С?",
+      "Какие данные импортируются из 1С?",
+      "Как настроить синхронизацию с 1С?",
+      "Почему не работает импорт из 1С?"
+    ],
+    "related": [
+      "u501_import_from_ut",
+      "a002_organization",
+      "a003_counterparty",
+      "a004_nomenclature"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "Connection1CDatabaseId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "CON-001",
+        "hint": "Уникальный код подключения",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "Основное подключение к 1С",
+        "hint": "Описательное название подключения",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 250
+      },
+      "validation": {
+        "required": true,
+        "min_length": 3,
+        "max_length": 255
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Дополнительная информация",
+        "hint": "Произвольный комментарий",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 1000
+      }
+    },
+    {
+      "name": "url",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "URL",
+        "label_en": "URL",
+        "placeholder": "http://192.168.1.10/ut11/odata/standard.odata",
+        "hint": "HTTP(S) адрес OData сервиса 1С:УТ",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": {
+        "required": true,
+        "max_length": 500,
+        "pattern": "^https?://.+",
+        "custom_error": "URL должен начинаться с http:// или https://"
+      },
+      "ai_hint": "Формат URL: http://сервер/имя_базы/odata/standard.odata. Для работы OData должен быть включен в настройках 1С."
+    },
+    {
+      "name": "login",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Логин",
+        "label_en": "Login",
+        "placeholder": "odata_user",
+        "hint": "Имя пользователя 1С с правами OData",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 100
+      },
+      "ai_hint": "Пользователь должен иметь права на чтение справочников и документов через OData в 1С."
+    },
+    {
+      "name": "password",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Пароль",
+        "label_en": "Password",
+        "placeholder": "••••••••",
+        "hint": "Пароль пользователя 1С",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "password"
+      },
+      "validation": {
+        "required": true,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "is_primary",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Основное",
+        "label_en": "Primary",
+        "hint": "Отметить как основное подключение",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Только одно подключение может быть основным. Импорт данных (u501_import_from_ut) выполняется из основного подключения. При установке флага, он автоматически снимается с других подключений."
+    }
+  ]
+}
+
