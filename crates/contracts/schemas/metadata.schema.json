@@ -1,0 +1,283 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "metadata.schema.json",
+  "title": "Entity Metadata Schema",
+  "description": "Schema for metadata.json files describing aggregates, usecases, and projections",
+  "type": "object",
+  "required": ["schema_version", "entity_type", "entity_name", "entity_index", "collection_name", "ui", "ai", "fields"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this schema file"
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Version of the metadata schema",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Type of entity",
+      "enum": ["aggregate", "usecase", "projection"]
+    },
+    "entity_name": {
+      "type": "string",
+      "description": "Rust struct name for this entity",
+      "pattern": "^[A-Z][a-zA-Z0-9]*$",
+      "examples": ["Connection1CDatabase", "ImportFromUT"]
+    },
+    "entity_index": {
+      "type": "string",
+      "description": "Unique index of the entity (e.g., a001, u501, p901)",
+      "pattern": "^[aup]\\d{3}$",
+      "examples": ["a001", "u501", "p901"]
+    },
+    "collection_name": {
+      "type": "string",
+      "description": "Snake_case name for collections and database",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "examples": ["connection_1c", "import_from_ut"]
+    },
+    "table_name": {
+      "type": "string",
+      "description": "Database table name (optional, defaults to entity_index_collection_name)",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "ui": {
+      "$ref": "#/definitions/EntityUiMetadata"
+    },
+    "ai": {
+      "$ref": "#/definitions/EntityAiMetadata"
+    },
+    "fields": {
+      "type": "array",
+      "description": "List of field definitions",
+      "items": {
+        "$ref": "#/definitions/FieldMetadata"
+      },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "EntityUiMetadata": {
+      "type": "object",
+      "description": "UI metadata for the entity",
+      "required": ["element_name", "list_name"],
+      "properties": {
+        "element_name": {
+          "type": "string",
+          "description": "Russian name for single element (e.g., 'Подключение 1С')"
+        },
+        "element_name_en": {
+          "type": "string",
+          "description": "English name for single element"
+        },
+        "list_name": {
+          "type": "string",
+          "description": "Russian name for list (e.g., 'Подключения 1С')"
+        },
+        "list_name_en": {
+          "type": "string",
+          "description": "English name for list"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon name (from icon library)"
+        }
+      }
+    },
+    "EntityAiMetadata": {
+      "type": "object",
+      "description": "AI/LLM context metadata",
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Business description for LLM context. Explain what this entity is, what it's used for, and how it relates to business processes."
+        },
+        "questions": {
+          "type": "array",
+          "description": "Typical questions this entity can help answer",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "related": {
+          "type": "array",
+          "description": "Related entity indices (e.g., ['a002_organization', 'u501_import_from_ut'])",
+          "items": {
+            "type": "string",
+            "pattern": "^[aup]\\d{3}_[a-z_]+$"
+          },
+          "default": []
+        }
+      }
+    },
+    "FieldMetadata": {
+      "type": "object",
+      "description": "Metadata for a single field",
+      "required": ["name", "rust_type", "field_type", "ui"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Field name in snake_case",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "rust_type": {
+          "type": "string",
+          "description": "Rust type (e.g., 'String', 'i32', 'bool', 'Connection1CDatabaseId')"
+        },
+        "field_type": {
+          "type": "string",
+          "description": "Category of field type",
+          "enum": ["primitive", "enum", "aggregate_ref", "nested_struct", "nested_table"]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of field in aggregate structure",
+          "enum": ["specific", "base", "metadata"],
+          "default": "specific"
+        },
+        "ui": {
+          "$ref": "#/definitions/FieldUiMetadata"
+        },
+        "validation": {
+          "$ref": "#/definitions/ValidationRules"
+        },
+        "ai_hint": {
+          "type": "string",
+          "description": "Additional context for LLM about this field's business meaning"
+        },
+        "nested_fields": {
+          "type": "array",
+          "description": "Fields for nested_struct or nested_table types",
+          "items": {
+            "$ref": "#/definitions/FieldMetadata"
+          }
+        },
+        "ref_aggregate": {
+          "type": "string",
+          "description": "Referenced aggregate index for aggregate_ref type",
+          "pattern": "^a\\d{3}_[a-z_]+$"
+        },
+        "enum_values": {
+          "type": "array",
+          "description": "Possible values for enum type",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "field_type": { "const": "aggregate_ref" } }
+          },
+          "then": {
+            "required": ["ref_aggregate"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "field_type": { "enum": ["nested_struct", "nested_table"] } }
+          },
+          "then": {
+            "required": ["nested_fields"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "field_type": { "const": "enum" } }
+          },
+          "then": {
+            "required": ["enum_values"]
+          }
+        }
+      ]
+    },
+    "FieldUiMetadata": {
+      "type": "object",
+      "description": "UI metadata for a field",
+      "required": ["label"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Russian label for the field"
+        },
+        "label_en": {
+          "type": "string",
+          "description": "English label for the field"
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text for input"
+        },
+        "hint": {
+          "type": "string",
+          "description": "Help text / tooltip"
+        },
+        "visible_in_list": {
+          "type": "boolean",
+          "description": "Show field in list/table view",
+          "default": true
+        },
+        "visible_in_form": {
+          "type": "boolean",
+          "description": "Show field in edit form",
+          "default": true
+        },
+        "widget": {
+          "type": "string",
+          "description": "Widget type for rendering",
+          "enum": ["text", "textarea", "password", "checkbox", "select", "date", "datetime", "number", "email", "url"]
+        },
+        "column_width": {
+          "type": "integer",
+          "description": "Column width in pixels for list view",
+          "minimum": 50,
+          "maximum": 1000
+        }
+      }
+    },
+    "ValidationRules": {
+      "type": "object",
+      "description": "Validation rules for a field",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Field is required",
+          "default": false
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum value (for numbers)"
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value (for numbers)"
+        },
+        "min_length": {
+          "type": "integer",
+          "description": "Minimum string length",
+          "minimum": 0
+        },
+        "max_length": {
+          "type": "integer",
+          "description": "Maximum string length",
+          "minimum": 1
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern for validation"
+        },
+        "custom_error": {
+          "type": "string",
+          "description": "Custom error message when validation fails"
+        }
+      }
+    }
+  }
+}
+

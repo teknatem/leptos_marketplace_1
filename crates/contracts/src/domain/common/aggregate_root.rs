@@ -1,4 +1,5 @@
 use super::{EntityMetadata, EventStore, Origin};
+use crate::shared::metadata::{EntityMetadataInfo, FieldMetadata};
 
 /// Трейт для корня агрегата
 ///
@@ -50,6 +51,42 @@ pub trait AggregateRoot {
 
     /// Источник данных агрегата
     fn origin() -> Origin;
+
+    // ============================================================================
+    // Расширенные метаданные (из metadata.json)
+    // ============================================================================
+
+    /// Получить полные метаданные сущности (из сгенерированного кода)
+    /// 
+    /// Возвращает compile-time константу с нулевыми runtime затратами.
+    /// Содержит UI метаданные, AI контекст и информацию о полях.
+    /// 
+    /// # Пример
+    /// ```rust,ignore
+    /// let meta = Connection1CDatabase::entity_metadata_info();
+    /// println!("Entity: {}", meta.ui.element_name);
+    /// println!("AI: {}", meta.ai.description);
+    /// ```
+    fn entity_metadata_info() -> Option<&'static EntityMetadataInfo> {
+        None // Default implementation for aggregates without metadata.json
+    }
+
+    /// Получить метаданные полей агрегата (из сгенерированного кода)
+    /// 
+    /// Возвращает статический срез с определениями всех полей.
+    /// Используется для валидации, генерации UI и AI контекста.
+    /// 
+    /// # Пример
+    /// ```rust,ignore
+    /// for field in Connection1CDatabase::field_metadata() {
+    ///     if field.validation.required {
+    ///         println!("Required: {}", field.ui.label);
+    ///     }
+    /// }
+    /// ```
+    fn field_metadata() -> Option<&'static [FieldMetadata]> {
+        None // Default implementation for aggregates without metadata.json
+    }
 
     // ============================================================================
     // Методы с реализацией по умолчанию
