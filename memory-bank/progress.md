@@ -1,6 +1,6 @@
 # Progress Tracker
 
-_Последнее обновление: 2025-12-22_
+_Последнее обновление: 2025-12-23_
 
 ## ✅ Реализовано и работает
 
@@ -68,6 +68,11 @@ _Последнее обновление: 2025-12-22_
   - Обработка возвратов ЯМ
   - Posting функционал
   - State management
+- ✅ **sys_scheduled_task** - Регламентные задания
+  - Хранение расписаний (Cron) и параметров (JSON)
+  - Статус последнего запуска и ссылка на сессию
+  - CRUD операции в UI
+  - Фоновый запуск по расписанию
 
 ### UseCases (Operations)
 
@@ -78,6 +83,7 @@ _Последнее обновление: 2025-12-22_
   - Импорт контрагентов
   - Progress tracking
   - UI виджет с мониторингом
+  - ✅ Рефакторинг: вынос OData моделей, поддержка программного вызова
 - ✅ **u502_import_from_ozon** - Импорт из Ozon
   - Ozon API client
   - Импорт транзакций
@@ -85,11 +91,13 @@ _Последнее обновление: 2025-12-22_
   - Импорт возвратов
   - Pagination для больших датасетов
   - Progress tracking
+  - ✅ Рефакторинг: поддержка программного вызова (Scheduled Tasks)
 - ✅ **u503_import_from_yandex** - Импорт из Яндекс.Маркет
   - Yandex API client
   - Импорт заказов
   - Импорт возвратов
   - Progress tracking
+  - ✅ Рефакторинг: поддержка программного вызова (Scheduled Tasks)
 - ✅ **u504_import_from_wildberries** - Импорт из Wildberries
   - Wildberries API client
   - Импорт продаж
@@ -98,6 +106,7 @@ _Последнее обновление: 2025-12-22_
   - Импорт истории комиссий
   - Pagination для больших датасетов
   - Diagnostic tools
+  - ✅ Рефакторинг: поддержка программного вызова (Scheduled Tasks)
 - ✅ **u505_match_nomenclature** - Сопоставление номенклатуры
   - Автоматическое сопоставление
   - Matching logic
@@ -140,6 +149,16 @@ _Последнее обновление: 2025-12-22_
   - Импорт цен из 1С
   - История изменения цен
   - UI для просмотра
+
+### System Infrastructure
+
+- ✅ **Scheduled Tasks System**
+  - Task Manager / Executor паттерн
+  - Background Worker (tokio loop)
+  - File-based logging (GUID-based)
+  - Registry для динамического поиска обработчиков
+  - Backend API для мониторинга и управления
+  - Frontend UI (список, детали, логи)
 
 ### Frontend Components
 

@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 /// Executor для UseCase сопоставления номенклатуры
 pub struct MatchExecutor {
-    progress_tracker: Arc<ProgressTracker>,
+    pub progress_tracker: Arc<ProgressTracker>,
 }
 
 impl MatchExecutor {
@@ -46,7 +46,7 @@ impl MatchExecutor {
 
         tokio::spawn(async move {
             if let Err(e) = self_clone
-                .run_matching(&session_id_clone, &request_clone)
+                .execute_matching(&session_id_clone, &request_clone)
                 .await
             {
                 tracing::error!("Matching failed: {}", e);
@@ -124,7 +124,7 @@ impl MatchExecutor {
     }
 
     /// Выполнить сопоставление
-    async fn run_matching(&self, session_id: &str, request: &MatchRequest) -> Result<()> {
+    pub async fn execute_matching(&self, session_id: &str, request: &MatchRequest) -> Result<()> {
         let overall_start = std::time::Instant::now();
         tracing::info!("Running matching for session: {}", session_id);
 

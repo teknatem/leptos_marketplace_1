@@ -111,3 +111,5 @@ impl UtOrganizationOData {
 pub struct UtOrganizationListResponse {
     pub value: Vec<UtOrganizationOData>,
 }
+
+

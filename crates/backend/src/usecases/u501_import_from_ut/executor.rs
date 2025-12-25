@@ -1,4 +1,10 @@
-use super::{progress_tracker::ProgressTracker, ut_odata_client::UtODataClient};
+use super::{
+    progress_tracker::ProgressTracker, 
+    ut_odata_client::UtODataClient,
+    odata_models_organization::*,
+    odata_models_counterparty::*,
+    odata_models_nomenclature::*,
+};
 use crate::domain::{a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature};
 use anyhow::Result;
 use contracts::usecases::u501_import_from_ut::{
@@ -12,7 +18,7 @@ use uuid::Uuid;
 /// Executor для UseCase импорта из УТ 11
 pub struct ImportExecutor {
     odata_client: Arc<UtODataClient>,
-    progress_tracker: Arc<ProgressTracker>,
+    pub progress_tracker: Arc<ProgressTracker>,
 }
 
 impl ImportExecutor {
@@ -63,7 +69,7 @@ impl ImportExecutor {
 
         tokio::spawn(async move {
             if let Err(e) = self_clone
-                .run_import(&session_id_clone, &request_clone, &connection_clone)
+                .execute_import(&session_id_clone, &request_clone, &connection_clone)
                 .await
             {
                 tracing::error!("Import failed: {}", e);
@@ -95,7 +101,7 @@ impl ImportExecutor {
     }
 
     /// Выполнить импорт
-    async fn run_import(
+    pub async fn execute_import(
         &self,
         session_id: &str,
         request: &ImportRequest,
@@ -174,8 +180,6 @@ impl ImportExecutor {
         session_id: &str,
         connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
     ) -> Result<()> {
-        use a002_organization::u501_import_from_ut::UtOrganizationListResponse;
-
         tracing::info!("Importing organizations for session: {}", session_id);
 
         let aggregate_index = "a002_organization";
@@ -285,8 +289,6 @@ impl ImportExecutor {
         session_id: &str,
         connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
     ) -> Result<()> {
-        use crate::domain::a003_counterparty::u501_import_from_ut::UtCounterpartyListResponse;
-
         tracing::info!("Importing counterparties for session: {}", session_id);
 
         let aggregate_index = "a003_counterparty";
@@ -414,8 +416,6 @@ impl ImportExecutor {
         connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
         delete_obsolete: bool,
     ) -> Result<()> {
-        use a004_nomenclature::u501_import_from_ut::UtNomenclatureListResponse;
-
         tracing::info!("Importing nomenclature for session: {}", session_id);
 
         let aggregate_index = "a004_nomenclature";
@@ -650,7 +650,7 @@ impl ImportExecutor {
 
     async fn process_nomenclature(
         &self,
-        odata: &a004_nomenclature::u501_import_from_ut::UtNomenclatureOData,
+        odata: &UtNomenclatureOData,
     ) -> Result<bool> {
         use uuid::Uuid;
 
@@ -731,7 +731,7 @@ impl ImportExecutor {
 
     async fn process_counterparty(
         &self,
-        odata: &a003_counterparty::u501_import_from_ut::UtCounterpartyOData,
+        odata: &UtCounterpartyOData,
     ) -> Result<bool> {
         use uuid::Uuid;
 
@@ -776,7 +776,7 @@ impl ImportExecutor {
     /// Обработать одну организацию (upsert)
     async fn process_organization(
         &self,
-        odata_org: &a002_organization::u501_import_from_ut::UtOrganizationOData,
+        odata_org: &UtOrganizationOData,
     ) -> Result<bool> {
         use uuid::Uuid;
 

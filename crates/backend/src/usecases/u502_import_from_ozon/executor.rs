@@ -1,5 +1,8 @@
-use super::{ozon_api_client::OzonApiClient, progress_tracker::ProgressTracker};
-use crate::domain::a007_marketplace_product;
+use super::{
+    ozon_api_client::OzonApiClient, 
+    progress_tracker::ProgressTracker,
+    processors::{product, sales, returns, postings, transaction, realization},
+};
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
 use contracts::usecases::u502_import_from_ozon::{
@@ -13,7 +16,7 @@ use uuid::Uuid;
 /// Executor для UseCase импорта из OZON
 pub struct ImportExecutor {
     api_client: Arc<OzonApiClient>,
-    progress_tracker: Arc<ProgressTracker>,
+    pub progress_tracker: Arc<ProgressTracker>,
 }
 
 impl ImportExecutor {
@@ -66,7 +69,7 @@ impl ImportExecutor {
 
         tokio::spawn(async move {
             if let Err(e) = self_clone
-                .run_import(&session_id_clone, &request_clone, &connection_clone)
+                .execute_import(&session_id_clone, &request_clone, &connection_clone)
                 .await
             {
                 tracing::error!("Import failed: {}", e);
@@ -98,7 +101,7 @@ impl ImportExecutor {
     }
 
     /// Выполнить импорт
-    async fn run_import(
+    pub async fn execute_import(
         &self,
         session_id: &str,
         request: &ImportRequest,
@@ -251,7 +254,7 @@ impl ImportExecutor {
                     Some(display_name),
                 );
 
-                match self.process_product(connection, &product_info).await {
+                match product::process_product(connection, &product_info).await {
                     Ok(is_new) => {
                         total_processed += 1;
                         if is_new {
@@ -300,12 +303,6 @@ impl ImportExecutor {
                     "last_id did not change, stopping to prevent infinite loop. last_id: {:?}",
                     last_id
                 );
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    "Pagination stopped".to_string(),
-                    Some("API returned the same last_id, possible API issue".to_string()),
-                );
                 break;
             }
 
@@ -327,73 +324,6 @@ impl ImportExecutor {
         Ok(())
     }
 
-    /// Обработать один товар (upsert)
-    async fn process_product(
-        &self,
-        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
-        product: &super::ozon_api_client::OzonProductInfo,
-    ) -> Result<bool> {
-        use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
-
-        // Проверяем, существует ли товар по marketplace_sku (product_id)
-        let marketplace_sku = product.id.to_string();
-        let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
-            &connection.base.id.as_string(),
-            &marketplace_sku,
-        )
-        .await?;
-
-        // Берем первый barcode из списка
-        let barcode = product.barcodes.first().cloned();
-
-        // Получаем category_id
-        let category_id = product.description_category_id.map(|id| id.to_string());
-
-        if let Some(mut existing_product) = existing {
-            // Обновляем существующий товар
-            tracing::debug!("Updating existing product: {}", marketplace_sku);
-
-            existing_product.base.code = product.offer_id.clone();
-            existing_product.base.description = product.name.clone();
-            existing_product.marketplace_sku = marketplace_sku;
-            existing_product.barcode = barcode.clone();
-            existing_product.article = product.offer_id.clone();
-            existing_product.category_id = category_id.clone();
-            existing_product.last_update = Some(chrono::Utc::now());
-            existing_product.before_write();
-
-            a007_marketplace_product::repository::update(&existing_product).await?;
-            Ok(false)
-        } else {
-            // Создаем новый товар
-            tracing::debug!("Inserting new product: {}", marketplace_sku);
-
-            let mut new_product = MarketplaceProduct::new_for_insert(
-                product.offer_id.clone(),
-                product.name.clone(),
-                connection.marketplace_id.clone(),
-                connection.base.id.as_string(),
-                marketplace_sku,
-                barcode,
-                product.offer_id.clone(),
-                None, // brand
-                category_id,
-                None, // category_name
-                Some(chrono::Utc::now()),
-                None, // nomenclature_ref
-                None, // comment
-            );
-
-            // Автоматический поиск номенклатуры по артикулу
-            let _ =
-                a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
-                    .await;
-
-            a007_marketplace_product::repository::insert(&new_product).await?;
-            Ok(true)
-        }
-    }
-
     /// Импорт финансовых транзакций (продажи/возвраты) в a008
     async fn import_marketplace_sales(
         &self,
@@ -403,8 +333,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::domain::a007_marketplace_product;
-        use crate::domain::a008_marketplace_sales;
 
         let aggregate_index = "a008_marketplace_sales";
         let mut total_processed = 0;
@@ -496,46 +424,6 @@ impl ImportExecutor {
                         continue;
                     }
 
-                    // Получаем или создаем product_id в a007
-                    let product_id = if let Some(pid) = sku_to_product_id.get(&key) {
-                        pid.clone()
-                    } else {
-                        let existing =
-                            a007_marketplace_product::repository::get_by_connection_and_sku(
-                                &connection.base.id.as_string(),
-                                &key,
-                            )
-                            .await?;
-                        let pid = if let Some(mp) = existing {
-                            mp.to_string_id()
-                        } else {
-                            let mut new = contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct::new_for_insert(
-                                key.clone(),
-                                key.clone(),
-                                connection.marketplace_id.clone(),
-                                connection.base.id.as_string(),
-                                key.clone(),
-                                None,
-                                key.clone(),
-                                None,
-                                None,
-                                None,
-                                Some(chrono::Utc::now()),
-                                None,
-                                Some("auto-created from finance operation".to_string()),
-                            );
-                            // Автоматический поиск номенклатуры по артикулу
-                            let _ = a007_marketplace_product::service::search_and_set_nomenclature(
-                                &mut new,
-                            )
-                            .await;
-                            let id = a007_marketplace_product::repository::insert(&new).await?;
-                            id.to_string()
-                        };
-                        sku_to_product_id.insert(key.clone(), pid.clone());
-                        pid
-                    };
-
                     // Дата начисления = дата операции (дата часть); API вернул "YYYY-MM-DD HH:MM:SS"
                     let accrual_date = chrono::NaiveDateTime::parse_from_str(
                         &op.operation_date,
@@ -558,38 +446,27 @@ impl ImportExecutor {
                         op.amount
                     };
 
-                    // Читаем существующую запись по ключу (включая operation_type)
-                    let existing = a008_marketplace_sales::repository::get_by_key(
-                        &connection.base.id.as_string(),
-                        &product_id,
+                    match sales::process_sale_item(
+                        connection,
+                        &organization_id,
+                        &mut sku_to_product_id,
                         accrual_date,
                         &op.operation_type,
-                    )
-                    .await?;
-
-                    if let Some(mut sale) = existing {
-                        sale.quantity += qty;
-                        sale.revenue += revenue;
-                        sale.before_write();
-                        a008_marketplace_sales::repository::update(&sale).await?;
-                        total_updated += 1;
-                    } else {
-                        let dto = contracts::domain::a008_marketplace_sales::aggregate::MarketplaceSalesDto {
-                            id: None,
-                            code: None,
-                            description: format!("{} {}", op.operation_type, key),
-                            connection_id: connection.base.id.as_string(),
-                            organization_id: organization_id.clone(),
-                            marketplace_id: connection.marketplace_id.clone(),
-                            accrual_date,
-                            product_id: product_id.clone(),
-                            quantity: qty,
-                            revenue,
-                            operation_type: op.operation_type.clone(),
-                            comment: None,
-                        };
-                        let _ = a008_marketplace_sales::service::create(dto).await?;
-                        total_inserted += 1;
+                        &key,
+                        qty,
+                        revenue,
+                    ).await {
+                        Ok(true) => total_inserted += 1,
+                        Ok(false) => total_updated += 1,
+                        Err(e) => {
+                            tracing::error!("Failed to process sale item {}: {}", key, e);
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some(aggregate_index.to_string()),
+                                format!("Failed to process sale item {}", key),
+                                Some(e.to_string()),
+                            );
+                        }
                     }
                 }
 
@@ -639,7 +516,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::domain::a009_ozon_returns;
 
         let aggregate_index = "a009_ozon_returns";
         let mut total_processed = 0;
@@ -756,53 +632,35 @@ impl ImportExecutor {
                         Some(display_name.clone()),
                     );
 
-                    // Проверяем существует ли возврат по ключу (connection_id, return_id, sku="")
-                    let existing = a009_ozon_returns::repository::get_by_return_key(
-                        &connection.base.id.as_string(),
+                    match returns::process_return_item(
+                        connection,
+                        &organization_id,
                         &return_id_str,
+                        return_date,
+                        return_reason,
+                        return_type,
+                        &order_id_str,
+                        order_number,
+                        posting_number,
+                        &clearing_id_str,
+                        &return_clearing_id_str,
                         "",
-                    )
-                    .await?;
-
-                    if let Some(mut ozon_return) = existing {
-                        // Обновляем существующий возврат
-                        ozon_return.return_reason_name = return_reason.to_string();
-                        ozon_return.return_type = return_type.to_string();
-                        ozon_return.return_date = return_date;
-                        ozon_return.order_id = order_id_str.clone();
-                        ozon_return.order_number = order_number.to_string();
-                        ozon_return.posting_number = posting_number.to_string();
-                        ozon_return.clearing_id = clearing_id_str.clone();
-                        ozon_return.return_clearing_id = return_clearing_id_str.clone();
-                        ozon_return.before_write();
-                        a009_ozon_returns::repository::update(&ozon_return).await?;
-                        total_updated += 1;
-                    } else {
-                        // Создаем новый возврат
-                        let dto = contracts::domain::a009_ozon_returns::aggregate::OzonReturnsDto {
-                            id: None,
-                            code: None,
-                            description: display_name,
-                            connection_id: connection.base.id.as_string(),
-                            organization_id: organization_id.clone(),
-                            marketplace_id: connection.marketplace_id.clone(),
-                            return_id: return_id_str.clone(),
-                            return_date,
-                            return_reason_name: return_reason.to_string(),
-                            return_type: return_type.to_string(),
-                            order_id: order_id_str.clone(),
-                            order_number: order_number.to_string(),
-                            sku: String::new(),
-                            product_name: String::new(),
-                            price: 0.0,
-                            quantity: 0,
-                            posting_number: posting_number.to_string(),
-                            clearing_id: clearing_id_str.clone(),
-                            return_clearing_id: return_clearing_id_str.clone(),
-                            comment: None,
-                        };
-                        let _ = a009_ozon_returns::service::create(dto).await?;
-                        total_inserted += 1;
+                        "",
+                        0.0,
+                        0,
+                        &display_name,
+                    ).await {
+                        Ok(true) => total_inserted += 1,
+                        Ok(false) => total_updated += 1,
+                        Err(e) => {
+                            tracing::error!("Failed to process return item {}: {}", return_id_str, e);
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some(aggregate_index.to_string()),
+                                format!("Failed to process return item {}", return_id_str),
+                                Some(e.to_string()),
+                            );
+                        }
                     }
 
                     total_processed += 1;
@@ -822,15 +680,6 @@ impl ImportExecutor {
                     let price = product.price.as_ref().and_then(|p| p.price).unwrap_or(0.0);
                     let quantity = product.quantity.unwrap_or(0);
 
-                    tracing::debug!(
-                        "Return {} product: sku={}, name={}, price={}, qty={}",
-                        return_id_str,
-                        sku_str,
-                        product_name,
-                        price,
-                        quantity
-                    );
-
                     let display_name =
                         format!("{} - {} - {}", return_id_str, sku_str, product_name);
                     self.progress_tracker.set_current_item(
@@ -839,57 +688,35 @@ impl ImportExecutor {
                         Some(display_name.clone()),
                     );
 
-                    // Проверяем существует ли возврат по ключу (connection_id, return_id, sku)
-                    let existing = a009_ozon_returns::repository::get_by_return_key(
-                        &connection.base.id.as_string(),
+                    match returns::process_return_item(
+                        connection,
+                        &organization_id,
                         &return_id_str,
+                        return_date,
+                        return_reason,
+                        return_type,
+                        &order_id_str,
+                        order_number,
+                        posting_number,
+                        &clearing_id_str,
+                        &return_clearing_id_str,
                         &sku_str,
-                    )
-                    .await?;
-
-                    if let Some(mut ozon_return) = existing {
-                        // Обновляем существующий возврат
-                        ozon_return.sku = sku_str.clone();
-                        ozon_return.product_name = product_name.to_string();
-                        ozon_return.price = price;
-                        ozon_return.quantity = quantity;
-                        ozon_return.return_reason_name = return_reason.to_string();
-                        ozon_return.return_type = return_type.to_string();
-                        ozon_return.return_date = return_date;
-                        ozon_return.order_id = order_id_str.clone();
-                        ozon_return.order_number = order_number.to_string();
-                        ozon_return.posting_number = posting_number.to_string();
-                        ozon_return.clearing_id = clearing_id_str.clone();
-                        ozon_return.return_clearing_id = return_clearing_id_str.clone();
-                        ozon_return.before_write();
-                        a009_ozon_returns::repository::update(&ozon_return).await?;
-                        total_updated += 1;
-                    } else {
-                        // Создаем новый возврат
-                        let dto = contracts::domain::a009_ozon_returns::aggregate::OzonReturnsDto {
-                            id: None,
-                            code: None,
-                            description: display_name,
-                            connection_id: connection.base.id.as_string(),
-                            organization_id: organization_id.clone(),
-                            marketplace_id: connection.marketplace_id.clone(),
-                            return_id: return_id_str.clone(),
-                            return_date,
-                            return_reason_name: return_reason.to_string(),
-                            return_type: return_type.to_string(),
-                            order_id: order_id_str.clone(),
-                            order_number: order_number.to_string(),
-                            sku: sku_str.clone(),
-                            product_name: product_name.to_string(),
-                            price,
-                            quantity,
-                            posting_number: posting_number.to_string(),
-                            clearing_id: clearing_id_str.clone(),
-                            return_clearing_id: return_clearing_id_str.clone(),
-                            comment: None,
-                        };
-                        let _ = a009_ozon_returns::service::create(dto).await?;
-                        total_inserted += 1;
+                        product_name,
+                        price,
+                        quantity,
+                        &display_name,
+                    ).await {
+                        Ok(true) => total_inserted += 1,
+                        Ok(false) => total_updated += 1,
+                        Err(e) => {
+                            tracing::error!("Failed to process return product {}: {}", sku_str, e);
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some(aggregate_index.to_string()),
+                                format!("Failed to process return product {}", sku_str),
+                                Some(e.to_string()),
+                            );
+                        }
                     }
 
                     total_processed += 1;
@@ -938,11 +765,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::domain::a010_ozon_fbs_posting;
-        use contracts::domain::a010_ozon_fbs_posting::aggregate::{
-            OzonFbsPosting, OzonFbsPostingHeader, OzonFbsPostingLine, OzonFbsPostingSourceMeta,
-            OzonFbsPostingState,
-        };
 
         let aggregate_index = "a010_ozon_fbs_posting";
         let mut total_processed = 0;
@@ -1000,106 +822,8 @@ impl ImportExecutor {
                     Some(format!("FBS Posting {}", posting_number)),
                 );
 
-                // Проверяем, существует ли документ
-                let existing =
-                    a010_ozon_fbs_posting::service::get_by_document_no(&posting_number).await?;
-                let is_new = existing.is_none();
-
-                // Конвертируем продукты в строки документа
-                let lines: Vec<OzonFbsPostingLine> = posting
-                    .products
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, product)| OzonFbsPostingLine {
-                        line_id: format!("{}_{}", posting_number, idx + 1),
-                        product_id: product
-                            .product_id
-                            .map(|id| id.to_string())
-                            .unwrap_or_else(|| product.offer_id.clone()),
-                        offer_id: product.offer_id.clone(),
-                        name: product.name.clone(),
-                        barcode: None,
-                        qty: product.quantity as f64,
-                        price_list: product.price,
-                        discount_total: None,
-                        price_effective: product.price,
-                        amount_line: product.price.map(|p| p * product.quantity as f64),
-                        currency_code: product.currency_code.clone(),
-                    })
-                    .collect();
-
-                // Парсим delivered_at (используем delivering_date как основное поле, delivered_at как fallback)
-                let date_source = if posting.delivering_date.is_some() {
-                    "delivering_date"
-                } else if posting.delivered_at.is_some() {
-                    "delivered_at"
-                } else {
-                    "none"
-                };
-
-                let delivered_at = posting
-                    .delivering_date
-                    .as_ref()
-                    .or(posting.delivered_at.as_ref())
-                    .and_then(|s| {
-                        chrono::DateTime::parse_from_rfc3339(s)
-                            .map(|dt| dt.with_timezone(&chrono::Utc))
-                            .ok()
-                    });
-
-                tracing::debug!(
-                    "FBS Posting {}: date_source={}, delivering_date={:?}, delivered_at={:?}, parsed_date={:?}",
-                    posting_number,
-                    date_source,
-                    posting.delivering_date,
-                    posting.delivered_at,
-                    delivered_at
-                );
-
-                // Создаем документ
-                let header = OzonFbsPostingHeader {
-                    document_no: posting_number.clone(),
-                    scheme: "FBS".to_string(),
-                    connection_id: connection.base.id.as_string(),
-                    organization_id: organization_id.clone(),
-                    marketplace_id: connection.marketplace_id.clone(),
-                };
-
-                // Нормализуем статус
-                let status_norm = normalize_ozon_status(&posting.status);
-                // Все постинги проводятся, но проекции создаются только для DELIVERED
-                let is_posted = true;
-
-                let state = OzonFbsPostingState {
-                    status_raw: posting.status.clone(),
-                    status_norm,
-                    substatus_raw: posting.substatus.clone(),
-                    delivered_at,
-                    updated_at_source: None,
-                };
-
-                let source_meta = OzonFbsPostingSourceMeta {
-                    raw_payload_ref: String::new(), // Будет заполнен в service
-                    fetched_at: chrono::Utc::now(),
-                    document_version: 1,
-                };
-
-                let document = OzonFbsPosting::new_for_insert(
-                    posting_number.clone(),
-                    format!("FBS Posting {}", posting_number),
-                    header,
-                    lines,
-                    state,
-                    source_meta,
-                    is_posted, // Все постинги проводятся, проекции только для DELIVERED
-                );
-
-                // Сохраняем с сырым JSON (автоматически проецируется в P900)
-                let raw_json = serde_json::to_string(&posting)?;
-                match a010_ozon_fbs_posting::service::store_document_with_raw(document, &raw_json)
-                    .await
-                {
-                    Ok(_) => {
+                match postings::process_fbs_posting(connection, &organization_id, &posting).await {
+                    Ok(is_new) => {
                         total_processed += 1;
                         if is_new {
                             total_inserted += 1;
@@ -1158,11 +882,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::domain::a011_ozon_fbo_posting;
-        use contracts::domain::a011_ozon_fbo_posting::aggregate::{
-            OzonFboPosting, OzonFboPostingHeader, OzonFboPostingLine, OzonFboPostingSourceMeta,
-            OzonFboPostingState,
-        };
 
         let aggregate_index = "a011_ozon_fbo_posting";
         let mut total_processed = 0;
@@ -1220,114 +939,8 @@ impl ImportExecutor {
                     Some(format!("FBO Posting {}", posting_number)),
                 );
 
-                // Проверяем, существует ли документ
-                let existing =
-                    a011_ozon_fbo_posting::service::get_by_document_no(&posting_number).await?;
-                let is_new = existing.is_none();
-
-                // Конвертируем продукты в строки документа
-                let lines: Vec<OzonFboPostingLine> = posting
-                    .products
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, product)| OzonFboPostingLine {
-                        line_id: format!("{}_{}", posting_number, idx + 1),
-                        product_id: product
-                            .product_id
-                            .map(|id| id.to_string())
-                            .unwrap_or_else(|| product.offer_id.clone()),
-                        offer_id: product.offer_id.clone(),
-                        name: product.name.clone(),
-                        barcode: None,
-                        qty: product.quantity as f64,
-                        price_list: product.price,
-                        discount_total: None,
-                        price_effective: product.price,
-                        amount_line: product.price.map(|p| p * product.quantity as f64),
-                        currency_code: product.currency_code.clone(),
-                    })
-                    .collect();
-
-                // Парсим delivered_at (FBO использует delivered_at и delivering_date)
-                let date_source = if posting.delivered_at.is_some() {
-                    "delivered_at"
-                } else if posting.delivering_date.is_some() {
-                    "delivering_date"
-                } else {
-                    "none"
-                };
-
-                let delivered_at = posting
-                    .delivered_at
-                    .as_ref()
-                    .or(posting.delivering_date.as_ref())
-                    .and_then(|s| {
-                        chrono::DateTime::parse_from_rfc3339(s)
-                            .map(|dt| dt.with_timezone(&chrono::Utc))
-                            .ok()
-                    });
-
-                tracing::debug!(
-                    "FBO Posting {}: date_source={}, delivered_at={:?}, delivering_date={:?}, parsed_date={:?}",
-                    posting_number,
-                    date_source,
-                    posting.delivered_at,
-                    posting.delivering_date,
-                    delivered_at
-                );
-
-                // Парсим дату создания заказа
-                let created_at = posting.created_at.as_ref().and_then(|s| {
-                    chrono::DateTime::parse_from_rfc3339(s)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .ok()
-                });
-
-                // Создаем документ
-                let header = OzonFboPostingHeader {
-                    document_no: posting_number.clone(),
-                    scheme: "FBO".to_string(),
-                    connection_id: connection.base.id.as_string(),
-                    organization_id: organization_id.clone(),
-                    marketplace_id: connection.marketplace_id.clone(),
-                };
-
-                // Нормализуем статус
-                let status_norm = normalize_ozon_status(&posting.status);
-                // Все постинги (включая CANCELLED) проводятся в P900 согласно логике OZON
-                let is_posted = true;
-
-                let state = OzonFboPostingState {
-                    status_raw: posting.status.clone(),
-                    status_norm,
-                    substatus_raw: posting.substatus.clone(),
-                    created_at,
-                    delivered_at,
-                    updated_at_source: None,
-                };
-
-                let source_meta = OzonFboPostingSourceMeta {
-                    raw_payload_ref: String::new(), // Будет заполнен в service
-                    fetched_at: chrono::Utc::now(),
-                    document_version: 1,
-                };
-
-                let document = OzonFboPosting::new_for_insert(
-                    posting_number.clone(),
-                    format!("FBO Posting {}", posting_number),
-                    header,
-                    lines,
-                    state,
-                    source_meta,
-                    is_posted, // Все постинги проводятся (DELIVERED и CANCELLED)
-                );
-
-                // Сохраняем с сырым JSON (автоматически проецируется в P900)
-                let raw_json = serde_json::to_string(&posting)?;
-                match a011_ozon_fbo_posting::service::store_document_with_raw(document, &raw_json)
-                    .await
-                {
-                    Ok(_) => {
+                match postings::process_fbo_posting(connection, &organization_id, &posting).await {
+                    Ok(is_new) => {
                         total_processed += 1;
                         if is_new {
                             total_inserted += 1;
@@ -1386,7 +999,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::projections::p902_ozon_finance_realization::{repository, service};
 
         let aggregate_index = "p902_ozon_finance_realization";
         let mut total_processed = 0;
@@ -1435,144 +1047,35 @@ impl ImportExecutor {
             );
 
             let currency_code = resp.header.currency_sys_name.clone();
-            let report_number = resp.header.number.clone();
             let doc_date = resp.header.doc_date.clone();
+            
+            // Парсим дату документа как accrual_date
+            let accrual_date = chrono::NaiveDate::parse_from_str(&doc_date, "%Y-%m-%d")
+                .unwrap_or(date_from);
 
             for row in resp.rows {
-                let row_for_json = row.clone(); // Клонируем для сериализации в JSON
-                let item = row.item;
-                // Используем order.posting_number если есть, иначе offer_id
-                let posting_number = if let Some(ref order) = row.order {
-                    order.posting_number.clone()
-                } else if !item.offer_id.is_empty() {
-                    item.offer_id.clone()
-                } else {
-                    format!("REPORT-{}-{}", report_number, row.row_number)
-                };
-                let sku = item.sku.clone();
-
-                self.progress_tracker.set_current_item(
-                    session_id,
-                    aggregate_index,
-                    Some(format!("Finance {} - {}", posting_number, sku)),
-                );
-
-                // Парсим дату документа как accrual_date
-                let accrual_date = chrono::NaiveDate::parse_from_str(&doc_date, "%Y-%m-%d")
-                    .unwrap_or_else(|_| chrono::Utc::now().naive_utc().date());
-
-                // Нет posting_ref, так как это финансовый отчет, не привязанный к конкретным отправлениям
-                let posting_ref: Option<String> = None;
-
-                // Обрабатываем delivery_commission (продажа)
-                if let Some(ref dc) = row.delivery_commission {
-                    let existing = repository::get_by_id(&posting_number, &sku, "delivery").await?;
-                    let is_new = existing.is_none();
-
-                    let quantity = dc.quantity;
-                    let amount = dc.amount;
-                    let commission_amount = Some(dc.commission);
-                    let commission_percent = if dc.amount > 0.0 {
-                        Some((dc.commission / dc.amount) * 100.0)
-                    } else {
-                        None
-                    };
-
-                    // Создаем запись проекции для продажи
-                    let entry = repository::OzonFinanceRealizationEntry {
-                        posting_number: posting_number.clone(),
-                        sku: sku.clone(),
-                        document_type: "OZON_Finance_Realization".to_string(),
-                        registrator_ref: registrator_ref.clone(),
-                        connection_mp_ref: connection.base.id.as_string(),
-                        organization_ref: organization_id.clone(),
-                        posting_ref: posting_ref.clone(),
-                        accrual_date,
-                        operation_date: None,
-                        delivery_date: None,
-                        delivery_schema: None,
-                        delivery_region: None,
-                        delivery_city: None,
-                        quantity,
-                        price: row.seller_price_per_instance,
-                        amount,
-                        commission_amount,
-                        commission_percent,
-                        services_amount: Some(dc.standard_fee),
-                        payout_amount: Some(dc.total),
-                        operation_type: "delivery".to_string(),
-                        operation_type_name: Some("Доставка".to_string()),
-                        is_return: false,
-                        currency_code: Some(currency_code.clone()),
-                        payload_version: 1,
-                        extra: Some(serde_json::to_string(&row_for_json).unwrap_or_default()),
-                    };
-
-                    // Сохраняем запись
-                    service::upsert_realization_row(entry).await?;
-
-                    if is_new {
-                        total_inserted += 1;
-                    } else {
-                        total_updated += 1;
+                match realization::process_realization_row(
+                    connection,
+                    &organization_id,
+                    &registrator_ref,
+                    &row,
+                    &currency_code,
+                    accrual_date,
+                ).await {
+                    Ok((ins, upd)) => {
+                        total_inserted += ins;
+                        total_updated += upd;
+                        total_processed += 1;
                     }
-                    total_processed += 1;
-                }
-
-                // Обрабатываем return_commission (возврат)
-                if let Some(ref rc) = row.return_commission {
-                    let existing = repository::get_by_id(&posting_number, &sku, "return").await?;
-                    let is_new = existing.is_none();
-
-                    // Для возвратов делаем суммы отрицательными
-                    let quantity = -rc.quantity;
-                    let amount = -rc.amount;
-                    let commission_amount = Some(-rc.commission);
-                    let commission_percent = if rc.amount > 0.0 {
-                        Some((rc.commission / rc.amount) * 100.0)
-                    } else {
-                        None
-                    };
-
-                    // Создаем запись проекции для возврата
-                    let entry = repository::OzonFinanceRealizationEntry {
-                        posting_number: posting_number.clone(),
-                        sku: sku.clone(),
-                        document_type: "OZON_Finance_Realization".to_string(),
-                        registrator_ref: registrator_ref.clone(),
-                        connection_mp_ref: connection.base.id.as_string(),
-                        organization_ref: organization_id.clone(),
-                        posting_ref: posting_ref.clone(),
-                        accrual_date,
-                        operation_date: None,
-                        delivery_date: None,
-                        delivery_schema: None,
-                        delivery_region: None,
-                        delivery_city: None,
-                        quantity,
-                        price: row.seller_price_per_instance.map(|p| -p), // Отрицательная цена для возврата
-                        amount,
-                        commission_amount,
-                        commission_percent,
-                        services_amount: Some(-rc.standard_fee),
-                        payout_amount: Some(-rc.total),
-                        operation_type: "return".to_string(),
-                        operation_type_name: Some("Возврат".to_string()),
-                        is_return: true,
-                        currency_code: Some(currency_code.clone()),
-                        payload_version: 1,
-                        extra: Some(serde_json::to_string(&row_for_json).unwrap_or_default()),
-                    };
-
-                    // Сохраняем запись
-                    service::upsert_realization_row(entry).await?;
-
-                    if is_new {
-                        total_inserted += 1;
-                    } else {
-                        total_updated += 1;
+                    Err(e) => {
+                        tracing::error!("Failed to process realization row: {}", e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            "Failed to process realization row".to_string(),
+                            Some(e.to_string()),
+                        );
                     }
-                    total_processed += 1;
                 }
 
                 self.progress_tracker.update_aggregate(
@@ -1606,11 +1109,6 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         use crate::domain::a002_organization;
-        use crate::domain::a014_ozon_transactions;
-        use contracts::domain::a014_ozon_transactions::aggregate::{
-            OzonTransactions, OzonTransactionsHeader, OzonTransactionsItem,
-            OzonTransactionsPosting, OzonTransactionsService, OzonTransactionsSourceMeta,
-        };
 
         let aggregate_index = "a014_ozon_transactions";
         let mut total_processed = 0;
@@ -1662,97 +1160,22 @@ impl ImportExecutor {
             );
 
             for operation in resp.result.operations {
-                let code = format!("OZON-TXN-{}", operation.operation_id);
-                let description = format!(
-                    "{} - {}",
-                    operation.operation_type_name, operation.posting.posting_number
-                );
-
-                // Собираем header
-                let header = OzonTransactionsHeader {
-                    operation_id: operation.operation_id,
-                    operation_type: operation.operation_type.clone(),
-                    operation_date: operation.operation_date.clone(),
-                    operation_type_name: operation.operation_type_name.clone(),
-                    delivery_charge: operation.delivery_charge,
-                    return_delivery_charge: operation.return_delivery_charge,
-                    accruals_for_sale: operation.accruals_for_sale,
-                    sale_commission: operation.sale_commission,
-                    amount: operation.amount,
-                    transaction_type: operation.transaction_type.clone(),
-                    connection_id: connection.base.id.as_string(),
-                    organization_id: organization_id.clone(),
-                    marketplace_id: connection.marketplace_id.clone(),
-                };
-
-                // Собираем posting
-                let posting = OzonTransactionsPosting {
-                    delivery_schema: operation.posting.delivery_schema.clone(),
-                    order_date: operation.posting.order_date.clone(),
-                    posting_number: operation.posting.posting_number.clone(),
-                    warehouse_id: operation.posting.warehouse_id,
-                };
-
-                // Собираем items (при импорте поля заполняются как None, обогащение происходит при проведении)
-                let items: Vec<OzonTransactionsItem> = operation
-                    .items
-                    .into_iter()
-                    .map(|item| OzonTransactionsItem {
-                        name: item.name,
-                        sku: item.sku,
-                        price: None,
-                        ratio: None,
-                        marketplace_product_ref: None,
-                        nomenclature_ref: None,
-                    })
-                    .collect();
-
-                // Собираем services
-                let services: Vec<OzonTransactionsService> = operation
-                    .services
-                    .into_iter()
-                    .map(|service| OzonTransactionsService {
-                        name: service.name,
-                        price: service.price,
-                    })
-                    .collect();
-
-                // Source meta
-                let source_meta = OzonTransactionsSourceMeta {
-                    raw_payload_ref: format!("ozon_txn_{}", operation.operation_id),
-                    fetched_at: chrono::Utc::now(),
-                    document_version: 1,
-                };
-
-                // Создаем агрегат
-                let aggregate = OzonTransactions::new_for_insert(
-                    code,
-                    description,
-                    header,
-                    posting,
-                    items,
-                    services,
-                    source_meta,
-                    false, // is_posted = false по умолчанию
-                );
-
-                // Upsert по operation_id
-                match a014_ozon_transactions::repository::get_by_operation_id(
-                    aggregate.header.operation_id,
-                )
-                .await?
-                {
-                    Some(_existing) => {
-                        // Обновляем существующую транзакцию
-                        a014_ozon_transactions::repository::upsert_by_operation_id(&aggregate)
-                            .await?;
-                        total_updated += 1;
+                match transaction::process_transaction(connection, &organization_id, &operation).await {
+                    Ok(is_new) => {
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
                     }
-                    None => {
-                        // Вставляем новую транзакцию
-                        a014_ozon_transactions::repository::upsert_by_operation_id(&aggregate)
-                            .await?;
-                        total_inserted += 1;
+                    Err(e) => {
+                        tracing::error!("Failed to process transaction: {}", e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            "Failed to process transaction".to_string(),
+                            Some(e.to_string()),
+                        );
                     }
                 }
 
@@ -1788,16 +1211,6 @@ impl ImportExecutor {
             .complete_aggregate(session_id, aggregate_index);
 
         Ok(())
-    }
-}
-
-/// Normalize OZON posting status
-fn normalize_ozon_status(status: &str) -> String {
-    match status.to_uppercase().as_str() {
-        "DELIVERED" => "DELIVERED".to_string(),
-        "CANCELLED" | "CANCELED" => "CANCELLED".to_string(),
-        "" => "UNKNOWN".to_string(),
-        other => other.to_uppercase(),
     }
 }
 

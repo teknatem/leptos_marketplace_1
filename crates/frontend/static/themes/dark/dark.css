@@ -17,11 +17,11 @@
   --color-text-muted: rgba(255, 255, 255, 0.5);
 
   /* Background Colors */
-  --color-bg-primary: rgba(15, 23, 42, 0.3);
+  --color-bg-primary: rgba(15, 23, 42, 0.9);
   --color-bg-secondary: rgba(30, 41, 59, 0.2);
   --color-surface: rgba(30, 41, 59, 0.4);
   --color-code-bg: rgba(0, 0, 0, 0.4);
-
+  
   /* Border Colors */
   --color-border: rgba(255, 255, 255, 0.15);
   --color-border-light: rgba(255, 255, 255, 0.08);
@@ -220,4 +220,7 @@
 
   --sidebar-scrollbar-thumb: rgba(0, 0, 0, 0.2);
   --sidebar-scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+
+
+
 }

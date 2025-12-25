@@ -6,3 +6,13 @@ td:first-child {
     max-width: 40px !important;
     padding: 0 8px; /* отступы, чтобы они не раздували ячейку */
 }
+
+/* Темы */
+[data-theme="dark"] .thaw-config-provider,
+[data-theme="forest"] .thaw-config-provider {
+    --fontFamilyBase: "Roboto", sans-serif;
+}
+
+[data-theme="light"] .thaw-config-provider {
+    --fontFamilyBase: "Roboto", sans-serif;
+}

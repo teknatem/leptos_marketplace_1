@@ -469,6 +469,37 @@ pub fn configure_routes() -> Router {
             get(handlers::usecases::u506_get_progress),
         )
         // ========================================
+        // SYSTEM SCHEDULED TASKS ROUTES
+        // ========================================
+        .route(
+            "/api/sys/scheduled_tasks",
+            get(handlers::sys_scheduled_task::list_scheduled_tasks)
+                .post(handlers::sys_scheduled_task::create_scheduled_task)
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/scheduled_tasks/:id",
+            get(handlers::sys_scheduled_task::get_scheduled_task)
+                .put(handlers::sys_scheduled_task::update_scheduled_task)
+                .delete(handlers::sys_scheduled_task::delete_scheduled_task)
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/scheduled_tasks/:id/toggle_enabled",
+            post(handlers::sys_scheduled_task::toggle_scheduled_task_enabled)
+                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/scheduled_tasks/:id/progress/:session_id",
+            get(handlers::sys_scheduled_task::get_task_progress)
+                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/scheduled_tasks/:id/log/:session_id",
+            get(handlers::sys_scheduled_task::get_task_log)
+                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
+        )
+        // ========================================
         // PROJECTIONS
         // ========================================
         // P900 Sales Register handlers

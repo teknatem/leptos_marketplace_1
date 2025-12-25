@@ -2345,6 +2345,44 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         .await?;
     }
 
+    // ============================================================
+    // System: Scheduled Tasks
+    // ============================================================
+    let check_scheduled_tasks = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_scheduled_tasks';"
+                .to_string(),
+        ))
+        .await?;
+
+    if check_scheduled_tasks.is_empty() {
+        tracing::info!("Creating sys_scheduled_tasks table");
+        let create_scheduled_tasks_sql = r#"
+            CREATE TABLE sys_scheduled_tasks (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL UNIQUE,
+                description TEXT,
+                task_type TEXT NOT NULL,
+                schedule_cron TEXT,
+                config_json TEXT,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                last_run_at TEXT,
+                next_run_at TEXT,
+                last_run_status TEXT,
+                last_run_log_file TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0
+            );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_scheduled_tasks_sql.to_string(),
+        ))
+        .await?;
+    }
+
     DB_CONN
         .set(conn)
         .map_err(|_| anyhow::anyhow!("Failed to set DB_CONN"))?;
