@@ -80,6 +80,20 @@ pub async fn get_by_id(
     }
 }
 
+/// DELETE /api/connection_1c/:id
+pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode> {
+    let uuid = match uuid::Uuid::parse_str(&id) {
+        Ok(uuid) => uuid,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+
+    match a001_connection_1c::service::delete(uuid).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(axum::http::StatusCode::NOT_FOUND),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 /// POST /api/connection_1c
 pub async fn upsert(
     Json(dto): Json<contracts::domain::a001_connection_1c::aggregate::Connection1CDatabaseDto>,

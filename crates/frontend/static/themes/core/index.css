@@ -11,6 +11,7 @@
 @import url("./base.css") layer(base);
 @import url("./layout.css") layer(layout);
 @import url("./components.css") layer(components);
+@import url("./dashboards/d401_metadata_dashboard.css") layer(components);
 @import url("./utilities.css") layer(utilities);
 
 /* Thaw patches */

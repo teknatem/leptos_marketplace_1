@@ -64,7 +64,8 @@ pub fn configure_routes() -> Router {
         )
         .route(
             "/api/connection_1c/:id",
-            get(handlers::a001_connection_1c::get_by_id),
+            get(handlers::a001_connection_1c::get_by_id)
+                .delete(handlers::a001_connection_1c::delete),
         )
         .route(
             "/api/connection_1c/test",

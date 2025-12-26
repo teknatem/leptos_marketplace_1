@@ -2,6 +2,7 @@
 //    customers, inventory, invoices, orders, payments, products, purchases, shipments, suppliers,
 //};
 use crate::dashboards::MonthlySummaryDashboard;
+use crate::dashboards::MetadataDashboard;
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
@@ -253,6 +254,10 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             "d400_monthly_summary" => {
                 log!("✅ Creating MonthlySummaryDashboard");
                 view! { <MonthlySummaryDashboard /> }.into_any()
+            }
+            "d401_metadata_dashboard" => {
+                log!("✅ Creating MetadataDashboard");
+                view! { <MetadataDashboard /> }.into_any()
             }
             _ => {
                 log!("⚠️ Unknown tab type: {}", key_ref);
