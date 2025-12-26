@@ -1,0 +1,153 @@
+.d401-root {
+  padding: var(--spacing-lg);
+}
+
+.d401-header {
+  margin-bottom: var(--spacing-md);
+}
+
+.d401-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.d401-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.d401-split {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+.d401-left,
+.d401-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.d401-panel {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+}
+
+.d401-panel__title {
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-primary);
+}
+
+.d401-tree {
+  width: 100%;
+}
+
+.d401-fields {
+  margin-top: var(--spacing-sm);
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.d401-tree__btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 2px 6px !important;
+  min-height: 26px !important;
+  border-radius: var(--radius-md);
+}
+
+.d401-tree__btn--root {
+  font-weight: 600;
+}
+
+.d401-tree__btn-content {
+  display: grid;
+  grid-template-columns: 18px 140px 1fr;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+}
+
+.d401-tree__row {
+  width: 100%;
+}
+
+.d401-tree__empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.d401-tree__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+}
+
+.d401-tree__toggle--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.d401-tree__toggle-placeholder {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.d401-tree__key {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.d401-tree__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.d401-tree__btn--active {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 0;
+}
+
+.d401-entity-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.d401-entity-subtitle {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.d401-entity-desc {
+  margin-top: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.35;
+}
+
+.d401-table-scroll {
+  overflow: auto;
+  max-width: 100%;
+}
+
+

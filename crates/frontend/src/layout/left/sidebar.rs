@@ -21,7 +21,10 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "dashboards",
             label: "Дашборды",
             icon: "bar-chart",
-            items: vec![("d400_monthly_summary", "Сводка за месяц", "bar-chart")],
+            items: vec![
+                ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
+                ("d401_metadata_dashboard", "Метаданные", "layout-dashboard"),
+            ],
             admin_only: false,
         },
         MenuGroup {

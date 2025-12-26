@@ -160,21 +160,31 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                 </code>
                                             </TableCell>
                                             <TableCell>{task.schedule_cron.unwrap_or_else(|| "—".to_string())}</TableCell>
-                                            <TableCell attr:style="font-size: 0.9em; color: var(--colorNeutralForeground2);">
-                                                {task.last_run_at.map(|d| d.format("%d.%m %H:%M").to_string()).unwrap_or_else(|| "—".to_string())}
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <span style="font-size: 0.9em; color: var(--colorNeutralForeground2);">
+                                                        {task.last_run_at.map(|d| d.format("%d.%m %H:%M").to_string()).unwrap_or_else(|| "—".to_string())}
+                                                    </span>
+                                                </TableCellLayout>
                                             </TableCell>
                                             <TableCell>
                                                 {status_view}
                                             </TableCell>
-                                            <TableCell attr:style="text-align: center;">
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: center;">
                                                 <div 
                                                     on:click=move |_| toggle_enabled(id_for_toggle.clone(), is_enabled)
                                                     style="cursor: pointer; display: inline-block;"
                                                 >
                                                     <Checkbox checked=is_enabled attr:disabled=true />
                                                 </div>
+                                                    </div>
+                                                </TableCellLayout>
                                             </TableCell>
-                                            <TableCell attr:style="text-align: center;">
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: center;">
                                                 <Button
                                                     appearance=ButtonAppearance::Transparent
                                                     on_click=move |e: ev::MouseEvent| {
@@ -184,6 +194,8 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                 >
                                                     {icon("settings")}
                                                 </Button>
+                                                    </div>
+                                                </TableCellLayout>
                                             </TableCell>
                                         </TableRow>
                                     }
