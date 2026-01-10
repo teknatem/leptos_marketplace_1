@@ -1,6 +1,5 @@
-use leptos::ev::MouseEvent;
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
+use thaw::*;
 
 #[component]
 pub fn DimensionInput(
@@ -12,174 +11,139 @@ pub fn DimensionInput(
     #[prop(into)] on_change: Callback<String>,
     options: Signal<Vec<String>>,
 ) -> impl IntoView {
-    let (is_open, set_is_open) = signal(false);
-    let (filter_text, set_filter_text) = signal(String::new());
+    // Local editable state (Thaw Input needs RwSignal)
+    let input_value = RwSignal::new(String::new());
+    let is_open = RwSignal::new(false);
 
-    // Filtered options based on current input
-    let filtered_options = move || {
-        let filter = filter_text.get().to_lowercase();
-        if filter.is_empty() {
-            options.get()
-        } else {
-            options
-                .get()
-                .into_iter()
-                .filter(|opt| opt.to_lowercase().contains(&filter))
-                .collect()
-        }
-    };
-
-    let on_input = move |ev: leptos::ev::Event| {
-        let val = event_target_value(&ev);
-        set_filter_text.set(val.clone());
-        on_change.run(val);
-    };
-
-    let on_clear = move |_: MouseEvent| {
-        set_filter_text.set(String::new());
-        on_change.run(String::new());
-        set_is_open.set(false);
-    };
-
-    let toggle_dropdown = move |_: MouseEvent| {
-        set_is_open.update(|open| *open = !*open);
-    };
-
-    let select_option = move |option: String| {
-        set_filter_text.set(option.clone());
-        on_change.run(option);
-        set_is_open.set(false);
-    };
-
-    let on_focus = move |_| {
-        set_is_open.set(true);
-    };
-
-    // Sync value with filter_text
+    // Sync external value -> input
     Effect::new(move || {
         let v = value.get();
-        set_filter_text.set(v);
+        input_value.set(v);
     });
 
-    // Close dropdown when clicking outside (with small delay for mousedown to fire first)
-    let on_blur = move |_| {
-        leptos::task::spawn_local(async move {
-            gloo_timers::future::TimeoutFuture::new(150).await;
-            set_is_open.set(false);
-        });
+    // Sync Input -> callback (avoid initial echo)
+    let last_sent = StoredValue::new(String::new());
+    let first_run = StoredValue::new(true);
+    Effect::new(move || {
+        let v = input_value.get();
+        if first_run.get_value() {
+            first_run.set_value(false);
+            last_sent.set_value(v);
+            return;
+        }
+        if last_sent.get_value() == v {
+            return;
+        }
+        last_sent.set_value(v.clone());
+        on_change.run(v);
+    });
+
+    let on_clear = move |_| {
+        input_value.set(String::new());
+        on_change.run(String::new());
+        is_open.set(false);
+    };
+
+    let toggle_dropdown = move |_| {
+        is_open.update(|v| *v = !*v);
+    };
+
+    let select_option = move |opt: String| {
+        input_value.set(opt.clone());
+        on_change.run(opt);
+        is_open.set(false);
     };
 
     view! {
         <div class="form__group">
-            <label for={id.clone()}>{label}</label>
+            <label class="form__label" for={id.clone()}>{label}</label>
+
             <div style="position: relative;">
-                <input
-                    type="text"
-                    id={id.clone()}
-                    maxlength={maxlength.to_string()}
-                    prop:value={move || filter_text.get()}
-                    on:input=on_input
-                    on:focus=on_focus
-                    on:blur=on_blur
-                    placeholder={placeholder}
-                    style="padding-right: 70px;"
-                />
-                <div style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; gap: 4px;">
-                    // Clear button
-                    <button
-                        type="button"
-                        on:mousedown=on_clear
-                        style="
-                            border: none;
-                            background: transparent;
-                            cursor: pointer;
-                            padding: 4px 8px;
-                            color: #666;
-                            font-size: 16px;
-                            display: flex;
-                            align-items: center;
-                        "
-                        title="Очистить"
-                    >
-                        "✕"
-                    </button>
-                    // Dropdown button
-                    <button
-                        type="button"
-                        on:mousedown=toggle_dropdown
-                        style="
-                            border: none;
-                            background: transparent;
-                            cursor: pointer;
-                            padding: 4px 8px;
-                            color: #666;
-                            font-size: 14px;
-                            display: flex;
-                            align-items: center;
-                        "
-                        title="Выбрать из списка"
-                    >
-                        "▼"
-                    </button>
-                </div>
-                {move || if is_open.get() {
-                    let opts = filtered_options();
-                    view! {
-                        <div style="
-                            position: absolute;
-                            top: 100%;
-                            left: 0;
-                            right: 0;
-                            max-height: 200px;
-                            overflow-y: auto;
-                            background: white;
-                            border: 1px solid #ccc;
-                            border-radius: 4px;
-                            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-                            z-index: 1000;
-                            margin-top: 2px;
-                        ">
-                            {if opts.is_empty() {
-                                view! {
-                                    <div style="padding: 8px 12px; color: #999; font-style: italic;">
-                                        "Нет совпадений"
-                                    </div>
-                                }.into_any()
+                <Input
+                    value=input_value
+                    placeholder=placeholder
+                    attr:id=id.clone()
+                    attr:maxlength=maxlength.to_string()
+                    attr:style="width: 100%;"
+                >
+                    <InputSuffix slot>
+                        <div style="display: flex; gap: 4px;">
+                            <Button
+                                appearance=ButtonAppearance::Subtle
+                                shape=ButtonShape::Square
+                                size=ButtonSize::Small
+                                on_click=on_clear
+                                attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                attr:title="Очистить"
+                            >
+                                "✕"
+                            </Button>
+                            <Button
+                                appearance=ButtonAppearance::Subtle
+                                shape=ButtonShape::Square
+                                size=ButtonSize::Small
+                                on_click=toggle_dropdown
+                                attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                attr:title="Выбрать из списка"
+                            >
+                                "▼"
+                            </Button>
+                        </div>
+                    </InputSuffix>
+                </Input>
+
+                {move || {
+                    if !is_open.get() {
+                        return view! { <></> }.into_any();
+                    }
+
+                    let current = input_value.get().to_lowercase();
+                    let opts = options
+                        .get()
+                        .into_iter()
+                        .filter(|o| {
+                            if current.trim().is_empty() {
+                                true
                             } else {
-                                opts.into_iter().map(|option| {
-                                    let opt_clone = option.clone();
+                                o.to_lowercase().contains(&current)
+                            }
+                        })
+                        .take(50)
+                        .collect::<Vec<_>>();
+
+                    view! {
+                        <div
+                            style="
+                                position: absolute;
+                                top: calc(100% + 4px);
+                                left: 0;
+                                right: 0;
+                                max-height: 220px;
+                                overflow-y: auto;
+                                background: var(--color-surface);
+                                border: 1px solid var(--color-border);
+                                border-radius: var(--radius-md);
+                                box-shadow: var(--shadow-md);
+                                z-index: 1000;
+                            "
+                        >
+                            {if opts.is_empty() {
+                                view! { <div style="padding: 8px 12px; color: var(--color-text-tertiary);">"Нет совпадений"</div> }.into_any()
+                            } else {
+                                opts.into_iter().map(|opt| {
+                                    let opt2 = opt.clone();
                                     view! {
                                         <div
-                                            on:mousedown=move |_| select_option(opt_clone.clone())
-                                            style="
-                                                padding: 8px 12px;
-                                                cursor: pointer;
-                                                border-bottom: 1px solid #eee;
-                                            "
-                                            on:mouseenter=move |ev| {
-                                                if let Some(target) = ev.target() {
-                                                    if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
-                                                        let _ = element.style().set_property("background-color", "#f0f0f0");
-                                                    }
-                                                }
-                                            }
-                                            on:mouseleave=move |ev| {
-                                                if let Some(target) = ev.target() {
-                                                    if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
-                                                        let _ = element.style().set_property("background-color", "white");
-                                                    }
-                                                }
-                                            }
+                                            style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--color-border-light);"
+                                            on:mousedown=move |_| select_option(opt2.clone())
                                         >
-                                            {option}
+                                            {opt}
                                         </div>
                                     }
                                 }).collect_view().into_any()
                             }}
                         </div>
                     }.into_any()
-                } else {
-                    view! { <></> }.into_any()
                 }}
             </div>
         </div>

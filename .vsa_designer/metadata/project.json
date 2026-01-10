@@ -1,0 +1,14 @@
+{
+  "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
+  "sources": [
+    "crates/frontend/src",
+    "crates/backend/src",
+    "crates/contracts/src"
+  ],
+  "workspace_manifest": "E:\\dev\\rust\\2\\leptos_marketplace_1\\Cargo.toml",
+  "workspace_members": [
+    "crates/frontend",
+    "crates/backend",
+    "crates/contracts"
+  ]
+}

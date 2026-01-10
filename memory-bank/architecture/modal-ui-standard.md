@@ -2,7 +2,11 @@
 
 ## Обзор
 
-Единый стандарт для всех модальных окон и форм в системе. Основан на glassmorphism дизайне из bolt-mpi-ui-redesign.
+Единый стандарт для всех модальных окон и форм в системе.
+
+**Приоритет**: Thaw-first + hybrid
+- По возможности используем **компоненты Thaw UI** и их стили.
+- Там, где Thaw не покрывает кейс/нужна точная разметка, используем **наши core-классы** из `crates/frontend/static/themes/core/components.css` (например `.modal-*`, `.form__*`, `.button`, `.card`).
 
 ---
 
@@ -10,74 +14,60 @@
 
 | Компонент           | Файл                                                          | Описание                    |
 | ------------------- | ------------------------------------------------------------- | --------------------------- |
-| Modal компонент     | `crates/frontend/src/shared/modal/mod.rs`                     | Переиспользуемый компонент  |
-| Стили модальных     | `crates/frontend/styles/3-components/modals.css`              | Базовые стили               |
-| Стили форм          | `crates/frontend/styles/3-components/forms.css`               | Инпуты, labels, buttons     |
+| CSS entrypoint      | `crates/frontend/index.html`                                  | Подключает core + theme CSS |
+| Core CSS слои       | `crates/frontend/static/themes/core/index.css`                | tokens/base/layout/components/utilities |
+| Стили модальных/форм| `crates/frontend/static/themes/core/components.css`           | `.modal-*`, `.form__*`, `.button`, `.card` |
 | Dark theme modals   | `crates/frontend/static/themes/dark/dark.css`                 | Темная тема (строки 275-298)|
 | Light theme modals  | `crates/frontend/static/themes/light/light.css`               | Светлая тема (строки 277-300)|
-| Эталон использования| `crates/frontend/src/domain/a001_connection_1c/ui/list/mod.rs`| Connection1C modal          |
+| Modal stack         | `crates/frontend/src/shared/modal_stack/mod.rs`               | `ModalStackService`, `ModalHost` |
+| Modal frame         | `crates/frontend/src/shared/modal_frame/mod.rs`               | `ModalFrame` (overlay + surface) |
 
 ---
 
 ## Архитектура Modal
 
-### Структура компонента (обновлено 2025-12-10)
+### Структура (актуально)
 
 ```rust
-use crate::shared::modal::Modal;
-use crate::shared::icons::icon;
+use crate::shared::modal_stack::ModalStackService;
+use leptos::prelude::*;
+use thaw::*;
 
-<Show when=move || show_modal.get()>
-    {move || {
-        let modal_title = if editing_id.get().is_some() { 
-            "Edit Item".to_string() 
-        } else { 
-            "New Item".to_string() 
-        };
-        
-        view! {
-            <Modal
-                title=modal_title
-                on_close=Callback::new(move |_| {
-                    set_show_modal.set(false);
-                    set_editing_id.set(None);
-                })
-                action_buttons=move || view! {
-                    <button 
-                        class="btn btn-primary" 
-                        on:click=handle_save
-                        disabled=move || !is_valid()
-                    >
-                        {icon("save")}
-                        "Save"
-                    </button>
-                    <button 
-                        class="btn btn-secondary" 
-                        on:click=move |_| {
-                            set_show_modal.set(false);
-                            set_editing_id.set(None);
-                        }
-                    >
-                        {icon("x")}
-                        "Cancel"
-                    </button>
-                }
-            >
-                <!-- Только поля формы, БЕЗ кнопок -->
-                <YourDetailsForm
-                    id=editing_id.get()
-                />
-            </Modal>
-        }
-    }}
-</Show>
+let modal_stack =
+    use_context::<ModalStackService>().expect("ModalStackService not found in context");
+
+let open_modal = move |_| {
+    modal_stack.push_with_frame(
+        Some("max-width: 980px; width: min(980px, calc(100vw - 48px));".to_string()),
+        None,
+        move |handle| {
+            view! {
+                // ModalFrame уже рисует overlay + surface `.modal`.
+                // Здесь — содержимое модалки (header+body по необходимости).
+                <div class="modal-header modal-header--compact">
+                    <h2 class="modal-title">"Заголовок"</h2>
+                    <div class="modal-header-actions">
+                        <Button appearance=ButtonAppearance::Primary on_click=move |_| {/* save */}>
+                            "Сохранить"
+                        </Button>
+                        <Button appearance=ButtonAppearance::Transparent on_click=move |_| handle.close()>
+                            "Закрыть"
+                        </Button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    // ... form fields ...
+                </div>
+            }.into_any()
+        },
+    );
+};
 ```
 
-**Ключевые изменения:**
-1. Кнопки действий передаются через параметр `action_buttons`
-2. Кнопки размещаются в header (справа от заголовка, слева от X)
-3. Кнопка сохранения всегда называется "Save"
-4. Кнопка закрытия (X) всегда крайняя справа
+**Ключевые правила:**
+1. **Модалки открываем через `ModalStackService`** (централизованный стек, Escape закрывает верхнюю).
+2. `ModalFrame` рисует только overlay+surface. **Header/кнопки — внутри контента** (или в header detail-экрана).
+3. Для UI — **Thaw-first**, а для кастомной разметки используем `.modal-*` и `.form__*` из core CSS.
 
 ### HTML Структура Modal (обновлено 2025-12-10)
 
@@ -87,9 +77,9 @@ use crate::shared::icons::icon;
     <div class="modal-header">              <!-- Заголовок + кнопки действий + кнопка X -->
       <h2 class="modal-title">Title</h2>
       <div class="modal-header-actions">    <!-- Контейнер для кнопок -->
-        <button class="btn btn-primary">Save</button>
-        <button class="btn btn-secondary">Cancel</button>
-        <button class="btn btn-ghost btn-close">X</button>
+        <!-- Предпочтительно Thaw Button, но допустимы `.button ...` -->
+        <button class="button button--primary">Save</button>
+        <button class="button button--secondary">Cancel</button>
       </div>
     </div>
     <div class="modal-body">                <!-- Содержимое (только поля формы) -->
@@ -101,7 +91,6 @@ use crate::shared::icons::icon;
 
 **Важные классы:**
 - `.modal-header-actions` - контейнер для кнопок (flexbox с gap)
-- `.btn-close` - кнопка закрытия (всегда последняя)
 
 ---
 
@@ -116,8 +105,8 @@ use crate::shared::icons::icon;
 view! {
     <div class="modal-body">
         <form>
-            <div class="form-group">...</div>
-            <div class="form-group">...</div>
+            <div class="form__group">...</div>
+            <div class="form__group">...</div>
         </form>
     </div>
     <div class="form-actions">  <!-- Кнопки ВНИЗУ - НЕПРАВИЛЬНО -->
@@ -130,24 +119,21 @@ view! {
 #### ✅ Правильно (новый стандарт):
 ```rust
 view! {
-    <Modal 
-        title="Edit Item"
-        on_close=...
-        action_buttons=move || view! {
-            <button class="btn btn-primary" on:click=handle_save>
-                {icon("save")}
-                "Save"
-            </button>
-            <button class="btn btn-secondary" on:click=handle_cancel>
-                {icon("x")}
-                "Cancel"
-            </button>
-        }
-    >
-        <!-- Только поля формы в body -->
-        <div class="form-group">...</div>
-        <div class="form-group">...</div>
-    </Modal>
+    <div class="modal-header modal-header--compact">
+        <h2 class="modal-title">"Edit Item"</h2>
+        <div class="modal-header-actions">
+            <Button appearance=ButtonAppearance::Primary on_click=move |_| handle_save(())>
+                "Сохранить"
+            </Button>
+            <Button appearance=ButtonAppearance::Transparent on_click=move |_| handle.close()>
+                "Закрыть"
+            </Button>
+        </div>
+    </div>
+    <div class="modal-body">
+        <div class="form__group">...</div>
+        <div class="form__group">...</div>
+    </div>
 }
 ```
 
@@ -171,85 +157,40 @@ view! {
 
 ## Стили инпутов
 
-### Размеры и классы (из bolt-mpi-ui-redesign, обновлено 2025-12-10)
+### Размеры и классы (актуально)
 
-**ВАЖНО: Используйте классы из bolt проекта!**
+**ВАЖНО:** если вы используете raw HTML элементы (не Thaw-компоненты), используйте core-классы:
+`form__group`, `form__label`, `form__input`, `form__select`, `form__textarea`.
+
+Размеры стандарта: **height 30px**, **padding 5px 12px** (см. `crates/frontend/static/themes/core/components.css`).
 
 ```html
-<div class="form-group">
-    <label class="form-label" for="field">Label</label>
-    <input class="form-input" type="text" id="field" />
+<div class="form__group">
+    <label class="form__label" for="field">Label</label>
+    <input class="form__input" type="text" id="field" />
 </div>
 
-<div class="form-group">
-    <label class="form-label" for="select">Select</label>
-    <select class="form-select" id="select">...</select>
+<div class="form__group">
+    <label class="form__label" for="select">Select</label>
+    <select class="form__select" id="select">...</select>
 </div>
 
-<div class="form-group">
-    <label class="form-label" for="textarea">Textarea</label>
-    <textarea class="form-textarea" id="textarea"></textarea>
+<div class="form__group">
+    <label class="form__label" for="textarea">Textarea</label>
+    <textarea class="form__textarea" id="textarea"></textarea>
 </div>
 ```
 
-**CSS стили (автоматически применяются при использовании классов):**
-
-```css
-.form-input,
-.form-select,
-.form-textarea {
-    width: 100%;
-    padding: 5px 12px;           /* Из bolt-mpi-ui-redesign */
-    height: 30px;                /* Из bolt-mpi-ui-redesign */
-    font-size: var(--font-size-base);  /* 13px */
-    line-height: 1.4;
-    border-radius: var(--radius-md);   /* 6px */
-}
-
-.form-textarea {
-    height: auto;
-    min-height: 60px;
-}
-
-.form-label {
-    display: block;
-    margin-bottom: 4px;
-    font-size: var(--font-size-sm);  /* 12px */
-    font-weight: 500;
-}
-```
+**CSS стили:** см. `crates/frontend/static/themes/core/components.css` (секция Forms).
 
 
 ### Чекбоксы
 
-```css
-.checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);     /* Минимум 8-12px между чекбоксом и текстом */
-    cursor: pointer;
-    font-weight: normal !important;
-}
-
-.checkbox-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);     /* Интервал между чекбоксами */
-}
-```
-
-**ВАЖНО**: Чекбокс и его label должны иметь gap минимум 8-12px для визуального разделения.
+Предпочтительно Thaw `Checkbox`. Для raw HTML используйте `.form__checkbox-wrapper`, `.form__checkbox`, `.form__checkbox-label` (см. `core/components.css`).
 
 ### Select (dropdown)
 
-```css
-.form-group select {
-    appearance: none;
-    background-position: right 10px center;
-    background-size: 1em;
-    padding-right: 32px;  /* Место для стрелки */
-}
-```
+Для raw HTML используйте `.form__select` (уже включает `appearance` и стрелку через `--form-select-arrow`).
 
 ---
 
@@ -291,24 +232,11 @@ view! {
 
 ### Dark Theme - Labels
 
-**КРИТИЧЕСКИ ВАЖНО**: Labels должны быть яркими в темной теме!
-
-```css
-/* Dark theme */
-.form-label,
-.form-group label {
-    color: rgba(255, 255, 255, 0.95) !important;
-}
-```
+Labels берут цвет из CSS переменных (например `--form-label-text`). Если контраст плохой — правим **переменные темы** в `crates/frontend/static/themes/{theme}/{theme}.css`, а не добавляем hardcode-цвета в компоненты.
 
 ### Light Theme - Labels
 
-```css
-.form-label,
-.form-group label {
-    color: var(--color-neutral-800);
-}
-```
+Аналогично: цвет лейблов должен определяться переменными темы.
 
 ---
 
@@ -375,36 +303,11 @@ let handle_edit = move |id: String| {
 
 ### Шаги рефакторинга
 
-1. Добавить импорт Modal:
-```rust
-use crate::shared::modal::Modal;
-```
-
-2. Заменить старую структуру на новую:
-```rust
-// Было
-<div class="modal-overlay">
-    <div class="modal-content">
-        <YourDetails ... />
-    </div>
-</div>
-
-// Стало
-<Show when=move || show_modal.get()>
-    {move || {
-        let modal_title = if editing_id.get().is_some() { "Edit".to_string() } else { "New".to_string() };
-        view! {
-            <Modal title=modal_title on_close=...>
-                <YourDetails ... />
-            </Modal>
-        }
-    }}
-</Show>
-```
-
-3. Удалить неиспользуемые `handle_cancel` closures
-
-4. Переместить кнопки действий в header (НОВОЕ ПРАВИЛО)
+1. Убедиться, что в корне приложения смонтирован `ModalHost` и предоставлен `ModalStackService` (см. `crates/frontend/src/app.rs`).\n
+2. В месте открытия модалки получить сервис: `use_context::<ModalStackService>()`.\n
+3. Открывать модалку через `modal_stack.push_with_frame(...)`.\n
+4. Внутри контента использовать `.modal-header/.modal-body` и Thaw Buttons.\n
+5. Удалить legacy-классы `btn`, `form-group` и устаревшие ссылки на `styles/3-components/*`.\n
 
 ---
 
@@ -424,33 +327,24 @@ use crate::shared::modal::Modal;
 
 ## Чеклист для новых модальных окон (обновлено 2025-12-10)
 
-- [ ] Использует `crate::shared::modal::Modal` компонент
+- [ ] Использует `ModalStackService` + `ModalFrame` (через `push_with_frame`)
 - [ ] Кнопки действий размещены вверху формы (перед полями)
-- [ ] Кнопка сохранения называется "Save" (не "Update", не "Create")
+- [ ] Кнопка сохранения называется "Сохранить"/"Save" (единое имя)
 - [ ] Title динамический (Edit/New)
-- [ ] Обработчик on_close корректно закрывает модал
-- [ ] Используется `<Show when=...>` для условного рендеринга
-- [ ] Поддержка Escape (автоматически через Modal)
-- [ ] Закрытие по overlay (автоматически через Modal)
-- [ ] **ВАЖНО: Используются классы из bolt:**
-  - [ ] `class="form-group"` для контейнера поля
-  - [ ] `class="form-label"` для label
-  - [ ] `class="form-input"` для input
-  - [ ] `class="form-select"` для select
-  - [ ] `class="form-textarea"` для textarea
-- [ ] Правильные стили (автоматически через классы: height: 30px, padding: 5px 12px)
-- [ ] Чекбоксы используют `class="checkbox-label"` с gap
+- [ ] Escape закрывает верхнюю модалку (через `ModalHost`)
+- [ ] Закрытие по overlay работает (через `ModalFrame`, по умолчанию включено)
+- [ ] Формы: Thaw-first; для raw HTML — `.form__*` классы
 - [ ] Labels контрастные в темной теме
 
 ---
 
 ## Источник дизайна
 
-Стили взяты из проекта **bolt-mpi-ui-redesign** (`E:\dev\bolt\bolt-mpi-ui-redesign`):
-- `src\components\Modal.tsx` - React компонент модального окна
-- `public\themes\base.css` - базовые стили (form-input: padding 5px 12px, height 30px)
-- `public\themes\dark\dark.css` - темная тема
-- `public\themes\light\light.css` - светлая тема
+Проект **bolt-mpi-ui-redesign** (`E:\\dev\\bolt\\bolt-mpi-ui-redesign`) остаётся визуальным референсом.\n
+Источник истины по CSS в этом репозитории:\n
+- `crates/frontend/static/themes/core/index.css`\n
+- `crates/frontend/static/themes/core/components.css`\n
+- `crates/frontend/static/themes/{theme}/{theme}.css`\n
 
 **Ключевые размеры из bolt:**
 - Input height: 30px

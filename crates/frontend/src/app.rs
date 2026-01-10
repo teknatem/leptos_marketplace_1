@@ -1,6 +1,6 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::routes::routes::AppRoutes;
-use crate::shared::picker_aggregate::ModalService;
+use crate::shared::modal_stack::{ModalHost, ModalStackService};
 use crate::system::auth::context::AuthProvider;
 use leptos::prelude::*;
 use thaw::{ConfigProvider, Theme};
@@ -13,8 +13,8 @@ pub struct ThawThemeContext(pub RwSignal<Theme>);
 pub fn App() -> impl IntoView {
     // Provide the AppGlobalContext store to the whole app via context.
     provide_context(AppGlobalContext::new());
-    // Provide ModalService for picker components
-    provide_context(ModalService::new());
+    // Provide centralized modal stack for CRUD-details modals
+    provide_context(ModalStackService::new());
 
     // Thaw UI theme - start with dark theme
     let theme = RwSignal::new(Theme::dark());
@@ -26,6 +26,7 @@ pub fn App() -> impl IntoView {
         <ConfigProvider theme>
             <AuthProvider>
                 <AppRoutes />
+                <ModalHost />
             </AuthProvider>
         </ConfigProvider>
     }

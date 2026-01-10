@@ -5,10 +5,13 @@ use super::repository::{self, PriceWithNomenclature, NomenclaturePriceEntry};
 pub async fn list_with_filters(
     period: Option<String>,
     nomenclature_ref: Option<String>,
+    q: Option<String>,
+    sort_by: Option<String>,
+    sort_desc: Option<bool>,
     limit: Option<u64>,
     offset: Option<u64>,
 ) -> Result<(Vec<PriceWithNomenclature>, i64)> {
-    repository::list_with_filters(period, nomenclature_ref, limit, offset).await
+    repository::list_with_filters(period, nomenclature_ref, q, sort_by, sort_desc, limit, offset).await
 }
 
 /// Получить уникальные периоды для фильтра

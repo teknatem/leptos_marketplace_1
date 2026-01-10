@@ -147,6 +147,12 @@ pub async fn list_all() -> anyhow::Result<Vec<MarketplaceProduct>> {
     repository::list_all().await
 }
 
+pub async fn list_paginated(
+    query: repository::MarketplaceProductListQuery,
+) -> anyhow::Result<repository::MarketplaceProductListResult> {
+    repository::list_paginated(query).await
+}
+
 /// Получение товара по connection_mp_ref и SKU
 pub async fn get_by_connection_and_sku(
     connection_mp_ref: &str,

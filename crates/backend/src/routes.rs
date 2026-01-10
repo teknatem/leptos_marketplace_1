@@ -118,6 +118,10 @@ pub fn configure_routes() -> Router {
             "/api/nomenclature/search",
             get(handlers::a004_nomenclature::search_by_article),
         )
+        .route(
+            "/api/a004/nomenclature",
+            get(handlers::a004_nomenclature::list_paginated),
+        )
         // A005 Marketplace handlers
         .route(
             "/api/marketplace",
@@ -159,6 +163,10 @@ pub fn configure_routes() -> Router {
         .route(
             "/api/marketplace_product/testdata",
             post(handlers::a007_marketplace_product::insert_test_data),
+        )
+        .route(
+            "/api/a007/marketplace-product",
+            get(handlers::a007_marketplace_product::list_paginated),
         )
         // A008 Marketplace sales handlers
         .route(

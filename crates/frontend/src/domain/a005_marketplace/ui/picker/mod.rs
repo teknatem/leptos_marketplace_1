@@ -2,6 +2,7 @@ use crate::shared::icons::icon;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
+use thaw::*;
 
 #[derive(Clone, Debug)]
 pub struct MarketplacePickerItem {
@@ -29,8 +30,8 @@ pub fn MarketplacePicker<F, G>(
     on_cancel: G,
 ) -> impl IntoView
 where
-    F: Fn(Option<MarketplacePickerItem>) + 'static + Clone + Send,
-    G: Fn(()) + 'static + Clone + Send,
+    F: Fn(Option<MarketplacePickerItem>) + 'static + Clone + Send + Sync,
+    G: Fn(()) + 'static + Clone + Send + Sync,
 {
     let (items, set_items) = signal::<Vec<MarketplacePickerItem>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
@@ -50,7 +51,7 @@ where
 
     let handle_select = {
         let on_selected = on_selected.clone();
-        move |_| {
+        move |_: leptos::ev::MouseEvent| {
             let selected = selected_id.get();
             if let Some(id) = selected {
                 let items_vec = items.get();
@@ -65,75 +66,97 @@ where
 
     view! {
         <div class="picker">
-            {move || error.get().map(|e| view! {
-                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
-                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
-                </div>
-            })}
-
-            <div class="picker__content">
-                <div class="picker__grid">
-                    {move || items.get().into_iter().map(|item| {
-                        let item_id = item.id.clone();
-                        let is_selected = move || {
-                            selected_id.get().as_ref() == Some(&item_id)
-                        };
-
-                        view! {
-                            <div
-                                class="picker__item"
-                                class:picker__item--selected={is_selected}
-                                on:click={
-                                    let id = item.id.clone();
-                                    move |_| set_selected_id.set(Some(id.clone()))
-                                }
-                                on:dblclick={
-                                    let on_selected = on_selected.clone();
-                                    let item = item.clone();
-                                    move |_| on_selected(Some(item.clone()))
-                                }
-                            >
-                                <div class="picker__item-logo">
-                                    {
-                                        if let Some(logo) = &item.logo_path {
-                                            view! {
-                                                <img class="picker__item-image" src={logo.clone()} alt={item.description.clone()} />
-                                            }.into_any()
-                                        } else {
-                                            view! {
-                                                <div class="picker__item-icon">{icon("store")}</div>
-                                            }.into_any()
-                                        }
-                                    }
-                                </div>
-                                <div class="picker__item-description">
-                                    {item.description.clone()}
-                                </div>
-                                <div class="picker__item-code">
-                                    {item.code.clone()}
-                                </div>
-                            </div>
+            <div class="modal-header">
+                <h3 class="modal-title">"Выбор маркетплейса"</h3>
+                <div class="modal-header-actions">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click={
+                            let on_cancel = on_cancel.clone();
+                            move |_| on_cancel(())
                         }
-                    }).collect_view()}
+                    >
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
                 </div>
             </div>
 
-            <div class="picker__actions">
-                <button
-                    class="button button--primary"
-                    on:click=handle_select
-                    disabled={move || selected_id.get().is_none()}
-                >
-                    {icon("check")}
-                    {"Выбрать"}
-                </button>
-                <button
-                    class="button button--secondary"
-                    on:click=move |_| on_cancel(())
-                >
-                    {"Отмена"}
-                </button>
+            <div class="modal-body">
+                {move || error.get().map(|e| view! {
+                    <div class="warning-box warning-box--error" style="margin-bottom: var(--spacing-md);">
+                        <span class="warning-box__icon">"⚠"</span>
+                        <span class="warning-box__text">{e}</span>
+                    </div>
+                })}
+
+                <div class="picker__content">
+                    <div class="picker__grid">
+                        {move || items.get().into_iter().map(|item| {
+                            let item_id = item.id.clone();
+                            let is_selected = move || {
+                                selected_id.get().as_ref() == Some(&item_id)
+                            };
+
+                            view! {
+                                <div
+                                    class="picker__item"
+                                    class:picker__item--selected={is_selected}
+                                    on:click={
+                                        let id = item.id.clone();
+                                        move |_| set_selected_id.set(Some(id.clone()))
+                                    }
+                                    on:dblclick={
+                                        let on_selected = on_selected.clone();
+                                        let item = item.clone();
+                                        move |_| on_selected(Some(item.clone()))
+                                    }
+                                >
+                                    <div class="picker__item-logo">
+                                        {
+                                            if let Some(logo) = &item.logo_path {
+                                                view! {
+                                                    <img class="picker__item-image" src={logo.clone()} alt={item.description.clone()} />
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <div class="picker__item-icon">{icon("store")}</div>
+                                                }.into_any()
+                                            }
+                                        }
+                                    </div>
+                                    <div class="picker__item-description">
+                                        {item.description.clone()}
+                                    </div>
+                                    <div class="picker__item-code">
+                                        {item.code.clone()}
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                </div>
+
+                <div class="picker__actions">
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=handle_select
+                        disabled=Signal::derive(move || selected_id.get().is_none())
+                    >
+                        {icon("check")}
+                        " Выбрать"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click={
+                            let on_cancel = on_cancel.clone();
+                            move |_| on_cancel(())
+                        }
+                    >
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
+                </div>
             </div>
         </div>
     }

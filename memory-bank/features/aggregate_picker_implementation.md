@@ -10,18 +10,19 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      ModalService                            │
-│  (Централизованное управление модальными окнами)             │
-│  - RwSignal<bool> для видимости                             │
-│  - show() / hide()                                           │
+│                   ModalStackService                          │
+│  (Централизованный стек модальных окон)                      │
+│  - push()/push_with_frame()                                  │
+│  - pop()/close_deferred()                                    │
+│  - Escape закрывает верхнюю модалку (ModalHost)              │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Modal Component                           │
-│  (Контейнер для модального окна)                            │
-│  - Overlay с затемнением                                     │
-│  - Children для произвольного контента                       │
+│                      ModalFrame                              │
+│  (Overlay + surface `.modal`)                                │
+│  - close_on_overlay (default true)                           │
+│  - правильная deferred-логика закрытия                       │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -38,7 +39,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │          Специализированные пикеры                           │
 │  - OrganizationPicker                                        │
-│  - MarketplacePicker (старая реализация)                    │
+│  - MarketplacePicker                                         │
 │  - CounterpartyPicker (будущее)                             │
 │  - NomenclaturePicker (будущее)                             │
 └─────────────────────────────────────────────────────────────┘
@@ -68,73 +69,19 @@ pub trait TableDisplayable: AggregatePickerResult {
 
 ## Реализация компонентов
 
-### 1. ModalService
+### 1. Modal stack
 
-**Файл**: `crates/frontend/src/layout/modal_service.rs`
+**Файлы**:
+- `crates/frontend/src/shared/modal_stack/mod.rs` — `ModalStackService`, `ModalHost`
+- `crates/frontend/src/shared/modal_frame/mod.rs` — `ModalFrame`
 
-```rust
-#[derive(Clone, Copy)]
-pub struct ModalService {
-    is_visible: RwSignal<bool>,
-}
-
-impl ModalService {
-    pub fn new() -> Self {
-        Self {
-            is_visible: RwSignal::new(false),
-        }
-    }
-
-    pub fn show(&self) {
-        self.is_visible.set(true);
-    }
-
-    pub fn hide(&self) {
-        self.is_visible.set(false);
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.is_visible.get()
-    }
-}
-```
-
-**Ключевые особенности**:
-- Использует `RwSignal<bool>` вместо хранения view
-- Copy-семантика для удобного использования в замыканиях
-- Предоставляется через контекст Leptos
-
-### 2. Modal Component
-
-**Файл**: `crates/frontend/src/layout/modal_service.rs`
-
-```rust
-#[component]
-pub fn Modal(children: ChildrenFn) -> impl IntoView {
-    let modal = use_context::<ModalService>()
-        .expect("ModalService not found");
-
-    view! {
-        <Show when=move || modal.is_visible.get()>
-            <div class="modal-overlay" on:click=move |_| modal.hide()>
-                <div class="modal-content" on:click=|e| e.stop_propagation()>
-                    {children()}
-                </div>
-            </div>
-        </Show>
-    }
-}
-```
-
-**Ключевые особенности**:
-- Использует `ChildrenFn` для многократного вызова
-- `Show` компонент для условного рендеринга
-- Клик вне контента закрывает модальное окно
-- `stop_propagation()` предотвращает закрытие при клике внутри
+**Важно**: пикеры и другие “выборщики” открываются через `ModalStackService::push_with_frame(...)`.
 
 ### 3. GenericAggregatePicker
 
-**Файл**: `crates/frontend/src/shared/aggregate_picker.rs`
+**Файлы**:
+- `crates/frontend/src/shared/picker_aggregate/mod.rs`
+- `crates/frontend/src/shared/picker_aggregate/component.rs`
 
 #### Сигнатура компонента
 
@@ -373,10 +320,13 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
 
 **Файл**: `crates/frontend/src/domain/a006_connection_mp/ui/details/view.rs`
 
-### Шаг 1: Получить ModalService из контекста
+### Шаг 1: Получить ModalStackService из контекста
 
 ```rust
-let modal = use_context::<ModalService>().expect("ModalService not found");
+use crate::shared::modal_stack::ModalStackService;
+
+let modal_stack =
+    use_context::<ModalStackService>().expect("ModalStackService not found in context");
 ```
 
 ### Шаг 2: Создать сигналы для хранения выбранного значения
@@ -391,8 +341,6 @@ let (show_organization_picker, set_show_organization_picker) = signal(false);
 
 ```rust
 let handle_organization_selected = move |selected: Option<OrganizationPickerItem>| {
-    modal.hide();
-    set_show_organization_picker.set(false);
     if let Some(item) = selected {
         set_organization_id.set(Some(item.id.clone()));
         set_organization_name.set(item.description.clone());
@@ -400,63 +348,55 @@ let handle_organization_selected = move |selected: Option<OrganizationPickerItem
     }
 };
 
-let handle_organization_cancel = move |_| {
-    modal.hide();
-    set_show_organization_picker.set(false);
-};
+let handle_organization_cancel = move |_| {};
 ```
 
 ### Шаг 4: Добавить UI элементы
 
 ```rust
 // Поле для отображения выбранного значения
-<div class="form-group">
-    <label for="organization">{"Организация"}</label>
-    <div style="display: flex; gap: 8px; align-items: center;">
+<div class="form__group">
+    <label class="form__label" for="organization">{"Организация"}</label>
+    <div class="input-with-actions">
         <input
             type="text"
             id="organization"
+            class="form__input"
             prop:value={move || organization_name.get()}
             readonly
             placeholder="Выберите организацию"
-            style="flex: 1;"
         />
-        <button
-            type="button"
-            class="btn btn-secondary"
-            on:click=move |_| {
-                set_show_organization_picker.set(true);
-                modal.show();
-            }
-        >
-            {icon("search")}
-            {"Выбрать"}
-        </button>
+        <div class="input-actions input-actions--single">
+            <button
+                type="button"
+                class="button button--secondary input-action-btn"
+                on:click=move |_| {
+                    let selected_id = organization_id.get();
+                    modal_stack.push_with_frame(
+                        Some("max-width: 980px; width: min(980px, calc(100vw - 48px));".to_string()),
+                        None,
+                        move |handle| {
+                            view! {
+                                <OrganizationPicker
+                                    initial_selected_id=selected_id
+                                    on_confirm=move |sel| { handle.close(); handle_organization_selected(sel); }
+                                    on_cancel=move |_| { handle.close(); handle_organization_cancel(()); }
+                                />
+                            }.into_any()
+                        },
+                    );
+                }
+            >
+                {icon("search")}
+            </button>
+        </div>
     </div>
 </div>
-
-// Модальное окно с пикером
-<Modal>
-    {move || {
-        if show_organization_picker.get() {
-            let selected_id = organization_id.get();
-            view! {
-                <OrganizationPicker
-                    initial_selected_id=selected_id
-                    on_confirm=handle_organization_selected
-                    on_cancel=handle_organization_cancel
-                />
-            }.into_any()
-        } else {
-            view! { <></> }.into_any()
-        }
-    }}
-</Modal>
 ```
 
 ## CSS стили
 
-**Файл**: `crates/frontend/styles/3-components/modals.css`
+**Файл**: `crates/frontend/static/themes/core/components.css`
 
 ### Основные стили пикера
 

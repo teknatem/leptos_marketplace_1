@@ -141,20 +141,196 @@
   color: var(--form-label-text);
 }
 
+/* ============================================
+   Doc Lists (postings/returns) + Results modal
+   ============================================ */
+
+.doc-list__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.doc-list__title {
+  margin: 0;
+}
+
+.doc-filters {
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.doc-filters__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.doc-filter {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.doc-filter__label {
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+}
+
+.doc-filter__input,
+.doc-filter__select {
+  height: 30px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.doc-list__summary {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+.doc-list__progress {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+
+.results-table th,
+.results-table td {
+  border: 1px solid var(--color-border);
+  padding: 8px;
+  text-align: left;
+}
+
+.results-table thead tr {
+  background: var(--color-background-secondary);
+}
+
+.results-table__id code {
+  font-size: 0.85em;
+}
+
+/* ============================================
+   Details (compact screens inside modals/tabs)
+   ============================================ */
+
+.details-section {
+  margin-bottom: var(--spacing-lg);
+}
+
+.details-section__title {
+  margin: 0 0 var(--spacing-sm) 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--color-border);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.details-grid--3col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.details-grid--api {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 10px;
+}
+
+.details-flags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  background: var(--color-background-secondary);
+}
+
+.input-with-actions {
+  position: relative;
+  width: 100%;
+}
+
+.input-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+}
+
+.input-actions--single {
+  gap: 0;
+}
+
+.input-action-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-text--tiny {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.test-result {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.test-result__title {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
 .form__input,
 .form__select,
 .form__textarea {
   width: 100%;
-  padding: 3px 12px;
+  padding: 5px 12px;
   font-size: var(--font-size-base);
   font-family: inherit;
   line-height: 1.4;
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
-  height: 28px;
+  height: 30px;
   color: var(--color-text-primary);
   background: var(--form-input-bg);
   border: 1px solid var(--form-input-border);
+}
+
+/* Monospace textarea (Thaw Textarea) */
+.monospace-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 .form__select {
@@ -810,10 +986,22 @@ th.resizable {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.2s ease;
+  transform-origin: center;
+  animation: modalPop 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
   background: var(--modal-bg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   border: 1px solid var(--modal-border);
+}
+
+@keyframes modalPop {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -1492,6 +1680,10 @@ th.resizable {
   gap: var(--spacing-lg);
 }
 
+.login__error {
+  margin-bottom: var(--spacing-lg);
+}
+
 .login__form-group {
   display: flex;
   flex-direction: column;
@@ -1524,6 +1716,378 @@ th.resizable {
   color: #6b7280;
   line-height: 1.5;
 }
+
+/* ============================================
+   Scheduled Tasks - Details
+   ============================================ */
+
+.scheduled-task-details {
+  padding: 20px;
+}
+
+.scheduled-task-details__header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 16px;
+}
+
+.scheduled-task-details__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.scheduled-task-details__delete-btn {
+  color: var(--color-error-700);
+}
+
+.scheduled-task-details__error {
+  margin-bottom: 24px;
+}
+
+.scheduled-task-details__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .scheduled-task-details__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.scheduled-task-details__card-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.scheduled-task-details__checkbox-row {
+  padding: 10px 0;
+}
+
+.scheduled-task-details__json-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.scheduled-task-details__logs {
+  margin-top: 24px;
+}
+
+.scheduled-task-details__log-box {
+  height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.scheduled-task-details__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--color-bg-secondary);
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.scheduled-task-details__progress-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.scheduled-task-details__progress-bar {
+  width: 100%;
+  height: 10px;
+  background: var(--color-bg-primary);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.scheduled-task-details__progress-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s ease;
+}
+
+.scheduled-task-details__progress-meta {
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+}
+
+.scheduled-task-details__progress-current {
+  font-style: italic;
+}
+
+/* ============================================
+   JSON Viewer
+   ============================================ */
+
+.json-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.json-viewer__body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+  background: var(--color-bg-secondary);
+}
+
+.json-viewer__content {
+  margin: 0;
+  padding: 20px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  overflow-x: auto;
+}
+
+.json-viewer__footer {
+  padding: 15px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   Excel Importer (small CSS helpers)
+   ============================================ */
+
+.excel-importer__file-btn {
+  cursor: pointer;
+  margin: 0;
+}
+
+.excel-importer__import-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   Excel Importer (ModalStack content)
+   ============================================ */
+
+.excel-importer__header .modal-title {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.excel-importer__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-height: 0;
+}
+
+.excel-importer__filebar {
+  padding: 6px 0;
+}
+
+.excel-importer__filebar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.excel-importer__fileinfo {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.excel-importer__filehint {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.excel-importer__error {
+  margin: 0;
+}
+
+.excel-importer__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.excel-importer__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  border-bottom: 3px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.excel-importer__tab:hover {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--color-text-primary);
+}
+
+.excel-importer__tab--active {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.excel-importer__content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.excel-importer__tab-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.excel-importer__actions-center {
+  display: flex;
+  justify-content: center;
+}
+
+.excel-importer__table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+}
+
+.excel-importer__table {
+  width: 100%;
+}
+
+.excel-importer__status-col {
+  width: 50px;
+}
+
+.excel-importer__status-cell {
+  text-align: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.excel-importer__map-row--exact {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.excel-importer__map-row--mapped {
+  background: rgba(245, 158, 11, 0.10);
+}
+
+.excel-importer__map-row--missing {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.excel-importer__excel-col {
+  margin-left: 8px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.excel-importer__not-found {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.excel-importer__pane-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.excel-importer__pane-title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.excel-importer__pane-meta {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+.excel-importer__index-col {
+  width: 60px;
+}
+
+.excel-importer__index-cell {
+  color: var(--color-text-tertiary);
+}
+
+.excel-importer__cell-ellipsis {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excel-importer__json-pane {
+  overflow: hidden;
+}
+
+.excel-importer__json-pre {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 15px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre;
+}
+
+.excel-importer__empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+.excel-importer__empty-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+}
+
+.excel-importer__empty-text {
+  font-size: 16px;
+}
+
 
 /* Dark theme overrides for login */
 body[data-theme="dark"] .login__background {

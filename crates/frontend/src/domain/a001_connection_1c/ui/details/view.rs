@@ -123,47 +123,16 @@ pub fn Connection1CDetails(
 
     view! {
         <div class="details-container connection-1c-details">
-            {move || error.get().map(|e| view! {
-                <div style="padding: 8px 12px; margin-bottom: 10px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 6px; color: var(--color-error); font-size: 13px;">
-                    {e}
-                </div>
-            })}
-
-            <div style="margin-bottom: 12px;">
-                <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
-                    "Основная информация"
-                </h4>
-                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
-                    <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Наименование"}</label>
-                        <Input value=description placeholder="Например: УТ11 (основная)" />
-                    </div>
-                    <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"URL (OData)"}</label>
-                        <Input value=url placeholder="http://host/base/odata/standard.odata" />
-                    </div>
-
-                    <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Логин"}</label>
-                        <Input value=login placeholder="user" />
-                    </div>
-                    <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Пароль"}</label>
-                        <Input value=password input_type=InputType::Password placeholder="password" />
-                    </div>
-
-                    <div class="form__group" style="grid-column: 1 / -1;">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Комментарий"}</label>
-                        <Textarea value=comment placeholder="Опционально" resize=TextareaResize::Vertical />
-                    </div>
-                </div>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--color-background-secondary); border-radius: 6px; margin-bottom: 12px;">
-                <div style="display: flex; gap: 24px; align-items: center;">
-                    <Checkbox checked=is_primary label="Основное подключение"/>
-                </div>
-
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 class="modal-title">
+                    {move || {
+                        if id.get().is_some() {
+                            "Редактирование подключения 1C"
+                        } else {
+                            "Новое подключение 1C"
+                        }
+                    }}
+                </h3>
                 <div style="display: flex; gap: 8px;">
                     <Button
                         appearance=ButtonAppearance::Secondary
@@ -178,27 +147,70 @@ pub fn Connection1CDetails(
                         " Сохранить"
                     </Button>
                     <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_cancel.run(())>
-                        "Отмена"
+                        {icon("x")}
+                        " Закрыть"
                     </Button>
                 </div>
             </div>
 
-            {move || test_result.get().map(|result| {
-                let class = if result.success { "success" } else { "error" };
-                view! {
-                    <div class={class} style="margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px;">
-                        <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">
-                            {if result.success { "✅ Тест успешен" } else { "❌ Тест не пройден" }}
-                        </h4>
-                        <div>
-                            <strong>{"Статус: "}</strong>
-                            {result.message.clone()}
-                            {" "}
-                            <span style="color: #666; font-size: 11px;">{"("}{result.duration_ms}{"ms)"}</span>
+            <div class="modal-body" style="border: none;">
+                {move || error.get().map(|e| view! {
+                    <div style="padding: 8px 12px; margin-bottom: 10px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 6px; color: var(--color-error); font-size: 13px;">
+                        {e}
+                    </div>
+                })}
+
+                <div style="margin-bottom: 12px;">
+                    <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
+                        "Основная информация"
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
+                        <div class="form__group">
+                            <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Наименование"}</label>
+                            <Input value=description placeholder="Например: УТ11 (основная)" />
+                        </div>
+                        <div class="form__group">
+                            <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"URL (OData)"}</label>
+                            <Input value=url placeholder="http://host/base/odata/standard.odata" />
+                        </div>
+
+                        <div class="form__group">
+                            <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Логин"}</label>
+                            <Input value=login placeholder="user" />
+                        </div>
+                        <div class="form__group">
+                            <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Пароль"}</label>
+                            <Input value=password input_type=InputType::Password placeholder="password" />
+                        </div>
+
+                        <div class="form__group" style="grid-column: 1 / -1;">
+                            <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Комментарий"}</label>
+                            <Textarea value=comment placeholder="Опционально" resize=TextareaResize::Vertical />
                         </div>
                     </div>
-                }
-            })}
+                </div>
+
+                <div style="padding: 8px 12px; background: var(--color-background-secondary); border-radius: 6px; margin-bottom: 12px;">
+                    <Checkbox checked=is_primary label="Основное подключение"/>
+                </div>
+
+                {move || test_result.get().map(|result| {
+                    let class = if result.success { "success" } else { "error" };
+                    view! {
+                        <div class={class} style="margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">
+                                {if result.success { "✅ Тест успешен" } else { "❌ Тест не пройден" }}
+                            </h4>
+                            <div>
+                                <strong>{"Статус: "}</strong>
+                                {result.message.clone()}
+                                {" "}
+                                <span style="color: #666; font-size: 11px;">{"("}{result.duration_ms}{"ms)"}</span>
+                            </div>
+                        </div>
+                    }
+                })}
+            </div>
         </div>
     }
 }

@@ -47,8 +47,8 @@ pub fn OrganizationDetails(
                         class="button button--secondary"
                         on:click=move |_| (on_cancel)(())
                     >
-                        {icon("cancel")}
-                        {"Отмена"}
+                        {icon("x")}
+                        {"Закрыть"}
                     </button>
                 </div>
             </div>

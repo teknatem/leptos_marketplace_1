@@ -1,6 +1,7 @@
 use crate::domain::a001_connection_1c::ui::details::Connection1CDetails;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
 use std::cmp::Ordering;
@@ -55,6 +56,8 @@ fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
 #[component]
 #[allow(non_snake_case)]
 pub fn Connection1CList() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (items, set_items) = signal::<Vec<Connection1CRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let show_modal = RwSignal::new(false);
@@ -104,6 +107,33 @@ pub fn Connection1CList() -> impl IntoView {
             set_editing_id.set(Some(id));
             show_modal.set(true);
         }
+    };
+
+    let open_details_modal = move |id: Option<String>| {
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("connection-1c-modal".to_string()),
+            move |handle| {
+                let id_val = id.clone();
+                view! {
+                    <Connection1CDetails
+                        id=Signal::derive(move || id_val.clone())
+                        on_saved=Callback::new({
+                            let handle = handle.clone();
+                            move |_| {
+                                handle.close();
+                                fetch();
+                            }
+                        })
+                        on_cancel=Callback::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                    />
+                }
+                .into_any()
+            },
+        );
     };
 
     let toggle_select = move |id: String, checked: bool| {
@@ -367,39 +397,14 @@ pub fn Connection1CList() -> impl IntoView {
                 </TableBody>
             </Table>
 
-            <Dialog open=show_modal>
-                <DialogSurface class="connection-1c-dialog">
-                    <DialogBody>
-                        <DialogTitle>
-                            {move || if editing_id.get().is_some() {
-                                "Редактирование подключения 1C"
-                            } else {
-                                "Новое подключение 1C"
-                            }}
-                        </DialogTitle>
-                        <DialogContent>
-                            <style>
-                                ".connection-1c-dialog.thaw-dialog-surface {
-                                    max-width: min(1100px, 95vw) !important;
-                                    width: min(1100px, 95vw) !important;
-                                }"
-                            </style>
-                            <Connection1CDetails
-                                id=editing_id
-                                on_saved=Callback::new(move |_| {
-                                    show_modal.set(false);
-                                    set_editing_id.set(None);
-                                    fetch();
-                                })
-                                on_cancel=Callback::new(move |_| {
-                                    show_modal.set(false);
-                                    set_editing_id.set(None);
-                                })
-                            />
-                        </DialogContent>
-                    </DialogBody>
-                </DialogSurface>
-            </Dialog>
+            <Show when=move || show_modal.get()>
+                {move || {
+                    open_details_modal(editing_id.get());
+                    show_modal.set(false);
+                    set_editing_id.set(None);
+                    view! { <></> }
+                }}
+            </Show>
         </div>
     }
 }

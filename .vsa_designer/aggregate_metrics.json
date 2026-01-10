@@ -1,0 +1,756 @@
+{
+  "metrics": {
+    "bytes": {
+      "a001_connection_1c": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 8071,
+          "service.rs": 6890
+        },
+        "contracts": {
+          "aggregate.rs": 6176,
+          "misc": 16441
+        },
+        "frontend": {
+          "details": 14760,
+          "list": 21678,
+          "misc": 93,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 4638
+        }
+      },
+      "a002_organization": {
+        "backend": {
+          "misc": 37,
+          "posting.rs": 0,
+          "repository.rs": 5262,
+          "service.rs": 3619
+        },
+        "contracts": {
+          "aggregate.rs": 6698,
+          "misc": 106
+        },
+        "frontend": {
+          "details": 13187,
+          "list": 14579,
+          "misc": 123,
+          "picker": 4624,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 2493
+        }
+      },
+      "a003_counterparty": {
+        "backend": {
+          "misc": 37,
+          "posting.rs": 0,
+          "repository.rs": 5025,
+          "service.rs": 1639
+        },
+        "contracts": {
+          "aggregate.rs": 5387,
+          "misc": 91
+        },
+        "frontend": {
+          "details": 16376,
+          "list": 0,
+          "misc": 46,
+          "picker": 0,
+          "tree": 20906
+        },
+        "handlers": {
+          "handler_file": 2203
+        }
+      },
+      "a004_nomenclature": {
+        "backend": {
+          "misc": 6122,
+          "posting.rs": 0,
+          "repository.rs": 15995,
+          "service.rs": 1934
+        },
+        "contracts": {
+          "aggregate.rs": 9703,
+          "misc": 715
+        },
+        "frontend": {
+          "details": 38684,
+          "list": 39732,
+          "misc": 74,
+          "picker": 11623,
+          "tree": 30018
+        },
+        "handlers": {
+          "handler_file": 5922
+        }
+      },
+      "a005_marketplace": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 5284,
+          "service.rs": 4300
+        },
+        "contracts": {
+          "aggregate.rs": 6277,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 20087,
+          "list": 18703,
+          "misc": 126,
+          "picker": 8363,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 2460
+        }
+      },
+      "a006_connection_mp": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 6531,
+          "service.rs": 4986
+        },
+        "contracts": {
+          "aggregate.rs": 9655,
+          "misc": 163
+        },
+        "frontend": {
+          "details": 37714,
+          "list": 24312,
+          "misc": 176,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 2788
+        }
+      },
+      "a007_marketplace_product": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 10099,
+          "service.rs": 13334
+        },
+        "contracts": {
+          "aggregate.rs": 9553,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 37640,
+          "list": 26528,
+          "misc": 46,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 6167
+        }
+      },
+      "a008_marketplace_sales": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 6475,
+          "service.rs": 1771
+        },
+        "contracts": {
+          "aggregate.rs": 8713,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 0,
+          "list": 22382,
+          "misc": 28,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 2378
+        }
+      },
+      "a009_ozon_returns": {
+        "backend": {
+          "misc": 57,
+          "posting.rs": 2154,
+          "repository.rs": 7904,
+          "service.rs": 1941
+        },
+        "contracts": {
+          "aggregate.rs": 16559,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 45258,
+          "list": 44809,
+          "misc": 44,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 3834
+        }
+      },
+      "a010_ozon_fbs_posting": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 2228,
+          "repository.rs": 8520,
+          "service.rs": 2722
+        },
+        "contracts": {
+          "aggregate.rs": 7550,
+          "misc": 22
+        },
+        "frontend": {
+          "details": 59241,
+          "list": 57202,
+          "misc": 43,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 5307
+        }
+      },
+      "a011_ozon_fbo_posting": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 1879,
+          "repository.rs": 7992,
+          "service.rs": 2000
+        },
+        "contracts": {
+          "aggregate.rs": 7625,
+          "misc": 22
+        },
+        "frontend": {
+          "details": 62458,
+          "list": 58132,
+          "misc": 43,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 4346
+        }
+      },
+      "a012_wb_sales": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 2336,
+          "repository.rs": 17165,
+          "service.rs": 5427
+        },
+        "contracts": {
+          "aggregate.rs": 8822,
+          "misc": 22
+        },
+        "frontend": {
+          "details": 123508,
+          "list": 73468,
+          "misc": 43,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 23810
+        }
+      },
+      "a013_ym_order": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 3444,
+          "repository.rs": 24255,
+          "service.rs": 14797
+        },
+        "contracts": {
+          "aggregate.rs": 10291,
+          "misc": 22
+        },
+        "frontend": {
+          "details": 78130,
+          "list": 124087,
+          "misc": 43,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 11973
+        }
+      },
+      "a014_ozon_transactions": {
+        "backend": {
+          "misc": 6710,
+          "posting.rs": 3538,
+          "repository.rs": 14621,
+          "service.rs": 10429
+        },
+        "contracts": {
+          "aggregate.rs": 10601,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 82544,
+          "list": 55018,
+          "misc": 44,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 6256
+        }
+      },
+      "a015_wb_orders": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 1907,
+          "repository.rs": 11217,
+          "service.rs": 5228
+        },
+        "contracts": {
+          "aggregate.rs": 9474,
+          "misc": 185
+        },
+        "frontend": {
+          "details": 97541,
+          "list": 41063,
+          "misc": 105,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 9665
+        }
+      },
+      "a016_ym_returns": {
+        "backend": {
+          "misc": 59,
+          "posting.rs": 2126,
+          "repository.rs": 12878,
+          "service.rs": 1608
+        },
+        "contracts": {
+          "aggregate.rs": 9217,
+          "misc": 22
+        },
+        "frontend": {
+          "details": 57560,
+          "list": 51308,
+          "misc": 43,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 14553
+        }
+      },
+      "common": {
+        "backend": {
+          "misc": 0,
+          "posting.rs": 0,
+          "repository.rs": 0,
+          "service.rs": 0
+        },
+        "contracts": {
+          "aggregate.rs": 0,
+          "misc": 11242
+        },
+        "frontend": {
+          "details": 0,
+          "list": 0,
+          "misc": 0,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      }
+    },
+    "lines": {
+      "a001_connection_1c": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 243,
+          "service.rs": 204
+        },
+        "contracts": {
+          "aggregate.rs": 214,
+          "misc": 469
+        },
+        "frontend": {
+          "details": 356,
+          "list": 521,
+          "misc": 4,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 137
+        }
+      },
+      "a002_organization": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 155,
+          "service.rs": 110
+        },
+        "contracts": {
+          "aggregate.rs": 233,
+          "misc": 4
+        },
+        "frontend": {
+          "details": 341,
+          "list": 343,
+          "misc": 6,
+          "picker": 134,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 74
+        }
+      },
+      "a003_counterparty": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 143,
+          "service.rs": 59
+        },
+        "contracts": {
+          "aggregate.rs": 207,
+          "misc": 3
+        },
+        "frontend": {
+          "details": 421,
+          "list": 0,
+          "misc": 3,
+          "picker": 0,
+          "tree": 534
+        },
+        "handlers": {
+          "handler_file": 65
+        }
+      },
+      "a004_nomenclature": {
+        "backend": {
+          "misc": 173,
+          "posting.rs": 0,
+          "repository.rs": 429,
+          "service.rs": 70
+        },
+        "contracts": {
+          "aggregate.rs": 313,
+          "misc": 25
+        },
+        "frontend": {
+          "details": 864,
+          "list": 889,
+          "misc": 5,
+          "picker": 246,
+          "tree": 733
+        },
+        "handlers": {
+          "handler_file": 177
+        }
+      },
+      "a005_marketplace": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 153,
+          "service.rs": 129
+        },
+        "contracts": {
+          "aggregate.rs": 224,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 464,
+          "list": 449,
+          "misc": 6,
+          "picker": 204,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 71
+        }
+      },
+      "a006_connection_mp": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 174,
+          "service.rs": 150
+        },
+        "contracts": {
+          "aggregate.rs": 326,
+          "misc": 6
+        },
+        "frontend": {
+          "details": 786,
+          "list": 555,
+          "misc": 8,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 81
+        }
+      },
+      "a007_marketplace_product": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 295,
+          "service.rs": 345
+        },
+        "contracts": {
+          "aggregate.rs": 301,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 851,
+          "list": 627,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 177
+        }
+      },
+      "a008_marketplace_sales": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 171,
+          "service.rs": 66
+        },
+        "contracts": {
+          "aggregate.rs": 276,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 0,
+          "list": 507,
+          "misc": 2,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 68
+        }
+      },
+      "a009_ozon_returns": {
+        "backend": {
+          "misc": 3,
+          "posting.rs": 59,
+          "repository.rs": 201,
+          "service.rs": 74
+        },
+        "contracts": {
+          "aggregate.rs": 499,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 739,
+          "list": 841,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 110
+        }
+      },
+      "a010_ozon_fbs_posting": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 58,
+          "repository.rs": 228,
+          "service.rs": 77
+        },
+        "contracts": {
+          "aggregate.rs": 251,
+          "misc": 2
+        },
+        "frontend": {
+          "details": 802,
+          "list": 1052,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 146
+        }
+      },
+      "a011_ozon_fbo_posting": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 54,
+          "repository.rs": 211,
+          "service.rs": 60
+        },
+        "contracts": {
+          "aggregate.rs": 252,
+          "misc": 2
+        },
+        "frontend": {
+          "details": 834,
+          "list": 1039,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 122
+        }
+      },
+      "a012_wb_sales": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 58,
+          "repository.rs": 464,
+          "service.rs": 136
+        },
+        "contracts": {
+          "aggregate.rs": 287,
+          "misc": 2
+        },
+        "frontend": {
+          "details": 1448,
+          "list": 1472,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 699
+        }
+      },
+      "a013_ym_order": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 81,
+          "repository.rs": 631,
+          "service.rs": 388
+        },
+        "contracts": {
+          "aggregate.rs": 316,
+          "misc": 2
+        },
+        "frontend": {
+          "details": 1126,
+          "list": 2465,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 360
+        }
+      },
+      "a014_ozon_transactions": {
+        "backend": {
+          "misc": 161,
+          "posting.rs": 84,
+          "repository.rs": 360,
+          "service.rs": 289
+        },
+        "contracts": {
+          "aggregate.rs": 342,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 862,
+          "list": 1077,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 169
+        }
+      },
+      "a015_wb_orders": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 50,
+          "repository.rs": 298,
+          "service.rs": 132
+        },
+        "contracts": {
+          "aggregate.rs": 312,
+          "misc": 7
+        },
+        "frontend": {
+          "details": 1269,
+          "list": 753,
+          "misc": 6,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 246
+        }
+      },
+      "a016_ym_returns": {
+        "backend": {
+          "misc": 4,
+          "posting.rs": 55,
+          "repository.rs": 350,
+          "service.rs": 52
+        },
+        "contracts": {
+          "aggregate.rs": 302,
+          "misc": 2
+        },
+        "frontend": {
+          "details": 713,
+          "list": 1068,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 423
+        }
+      },
+      "common": {
+        "backend": {
+          "misc": 0,
+          "posting.rs": 0,
+          "repository.rs": 0,
+          "service.rs": 0
+        },
+        "contracts": {
+          "aggregate.rs": 0,
+          "misc": 321
+        },
+        "frontend": {
+          "details": 0,
+          "list": 0,
+          "misc": 0,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Aggregate Picker System
 
-Универсальная система выбора агрегатов с модальными окнами и табличным отображением.
+Универсальная система выбора агрегатов с табличным отображением. Открытие в модалке делается через `ModalStackService`.
 
 ## Структура
 
@@ -9,24 +9,14 @@ picker_aggregate/
 ├── mod.rs          # Модуль с экспортами и документацией
 ├── traits.rs       # AggregatePickerResult + TableDisplayable
 ├── component.rs    # GenericAggregatePicker компонент
-├── modal.rs        # Modal + ModalService
 └── README.md       # Эта документация
 ```
 
 ## Быстрый старт
 
-### 1. Инициализация в приложении
+### 1. Модальные окна
 
-```rust
-// В app.rs
-use crate::shared::picker_aggregate::ModalService;
-
-#[component]
-pub fn App() -> impl IntoView {
-    provide_context(ModalService::new());
-    // ...
-}
-```
+В проекте модалки централизованы через `crate::shared::modal_stack::ModalStackService` (предоставляется в `App`).
 
 ### 2. Создание типа для пикера
 
@@ -103,13 +93,12 @@ where
 }
 ```
 
-### 4. Использование с модальным окном
+### 4. Использование с модальным окном (ModalStackService)
 
 ```rust
 #[component]
 pub fn MyComponent() -> impl IntoView {
-    let modal = use_context::<ModalService>().expect("ModalService not found");
-    let (show_picker, set_show_picker) = signal(false);
+    let modal_stack = use_context::<ModalStackService>().expect("ModalStackService not found");
 
     let handle_confirm = move |selected: Option<MyPickerItem>| {
         modal.hide();
@@ -126,27 +115,23 @@ pub fn MyComponent() -> impl IntoView {
 
     view! {
         <button on:click=move |_| {
-            modal.show();
-            set_show_picker.set(true);
+            modal_stack.push_with_frame(
+                Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+                Some("picker-modal".to_string()),
+                move |handle| {
+                    view! {
+                        <MyPicker
+                            initial_selected_id=None
+                            on_confirm=move |selected| { handle_confirm(selected); handle.close(); }
+                            on_cancel=move |_| { handle_cancel(()); handle.close(); }
+                        />
+                    }
+                    .into_any()
+                },
+            );
         }>
             "Открыть пикер"
         </button>
-
-        {move || {
-            if show_picker.get() {
-                view! {
-                    <Modal>
-                        <MyPicker
-                            initial_selected_id=None
-                            on_confirm=handle_confirm
-                            on_cancel=handle_cancel
-                        />
-                    </Modal>
-                }.into_any()
-            } else {
-                view! { <></> }.into_any()
-            }
-        }}
     }
 }
 ```
@@ -185,8 +170,8 @@ domain/**/picker/**
 # Найти использование пикеров
 use.*picker_
 
-# Найти модальные окна
-ModalService
+# Найти модалки (новый механизм)
+ModalStackService|push_with_frame|ModalHost|ModalFrame
 
 # Найти трейты
 AggregatePickerResult|TableDisplayable

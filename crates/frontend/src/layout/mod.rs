@@ -6,7 +6,6 @@ pub mod left;
 pub mod right;
 pub mod top_header;
 
-use crate::shared::picker_aggregate::ModalRenderer;
 use leptos::prelude::*;
 use top_header::TopHeader;
 
@@ -58,8 +57,6 @@ where
                 </right::Right>
             </div>
 
-            // Modal renderer for picker dialogs
-            <ModalRenderer />
         </div>
     }
 }
@@ -87,6 +84,5 @@ where
             </right::Right>
         </div>
         <footer::Footer />
-        <ModalRenderer />
     }
 }

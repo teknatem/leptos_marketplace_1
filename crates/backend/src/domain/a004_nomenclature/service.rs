@@ -57,3 +57,14 @@ pub async fn get_by_id(id: Uuid) -> anyhow::Result<Option<Nomenclature>> {
 pub async fn list_all() -> anyhow::Result<Vec<Nomenclature>> {
     repository::list_all().await
 }
+
+pub async fn list_paginated(
+    limit: u64,
+    offset: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: &str,
+    only_mp: bool,
+) -> anyhow::Result<(Vec<Nomenclature>, u64)> {
+    repository::list_paginated(limit, offset, sort_by, sort_desc, q, only_mp).await
+}

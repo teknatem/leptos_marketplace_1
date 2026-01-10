@@ -15,7 +15,7 @@
 - Цветовая схема: Indigo (#6366f1)
 
 ### 2. CSS Styles
-**Файл**: `crates/frontend/styles/3-components/login.css`
+**Файл**: `crates/frontend/static/themes/core/components.css` (секция `Login Page Styles (BEM)`)
 - Добавлен класс `.particle-canvas`
 - Обновлены gradient overlays (blur blobs)
 - Улучшены ::before и ::after псевдо-элементы

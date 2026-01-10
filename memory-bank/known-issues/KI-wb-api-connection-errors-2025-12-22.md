@@ -27,3 +27,5 @@ Users reported "error sending request" when attempting to import Sales or Financ
 
 Check `wildberries_api_requests.log` for samples. Success is marked by a 200 OK and a valid JSON body preview.
 
+
+

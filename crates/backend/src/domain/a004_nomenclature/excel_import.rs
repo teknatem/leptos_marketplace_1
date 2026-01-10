@@ -1,8 +1,11 @@
 use contracts::domain::a004_nomenclature::{ExcelRow, ImportResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use super::repository;
+use crate::shared::data::db::get_connection;
+use sea_orm::TransactionTrait;
 
 /// ExcelData для приема с фронтенда (временная структура)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,16 +61,30 @@ pub async fn import_nomenclature_from_rows(
     rows: Vec<ExcelRow>,
 ) -> anyhow::Result<ImportResult> {
 
+    let started_at = std::time::Instant::now();
     let mut updated_count = 0;
-    let mut not_found_articles = Vec::new();
+    // Keep unique list (stable order) so UI doesn't show repeated articles.
+    let mut not_found_articles: Vec<String> = Vec::new();
+    let mut not_found_seen: HashSet<String> = HashSet::new();
 
-    for row in rows {
+    // Single transaction = huge speed-up on SQLite vs 1000 separate commits.
+    let db = get_connection();
+    let txn = db.begin().await?;
+
+    for (idx, row) in rows.into_iter().enumerate() {
+        if idx > 0 && idx % 100 == 0 {
+            tracing::info!("Excel import progress: {} rows processed...", idx);
+        }
+
         // Ищем номенклатуру по артикулу
         let article_trimmed = row.article.trim();
-        let found_items = repository::find_by_article(article_trimmed).await?;
+        let found_items = repository::find_by_article_txn(&txn, article_trimmed).await?;
 
         if found_items.is_empty() {
-            not_found_articles.push(row.article.clone());
+            let key = article_trimmed.to_string();
+            if !key.is_empty() && not_found_seen.insert(key.clone()) {
+                not_found_articles.push(key);
+            }
             continue;
         }
 
@@ -110,11 +127,20 @@ pub async fn import_nomenclature_from_rows(
 
             if updated {
                 item.before_write();
-                repository::update(&item).await?;
+                repository::update_txn(&txn, &item).await?;
                 updated_count += 1;
             }
         }
     }
+
+    txn.commit().await?;
+
+    tracing::info!(
+        "Excel import finished: updated_count={}, not_found={}, elapsed_ms={}",
+        updated_count,
+        not_found_articles.len(),
+        started_at.elapsed().as_millis()
+    );
 
     Ok(ImportResult {
         updated_count,

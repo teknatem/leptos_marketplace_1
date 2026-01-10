@@ -369,7 +369,7 @@ let data_resource = create_resource(
 - `shared/list_utils.rs` - Sorting, filtering for tables
 - `shared/date_utils.rs` - Date formatting
 - `layout/center/tabs/tabs.rs` - Tab management
-- CSS в `frontend/styles/3-components/`
+- CSS в `crates/frontend/static/themes/` (точка входа: `crates/frontend/static/themes/core/index.css`)
 
 ## Database Patterns
 

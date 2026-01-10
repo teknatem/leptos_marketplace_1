@@ -7,6 +7,7 @@ use contracts::usecases::u501_import_from_ut::{
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
+use thaw::*;
 
 #[component]
 pub fn ImportWidget() -> impl IntoView {
@@ -206,16 +207,18 @@ pub fn ImportWidget() -> impl IntoView {
         });
     };
 
+    let start_disabled = Signal::derive(move || is_loading.get() || session_id.get().is_some());
+
     view! {
-        <div class="page">
-            // Page header with title and action button
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-lg); margin: calc(var(--spacing-lg) * -1) calc(var(--spacing-lg) * -1) var(--spacing-lg) calc(var(--spacing-lg) * -1); background: var(--color-surface); border-bottom: 2px solid var(--color-primary); border-radius: var(--radius-md) var(--radius-md) 0 0;">
-                        <h1 style="margin: 0; font-size: var(--font-size-xl); font-weight: 600; color: var(--color-text-primary);">"u501: Импорт из УТ 11"</h1>
-                        <button
-                            class="button button--primary"
-                            style="height: 36px; font-size: var(--font-size-base);"
-                            on:click=on_start_import
-                            prop:disabled=move || is_loading.get() || session_id.get().is_some()
+        <div class="page page--wide">
+            <div class="card">
+                <div class="card__body">
+                    <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                        <h2 class="section-title">"u501: Импорт из УТ 11"</h2>
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            on_click=on_start_import
+                            disabled=start_disabled
                         >
                             "▶ "
                             {move || if is_loading.get() {
@@ -225,11 +228,13 @@ pub fn ImportWidget() -> impl IntoView {
                             } else {
                                 "Запустить импорт"
                             }}
-                        </button>
-                    </div>
+                        </Button>
+                    </Flex>
 
-                    <div class="form-section">
-                        <h2 class="section-title section-title--spaced">"Подключение к 1С"</h2>
+                    <div class="form-section-group">
+
+                    <div>
+                        <h2 class="section-title">"Подключение к 1С"</h2>
                         <div class="form__group">
                             <label class="form__label">"Выберите подключение:"</label>
                             <select
@@ -252,8 +257,8 @@ pub fn ImportWidget() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="form-section">
-                        <h2 class="section-title section-title--spaced">"Агрегаты для импорта"</h2>
+                    <div>
+                        <h2 class="section-title">"Агрегаты для импорта"</h2>
                         <div class="checkbox-group">
                             <div class="form__checkbox-wrapper">
                                 <input
@@ -297,8 +302,8 @@ pub fn ImportWidget() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="form-section">
-                        <h2 class="section-title section-title--spaced">"Дополнительные загрузки"</h2>
+                    <div>
+                        <h2 class="section-title">"Дополнительные загрузки"</h2>
                         <div class="checkbox-group">
                             <div class="form__checkbox-wrapper">
                                 <input
@@ -315,8 +320,8 @@ pub fn ImportWidget() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="form-section">
-                        <h2 class="section-title section-title--spaced">"Опции импорта"</h2>
+                    <div>
+                        <h2 class="section-title">"Опции импорта"</h2>
                         <div class="form__checkbox-wrapper">
                             <input
                                 class="form__checkbox"
@@ -336,7 +341,7 @@ pub fn ImportWidget() -> impl IntoView {
                         let err = error_msg.get();
                         if !err.is_empty() {
                             view! {
-                                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); color: var(--color-error-700);">
+                                <div class="warning-box warning-box--error">
                                     <span class="warning-box__icon">"⚠"</span>
                                     <span class="warning-box__text">{err}</span>
                                 </div>
@@ -349,7 +354,7 @@ pub fn ImportWidget() -> impl IntoView {
                     {move || {
                         if let Some(prog) = progress.get() {
                             view! {
-                                <div class="form-section" style="background: var(--color-bg-secondary); padding: var(--spacing-lg); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                                <div>
                                     <h3 class="section-title">"Прогресс импорта"</h3>
 
                                     <div style="display: grid; grid-template-columns: 140px 1fr; gap: var(--spacing-sm); font-size: var(--font-size-sm);">
@@ -419,8 +424,8 @@ pub fn ImportWidget() -> impl IntoView {
                                                 <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
                                                     {prog.errors.iter().map(|err| {
                                                         view! {
-                                                            <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
-                                                                <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                                                            <div class="warning-box warning-box--error">
+                                                                <span class="warning-box__icon">"⚠"</span>
                                                                 <div class="warning-box__text">
                                                                     <div style="font-weight: 600; color: var(--color-error);">{err.message.clone()}</div>
                                                                     {err.details.as_ref().map(|d| view! {
@@ -458,7 +463,7 @@ pub fn ImportWidget() -> impl IntoView {
                                 if import_a003.get() { endpoints.push(format!("{}/Catalog_Контрагенты", odata_path)); }
 
                                 view! {
-                                    <div class="form-section">
+                                    <div>
                                         <h3 class="section-title section-title--spaced">"Пути загрузки"</h3>
                                         <div class="code-box">
                                             {endpoints.iter().map(|e| {
@@ -481,7 +486,10 @@ pub fn ImportWidget() -> impl IntoView {
                     {move || {
                         if let Some(prog) = progress.get() {
                             let is_success = matches!(prog.status, ImportStatus::Completed);
-                            let is_error = matches!(prog.status, ImportStatus::Failed | ImportStatus::CompletedWithErrors);
+                            let is_error = matches!(
+                                prog.status,
+                                ImportStatus::Failed | ImportStatus::CompletedWithErrors
+                            );
                             let end = prog.completed_at.unwrap_or_else(Utc::now);
                             let secs = (end - prog.started_at).num_seconds();
                             let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
@@ -489,16 +497,17 @@ pub fn ImportWidget() -> impl IntoView {
 
                             if is_success {
                                 view! {
-                                    <div class="info-box" style="background: var(--color-success-50); border-color: var(--color-success-100); color: var(--color-success-700); padding: var(--spacing-lg);">
+                                    <div class="info-box">
                                         <div><span style="font-weight: 600;">{"✅ Успех: "}</span>{prog.completed_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "—".to_string())}</div>
                                         <div><span style="font-weight: 600;">{"Количество элементов: "}</span>{prog.total_processed}</div>
                                         <div><span style="font-weight: 600;">{"Время работы: "}</span>{elapsed}</div>
                                     </div>
-                                }.into_any()
+                                }
+                                .into_any()
                             } else if is_error {
                                 view! {
-                                    <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); padding: var(--spacing-lg);">
-                                        <span class="warning-box__icon" style="color: var(--color-error);">"❌"</span>
+                                    <div class="warning-box warning-box--error">
+                                        <span class="warning-box__icon">"❌"</span>
                                         <div class="warning-box__text">
                                             <div style="font-weight: 600; color: var(--color-error); font-size: var(--font-size-base);">{"Ошибка импорта"}</div>
                                             {if let Some(last) = prog.errors.last() {
@@ -515,14 +524,18 @@ pub fn ImportWidget() -> impl IntoView {
                                             <div style="margin-top: var(--spacing-sm); font-size: var(--font-size-xs); color: var(--color-text-muted);">{"Статус: "}{format!("{:?}", prog.status)}</div>
                                         </div>
                                     </div>
-                                }.into_any()
+                                }
+                                .into_any()
                             } else {
                                 view! { <div></div> }.into_any()
                             }
                         } else {
                             view! { <div></div> }.into_any()
                         }
-                }}
-        </div>
+                    }}
+                    </div> // form-section-group
+                </div> // card__body
+            </div> // card
+        </div> // page
     }
 }

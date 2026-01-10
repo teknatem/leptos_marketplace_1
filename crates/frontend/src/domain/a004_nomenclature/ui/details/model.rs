@@ -94,9 +94,10 @@ pub async fn save_form(dto: NomenclatureDto) -> Result<String, String> {
         .set("Content-Type", "application/json")
         .map_err(|e| format!("{e:?}"))?;
 
-    let _body = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
+    let body = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
+    opts.set_body(&wasm_bindgen::JsValue::from_str(&body));
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let fetch_promise = window.fetch_with_str_and_init(&url, &opts);
+    let fetch_promise = window.fetch_with_request(&request);
     let resp_value = wasm_bindgen_futures::JsFuture::from(fetch_promise)
         .await
         .map_err(|e| format!("{e:?}"))?;

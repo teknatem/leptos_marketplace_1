@@ -63,8 +63,11 @@ pub fn LoginPage() -> impl IntoView {
                 </div>
 
                 <Show when=move || error_message.get().is_some()>
-                    <div style="padding: 8px; margin-bottom: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: var(--color-error); font-size: 13px;">
-                        {move || error_message.get().unwrap_or_default()}
+                    <div class="warning-box warning-box--error login__error">
+                        <span class="warning-box__icon">"⚠"</span>
+                        <span class="warning-box__text">
+                            {move || error_message.get().unwrap_or_default()}
+                        </span>
                     </div>
                 </Show>
 
