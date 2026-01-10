@@ -4,6 +4,7 @@ pub mod global_context;
 pub mod header;
 pub mod left;
 pub mod right;
+pub mod tabs;
 pub mod top_header;
 
 use leptos::prelude::*;

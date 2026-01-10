@@ -1,5 +1,5 @@
+use crate::app_shell::AppShell;
 use crate::layout::global_context::AppGlobalContext;
-use crate::routes::routes::AppRoutes;
 use crate::shared::modal_stack::{ModalHost, ModalStackService};
 use crate::system::auth::context::AuthProvider;
 use leptos::prelude::*;
@@ -25,7 +25,7 @@ pub fn App() -> impl IntoView {
     view! {
         <ConfigProvider theme>
             <AuthProvider>
-                <AppRoutes />
+                <AppShell />
                 <ModalHost />
             </AuthProvider>
         </ConfigProvider>
