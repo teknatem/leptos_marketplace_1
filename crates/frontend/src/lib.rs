@@ -25,11 +25,11 @@
 )]
 
 pub mod app;
+pub mod app_shell;
 pub mod dashboards;
 pub mod domain;
 pub mod layout;
 pub mod projections;
-pub mod routes;
 pub mod shared;
 pub mod system;
 pub mod usecases;
