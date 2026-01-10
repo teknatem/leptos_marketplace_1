@@ -70,17 +70,16 @@ pub fn JsonViewer(
     };
 
     view! {
-        <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+        <div class="json-viewer">
             // Заголовок и кнопки
-            <div style="padding: 15px; border-bottom: 1px solid #ddd; background: #f9f9f9; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                <h3 style="margin: 0; font-size: 18px; color: #333;">
+            <div class="modal-header modal-header--compact">
+                <h3 class="modal-title">
                     {title.unwrap_or_else(|| "JSON Данные".to_string())}
                 </h3>
-                <div style="display: flex; gap: 10px;">
+                <div class="modal-header-actions">
                     <button
                         class="button button--secondary"
                         on:click=handle_copy
-                        style="padding: 8px 16px; font-size: 14px;"
                         title="Копировать в буфер обмена"
                     >
                         {move || if copied.get() {
@@ -100,8 +99,7 @@ pub fn JsonViewer(
                         }}
                     </button>
                     <button
-                        class="btn"
-                        style="background: #4CAF50; color: white; padding: 8px 16px; font-size: 14px;"
+                        class="button button--success"
                         on:click=handle_download
                         title="Скачать как файл"
                     >
@@ -112,14 +110,14 @@ pub fn JsonViewer(
             </div>
 
             // Область просмотра JSON
-            <div style="flex: 1; overflow: auto; padding: 20px; background: #f5f5f5;">
-                <pre style="margin: 0; padding: 20px; background: white; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; color: #333; overflow-x: auto;">
+            <div class="json-viewer__body">
+                <pre class="json-viewer__content">
                     {json_content_for_display}
                 </pre>
             </div>
 
             // Статистика
-            <div style="padding: 15px; border-top: 1px solid #ddd; background: #f9f9f9; font-size: 14px; color: #666; flex-shrink: 0;">
+            <div class="json-viewer__footer">
                 {"Размер: "}
                 <strong>{format!("{} символов", json_content_for_stats.len())}</strong>
                 {" | "}

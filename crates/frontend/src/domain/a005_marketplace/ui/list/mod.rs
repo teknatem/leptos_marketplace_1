@@ -5,12 +5,11 @@ use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
-use crate::shared::modal::Modal;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use leptos::prelude::*;
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct MarketplaceRow {
@@ -65,11 +64,11 @@ impl Sortable for MarketplaceRow {
 #[component]
 #[allow(non_snake_case)]
 pub fn MarketplaceList() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let state = create_state();
     let (items, set_items) = signal::<Vec<MarketplaceRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let (show_modal, set_show_modal) = signal(false);
-    let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
 
     let fetch = move || {
@@ -85,16 +84,41 @@ pub fn MarketplaceList() -> impl IntoView {
         });
     };
 
+    let open_details_modal = move |id: Option<String>| {
+        let id_val = id.clone();
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("marketplace-modal".to_string()),
+            move |handle| {
+                view! {
+                    <MarketplaceDetails
+                        id=id_val.clone()
+                        on_saved=Callback::new({
+                            let handle = handle.clone();
+                            move |_| {
+                                handle.close();
+                                fetch();
+                            }
+                        })
+                        on_cancel=Callback::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                    />
+                }
+                .into_any()
+            },
+        );
+    };
+
     let handle_create_new = move || {
-        set_editing_id.set(None);
-        set_show_modal.set(true);
+        open_details_modal(None);
     };
 
     let handle_edit = move |id: String| {
         let items_clone = items.get();
         if items_clone.iter().any(|item| item.id == id) {
-            set_editing_id.set(Some(id));
-            set_show_modal.set(true);
+            open_details_modal(Some(id));
         }
     };
 
@@ -302,26 +326,7 @@ pub fn MarketplaceList() -> impl IntoView {
                 </table>
             </div>
 
-            <Show when=move || show_modal.get()>
-                {move || {
-                    let modal_title = if editing_id.get().is_some() { "Edit Marketplace".to_string() } else { "New Marketplace".to_string() };
-                    view! {
-                        <Modal
-                            title=modal_title
-                            on_close=Callback::new(move |_| {
-                                set_show_modal.set(false);
-                                set_editing_id.set(None);
-                            })
-                        >
-                            <MarketplaceDetails
-                                id=editing_id.get()
-                                on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
-                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
-                            />
-                        </Modal>
-                    }
-                }}
-            </Show>
+            // Details is opened via ModalStackService
         </div>
     }
 }

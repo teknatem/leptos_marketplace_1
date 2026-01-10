@@ -24,7 +24,7 @@
 - Автоматически подстраивается под размер окна
 
 ### 2. CSS Styles
-**Путь**: `crates/frontend/styles/3-components/login.css`
+**Путь**: `crates/frontend/static/themes/core/components.css` (секция `Login Page Styles (BEM)`)
 
 Добавлен класс `.particle-canvas`:
 ```css

@@ -1,5 +1,6 @@
 use super::super::details::CounterpartyDetails;
 use crate::shared::icons::icon;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a003_counterparty::aggregate::Counterparty;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
@@ -363,6 +364,8 @@ fn render_rows_with_lookup(
 
 #[component]
 pub fn CounterpartyTree() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (all_roots, set_all_roots) = signal::<Vec<TreeNode>>(vec![]);
     let (error, set_error) = signal::<Option<String>>(None);
     let (show_modal, set_show_modal) = signal(false);
@@ -400,6 +403,33 @@ pub fn CounterpartyTree() -> impl IntoView {
         let roots = all_roots.get();
         let filter = filter_text.get();
         filter_tree(roots, &filter)
+    };
+
+    let open_details_modal = move |id: Option<String>| {
+        let id_val = id.clone();
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("counterparty-modal".to_string()),
+            move |handle| {
+                view! {
+                    <CounterpartyDetails
+                        id=id_val.clone()
+                        on_saved=Rc::new({
+                            let handle = handle.clone();
+                            move |_| {
+                                handle.close();
+                                load();
+                            }
+                        })
+                        on_cancel=Rc::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                    />
+                }
+                .into_any()
+            },
+        );
     };
 
     load();
@@ -491,17 +521,10 @@ pub fn CounterpartyTree() -> impl IntoView {
             }}
 
             {move || if show_modal.get() {
-                view! {
-                    <div class="modal-overlay">
-                        <div class="modal-content">
-                            <CounterpartyDetails
-                                id=editing_id.get()
-                                on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); load(); })
-                                on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
-                            />
-                        </div>
-                    </div>
-                }.into_any()
+                open_details_modal(editing_id.get());
+                set_show_modal.set(false);
+                set_editing_id.set(None);
+                view! { <></> }.into_any()
             } else { view! { <></> }.into_any() }}
         </div>
     }

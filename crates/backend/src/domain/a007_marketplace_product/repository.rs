@@ -217,3 +217,79 @@ pub async fn get_by_nomenclature_ref(
         .collect();
     Ok(items)
 }
+
+#[derive(Debug, Clone)]
+pub struct MarketplaceProductListQuery {
+    pub marketplace_ref: Option<String>,
+    pub search: Option<String>,
+    pub sort_by: String,
+    pub sort_desc: bool,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+pub struct MarketplaceProductListResult {
+    pub items: Vec<MarketplaceProduct>,
+    pub total: usize,
+}
+
+pub async fn list_paginated(
+    query: MarketplaceProductListQuery,
+) -> anyhow::Result<MarketplaceProductListResult> {
+    use sea_orm::{Condition, QueryOrder, QuerySelect};
+
+    let mut select = Entity::find().filter(Column::IsDeleted.eq(false));
+
+    // Filtering
+    if let Some(mp_ref) = query.marketplace_ref {
+        if !mp_ref.is_empty() {
+            select = select.filter(Column::MarketplaceRef.eq(mp_ref));
+        }
+    }
+
+    if let Some(search) = query.search {
+        if !search.is_empty() {
+            let s = format!("%{}%", search);
+            select = select.filter(
+                Condition::any()
+                    .add(Column::Code.like(s.clone()))
+                    .add(Column::Description.like(s.clone()))
+                    .add(Column::MarketplaceSku.like(s.clone()))
+                    .add(Column::Article.like(s.clone()))
+                    .add(Column::Barcode.like(s.clone())),
+            );
+        }
+    }
+
+    // Count total
+    let total = select.clone().count(conn()).await? as usize;
+
+    // Sorting
+    let sort_col = match query.sort_by.as_str() {
+        "code" => Column::Code,
+        "description" => Column::Description,
+        "marketplace_sku" => Column::MarketplaceSku,
+        "article" => Column::Article,
+        "barcode" => Column::Barcode,
+        "created_at" => Column::CreatedAt,
+        _ => Column::Code,
+    };
+
+    select = if query.sort_desc {
+        select.order_by_desc(sort_col)
+    } else {
+        select.order_by_asc(sort_col)
+    };
+
+    // Pagination
+    let items = select
+        .limit(query.limit as u64)
+        .offset(query.offset as u64)
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok(MarketplaceProductListResult { items, total })
+}

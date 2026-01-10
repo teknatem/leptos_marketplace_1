@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::Condition;
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 
 use crate::shared::data::db::get_connection;
 
@@ -103,6 +104,73 @@ pub async fn list_all() -> anyhow::Result<Vec<Nomenclature>> {
     Ok(items)
 }
 
+pub async fn list_paginated(
+    limit: u64,
+    offset: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: &str,
+    only_mp: bool,
+) -> anyhow::Result<(Vec<Nomenclature>, u64)> {
+    let mut condition = Condition::all()
+        .add(Column::IsDeleted.eq(false))
+        .add(Column::IsFolder.eq(false));
+
+    if only_mp {
+        condition = condition.add(Column::MpRefCount.gt(0));
+    }
+
+    let q_trimmed = q.trim();
+    if q_trimmed.len() >= 3 {
+        let or = Condition::any()
+            .add(Column::Article.contains(q_trimmed))
+            .add(Column::Description.contains(q_trimmed))
+            .add(Column::Dim1Category.contains(q_trimmed))
+            .add(Column::Dim2Line.contains(q_trimmed))
+            .add(Column::Dim3Model.contains(q_trimmed))
+            .add(Column::Dim4Format.contains(q_trimmed))
+            .add(Column::Dim5Sink.contains(q_trimmed))
+            .add(Column::Dim6Size.contains(q_trimmed));
+        condition = condition.add(or);
+    }
+
+    let total: u64 = Entity::find().filter(condition.clone()).count(conn()).await?;
+
+    let sort_column = match sort_by {
+        "article" => Column::Article,
+        "description" => Column::Description,
+        "dim1_category" => Column::Dim1Category,
+        "dim2_line" => Column::Dim2Line,
+        "dim3_model" => Column::Dim3Model,
+        "dim4_format" => Column::Dim4Format,
+        "dim5_sink" => Column::Dim5Sink,
+        "dim6_size" => Column::Dim6Size,
+        "mp_ref_count" => Column::MpRefCount,
+        _ => Column::Article,
+    };
+
+    let mut q_items = Entity::find().filter(condition);
+    q_items = if sort_desc {
+        q_items.order_by_desc(sort_column)
+    } else {
+        q_items.order_by_asc(sort_column)
+    };
+
+    // Secondary sort for stability
+    q_items = q_items.order_by_asc(Column::Article);
+
+    let items: Vec<Nomenclature> = q_items
+        .limit(limit)
+        .offset(offset)
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok((items, total))
+}
+
 pub async fn get_by_id(id: Uuid) -> anyhow::Result<Option<Nomenclature>> {
     let result = Entity::find_by_id(id.to_string()).one(conn()).await?;
     Ok(result.map(Into::into))
@@ -183,16 +251,25 @@ pub async fn soft_delete(id: Uuid) -> anyhow::Result<bool> {
 /// Возвращает только элементы (не папки) и не удаленные
 /// ВАЖНО: article должен быть уже trimmed
 pub async fn find_by_article(article: &str) -> anyhow::Result<Vec<Nomenclature>> {
-    // Загружаем все элементы и фильтруем на стороне приложения для корректного trim
-    let all_items: Vec<Model> = Entity::find()
+    // IMPORTANT: don't load the whole table. Use SQL TRIM() so trailing spaces from 1C won't break matching.
+    use sea_orm::sea_query::Expr;
+
+    find_by_article_with_conn(conn(), article, Expr::cust_with_values("trim(article) = ?", [article]))
+        .await
+}
+
+async fn find_by_article_with_conn<C: ConnectionTrait>(
+    db: &C,
+    _article: &str,
+    expr: sea_orm::sea_query::SimpleExpr,
+) -> anyhow::Result<Vec<Nomenclature>> {
+    let items: Vec<Nomenclature> = Entity::find()
         .filter(Column::IsFolder.eq(false))
         .filter(Column::IsDeleted.eq(false))
-        .all(conn())
-        .await?;
-
-    let items: Vec<Nomenclature> = all_items
+        .filter(expr)
+        .all(db)
+        .await?
         .into_iter()
-        .filter(|m| m.article.trim() == article)
         .map(Into::into)
         .collect();
 
@@ -205,20 +282,50 @@ pub async fn find_by_article(article: &str) -> anyhow::Result<Vec<Nomenclature>>
 pub async fn find_by_article_ignore_case(article: &str) -> anyhow::Result<Vec<Nomenclature>> {
     let article_lower = article.to_lowercase();
 
-    // Загружаем все элементы и фильтруем на стороне приложения для корректного trim и lowercase
-    let all_items: Vec<Model> = Entity::find()
-        .filter(Column::IsFolder.eq(false))
-        .filter(Column::IsDeleted.eq(false))
-        .all(conn())
-        .await?;
+    // IMPORTANT: don't load the whole table. Use SQL TRIM() + lower().
+    use sea_orm::sea_query::Expr;
 
-    let items: Vec<Nomenclature> = all_items
-        .into_iter()
-        .filter(|m| m.article.trim().to_lowercase() == article_lower)
-        .map(Into::into)
-        .collect();
+    find_by_article_with_conn(
+        conn(),
+        &article_lower,
+        Expr::cust_with_values("lower(trim(article)) = ?", [article_lower.clone()]),
+    )
+    .await
+}
 
-    Ok(items)
+pub async fn find_by_article_txn<C: ConnectionTrait>(db: &C, article: &str) -> anyhow::Result<Vec<Nomenclature>> {
+    use sea_orm::sea_query::Expr;
+    find_by_article_with_conn(db, article, Expr::cust_with_values("trim(article) = ?", [article])).await
+}
+
+pub async fn update_txn<C: ConnectionTrait>(db: &C, aggregate: &Nomenclature) -> anyhow::Result<()> {
+    let id = aggregate.base.id.value().to_string();
+    let active = ActiveModel {
+        id: Set(id),
+        code: Set(aggregate.base.code.clone()),
+        description: Set(aggregate.base.description.clone()),
+        full_description: Set(aggregate.full_description.clone()),
+        comment: Set(aggregate.base.comment.clone()),
+        is_folder: Set(aggregate.is_folder),
+        parent_id: Set(aggregate.parent_id.clone()),
+        article: Set(aggregate.article.clone()),
+        mp_ref_count: Set(aggregate.mp_ref_count),
+        dim1_category: Set(aggregate.dim1_category.clone()),
+        dim2_line: Set(aggregate.dim2_line.clone()),
+        dim3_model: Set(aggregate.dim3_model.clone()),
+        dim4_format: Set(aggregate.dim4_format.clone()),
+        dim5_sink: Set(aggregate.dim5_sink.clone()),
+        dim6_size: Set(aggregate.dim6_size.clone()),
+        is_assembly: Set(aggregate.is_assembly),
+        base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        is_deleted: Set(aggregate.base.metadata.is_deleted),
+        is_posted: Set(aggregate.base.metadata.is_posted),
+        updated_at: Set(Some(aggregate.base.metadata.updated_at)),
+        version: Set(aggregate.base.metadata.version),
+        created_at: sea_orm::ActiveValue::NotSet,
+    };
+    active.update(db).await?;
+    Ok(())
 }
 
 /// Обновить счетчик ссылок на маркетплейс для номенклатуры

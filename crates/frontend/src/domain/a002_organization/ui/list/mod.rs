@@ -1,7 +1,7 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
-use crate::shared::modal::Modal;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a002_organization::aggregate::Organization;
 use leptos::prelude::*;
 use std::collections::HashSet;
@@ -48,6 +48,8 @@ pub fn OrganizationList() -> impl IntoView {
     let (show_modal, set_show_modal) = signal(false);
     let (editing_id, set_editing_id) = signal::<Option<String>>(None);
     let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -73,6 +75,39 @@ pub fn OrganizationList() -> impl IntoView {
             set_editing_id.set(Some(id));
             set_show_modal.set(true);
         }
+    };
+
+    // Open modal via centralized stack (ModalFrame) so Details stays a full screen (its own header/actions).
+    let open_details_modal = move |id: Option<String>| {
+        // close any previous modal opened from this list
+        modal_stack.clear();
+        modal_stack.push_with_frame(
+            // surface sizing is controlled here; Details component renders its own compact header.
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("organization-details-modal".to_string()),
+            move |handle| {
+                let on_saved = Rc::new({
+                    let handle = handle.clone();
+                    move |_| {
+                        handle.close();
+                        fetch();
+                    }
+                });
+                let on_cancel = Rc::new({
+                    let handle = handle.clone();
+                    move |_| handle.close()
+                });
+
+                view! {
+                    <OrganizationDetails
+                        id=id.clone()
+                        on_saved=on_saved
+                        on_cancel=on_cancel
+                    />
+                }
+                .into_any()
+            },
+        );
     };
 
     let toggle_select = move |id: String, checked: bool| {
@@ -226,24 +261,12 @@ pub fn OrganizationList() -> impl IntoView {
 
                     <Show when=move || show_modal.get()>
                         {move || {
-                            let modal_title = if editing_id.get().is_some() { "Edit Organization".to_string() } else { "New Organization".to_string() };
-                            view! {
-                                <Modal
-                                    title=modal_title
-                                    on_close=Callback::new(move |_| {
-                                        set_show_modal.set(false);
-                                        set_editing_id.set(None);
-                                    })
-                                >
-                                    <OrganizationDetails
-                                        id=editing_id.get()
-                                        on_saved=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); fetch(); })
-                                        on_cancel=Rc::new(move |_| { set_show_modal.set(false); set_editing_id.set(None); })
-                                    />
-                                </Modal>
-                            }
+                            // Bridge old local state to new modal stack mechanism (keeps list code minimal).
+                            open_details_modal(editing_id.get());
+                            set_show_modal.set(false);
+                            view! { <></> }
                         }}
-            </Show>
+                    </Show>
         </div>
     }
 }

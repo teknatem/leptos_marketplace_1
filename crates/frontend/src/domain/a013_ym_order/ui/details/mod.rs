@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::modal_stack::ModalStackService;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NomenclatureInfo {
@@ -111,6 +112,8 @@ pub struct MetadataDto {
 
 #[component]
 pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (order, set_order) = signal::<Option<YmOrderDetailDto>>(None);
     let (raw_json_from_ym, set_raw_json_from_ym) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(true);
@@ -1065,44 +1068,59 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             </div>
 
             // Modals for linked aggregates
-            {move || selected_nomenclature_id.get().map(|nom_id| {
-                let on_close_modal = {
-                    let set_selected = set_selected_nomenclature_id.clone();
-                    move || set_selected.set(None)
-                };
-                view! {
-                    <div class="modal-overlay">
-                        <div class="modal-content">
-                            <NomenclatureDetails
-                                id=Some(nom_id)
-                                on_saved=Callback::new(move |_| on_close_modal())
-                                on_cancel=Callback::new(move |_| on_close_modal())
-                            />
-                        </div>
-                    </div>
+            {move || {
+                if let Some(nom_id) = selected_nomenclature_id.get() {
+                    let nom_id_val = nom_id.clone();
+                    modal_stack.push_with_frame(
+                        Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
+                        Some("nomenclature-modal".to_string()),
+                        move |handle| {
+                            view! {
+                                <NomenclatureDetails
+                                    id=Some(nom_id_val.clone())
+                                    on_saved=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| handle.close()
+                                    })
+                                    on_cancel=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| handle.close()
+                                    })
+                                />
+                            }
+                            .into_any()
+                        },
+                    );
+                    set_selected_nomenclature_id.set(None);
                 }
-            })}
 
-            {move || selected_marketplace_product_id.get().map(|mp_id| {
-                let on_close_modal = {
-                    let set_selected = set_selected_marketplace_product_id.clone();
-                    move || set_selected.set(None)
-                };
-                view! {
-                    <div class="modal-overlay">
-                        <div class="modal-content">
-                            <MarketplaceProductDetails
-                                id=Some(mp_id)
-                                on_saved=std::rc::Rc::new({
-                                    let on_close_modal = on_close_modal.clone();
-                                    move |_| on_close_modal()
-                                })
-                                on_cancel=std::rc::Rc::new(move |_| on_close_modal())
-                            />
-                        </div>
-                    </div>
+                if let Some(mp_id) = selected_marketplace_product_id.get() {
+                    let mp_id_val = mp_id.clone();
+                    modal_stack.push_with_frame(
+                        Some("max-width: min(1500px, 95vw); width: min(1500px, 95vw);".to_string()),
+                        Some("marketplace-product-modal".to_string()),
+                        move |handle| {
+                            view! {
+                                <MarketplaceProductDetails
+                                    id=Some(mp_id_val.clone())
+                                    on_saved=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| handle.close()
+                                    })
+                                    on_close=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| handle.close()
+                                    })
+                                />
+                            }
+                            .into_any()
+                        },
+                    );
+                    set_selected_marketplace_product_id.set(None);
                 }
-            })}
+
+                view! { <></> }.into_any()
+            }}
         </div>
     }
 }

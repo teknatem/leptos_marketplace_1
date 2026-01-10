@@ -3,12 +3,12 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
 
 // Details components for linked aggregates
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +101,8 @@ pub struct NomenclatureInfo {
 // Finance Report Link structure
 #[component]
 pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (sale, set_sale) = signal::<Option<WbSalesDetailDto>>(None);
     let (raw_json_from_wb, set_raw_json_from_wb) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(true);
@@ -1370,58 +1372,77 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         </div>
 
         // Modals for linked aggregates
-        {move || selected_marketplace_product_id.get().map(|mp_id| {
-            let on_close_modal = {
-                let set_selected = set_selected_marketplace_product_id.clone();
-                move || set_selected.set(None)
-            };
-            view! {
-                <div class="modal-overlay">
-                    <div class="modal-content">
-                        <MarketplaceProductDetails
-                            id=Some(mp_id)
-                            on_saved=Rc::new({
-                                let on_close_modal = on_close_modal.clone();
-                                move |_| on_close_modal()
-                            })
-                            on_cancel=Rc::new(move |_| on_close_modal())
-                        />
-                    </div>
-                </div>
+        {move || {
+            if let Some(mp_id) = selected_marketplace_product_id.get() {
+                let mp_id_val = mp_id.clone();
+                modal_stack.push_with_frame(
+                    Some("max-width: min(1500px, 95vw); width: min(1500px, 95vw);".to_string()),
+                    Some("marketplace-product-modal".to_string()),
+                    move |handle| {
+                        view! {
+                            <MarketplaceProductDetails
+                                id=Some(mp_id_val.clone())
+                                on_saved=Callback::new({
+                                    let handle = handle.clone();
+                                    move |_| handle.close()
+                                })
+                                on_close=Callback::new({
+                                    let handle = handle.clone();
+                                    move |_| handle.close()
+                                })
+                            />
+                        }
+                        .into_any()
+                    },
+                );
+                set_selected_marketplace_product_id.set(None);
             }
-        })}
 
-        {move || selected_nomenclature_id.get().map(|nom_id| {
-            let on_close_modal = {
-                let set_selected = set_selected_nomenclature_id.clone();
-                move || set_selected.set(None)
-            };
-            view! {
-                <div class="modal-overlay">
-                    <div class="modal-content">
-                        <NomenclatureDetails
-                            id=Some(nom_id)
-                            on_saved=Callback::new(move |_| on_close_modal())
-                            on_cancel=Callback::new(move |_| on_close_modal())
-                        />
-                    </div>
-                </div>
+            if let Some(nom_id) = selected_nomenclature_id.get() {
+                let nom_id_val = nom_id.clone();
+                modal_stack.push_with_frame(
+                    Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
+                    Some("nomenclature-modal".to_string()),
+                    move |handle| {
+                        view! {
+                            <NomenclatureDetails
+                                id=Some(nom_id_val.clone())
+                                on_saved=Callback::new({
+                                    let handle = handle.clone();
+                                    move |_| handle.close()
+                                })
+                                on_cancel=Callback::new({
+                                    let handle = handle.clone();
+                                    move |_| handle.close()
+                                })
+                            />
+                        }
+                        .into_any()
+                    },
+                );
+                set_selected_nomenclature_id.set(None);
             }
-        })}
 
-        // Modal for WbFinanceReportDetail when clicking on a linked finance report
-        {move || selected_finance_report.get().map(|(rr_dt, rrd_id)| {
-            view! {
-                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
-                    <div style="background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 1200px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
-                        <WbFinanceReportDetail
-                            rr_dt=rr_dt
-                            rrd_id=rrd_id
-                            on_close=move || set_selected_finance_report.set(None)
-                        />
-                    </div>
-                </div>
+            if let Some((rr_dt, rrd_id)) = selected_finance_report.get() {
+                let rr_dt_val = rr_dt.clone();
+                modal_stack.push_with_frame(
+                    Some("max-width: min(1200px, 95vw); width: min(1200px, 95vw); max-height: 90vh; overflow: hidden;".to_string()),
+                    Some("wb-finance-report-modal".to_string()),
+                    move |handle| {
+                        view! {
+                            <WbFinanceReportDetail
+                                rr_dt=rr_dt_val.clone()
+                                rrd_id=rrd_id
+                                on_close=move || handle.close()
+                            />
+                        }
+                        .into_any()
+                    },
+                );
+                set_selected_finance_report.set(None);
             }
-        })}
+
+            view! { <></> }.into_any()
+        }}
     }
 }

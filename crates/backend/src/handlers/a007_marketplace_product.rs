@@ -1,7 +1,105 @@
-use axum::{extract::Path, Json};
+use axum::{extract::Path, extract::Query, Json};
+use contracts::domain::common::AggregateId;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a007_marketplace_product;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceProductListItemDto {
+    pub id: String,
+    pub code: String,
+    pub description: String,
+    pub marketplace_ref: String,
+    pub connection_mp_ref: String,
+    pub marketplace_sku: String,
+    pub barcode: Option<String>,
+    pub article: String,
+    pub nomenclature_ref: Option<String>,
+    pub is_posted: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginatedMarketplaceProductResponse {
+    pub items: Vec<MarketplaceProductListItemDto>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListMarketplaceProductsQuery {
+    pub marketplace_ref: Option<String>,
+    pub search: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+}
+
+/// GET /api/a007/marketplace-product
+pub async fn list_paginated(
+    Query(query): Query<ListMarketplaceProductsQuery>,
+) -> Result<Json<PaginatedMarketplaceProductResponse>, axum::http::StatusCode> {
+    use a007_marketplace_product::repository::MarketplaceProductListQuery;
+
+    let limit = query.limit.unwrap_or(100);
+    let offset = query.offset.unwrap_or(0);
+    let page = if limit > 0 { offset / limit } else { 0 };
+
+    let list_query = MarketplaceProductListQuery {
+        marketplace_ref: query.marketplace_ref,
+        search: query.search,
+        sort_by: query.sort_by.unwrap_or_else(|| "code".to_string()),
+        sort_desc: query.sort_desc.unwrap_or(false),
+        limit,
+        offset,
+    };
+
+    match a007_marketplace_product::service::list_paginated(list_query).await {
+        Ok(result) => {
+            let total_pages = if limit > 0 {
+                (result.total + limit - 1) / limit
+            } else {
+                0
+            };
+
+            let items = result
+                .items
+                .into_iter()
+                .map(|p| {
+                    MarketplaceProductListItemDto {
+                        id: p.base.id.0.to_string(),
+                        code: p.base.code,
+                        description: p.base.description,
+                        marketplace_ref: p.marketplace_ref,
+                        connection_mp_ref: p.connection_mp_ref,
+                        marketplace_sku: p.marketplace_sku,
+                        barcode: p.barcode,
+                        article: p.article,
+                        nomenclature_ref: p.nomenclature_ref,
+                        is_posted: p.base.metadata.is_posted,
+                        created_at: p.base.metadata.created_at.to_rfc3339(),
+                    }
+                })
+                .collect();
+
+            Ok(Json(PaginatedMarketplaceProductResponse {
+                items,
+                total: result.total,
+                page,
+                page_size: limit,
+                total_pages,
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to list marketplace products: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
 
 /// GET /api/marketplace_product
 pub async fn list_all() -> Result<

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "debriefs/2025-12-23__session-debrief__scheduled-tasks.md",
+                "file": "decisions/ADR__0001__field-metadata-system.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "2025-12-23__session-debrief__scheduled-tasks"
+              "title": "ADR__0001__field-metadata-system"
             }
           }
         ]
@@ -78,7 +78,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 542.5
   },
   "right": {
     "id": "d33bcd9c0e6ba401",
@@ -185,10 +185,13 @@
   },
   "active": "1ab3ea982aca7598",
   "lastOpenFiles": [
+    "debriefs/2025-12-26__session-debrief__metadata-system-documentation.md",
+    "debriefs/2025-12-22-session-debrief-api-standardization.md",
+    "debriefs/2025-12-21-session-debrief-a006-signal-sorting.md",
+    "debriefs/2025-12-23__session-debrief__scheduled-tasks.md",
     "techContext.md",
     "systemPatterns.md",
     "projectbrief.md",
-    "debriefs/2025-12-21-session-debrief-a006-signal-sorting.md",
     "debriefs/2025-12-20-session-debrief-thaw-forest-theme.md",
     "debriefs/2025-12-20-session-debrief-u502-thaw-migration.md",
     "known-issues/KI-thaw-table-style-limitations-2025-12-21.md",

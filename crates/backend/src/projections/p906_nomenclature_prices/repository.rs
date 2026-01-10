@@ -1,7 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, FromQueryResult};
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -168,11 +170,29 @@ pub async fn delete_all() -> Result<u64> {
 pub async fn list_with_filters(
     period: Option<String>,
     nomenclature_ref: Option<String>,
+    q: Option<String>,
+    sort_by: Option<String>,
+    sort_desc: Option<bool>,
     limit: Option<u64>,
     offset: Option<u64>,
 ) -> Result<(Vec<PriceWithNomenclature>, i64)> {
-    use sea_orm::{Statement, ConnectionTrait};
+    use sea_orm::{ConnectionTrait, Statement};
     let db = conn();
+
+    fn escape_like(s: &str) -> String {
+        // Escape LIKE wildcards for SQLite: %, _ and the escape char itself.
+        // We use ESCAPE '\\' in SQL.
+        let mut out = String::with_capacity(s.len());
+        for ch in s.chars() {
+            match ch {
+                '\\' => out.push_str("\\\\"),
+                '%' => out.push_str("\\%"),
+                '_' => out.push_str("\\_"),
+                _ => out.push(ch),
+            }
+        }
+        out
+    }
 
     // Строим WHERE условия
     let mut where_clauses = vec![];
@@ -188,6 +208,21 @@ pub async fn list_with_filters(
         params.push(nomenclature_ref_val.clone().into());
     }
 
+    if let Some(ref q_val) = q {
+        let q_trimmed = q_val.trim();
+        if q_trimmed.len() >= 3 {
+            let escaped = escape_like(&q_trimmed.to_lowercase());
+            let like = format!("%{}%", escaped);
+            // NOTE: ESCAPE must be a *single* character in SQLite.
+            // We use backslash as escape char: ESCAPE '\'
+            where_clauses.push(
+                "(lower(n.article) LIKE ? ESCAPE '\\' OR lower(n.description) LIKE ? ESCAPE '\\')",
+            );
+            params.push(like.clone().into());
+            params.push(like.into());
+        }
+    }
+
     let where_sql = if where_clauses.is_empty() {
         String::from("1=1")
     } else {
@@ -196,7 +231,10 @@ pub async fn list_with_filters(
 
     // Запрос для подсчета total_count
     let count_sql = format!(
-        "SELECT COUNT(*) as count FROM p906_nomenclature_prices p WHERE {}",
+        "SELECT COUNT(*) as count
+        FROM p906_nomenclature_prices p
+        LEFT JOIN a004_nomenclature n ON p.nomenclature_ref = n.id
+        WHERE {}",
         where_sql
     );
 
@@ -218,6 +256,28 @@ pub async fn list_with_filters(
 
     let total_count = count_result.count;
 
+    // ORDER BY whitelist (avoid SQL injection)
+    let order_col = match sort_by.as_deref() {
+        Some("period") => "p.period",
+        Some("article") => "n.article",
+        Some("code1c") => "p.nomenclature_ref",
+        Some("nomenclature_name") => "n.description",
+        Some("price") => "p.price",
+        _ => "p.period",
+    };
+    let order_dir = if sort_desc.unwrap_or(true) {
+        "DESC"
+    } else {
+        "ASC"
+    };
+    let order_sql = format!(
+        "{} {},
+         p.period DESC,
+         n.description ASC,
+         p.id ASC",
+        order_col, order_dir
+    );
+
     // Основной запрос с JOIN
     let mut sql = format!(
         "SELECT
@@ -232,8 +292,8 @@ pub async fn list_with_filters(
         FROM p906_nomenclature_prices p
         LEFT JOIN a004_nomenclature n ON p.nomenclature_ref = n.id
         WHERE {}
-        ORDER BY p.period DESC, n.description ASC",
-        where_sql
+        ORDER BY {}",
+        where_sql, order_sql
     );
 
     // Добавляем LIMIT и OFFSET
@@ -244,11 +304,7 @@ pub async fn list_with_filters(
         sql.push_str(&format!(" OFFSET {}", off));
     }
 
-    let stmt = Statement::from_sql_and_values(
-        db.get_database_backend(),
-        &sql,
-        params,
-    );
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
 
     let results: Vec<PriceWithNomenclature> = PriceWithNomenclature::find_by_statement(stmt)
         .all(db)
@@ -261,8 +317,7 @@ pub async fn list_with_filters(
 pub async fn list_all(limit: Option<u64>) -> Result<Vec<Model>> {
     let db = conn();
 
-    let mut query = Entity::find()
-        .order_by_desc(Column::Period);
+    let mut query = Entity::find().order_by_desc(Column::Period);
 
     if let Some(limit_val) = limit {
         query = query.limit(limit_val);
@@ -274,7 +329,7 @@ pub async fn list_all(limit: Option<u64>) -> Result<Vec<Model>> {
 
 /// Получить уникальные периоды (для фильтра в UI)
 pub async fn get_unique_periods() -> Result<Vec<String>> {
-    use sea_orm::{Statement, ConnectionTrait};
+    use sea_orm::{ConnectionTrait, Statement};
     let db = conn();
 
     let sql = "SELECT DISTINCT period FROM p906_nomenclature_prices ORDER BY period DESC";
@@ -285,10 +340,7 @@ pub async fn get_unique_periods() -> Result<Vec<String>> {
         period: String,
     }
 
-    let results: Vec<PeriodResult> = PeriodResult::find_by_statement(stmt)
-        .all(db)
-        .await?;
+    let results: Vec<PeriodResult> = PeriodResult::find_by_statement(stmt).all(db).await?;
 
     Ok(results.into_iter().map(|r| r.period).collect())
 }
-

@@ -8,6 +8,7 @@ use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
 use crate::domain::a005_marketplace::ui::list::MarketplaceList;
 use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
+use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
 use crate::domain::a009_ozon_returns::ui::details::OzonReturnsDetail;
@@ -95,6 +96,33 @@ fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
             "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
             "a007_marketplace_product" => {
                 view! { <MarketplaceProductList /> }.into_any()
+            }
+            k if k.starts_with("a007_marketplace_product_detail_") => {
+                let id = k.strip_prefix("a007_marketplace_product_detail_").unwrap().to_string();
+                view! {
+                    <MarketplaceProductDetails
+                        id=Some(id)
+                        on_close=Callback::new({
+                            let key_for_close = key_for_close.clone();
+                            move |_| {
+                                tabs_store_for_details.close_tab(&key_for_close);
+                            }
+                        })
+                    />
+                }.into_any()
+            }
+            "a007_marketplace_product_new" => {
+                view! {
+                    <MarketplaceProductDetails
+                        id=None
+                        on_close=Callback::new({
+                            let key_for_close = key_for_close.clone();
+                            move |_| {
+                                tabs_store_for_details.close_tab(&key_for_close);
+                            }
+                        })
+                    />
+                }.into_any()
             }
             "a008_marketplace_sales" => {
                 view! { <MarketplaceSalesList /> }.into_any()

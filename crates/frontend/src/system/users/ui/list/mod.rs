@@ -494,24 +494,28 @@ where
 
     view! {
         <div class="modal-overlay" on:click=move |_| on_close()>
-            <div class="modal-content" on:click=move |ev| ev.stop_propagation()>
-                <div class="modal-header">
-                    <h3>{format!("Редактирование: {}", user.username)}</h3>
-                    <button class="button--ghost" on:click=move |_| on_close()>"×"</button>
+            <div class="modal" on:click=move |ev| ev.stop_propagation()>
+                <div class="modal-header modal-header--compact">
+                    <h3 class="modal-title">{format!("Редактирование: {}", user.username)}</h3>
+                    <div class="modal-header-actions">
+                        <button class="button button--ghost" on:click=move |_| on_close()>"×"</button>
+                    </div>
                 </div>
 
                 <div class="modal-body">
                     <Show when=move || error_message.get().is_some()>
-                        <div class="error-message">
-                            {move || error_message.get().unwrap_or_default()}
+                        <div class="warning-box warning-box--error">
+                            <span class="warning-box__icon">"⚠"</span>
+                            <span class="warning-box__text">{move || error_message.get().unwrap_or_default()}</span>
                         </div>
                     </Show>
 
                     <form id="edit-user-form" on:submit=on_submit>
                     <div class="form__group">
-                        <label>"Email"</label>
+                        <label class="form__label">"Email"</label>
                         <input
                             type="email"
+                            class="form__input"
                             value=move || email.get()
                             on:input=move |ev| email.set(event_target_value(&ev))
                             disabled=move || saving.get()
@@ -519,9 +523,10 @@ where
                     </div>
 
                     <div class="form__group">
-                        <label>"ФИО"</label>
+                        <label class="form__label">"ФИО"</label>
                         <input
                             type="text"
+                            class="form__input"
                             value=move || full_name.get()
                             on:input=move |ev| full_name.set(event_target_value(&ev))
                             disabled=move || saving.get()
@@ -529,26 +534,28 @@ where
                     </div>
 
                     <div class="form__group">
-                        <label>
+                        <label class="form__checkbox-wrapper">
                             <input
                                 type="checkbox"
+                                class="form__checkbox"
                                 checked=move || is_admin.get()
                                 on:change=move |ev| is_admin.set(event_target_checked(&ev))
                                 disabled=move || saving.get()
                             />
-                            " Администратор"
+                            <span class="form__checkbox-label">"Администратор"</span>
                         </label>
                     </div>
 
                     <div class="form__group">
-                        <label>
+                        <label class="form__checkbox-wrapper">
                             <input
                                 type="checkbox"
+                                class="form__checkbox"
                                 checked=move || is_active.get()
                                 on:change=move |ev| is_active.set(event_target_checked(&ev))
                                 disabled=move || saving.get()
                             />
-                            " Активен"
+                            <span class="form__checkbox-label">"Активен"</span>
                         </label>
                     </div>
                     </form>
@@ -557,7 +564,7 @@ where
                 <div class="form-actions">
                     <button
                         type="button"
-                        class="button--secondary"
+                        class="button button--secondary"
                         on:click=move |_| on_close()
                         disabled=move || saving.get()
                     >
@@ -566,7 +573,7 @@ where
                     <button
                         type="submit"
                         form="edit-user-form"
-                        class="btn-primary"
+                        class="button button--primary"
                         disabled=move || saving.get()
                     >
                         {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}

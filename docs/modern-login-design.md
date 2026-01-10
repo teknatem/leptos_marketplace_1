@@ -177,7 +177,7 @@
 
 ## Файлы
 
-- **CSS**: `crates/frontend/styles/3-components/login.css` (добавлено в конец)
+- **CSS**: `crates/frontend/static/themes/core/components.css` (секция `Login Page Styles (BEM)`)
 - **Component**: `crates/frontend/src/system/pages/login.rs`
 - **Animation Script**: `crates/frontend/assets/particle-animation.js`
 - **HTML Integration**: `crates/frontend/index.html` (добавлен script tag)

@@ -1,5 +1,6 @@
 use super::details::OzonReturnsDetail;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use crate::shared::modal_stack::ModalStackService;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -83,6 +84,8 @@ impl Sortable for OzonReturnsDto {
 
 #[component]
 pub fn OzonReturnsList() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (returns, set_returns) = signal::<Vec<OzonReturnsDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
@@ -105,6 +108,93 @@ pub fn OzonReturnsList() -> impl IntoView {
     let (operation_results, set_operation_results) =
         signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
     let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
+
+    let open_detail_modal = move |id: String| {
+        let id_val = id.clone();
+        let reload = detail_reload_trigger;
+        modal_stack.push_with_frame(
+            Some("max-width: min(1200px, 95vw); width: min(1200px, 95vw); height: calc(100vh - 80px); overflow: hidden;".to_string()),
+            Some("ozon-returns-detail-modal".to_string()),
+            move |handle| {
+                view! {
+                    <OzonReturnsDetail
+                        id=id_val.clone()
+                        on_close=Callback::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                        reload_trigger=reload
+                    />
+                }
+                .into_any()
+            },
+        );
+    };
+
+    let open_results_modal = move |results: Vec<(String, bool, Option<String>)>| {
+        modal_stack.push_with_frame(
+            Some("max-width: min(800px, 95vw); width: min(800px, 95vw); max-height: 80vh; overflow-y: auto;".to_string()),
+            Some("operation-results-modal".to_string()),
+            move |handle| {
+                let results = results.clone();
+                view! {
+                    <div class="details-container">
+                        <div class="modal-header">
+                            <h3 class="modal-title">"Результаты операции"</h3>
+                            <div class="modal-header-actions">
+                                <button class="button button--secondary" on:click=move |_| handle.close()>
+                                    "Закрыть"
+                                </button>
+                            </div>
+                        </div>
+                        <div class="modal-body">
+                            <table class="results-table">
+                                <thead>
+                                    <tr>
+                                        <th>"ID"</th>
+                                        <th>"Статус"</th>
+                                        <th>"Ошибка"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <For
+                                        each=move || results.clone()
+                                        key=|r| r.0.clone()
+                                        let:result
+                                    >
+                                        {
+                                            let short_id = result.0.chars().take(8).collect::<String>();
+                                            let success = result.1;
+                                            let error_msg = result.2.clone().unwrap_or_default();
+
+                                            view! {
+                                                <tr>
+                                                    <td class="results-table__id">
+                                                        <code>{short_id}"..."</code>
+                                                    </td>
+                                                    <td>
+                                                        {if success {
+                                                            view! { <span class="text-success">"✓ Успешно"</span> }
+                                                        } else {
+                                                            view! { <span class="text-error">"✗ Ошибка"</span> }
+                                                        }}
+                                                    </td>
+                                                    <td class="text-muted">
+                                                        {error_msg}
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </For>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+                .into_any()
+            },
+        );
+    };
 
     let load_returns = move || {
         let set_returns = set_returns.clone();
@@ -400,45 +490,32 @@ pub fn OzonReturnsList() -> impl IntoView {
         <div class="ozon-returns-list">
             {move || {
                 if let Some(id) = selected_id.get() {
-                    view! {
-                        <div class="modal-overlay" style="align-items: flex-start; padding-top: 40px;">
-                            <div class="modal-content" style="max-width: 1200px; height: calc(100vh - 80px); overflow: hidden; margin: 0;">
-                                <OzonReturnsDetail
-                                    id=id
-                                    on_close=move || set_selected_id.set(None)
-                                    reload_trigger=detail_reload_trigger
-                                />
-                            </div>
-                        </div>
-                    }.into_any()
+                    open_detail_modal(id);
+                    set_selected_id.set(None);
+                    view! { <></> }.into_any()
                 } else {
                     view! {
                         <div>
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                <h2 style="margin: 0;">"OZON Returns (A009)"</h2>
-                                <button
-                                    on:click=move |_| {
-                                        load_returns();
-                                    }
-                                    style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
-                                >
+                            <div class="doc-list__toolbar">
+                                <h2 class="doc-list__title">"OZON Returns (A009)"</h2>
+                                <button class="button button--secondary" on:click=move |_| load_returns()>
                                     "Обновить"
                                 </button>
                             </div>
 
                             // Панель фильтров и массовых операций
-                            <div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px;">
-                                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                            <div class="doc-filters">
+                                <div class="doc-filters__row">
                                     // Фильтр периода
-                                    <div style="display: flex; gap: 10px; align-items: center;">
-                                        <label style="font-weight: 500;">"Период:"</label>
+                                    <div class="doc-filter">
+                                        <label class="doc-filter__label">"Период:"</label>
                                         <input
                                             type="date"
                                             on:input=move |e| {
                                                 let value = event_target_value(&e);
                                                 set_date_from.set(if value.is_empty() { None } else { Some(value) });
                                             }
-                                            style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                            class="doc-filter__input"
                                         />
                                         <span>"—"</span>
                                         <input
@@ -447,7 +524,7 @@ pub fn OzonReturnsList() -> impl IntoView {
                                                 let value = event_target_value(&e);
                                                 set_date_to.set(if value.is_empty() { None } else { Some(value) });
                                             }
-                                            style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                            class="doc-filter__input"
                                         />
                                     </div>
 
@@ -456,18 +533,14 @@ pub fn OzonReturnsList() -> impl IntoView {
                                         <button
                                             disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
                                             on:click=post_selected
-                                            style="padding: 6px 12px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
-                                            style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
-                                            style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                                            class="button button--info"
                                         >
                                             {move || format!("Провести ({})", selected_ids.get().len())}
                                         </button>
                                         <button
                                             disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
                                             on:click=unpost_selected
-                                            style="padding: 6px 12px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
-                                            style:opacity=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "0.5" } else { "1" }
-                                            style:cursor=move || if selected_ids.get().is_empty() || posting_in_progress.get() { "not-allowed" } else { "pointer" }
+                                            class="button button--warning"
                                         >
                                             {move || format!("Отменить ({})", selected_ids.get().len())}
                                         </button>
@@ -478,13 +551,13 @@ pub fn OzonReturnsList() -> impl IntoView {
                                         {move || {
                                             if let Some((current, total)) = current_operation.get() {
                                                 view! {
-                                                    <span style="color: #666; font-style: italic;">
+                                                    <span class="doc-list__progress">
                                                         {format!("Обработка {}/{} документов...", current, total)}
                                                     </span>
                                                 }.into_any()
                                             } else {
                                                 view! {
-                                                    <span style="color: #666; font-style: italic;">"Обработка..."</span>
+                                                    <span class="doc-list__progress">"Обработка..."</span>
                                                 }.into_any()
                                             }
                                         }}
@@ -492,60 +565,17 @@ pub fn OzonReturnsList() -> impl IntoView {
                                 </div>
                             </div>
 
-                            // Модальное окно результатов
-                            <Show when=move || !operation_results.get().is_empty()>
-                                <div class="modal-overlay" style="z-index: 1001;">
-                                    <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
-                                        <h3>"Результаты операции"</h3>
-                                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                                            <thead>
-                                                <tr style="background: #f5f5f5;">
-                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"ID"</th>
-                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Статус"</th>
-                                                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">"Ошибка"</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <For
-                                                    each=move || operation_results.get()
-                                                    key=|r| r.0.clone()
-                                                    let:result
-                                                >
-                                                    {
-                                                        let short_id = result.0.chars().take(8).collect::<String>();
-                                                        let success = result.1;
-                                                        let error_msg = result.2.clone().unwrap_or_default();
-
-                                                        view! {
-                                                            <tr>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                    <code style="font-size: 0.85em;">{short_id}"..."</code>
-                                                                </td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                                                    {if success {
-                                                                        view! { <span style="color: green;">"✓ Успешно"</span> }
-                                                                    } else {
-                                                                        view! { <span style="color: red;">"✗ Ошибка"</span> }
-                                                                    }}
-                                                                </td>
-                                                                <td style="border: 1px solid #ddd; padding: 8px; color: #666;">
-                                                                    {error_msg}
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    }
-                                                </For>
-                                            </tbody>
-                                        </table>
-                                        <button
-                                            on:click=move |_| set_operation_results.set(Vec::new())
-                                            style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;"
-                                        >
-                                            "Закрыть"
-                                        </button>
-                                    </div>
-                                </div>
-                            </Show>
+                            // Результаты операции открываем через ModalStackService
+                            {move || {
+                                let results = operation_results.get();
+                                if results.is_empty() {
+                                    view! { <></> }.into_any()
+                                } else {
+                                    open_results_modal(results);
+                                    set_operation_results.set(Vec::new());
+                                    view! { <></> }.into_any()
+                                }
+                            }}
 
             {move || {
                 let msg = if loading.get() {

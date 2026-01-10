@@ -57,3 +57,5 @@ let response = match self.client.get(url).send().await {
 - Reduced "403 Forbidden" or "Connection Reset" errors caused by missing User-Agents.
 - Much faster troubleshooting thanks to localized, specific error messages in logs.
 
+
+

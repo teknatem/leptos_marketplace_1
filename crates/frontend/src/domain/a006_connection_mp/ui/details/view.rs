@@ -1,7 +1,8 @@
 use crate::domain::a002_organization::ui::{OrganizationPicker, OrganizationPickerItem};
+use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
 use crate::domain::a005_marketplace::ui::{MarketplacePicker, MarketplacePickerItem};
 use crate::shared::icons::icon;
-use crate::shared::picker_aggregate::{Modal, ModalService};
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a006_connection_mp::{
     AuthorizationType, ConnectionMPDto, ConnectionTestResult,
 };
@@ -15,7 +16,8 @@ pub fn ConnectionMPDetails(
     on_saved: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
-    let modal = use_context::<ModalService>().expect("ModalService not found");
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
 
     // RwSignal для полей формы (для двухсторонней привязки с Thaw)
     let description = RwSignal::new(String::new());
@@ -30,6 +32,9 @@ pub fn ConnectionMPDetails(
 
     let marketplace_id = RwSignal::new(String::new());
     let organization = RwSignal::new(String::new());
+    let marketplace_name = RwSignal::new(String::new());
+    let marketplace_code = RwSignal::new(String::new());
+    let organization_name = RwSignal::new(String::new());
 
     let (conn_id, set_conn_id) = signal::<Option<String>>(None);
     let (conn_code, set_conn_code) = signal::<Option<String>>(None);
@@ -37,11 +42,6 @@ pub fn ConnectionMPDetails(
     let (error, set_error) = signal::<Option<String>>(None);
     let (test_result, set_test_result) = signal::<Option<ConnectionTestResult>>(None);
     let (is_testing, set_is_testing) = signal(false);
-    let (show_marketplace_picker, set_show_marketplace_picker) = signal(false);
-    let (show_organization_picker, set_show_organization_picker) = signal(false);
-    let (marketplace_name, set_marketplace_name) = signal(String::new());
-    let (marketplace_code, set_marketplace_code) = signal(String::new());
-    let (organization_name, set_organization_name) = signal(String::new());
     // Храним ID для предвыбора в пикерах
     let (organization_id, set_organization_id) = signal::<Option<String>>(None);
 
@@ -65,11 +65,11 @@ pub fn ConnectionMPDetails(
                         organization.set(conn.organization.clone());
                         set_conn_id.set(Some(conn.base.id.as_string()));
                         set_conn_code.set(Some(conn.base.code));
-                        set_organization_name.set(conn.organization.clone());
+                        organization_name.set(conn.organization.clone());
 
                         if let Ok(mp_info) = fetch_marketplace_info(&conn.marketplace_id).await {
-                            set_marketplace_name.set(mp_info.name);
-                            set_marketplace_code.set(mp_info.code);
+                            marketplace_name.set(mp_info.name);
+                            marketplace_code.set(mp_info.code);
                         }
                     }
                 });
@@ -89,9 +89,9 @@ pub fn ConnectionMPDetails(
                 organization.set(String::new());
                 set_conn_id.set(None);
                 set_conn_code.set(None);
-                set_marketplace_name.set(String::new());
-                set_marketplace_code.set(String::new());
-                set_organization_name.set(String::new());
+                marketplace_name.set(String::new());
+                marketplace_code.set(String::new());
+                organization_name.set(String::new());
                 set_organization_id.set(None);
                 set_error.set(None);
                 set_test_result.set(None);
@@ -209,51 +209,145 @@ pub fn ConnectionMPDetails(
         });
     };
 
-    let handle_marketplace_selected = move |selected: Option<MarketplacePickerItem>| {
-        modal.hide();
-        set_show_marketplace_picker.set(false);
-        if let Some(item) = selected {
-            set_marketplace_name.set(item.description.clone());
-            marketplace_id.set(item.id.clone());
+    let open_marketplace_picker = move |_| {
+        let selected_id = {
+            let mp_id = marketplace_id.get();
+            if mp_id.is_empty() {
+                None
+            } else {
+                Some(mp_id)
+            }
+        };
+
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("marketplace-picker-modal".to_string()),
+            move |handle| {
+                view! {
+                    <MarketplacePicker
+                        initial_selected_id=selected_id.clone()
+                        on_selected={
+                            let handle = handle.clone();
+                            move |selected: Option<MarketplacePickerItem>| {
+                                if let Some(item) = selected {
+                                    marketplace_id.set(item.id.clone());
+                                    marketplace_name.set(item.description.clone());
+                                    marketplace_code.set(item.code.clone());
+                                }
+                                handle.close();
+                            }
+                        }
+                        on_cancel={
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        }
+                    />
+                }
+                .into_any()
+            },
+        );
+    };
+
+    let open_marketplace_view = move |_| {
+        let mp_id = marketplace_id.get();
+        if mp_id.is_empty() {
+            return;
         }
+
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("marketplace-view-modal".to_string()),
+            move |handle| {
+                let mp_id = Some(mp_id.clone());
+                view! {
+                    <MarketplaceDetails
+                        id=mp_id
+                        readonly=true
+                        on_saved=Callback::new(move |_| {})
+                        on_cancel=Callback::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                    />
+                }
+                .into_any()
+            },
+        );
     };
 
-    let handle_marketplace_cancel = move |_| {
-        modal.hide();
-        set_show_marketplace_picker.set(false);
-    };
-
-    let handle_organization_selected = move |selected: Option<OrganizationPickerItem>| {
-        modal.hide();
-        set_show_organization_picker.set(false);
-        if let Some(item) = selected {
-            set_organization_id.set(Some(item.id.clone()));
-            set_organization_name.set(item.description.clone());
-            organization.set(item.description.clone());
-        }
-    };
-
-    let handle_organization_cancel = move |_| {
-        modal.hide();
-        set_show_organization_picker.set(false);
+    let open_organization_picker = move |_| {
+        let selected_id = organization_id.get();
+        modal_stack.push_with_frame(
+            Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
+            Some("organization-picker-modal".to_string()),
+            move |handle| {
+                view! {
+                    <OrganizationPicker
+                        initial_selected_id=selected_id.clone()
+                        on_confirm={
+                            let handle = handle.clone();
+                            move |selected: Option<OrganizationPickerItem>| {
+                                if let Some(item) = selected {
+                                    set_organization_id.set(Some(item.id.clone()));
+                                    organization_name.set(item.description.clone());
+                                    organization.set(item.description.clone());
+                                }
+                                handle.close();
+                            }
+                        }
+                        on_cancel={
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        }
+                    />
+                }
+                .into_any()
+            },
+        );
     };
 
     view! {
         <div class="details-container connection-mp-details">
-            {move || error.get().map(|e| view! {
-                <div style="padding: 8px 12px; margin-bottom: 10px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 6px; color: var(--color-error); font-size: 13px;">
-                    {e}
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    {move || if id.get().is_some() { "Редактирование подключения" } else { "Новое подключение" }}
+                </h3>
+                <div class="modal-header-actions">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=handle_test
+                        disabled=Signal::derive(move || is_testing.get())
+                    >
+                        {icon("test")}
+                        {move || if is_testing.get() { " Тест..." } else { " Тест" }}
+                    </Button>
+                    <Button appearance=ButtonAppearance::Primary on_click=handle_save>
+                        {icon("save")}
+                        " Сохранить"
+                    </Button>
+                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_cancel.run(())>
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
                 </div>
-            })}
+            </div>
+
+            <div class="modal-body">
+                {move || error.get().map(|e| view! {
+                    <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                        <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                        <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                    </div>
+                })}
 
             // Секция 1: Основная информация
-            <div style="margin-bottom: 12px;">
-                <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
+            <div class="details-section">
+                <h4 class="details-section__title">
                     "Основная информация"
                 </h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                <div class="details-grid--3col">
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Наименование"}</label>
+                        <label class="form__label">{"Наименование"}</label>
                         <Input
                             value=description
                             placeholder="Например: Озон (Сантехсистем)"
@@ -261,53 +355,66 @@ pub fn ConnectionMPDetails(
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Маркетплейс"}</label>
-                        <div style="display: flex; gap: 6px;">
-                            <input
-                                type="text"
-                                value=move || marketplace_name.get()
-                                readonly
-                                placeholder="Выберите"
-                                style="flex: 1; padding: 6px 10px; border: 1px solid #d1d1d1; border-radius: 4px; background: #f5f5f5;"
-                            />
-                            <Button
-                                appearance=ButtonAppearance::Secondary
-                                on_click=move |_| {
-                                    set_show_organization_picker.set(false);
-                                    set_show_marketplace_picker.set(true);
-                                    modal.show();
-                                }
-                            >
-                                {icon("search")}
-                            </Button>
-                        </div>
+                        <label class="form__label">{"Маркетплейс"}</label>
+                        <Input
+                            value=marketplace_name
+                            placeholder="Выберите"
+                            readonly=true
+                            attr:style="width: 100%;"
+                        >
+                            <InputSuffix slot>
+                                <div style="display: flex; gap: 4px;">
+                                    <Button
+                                        appearance=ButtonAppearance::Subtle
+                                        shape=ButtonShape::Square
+                                        size=ButtonSize::Small
+                                        on_click=open_marketplace_picker
+                                        attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                        attr:title="Выбрать маркетплейс"
+                                    >
+                                        {icon("search")}
+                                    </Button>
+                                    <Button
+                                        appearance=ButtonAppearance::Subtle
+                                        shape=ButtonShape::Square
+                                        size=ButtonSize::Small
+                                        disabled=Signal::derive(move || marketplace_id.get().is_empty())
+                                        on_click=open_marketplace_view
+                                        attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                        attr:title="Просмотр маркетплейса"
+                                    >
+                                        {icon("eye")}
+                                    </Button>
+                                </div>
+                            </InputSuffix>
+                        </Input>
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Организация"}</label>
-                        <div style="display: flex; gap: 6px;">
-                            <input
-                                type="text"
-                                value=move || organization_name.get()
-                                readonly
-                                placeholder="Выберите"
-                                style="flex: 1; padding: 6px 10px; border: 1px solid #d1d1d1; border-radius: 4px; background: #f5f5f5;"
-                            />
-                            <Button
-                                appearance=ButtonAppearance::Secondary
-                                on_click=move |_| {
-                                    set_show_marketplace_picker.set(false);
-                                    set_show_organization_picker.set(true);
-                                    modal.show();
-                                }
-                            >
-                                {icon("search")}
-                            </Button>
-                        </div>
+                        <label class="form__label">{"Организация"}</label>
+                        <Input
+                            value=organization_name
+                            placeholder="Выберите"
+                            readonly=true
+                            attr:style="width: 100%;"
+                        >
+                            <InputSuffix slot>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    shape=ButtonShape::Square
+                                    size=ButtonSize::Small
+                                    on_click=open_organization_picker
+                                    attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                    attr:title="Выбрать организацию"
+                                >
+                                    {icon("search")}
+                                </Button>
+                            </InputSuffix>
+                        </Input>
                     </div>
 
                     <div class="form__group" style="grid-column: 1 / -1;">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Комментарий"}</label>
+                        <label class="form__label">{"Комментарий"}</label>
                         <Textarea
                             value=comment
                             placeholder="Дополнительная информация"
@@ -317,51 +424,51 @@ pub fn ConnectionMPDetails(
             </div>
 
             // Секция 2: API конфигурация
-            <div style="margin-bottom: 12px;">
-                <h4 style="margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 2px solid var(--color-border); font-size: 14px; font-weight: 600;">
+            <div class="details-section">
+                <h4 class="details-section__title">
                     "API конфигурация"
                 </h4>
-                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                <div class="details-grid--api">
                     <div class="form__group" style="grid-row: span 2;">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"API Key"}</label>
+                        <label class="form__label">{"API Key"}</label>
                         <Textarea
                             value=api_key
                             placeholder="Вставьте API ключ"
                         />
-                        <small class="help-text" style="font-size: 10px; line-height: 1.2;">
+                        <small class="help-text help-text--tiny">
                             {"• WB: Bearer • Ozon: Api-Key • Яндекс: OAuth"}
                         </small>
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Client ID"}</label>
+                        <label class="form__label">{"Client ID"}</label>
                         <Input
                             value=supplier_id
                             placeholder="Ozon, Яндекс"
                         />
-                        <small class="help-text" style="font-size: 10px;">{"Ozon, Яндекс"}</small>
+                        <small class="help-text help-text--tiny">{"Ozon, Яндекс"}</small>
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"App ID"}</label>
+                        <label class="form__label">{"App ID"}</label>
                         <Input
                             value=application_id
                             placeholder="Ozon"
                         />
-                        <small class="help-text" style="font-size: 10px;">{"Ozon"}</small>
+                        <small class="help-text help-text--tiny">{"Ozon"}</small>
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Business ID"}</label>
+                        <label class="form__label">{"Business ID"}</label>
                         <Input
                             value=business_account_id
                             placeholder="Яндекс"
                         />
-                        <small class="help-text" style="font-size: 10px;">{"Яндекс"}</small>
+                        <small class="help-text help-text--tiny">{"Яндекс"}</small>
                     </div>
 
                     <div class="form__group">
-                        <label style="font-size: 13px; display: block; margin-bottom: 4px;">{"Stats Key"}</label>
+                        <label class="form__label">{"Stats Key"}</label>
                         <Input
                             value=api_key_stats
                             placeholder="Опционально"
@@ -371,44 +478,17 @@ pub fn ConnectionMPDetails(
             </div>
 
             // Секция 3: Настройки и действия
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--color-background-secondary); border-radius: 6px; margin-bottom: 12px;">
-                <div style="display: flex; gap: 24px; align-items: center;">
-                    <Checkbox checked=is_used label="Используется"/>
-
-                    <Checkbox checked=test_mode label="Тестовый режим"/>
-                </div>
-
-                <div style="display: flex; gap: 8px;">
-                    <Button
-                        appearance=ButtonAppearance::Secondary
-                        on_click=handle_test
-                        disabled=Signal::derive(move || is_testing.get())
-                    >
-                        {icon("test")}
-                        {move || if is_testing.get() { " Тест..." } else { " Тест" }}
-                    </Button>
-                    <Button
-                        appearance=ButtonAppearance::Primary
-                        on_click=handle_save
-                    >
-                        {icon("save")}
-                        " Сохранить"
-                    </Button>
-                    <Button
-                        appearance=ButtonAppearance::Secondary
-                        on_click=move |_| on_cancel.run(())
-                    >
-                        "Отмена"
-                    </Button>
-                </div>
+            <div class="details-flags">
+                <Checkbox checked=is_used label="Используется"/>
+                <Checkbox checked=test_mode label="Тестовый режим"/>
             </div>
 
             {move || test_result.get().map(|result| {
                 let class = if result.success { "success" } else { "error" };
                 let mp_code = marketplace_code.get();
                 view! {
-                    <div class={class} style="margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px;">
-                        <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">
+                    <div class=format!("test-result {}", class)>
+                        <h4 class="test-result__title">
                             {if result.success { "✅ Тест успешен" } else { "❌ Тест не пройден" }}
                         </h4>
                         <div style="margin-bottom: 6px;">
@@ -536,38 +616,7 @@ pub fn ConnectionMPDetails(
                 }
             })}
 
-            <Modal>
-                {move || {
-                    if show_marketplace_picker.get() {
-                        let selected_id = {
-                            let mp_id = marketplace_id.get();
-                            if mp_id.is_empty() {
-                                None
-                            } else {
-                                Some(mp_id)
-                            }
-                        };
-                        view! {
-                            <MarketplacePicker
-                                initial_selected_id=selected_id
-                                on_selected=handle_marketplace_selected
-                                on_cancel=handle_marketplace_cancel
-                            />
-                        }.into_any()
-                    } else if show_organization_picker.get() {
-                        let selected_id = organization_id.get();
-                        view! {
-                            <OrganizationPicker
-                                initial_selected_id=selected_id
-                                on_confirm=handle_organization_selected
-                                on_cancel=handle_organization_cancel
-                            />
-                        }.into_any()
-                    } else {
-                        view! { <></> }.into_any()
-                    }
-                }}
-            </Modal>
+            </div>
         </div>
     }
 }

@@ -12,6 +12,25 @@ pub struct SearchNomenclatureQuery {
     pub article: String,
 }
 
+#[derive(Deserialize)]
+pub struct NomenclatureListParams {
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub q: Option<String>,
+    pub only_mp: Option<bool>,
+}
+
+#[derive(serde::Serialize)]
+pub struct NomenclaturePaginatedResponse {
+    pub items: Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>,
+    pub total: u64,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
+}
+
 /// GET /api/nomenclature
 pub async fn list_all() -> Result<
     Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
@@ -19,6 +38,37 @@ pub async fn list_all() -> Result<
 > {
     match a004_nomenclature::service::list_all().await {
         Ok(v) => Ok(Json(v)),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// GET /api/a004/nomenclature?limit=&offset=&sort_by=&sort_desc=&q=&only_mp=
+pub async fn list_paginated(
+    Query(params): Query<NomenclatureListParams>,
+) -> Result<Json<NomenclaturePaginatedResponse>, axum::http::StatusCode> {
+    let limit = params.limit.unwrap_or(100).clamp(10, 1000);
+    let offset = params.offset.unwrap_or(0);
+    let sort_by = params.sort_by.as_deref().unwrap_or("article");
+    let sort_desc = params.sort_desc.unwrap_or(false);
+    let q = params.q.unwrap_or_default();
+    let only_mp = params.only_mp.unwrap_or(false);
+
+    match a004_nomenclature::service::list_paginated(limit, offset, sort_by, sort_desc, &q, only_mp)
+        .await
+    {
+        Ok((items, total)) => {
+            let page_size = limit as usize;
+            let page = (offset as usize) / page_size;
+            let total_pages = ((total as usize) + page_size - 1) / page_size;
+
+            Ok(Json(NomenclaturePaginatedResponse {
+                items,
+                total,
+                page,
+                page_size,
+                total_pages,
+            }))
+        }
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
 }

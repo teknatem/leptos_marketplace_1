@@ -151,11 +151,12 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
     });
 
     view! {
-        <div class="scheduled-task-details" style="padding: 20px; max-width: 1200px; margin: 0 auto; color: var(--colorNeutralForeground1);">
-            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center style="margin-bottom: 24px; border-bottom: 1px solid var(--colorNeutralStroke1); padding-bottom: 16px;">
-                <h2 style="margin: 0; color: var(--colorNeutralForeground1); font-size: 24px; font-weight: bold;">
-                    {move || if is_new { "🆕 Новая задача".to_string() } else { format!("⚙️ Задача: {}", code.get()) }}
-                </h2>
+        <div class="page page--wide scheduled-task-details">
+            <div class="scheduled-task-details__header">
+                <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                    <h2 class="scheduled-task-details__title">
+                        {move || if is_new { "Новая задача".to_string() } else { format!("Задача: {}", code.get()) }}
+                    </h2>
                 <Space>
                     <Button 
                         appearance=ButtonAppearance::Primary
@@ -171,7 +172,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                             <Button 
                                 appearance=ButtonAppearance::Transparent
                                 on_click=move |_: ev::MouseEvent| delete_task_clone(()) 
-                                attr:style="color: var(--colorPaletteRedForeground1);"
+                                attr:class="scheduled-task-details__delete-btn"
                             >
                                 {icon("delete")}
                                 " Удалить"
@@ -181,33 +182,36 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                         view! { <></> }.into_any()
                     }}
                 </Space>
-            </Flex>
+                </Flex>
+            </div>
 
             {move || error.get().map(|err| view! {
-                <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; color: var(--color-error); margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 18px;">"⚠"</span>
-                    <span>{err}</span>
+                <div class="warning-box warning-box--error scheduled-task-details__error">
+                    <span class="warning-box__icon">"⚠"</span>
+                    <span class="warning-box__text">{err}</span>
                 </div>
             })}
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="scheduled-task-details__grid">
                 // Left Column: Basic Info
-                <div style="background: var(--colorNeutralBackground1); padding: 20px; border-radius: 12px; border: 1px solid var(--colorNeutralStroke1); box-shadow: var(--shadow2);">
-                    <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 1.1rem; color: var(--colorNeutralForeground2); font-weight: 600;">"Основные параметры"</h3>
-                    
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="scheduled-task-details__card-title">"Основные параметры"</h3>
+                    </div>
+                    <div class="card__body">
                     <Flex vertical=true gap=FlexGap::Medium>
-                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--colorNeutralForeground3);">"Код задачи"</label>
+                        <div class="form__group">
+                            <label class="form__label">"Код задачи"</label>
                             <Input value=code placeholder="Напр: u501_import_ut" />
                         </div>
 
-                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--colorNeutralForeground3);">"Описание"</label>
+                        <div class="form__group">
+                            <label class="form__label">"Описание"</label>
                             <Input value=description placeholder="Напр: Импорт организаций из УТ" />
                         </div>
 
-                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--colorNeutralForeground3);">"Тип обработчика"</label>
+                        <div class="form__group">
+                            <label class="form__label">"Тип обработчика"</label>
                             <Select value=task_type>
                                 <option value="">"— Выберите тип —"</option>
                                 <option value="u501_import_ut">"u501: Импорт из 1С:УТ"</option>
@@ -217,32 +221,34 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                             </Select>
                         </div>
 
-                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--colorNeutralForeground3);">"Расписание (Cron)"</label>
+                        <div class="form__group">
+                            <label class="form__label">"Расписание (Cron)"</label>
                             <Input value=schedule_cron placeholder="0 0 * * * (каждую полночь)" />
                         </div>
 
-                        <div style="padding: 10px 0;">
+                        <div class="scheduled-task-details__checkbox-row">
                             <Checkbox checked=is_enabled label="Задача включена" />
                         </div>
 
-                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--colorNeutralForeground3);">"Комментарий"</label>
+                        <div class="form__group">
+                            <label class="form__label">"Комментарий"</label>
                             <Textarea value=comment placeholder="..." attr:rows=3 />
                         </div>
                     </Flex>
+                    </div>
                 </div>
 
                 // Right Column: Config JSON
-                <div style="background: var(--colorNeutralBackground1); padding: 20px; border-radius: 12px; border: 1px solid var(--colorNeutralStroke1); box-shadow: var(--shadow2);">
-                    <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 1.1rem; color: var(--colorNeutralForeground2); font-weight: 600;">"Конфигурация (JSON)"</h3>
-                    <div style="height: calc(100% - 40px);">
+                <div class="card scheduled-task-details__json-card">
+                    <div class="card__header">
+                        <h3 class="scheduled-task-details__card-title">"Конфигурация (JSON)"</h3>
+                    </div>
+                    <div class="card__body scheduled-task-details__json-body">
                         <Textarea 
                             value=config_json
                             placeholder="{ ... }" 
                             class="monospace-textarea"
                             attr:rows=15
-                            attr:style="font-family: var(--fontFamilyMonospace); background: var(--colorNeutralBackground2);"
                         />
                     </div>
                 </div>
@@ -251,39 +257,44 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
             // Execution & Logs section
             {move || if !is_new {
                 view! {
-                    <div style="margin-top: 24px; background: var(--colorNeutralBackground1); padding: 20px; border-radius: 12px; border: 1px solid var(--colorNeutralStroke1); box-shadow: var(--shadow2);">
-                        <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 1.1rem; color: var(--colorNeutralForeground2); font-weight: 600;">"Логи и прогресс"</h3>
-                        
+                    <div class="card scheduled-task-details__logs">
+                        <div class="card__header">
+                            <h3 class="scheduled-task-details__card-title">"Логи и прогресс"</h3>
+                        </div>
+                        <div class="card__body">
                         <Flex vertical=true gap=FlexGap::Medium>
-                            <div style="background: var(--colorNeutralBackgroundDarkStatic); color: var(--colorNeutralForegroundInvertedStatic); padding: 16px; border-radius: 8px; font-family: var(--fontFamilyMonospace); font-size: 0.85rem; height: 300px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--colorNeutralStroke1);">
+                            <div class="code-box scheduled-task-details__log-box">
                                 {move || if log_content.get().is_empty() { "Логи пока пусты...".to_string() } else { log_content.get() }}
                             </div>
 
                             {move || progress.get().map(|p| view! {
-                                <div style="display: flex; flex-direction: column; gap: 12px; background: var(--colorNeutralBackground2); padding: 16px; border-radius: 8px; border: 1px solid var(--colorNeutralStroke1);">
+                                <div class="scheduled-task-details__progress">
                                     <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                                        <span style="font-weight: 600; font-size: 0.9rem;">"Прогресс выполнения"</span>
+                                        <span class="scheduled-task-details__progress-title">"Прогресс выполнения"</span>
                                         <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>{p.status}</Badge>
                                     </Flex>
                                     
-                                    <div style="width: 100%; height: 10px; background: var(--colorNeutralBackground3); border-radius: 5px; overflow: hidden;">
-                                        <div style=move || {
+                                    <div class="scheduled-task-details__progress-bar">
+                                        <div class="scheduled-task-details__progress-bar-fill" style=move || {
                                             let percent = if let (Some(t), Some(pr)) = (p.total_items, p.processed_items) {
                                                 if t > 0 { (pr as f64 / t as f64 * 100.0) as i32 } else { 0 }
                                             } else { 0 };
-                                            format!("width: {}%; height: 100%; background: var(--colorBrandBackground); transition: width 0.3s ease;", percent)
+                                            format!("width: {}%;", percent)
                                         }></div>
                                     </div>
                                     
-                                    <Flex justify=FlexJustify::SpaceBetween style="font-size: 0.85rem; color: var(--colorNeutralForeground3);">
-                                        <span>{format!("Обработано: {} / {}", p.processed_items.unwrap_or(0), p.total_items.unwrap_or(0))}</span>
-                                        {p.current_item.map(|item| view! {
-                                            <span style="font-style: italic;">"Текущий объект: " {item}</span>
-                                        })}
-                                    </Flex>
+                                    <div class="scheduled-task-details__progress-meta">
+                                        <Flex justify=FlexJustify::SpaceBetween>
+                                            <span>{format!("Обработано: {} / {}", p.processed_items.unwrap_or(0), p.total_items.unwrap_or(0))}</span>
+                                            {p.current_item.map(|item| view! {
+                                                <span class="scheduled-task-details__progress-current">"Текущий объект: " {item}</span>
+                                            })}
+                                        </Flex>
+                                    </div>
                                 </div>
                             })}
                         </Flex>
+                        </div>
                     </div>
                 }.into_any()
             } else {

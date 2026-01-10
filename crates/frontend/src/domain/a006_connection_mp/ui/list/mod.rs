@@ -1,6 +1,7 @@
 use crate::domain::a006_connection_mp::ui::details::ConnectionMPDetails;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::prelude::*;
 use std::cmp::Ordering;
@@ -66,6 +67,8 @@ fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
 #[component]
 #[allow(non_snake_case)]
 pub fn ConnectionMPList() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (items, set_items) = signal::<Vec<ConnectionMPRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let show_modal = RwSignal::new(false);
@@ -409,41 +412,42 @@ pub fn ConnectionMPList() -> impl IntoView {
                 </TableBody>
             </Table>
 
-            <Dialog open=show_modal>
-                <DialogSurface class="connection-mp-dialog">
-                    <DialogBody>
-                        <DialogTitle>
-                            {move || if editing_id.get().is_some() {
-                                "Редактирование подключения"
-                            } else {
-                                "Новое подключение"
-                            }}
-                        </DialogTitle>
-                        <DialogContent>
-                            <style>
-                                ".connection-mp-dialog.thaw-dialog-surface {
-                                    max-width: min(1400px, 95vw) !important;
-                                    width: min(1400px, 95vw) !important;
-                                }"
-                            </style>
-                            <div>
+            <Show when=move || show_modal.get()>
+                {move || {
+                    let id_val = editing_id.get();
+                    modal_stack.push_with_frame(
+                        Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
+                        Some("connection-mp-modal".to_string()),
+                        move |handle| {
+                            let id_signal = Signal::derive({
+                                let id_val = id_val.clone();
+                                move || id_val.clone()
+                            });
+
+                            view! {
                                 <ConnectionMPDetails
-                                id=editing_id
-                                on_saved=Callback::new(move |_| {
-                                    show_modal.set(false);
-                                    set_editing_id.set(None);
-                                    fetch();
-                                })
-                                on_cancel=Callback::new(move |_| {
-                                    show_modal.set(false);
-                                    set_editing_id.set(None);
-                                })
+                                    id=id_signal
+                                    on_saved=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| {
+                                            handle.close();
+                                            fetch();
+                                        }
+                                    })
+                                    on_cancel=Callback::new({
+                                        let handle = handle.clone();
+                                        move |_| handle.close()
+                                    })
                                 />
-                            </div>
-                        </DialogContent>
-                    </DialogBody>
-                </DialogSurface>
-            </Dialog>
+                            }.into_any()
+                        },
+                    );
+
+                    show_modal.set(false);
+                    set_editing_id.set(None);
+                    view! { <></> }
+                }}
+            </Show>
         </div>
     }
 }

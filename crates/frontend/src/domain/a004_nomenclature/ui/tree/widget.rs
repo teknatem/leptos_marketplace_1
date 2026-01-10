@@ -1,5 +1,6 @@
 use super::super::details::NomenclatureDetails;
 use crate::shared::icons::icon;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::common::{AggregateId, AggregateRoot};
 use leptos::prelude::*;
@@ -446,6 +447,8 @@ fn render_rows_with_lookup(
 
 #[component]
 pub fn NomenclatureTree() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let (all_roots, set_all_roots) = signal::<Vec<TreeNode>>(vec![]);
     let (error, set_error) = signal::<Option<String>>(None);
     let (show_modal, set_show_modal) = signal(false);
@@ -529,6 +532,33 @@ pub fn NomenclatureTree() -> impl IntoView {
     };
 
     load();
+
+    let open_details_modal = move |id: Option<String>| {
+        let id_val = id.clone();
+        modal_stack.push_with_frame(
+            Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
+            Some("nomenclature-modal".to_string()),
+            move |handle| {
+                view! {
+                    <NomenclatureDetails
+                        id=id_val.clone()
+                        on_saved=Callback::new({
+                            let handle = handle.clone();
+                            move |_| {
+                                handle.close();
+                                load();
+                            }
+                        })
+                        on_cancel=Callback::new({
+                            let handle = handle.clone();
+                            move |_| handle.close()
+                        })
+                    />
+                }
+                .into_any()
+            },
+        );
+    };
 
     let list_name = Nomenclature::list_name();
 
@@ -690,17 +720,10 @@ pub fn NomenclatureTree() -> impl IntoView {
             }}
 
             {move || if show_modal.get() {
-                view! {
-                    <div class="modal-overlay">
-                        <div class="modal-content">
-                            <NomenclatureDetails
-                                id=editing_id.get()
-                                on_saved=move || { set_show_modal.set(false); set_editing_id.set(None); load(); }
-                                on_cancel=move || { set_show_modal.set(false); set_editing_id.set(None); }
-                            />
-                        </div>
-                    </div>
-                }.into_any()
+                open_details_modal(editing_id.get());
+                set_show_modal.set(false);
+                set_editing_id.set(None);
+                view! { <></> }.into_any()
             } else { view! { <></> }.into_any() }}
         </div>
     }

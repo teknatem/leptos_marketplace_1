@@ -8,6 +8,9 @@ use crate::projections::p906_nomenclature_prices::service;
 pub struct ListParams {
     pub period: Option<String>,
     pub nomenclature_ref: Option<String>,
+    pub q: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }
@@ -50,6 +53,9 @@ pub async fn list(
     match service::list_with_filters(
         params.period,
         params.nomenclature_ref,
+        params.q,
+        params.sort_by,
+        params.sort_desc,
         limit,
         params.offset,
     )

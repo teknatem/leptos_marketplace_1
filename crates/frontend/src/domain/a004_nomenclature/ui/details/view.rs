@@ -3,11 +3,19 @@ use super::model::{
     fetch_barcodes_by_nomenclature, fetch_dimension_values, BarcodesByNomenclatureResponse,
     DimensionValuesResponse,
 };
-use super::view_model::NomenclatureDetailsViewModel;
 use crate::shared::icons::icon;
+use contracts::domain::a004_nomenclature::aggregate::NomenclatureDto;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::rc::Rc;
+use thaw::*;
+
+fn opt(v: String) -> Option<String> {
+    if v.trim().is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
 
 #[component]
 pub fn NomenclatureDetails(
@@ -15,12 +23,28 @@ pub fn NomenclatureDetails(
     #[prop(into)] on_saved: Callback<()>,
     #[prop(into)] on_cancel: Callback<()>,
 ) -> impl IntoView {
-    let vm = NomenclatureDetailsViewModel::new();
-    vm.load_if_needed(id.clone());
+    // Form fields (Thaw-friendly RwSignals)
+    let id_state = RwSignal::new(id.clone());
+    let code = RwSignal::new(String::new());
+    let description = RwSignal::new(String::new());
+    let full_description = RwSignal::new(String::new());
+    let article = RwSignal::new(String::new());
+    let comment = RwSignal::new(String::new());
+    let is_folder = RwSignal::new(false);
+    let parent_id = RwSignal::new(String::new());
 
-    let vm_clone = vm.clone();
+    // Dimension fields
+    let dim1_category = RwSignal::new(String::new());
+    let dim2_line = RwSignal::new(String::new());
+    let dim3_model = RwSignal::new(String::new());
+    let dim4_format = RwSignal::new(String::new());
+    let dim5_sink = RwSignal::new(String::new());
+    let dim6_size = RwSignal::new(String::new());
 
-    // Tab state
+    let error = RwSignal::new(None::<String>);
+    let saving = RwSignal::new(false);
+
+    // Tabs
     let (active_tab, set_active_tab) = signal("general");
 
     // Barcodes state
@@ -38,472 +62,320 @@ pub fn NomenclatureDetails(
         }
     });
 
-    // Load barcodes if in edit mode
-    if let Some(nomenclature_id) = id.clone() {
+    // Load entity & barcodes on mount (edit mode)
+    Effect::new(move |_| {
+        let Some(nomenclature_id) = id_state.get() else {
+            return;
+        };
+
+        let id_for_entity = nomenclature_id.clone();
+        spawn_local(async move {
+            error.set(None);
+            match super::model::fetch_by_id(id_for_entity).await {
+                Ok(item) => {
+                    code.set(item.base.code);
+                    description.set(item.base.description);
+                    full_description.set(item.full_description);
+                    article.set(item.article);
+                    comment.set(item.base.comment.unwrap_or_default());
+                    is_folder.set(item.is_folder);
+                    parent_id.set(item.parent_id.unwrap_or_default());
+
+                    dim1_category.set(item.dim1_category);
+                    dim2_line.set(item.dim2_line);
+                    dim3_model.set(item.dim3_model);
+                    dim4_format.set(item.dim4_format);
+                    dim5_sink.set(item.dim5_sink);
+                    dim6_size.set(item.dim6_size);
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+
+        let id_for_barcodes = nomenclature_id.clone();
         spawn_local(async move {
             set_barcodes_loading.set(true);
-            match fetch_barcodes_by_nomenclature(nomenclature_id).await {
+            match fetch_barcodes_by_nomenclature(id_for_barcodes).await {
                 Ok(data) => set_barcodes.set(Some(data)),
                 Err(_) => set_barcodes.set(None),
             }
             set_barcodes_loading.set(false);
         });
-    }
+    });
 
-    view! {
-        <div class="details-container">
-            <div class="details-header">
-                <h3>
-                    {
-                        let vm = vm_clone.clone();
-                        move || if vm.is_edit_mode()() { "Редактирование номенклатуры" } else { "Новая номенклатура" }
-                    }
-                </h3>
-            </div>
+    let is_edit_mode = Signal::derive(move || id_state.get().is_some());
+    let is_form_valid = Signal::derive(move || !description.get().trim().is_empty());
 
-            {
-                let vm = vm_clone.clone();
-                move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
-            }
+    let handle_save = move |_| {
+        if !is_form_valid.get() {
+            error.set(Some("Наименование обязательно для заполнения".to_string()));
+            return;
+        }
 
-            // Tab buttons
-            <div style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #ddd;">
-                <button
-                    on:click=move |_| set_active_tab.set("general")
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                        if active_tab.get() == "general" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
-                >
-                    "Основная"
-                </button>
-                <button
-                    on:click=move |_| set_active_tab.set("barcodes")
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 500; {}",
-                        if active_tab.get() == "barcodes" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
-                >
-                    {move || {
-                        let count = barcodes.get().map(|b| b.total_count).unwrap_or(0);
-                        format!("Штрихкоды [{}]", count)
-                    }}
-                </button>
-            </div>
+        saving.set(true);
+        error.set(None);
 
-            // Tab content area with fixed height
-            <div style="height: 60vh; overflow: hidden;">
-            {
-                let vm_for_general = vm_clone.clone();
-                move || if active_tab.get() == "general" {
-                    view! {
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; height: 100%; overflow-y: auto; padding: 0 20px;">
-                            // Left column - Main fields
-                            <div class="detail-form">
-                        <div class="form__group">
-                            <label for="description">{"Наименование"}</label>
-                            <input
-                                type="text"
-                                id="description"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().description
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        vm.form.update(|f| f.description = event_target_value(&ev));
-                                    }
-                                }
-                                placeholder="Введите наименование"
-                            />
-                        </div>
+        let dto = NomenclatureDto {
+            id: id_state.get(),
+            code: opt(code.get()),
+            description: description.get(),
+            full_description: opt(full_description.get()),
+            is_folder: is_folder.get(),
+            parent_id: opt(parent_id.get()),
+            article: opt(article.get()),
+            comment: opt(comment.get()),
+            updated_at: None,
+            mp_ref_count: 0,
+            dim1_category: opt(dim1_category.get()),
+            dim2_line: opt(dim2_line.get()),
+            dim3_model: opt(dim3_model.get()),
+            dim4_format: opt(dim4_format.get()),
+            dim5_sink: opt(dim5_sink.get()),
+            dim6_size: opt(dim6_size.get()),
+            is_assembly: None,
+            base_nomenclature_ref: None,
+        };
 
-                        <div class="form__group">
-                            <label for="full_description">{"Полное наименование"}</label>
-                            <input
-                                type="text"
-                                id="full_description"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().full_description.clone().unwrap_or_default()
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        let v = event_target_value(&ev);
-                                        vm.form.update(|f| f.full_description = if v.trim().is_empty() { None } else { Some(v) });
-                                    }
-                                }
-                                placeholder="Полное наименование (опционально)"
-                            />
-                        </div>
-
-                        <div class="form__group">
-                            <label for="code">{"Код"}</label>
-                            <input
-                                type="text"
-                                id="code"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().code.clone().unwrap_or_default()
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        vm.form.update(|f| f.code = Some(event_target_value(&ev)));
-                                    }
-                                }
-                                placeholder="Введите код (необязательно)"
-                            />
-                        </div>
-
-                        <div class="form__group">
-                            <label for="article">{"Артикул"}</label>
-                            <input
-                                type="text"
-                                id="article"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().article.clone().unwrap_or_default()
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        let v = event_target_value(&ev);
-                                        vm.form.update(|f| f.article = if v.trim().is_empty() { None } else { Some(v) });
-                                    }
-                                }
-                                placeholder="Артикул (опционально)"
-                            />
-                        </div>
-
-                        <div class="form__group">
-                            <label for="is_folder">{"Это папка"}</label>
-                            <input
-                                type="checkbox"
-                                id="is_folder"
-                                prop:checked={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().is_folder
-                                }
-                                on:change={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        vm.form.update(|f| f.is_folder = event_target_checked(&ev));
-                                    }
-                                }
-                            />
-                        </div>
-
-                        <div class="form__group">
-                            <label for="parent_id">{"Родитель (UUID)"}</label>
-                            <input
-                                type="text"
-                                id="parent_id"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().parent_id.clone().unwrap_or_default()
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        let v = event_target_value(&ev);
-                                        vm.form.update(|f| f.parent_id = if v.trim().is_empty() { None } else { Some(v) });
-                                    }
-                                }
-                                placeholder="UUID родителя (опционально)"
-                            />
-                        </div>
-
-                        <div class="form__group">
-                            <label for="comment">{"Комментарий"}</label>
-                            <textarea
-                                id="comment"
-                                prop:value={
-                                    let vm = vm_for_general.clone();
-                                    move || vm.form.get().comment.clone().unwrap_or_default()
-                                }
-                                on:input={
-                                    let vm = vm_for_general.clone();
-                                    move |ev| {
-                                        let v = event_target_value(&ev);
-                                        vm.form.update(|f| f.comment = if v.trim().is_empty() { None } else { Some(v) });
-                                    }
-                                }
-                                placeholder="Комментарий (опционально)"
-                            />
-                        </div>
-                    </div>
-
-                    // Right column - Измерения (классификация)
-                    <div>
-                        <h4 style="margin-bottom: 15px; margin-top: 0; color: #333;">{"Измерения"}</h4>
-
-                    <DimensionInput
-                        id="dim1_category"
-                        label="Категория"
-                        placeholder="Категория (макс. 40 символов)"
-                        maxlength=40
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim1_category.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim1_category = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim1_category.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-
-                    <DimensionInput
-                        id="dim2_line"
-                        label="Линейка"
-                        placeholder="Линейка (макс. 40 символов)"
-                        maxlength=40
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim2_line.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim2_line = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim2_line.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-
-                    <DimensionInput
-                        id="dim3_model"
-                        label="Модель"
-                        placeholder="Модель (макс. 80 символов)"
-                        maxlength=80
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim3_model.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim3_model = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim3_model.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-
-                    <DimensionInput
-                        id="dim4_format"
-                        label="Формат"
-                        placeholder="Формат (макс. 20 символов)"
-                        maxlength=20
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim4_format.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim4_format = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim4_format.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-
-                    <DimensionInput
-                        id="dim5_sink"
-                        label="Раковина"
-                        placeholder="Раковина (макс. 40 символов)"
-                        maxlength=40
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim5_sink.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim5_sink = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim5_sink.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-
-                    <DimensionInput
-                        id="dim6_size"
-                        label="Размер"
-                        placeholder="Размер (макс. 20 символов)"
-                        maxlength=20
-                        value={
-                            let vm = vm_for_general.clone();
-                            Signal::derive(move || vm.form.get().dim6_size.clone().unwrap_or_default())
-                        }
-                        on_change={
-                            let vm = vm_for_general.clone();
-                            Callback::new(move |v: String| {
-                                vm.form.update(|f| f.dim6_size = if v.trim().is_empty() { None } else { Some(v) });
-                            })
-                        }
-                        options={
-                            Signal::derive(move || {
-                                dimension_values.get()
-                                    .map(|dims| dims.dim6_size.clone())
-                                    .unwrap_or_default()
-                            })
-                        }
-                    />
-                </div>
-            </div>
-                    }.into_any()
-                } else if active_tab.get() == "barcodes" {
-                    view! {
-                        <div style="height: 100%; overflow-y: auto; padding: 20px;">
-                    {move || {
-                        if barcodes_loading.get() {
-                            view! {
-                                <div style="text-align: center; padding: 20px;">
-                                    "Загрузка штрихкодов..."
-                                </div>
-                            }.into_any()
-                        } else if let Some(data) = barcodes.get() {
-                            if data.barcodes.is_empty() {
-                                view! {
-                                    <div style="text-align: center; padding: 20px; color: #666;">
-                                        "Штрихкоды не найдены"
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! {
-                                    <div>
-                                        <div style="margin-bottom: 15px; color: #666;">
-                                            "Всего штрихкодов: " {data.total_count}
-                                        </div>
-                                        <table style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                            <thead>
-                                                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057;">"Штрихкод"</th>
-                                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057;">"Источник"</th>
-                                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057;">"Артикул"</th>
-                                                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057;">"Дата обновления"</th>
-                                                    <th style="padding: 12px; text-align: center; font-weight: 600; color: #495057;">"Активен"</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {data.barcodes.iter().enumerate().map(|(idx, barcode)| {
-                                                    let bg_color = if idx % 2 == 0 { "#fff" } else { "#f9f9f9" };
-                                                    view! {
-                                                        <tr style={format!("background: {}; border-bottom: 1px solid #eee;", bg_color)}>
-                                                            <td style="padding: 10px; font-family: monospace;">{barcode.barcode.clone()}</td>
-                                                            <td style="padding: 10px;">
-                                                                <span style={format!("padding: 2px 8px; border-radius: 3px; background: {}; color: white; font-size: 11px;",
-                                                                    match barcode.source.as_str() {
-                                                                        "1C" => "#6c757d",
-                                                                        "OZON" => "#0088cc",
-                                                                        "WB" => "#8b00ff",
-                                                                        "YM" => "#fc0",
-                                                                        _ => "#333",
-                                                                    }
-                                                                )}>
-                                                                    {barcode.source.clone()}
-                                                                </span>
-                                                            </td>
-                                                            <td style="padding: 10px;">{barcode.article.clone().unwrap_or_else(|| "-".to_string())}</td>
-                                                            <td style="padding: 10px; font-size: 12px;">{barcode.updated_at.clone()}</td>
-                                                            <td style="padding: 10px; text-align: center;">
-                                                                {if barcode.is_active {
-                                                                    view! { <span style="color: #28a745; font-weight: bold;">"✓"</span> }.into_any()
-                                                                } else {
-                                                                    view! { <span style="color: #dc3545; font-weight: bold;">"✗"</span> }.into_any()
-                                                                }}
-                                                            </td>
-                                                        </tr>
-                                                    }
-                                                }).collect_view()}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }.into_any()
-                            }
-                        } else {
-                            view! {
-                                <div style="text-align: center; padding: 20px; color: #999;">
-                                    "Нет данных"
-                                </div>
-                            }.into_any()
-                        }
-                    }}
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
+        spawn_local(async move {
+            match super::model::save_form(dto).await {
+                Ok(_) => {
+                    saving.set(false);
+                    on_saved.run(());
+                }
+                Err(e) => {
+                    saving.set(false);
+                    error.set(Some(e));
                 }
             }
+        });
+    };
+
+    view! {
+        <div class="details-container nomenclature-details">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    {move || if is_edit_mode.get() { "Редактирование номенклатуры" } else { "Новая номенклатура" }}
+                </h3>
+                <div class="modal-header-actions">
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=handle_save
+                        disabled=Signal::derive(move || saving.get() || !is_form_valid.get())
+                    >
+                        {icon("save")}
+                        " Сохранить"
+                    </Button>
+                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_cancel.run(())>
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
+                </div>
             </div>
 
-            <div class="details-actions">
-                <button
-                    class="button button--primary"
-                    on:click={
-                        let vm = vm_clone.clone();
-                        move |_| {
-                            let cb = Callback::from(move || on_saved.run(()));
-                            vm.save_command(Rc::new(move |_| cb.run(())))()
-                        }
-                    }
-                    disabled={
-                        let vm = vm_clone.clone();
-                        move || !vm.is_form_valid()()
-                    }
-                >
-                    {icon("save")}
-                    {"Сохранить"}
-                </button>
-                <button
-                    class="button button--secondary"
-                    on:click=move |_| on_cancel.run(())
-                >
-                    {icon("cancel")}
-                    {"Отмена"}
-                </button>
+            <div class="modal-body">
+                {move || error.get().map(|e| view! {
+                    <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                        <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                        <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                    </div>
+                })}
+
+                <div class="detail-tabs" style="margin-bottom: var(--spacing-md);">
+                    <button
+                        type="button"
+                        class=move || if active_tab.get() == "general" { "detail-tabs__item detail-tabs__item--active" } else { "detail-tabs__item" }
+                        on:click=move |_| set_active_tab.set("general")
+                    >
+                        "Основная"
+                    </button>
+                    <button
+                        type="button"
+                        class=move || if active_tab.get() == "barcodes" { "detail-tabs__item detail-tabs__item--active" } else { "detail-tabs__item" }
+                        on:click=move |_| set_active_tab.set("barcodes")
+                        disabled=move || !is_edit_mode.get()
+                        title=move || if is_edit_mode.get() { "" } else { "Доступно после сохранения" }
+                    >
+                        <span>"Штрихкоды"</span>
+                        <span class="detail-tabs__badge">
+                            {move || barcodes.get().map(|b| b.total_count).unwrap_or(0)}
+                        </span>
+                    </button>
+                </div>
+
+                <div style="height: 60vh; overflow: hidden;">
+                    {move || if active_tab.get() == "general" {
+                        view! {
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); height: 100%; overflow-y: auto;">
+                                <div class="details-section">
+                                    <h4 class="details-section__title">"Основные поля"</h4>
+                                    <div class="details-grid--3col">
+                                        <div class="form__group" style="grid-column: 1 / -1;">
+                                            <label class="form__label">"Наименование"</label>
+                                            <Input value=description placeholder="Введите наименование" />
+                                        </div>
+
+                                        <div class="form__group" style="grid-column: 1 / -1;">
+                                            <label class="form__label">"Полное наименование"</label>
+                                            <Input value=full_description placeholder="Опционально" />
+                                        </div>
+
+                                        <div class="form__group">
+                                            <label class="form__label">"Код"</label>
+                                            <Input value=code placeholder="Опционально" />
+                                        </div>
+
+                                        <div class="form__group">
+                                            <label class="form__label">"Артикул"</label>
+                                            <Input value=article placeholder="Опционально" />
+                                        </div>
+
+                                        <div class="form__group">
+                                            <label class="form__label">"Родитель (UUID)"</label>
+                                            <Input value=parent_id placeholder="Опционально" />
+                                        </div>
+
+                                        <div class="form__group" style="grid-column: 1 / -1;">
+                                            <label class="form__label">"Комментарий"</label>
+                                            <Textarea value=comment placeholder="Опционально" attr:rows=3 />
+                                        </div>
+
+                                        <div class="details-flags" style="grid-column: 1 / -1;">
+                                            <Checkbox checked=is_folder label="Это папка" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="details-section">
+                                    <h4 class="details-section__title">"Измерения"</h4>
+
+                                    <DimensionInput
+                                        id="dim1_category"
+                                        label="Категория"
+                                        placeholder="Категория (макс. 40 символов)"
+                                        maxlength=40
+                                        value=Signal::derive(move || dim1_category.get())
+                                        on_change=Callback::new(move |v| dim1_category.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim1_category).unwrap_or_default())
+                                    />
+
+                                    <DimensionInput
+                                        id="dim2_line"
+                                        label="Линейка"
+                                        placeholder="Линейка (макс. 40 символов)"
+                                        maxlength=40
+                                        value=Signal::derive(move || dim2_line.get())
+                                        on_change=Callback::new(move |v| dim2_line.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim2_line).unwrap_or_default())
+                                    />
+
+                                    <DimensionInput
+                                        id="dim3_model"
+                                        label="Модель"
+                                        placeholder="Модель (макс. 80 символов)"
+                                        maxlength=80
+                                        value=Signal::derive(move || dim3_model.get())
+                                        on_change=Callback::new(move |v| dim3_model.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim3_model).unwrap_or_default())
+                                    />
+
+                                    <DimensionInput
+                                        id="dim4_format"
+                                        label="Формат"
+                                        placeholder="Формат (макс. 20 символов)"
+                                        maxlength=20
+                                        value=Signal::derive(move || dim4_format.get())
+                                        on_change=Callback::new(move |v| dim4_format.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim4_format).unwrap_or_default())
+                                    />
+
+                                    <DimensionInput
+                                        id="dim5_sink"
+                                        label="Раковина"
+                                        placeholder="Раковина (макс. 40 символов)"
+                                        maxlength=40
+                                        value=Signal::derive(move || dim5_sink.get())
+                                        on_change=Callback::new(move |v| dim5_sink.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim5_sink).unwrap_or_default())
+                                    />
+
+                                    <DimensionInput
+                                        id="dim6_size"
+                                        label="Размер"
+                                        placeholder="Размер (макс. 20 символов)"
+                                        maxlength=20
+                                        value=Signal::derive(move || dim6_size.get())
+                                        on_change=Callback::new(move |v| dim6_size.set(v))
+                                        options=Signal::derive(move || dimension_values.get().map(|d| d.dim6_size).unwrap_or_default())
+                                    />
+                                </div>
+                            </div>
+                        }.into_any()
+                    } else if active_tab.get() == "barcodes" {
+                        view! {
+                            <div style="height: 100%; overflow-y: auto;">
+                                {move || {
+                                    if barcodes_loading.get() {
+                                        view! { <div style="padding: var(--spacing-md); color: var(--color-text-tertiary);">"Загрузка..."</div> }.into_any()
+                                    } else if let Some(data) = barcodes.get() {
+                                        view! {
+                                            <div class="details-section">
+                                                <h4 class="details-section__title">
+                                                    {format!("Штрихкоды ({})", data.total_count)}
+                                                </h4>
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHeaderCell resizable=true min_width=180.0>"Штрихкод"</TableHeaderCell>
+                                                            <TableHeaderCell resizable=true min_width=110.0>"Источник"</TableHeaderCell>
+                                                            <TableHeaderCell resizable=true min_width=120.0>"Артикул"</TableHeaderCell>
+                                                            <TableHeaderCell resizable=true min_width=160.0>"Обновлено"</TableHeaderCell>
+                                                            <TableHeaderCell resizable=false>"Активен"</TableHeaderCell>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {data.barcodes.clone().into_iter().map(|b| {
+                                                            let src = b.source.clone();
+                                                            let badge_color = match src.as_str() {
+                                                                "WB" => BadgeColor::Important,
+                                                                "OZON" => BadgeColor::Brand,
+                                                                "YM" => BadgeColor::Warning,
+                                                                "1C" => BadgeColor::Success,
+                                                                _ => BadgeColor::Brand,
+                                                            };
+                                                            view! {
+                                                                <TableRow>
+                                                                    <TableCell><TableCellLayout truncate=true>{b.barcode.clone()}</TableCellLayout></TableCell>
+                                                                    <TableCell>
+                                                                        <Badge appearance=BadgeAppearance::Tint color=badge_color>
+                                                                            {b.source.clone()}
+                                                                        </Badge>
+                                                                    </TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>{b.article.clone().unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>{b.updated_at.clone()}</TableCellLayout></TableCell>
+                                                                    <TableCell>
+                                                                        {if b.is_active {
+                                                                            view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>"✓"</Badge> }.into_any()
+                                                                        } else {
+                                                                            view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>"✗"</Badge> }.into_any()
+                                                                        }}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            }
+                                                        }).collect_view()}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! { <div style="padding: var(--spacing-md); color: var(--color-text-tertiary);">"Нет данных"</div> }.into_any()
+                                    }
+                                }}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }}
+                </div>
             </div>
         </div>
     }
