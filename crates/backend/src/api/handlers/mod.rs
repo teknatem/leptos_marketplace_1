@@ -28,14 +28,5 @@ pub mod p906_nomenclature_prices;
 // Dashboard handlers (d400)
 pub mod d400_monthly_summary;
 
-// Form settings
-pub mod form_settings;
-
 // UseCase handlers
 pub mod usecases;
-
-// Logging handlers
-pub mod logs;
-
-// System handlers
-pub mod tasks;

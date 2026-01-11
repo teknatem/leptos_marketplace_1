@@ -11,8 +11,8 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::handlers::a016_ym_returns::YmReturnListItemDto;
 use crate::shared::data::db::get_connection;
+use contracts::domain::a016_ym_returns::aggregate::YmReturnListItemDto;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a016_ym_returns")]
@@ -310,7 +310,8 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
             let order_id: i64 = row.try_get("", "order_id").ok()?;
             let return_type: String = row.try_get("", "return_type").unwrap_or_default();
             let refund_status: String = row.try_get("", "refund_status").unwrap_or_default();
-            let created_at_source: String = row.try_get("", "created_at_source").unwrap_or_default();
+            let created_at_source: String =
+                row.try_get("", "created_at_source").unwrap_or_default();
             let fetched_at: String = row.try_get("", "fetched_at").unwrap_or_default();
             let lines_json: String = row.try_get("", "lines_json").unwrap_or_default();
             let is_posted: bool = row.try_get::<i32>("", "is_posted").unwrap_or(0) == 1;

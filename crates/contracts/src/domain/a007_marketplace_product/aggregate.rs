@@ -299,3 +299,23 @@ pub struct MarketplaceProductDto {
     pub nomenclature_ref: Option<String>,
     pub comment: Option<String>,
 }
+
+// =============================================================================
+// List DTO for frontend (flat structure for list views)
+// =============================================================================
+
+/// DTO для списка товаров маркетплейса (минимальные поля для list view)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceProductListItemDto {
+    pub id: String,
+    pub code: String,
+    pub description: String,
+    pub marketplace_ref: String,
+    pub connection_mp_ref: String,
+    pub marketplace_sku: String,
+    pub barcode: Option<String>,
+    pub article: String,
+    pub nomenclature_ref: Option<String>,
+    pub is_posted: bool,
+    pub created_at: String,
+}

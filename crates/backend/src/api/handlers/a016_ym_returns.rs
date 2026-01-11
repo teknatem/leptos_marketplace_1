@@ -1,6 +1,6 @@
 use axum::{extract::Query, Json};
 use chrono::NaiveDate;
-use contracts::domain::a016_ym_returns::aggregate::YmReturn;
+use contracts::domain::a016_ym_returns::aggregate::{YmReturn, YmReturnListItemDto};
 use contracts::domain::common::AggregateId;
 use sea_orm::Statement;
 use serde::{Deserialize, Serialize};
@@ -9,21 +9,6 @@ use uuid::Uuid;
 use crate::domain::a016_ym_returns;
 use crate::shared::data::db::get_connection;
 use crate::shared::data::raw_storage;
-
-/// DTO для списка возвратов (минимальные поля)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmReturnListItemDto {
-    pub id: String,
-    pub return_id: i64,
-    pub order_id: i64,
-    pub return_type: String,
-    pub refund_status: String,
-    pub total_items: i32,
-    pub total_amount: f64,
-    pub created_at_source: String,
-    pub fetched_at: String,
-    pub is_posted: bool,
-}
 
 /// Серверные итоги по датасету
 #[derive(Debug, Clone, Serialize, Deserialize)]

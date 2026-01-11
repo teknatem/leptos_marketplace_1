@@ -7,6 +7,7 @@ use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::list_utils::{
     format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
 };
+use contracts::domain::a013_ym_order::aggregate::YmOrderListDto;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -26,7 +27,7 @@ pub struct Organization {
 /// Paginated response from backend API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse {
-    pub items: Vec<YmOrderDto>,
+    pub items: Vec<YmOrderListDto>,
     pub total: usize,
 }
 
@@ -43,38 +44,9 @@ fn format_date(iso_date: &str) -> String {
     iso_date.to_string() // fallback
 }
 
-/// DTO для списка заказов (соответствует backend YmOrderListDto)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YmOrderDto {
-    pub id: String,
-    pub document_no: String,
-    #[serde(default)]
-    pub status_changed_at: String,
-    #[serde(default)]
-    pub creation_date: String,
-    #[serde(default)]
-    pub delivery_date: String,
-    #[serde(default)]
-    pub campaign_id: String,
-    #[serde(default)]
-    pub status_norm: String,
-    #[serde(default)]
-    pub total_qty: f64,
-    #[serde(default)]
-    pub total_amount: f64,
-    pub total_amount_api: Option<f64>,
-    #[serde(default)]
-    pub lines_count: usize,
-    pub delivery_total: Option<f64>,
-    #[serde(default)]
-    pub subsidies_total: f64,
-    #[serde(default)]
-    pub is_posted: bool,
-    #[serde(default)]
-    pub is_error: bool,
-}
+// YmOrderListDto imported from contracts::domain::a013_ym_order::aggregate
 
-impl Sortable for YmOrderDto {
+impl Sortable for YmOrderListDto {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
             "document_no" => self
@@ -244,7 +216,7 @@ pub fn YmOrderList() -> impl IntoView {
     };
 
     // Get items (sorting is now done on server) - no clone, returns reference via signal
-    let get_items = move || -> Vec<YmOrderDto> { state.with(|s| s.orders.clone()) };
+    let get_items = move || -> Vec<YmOrderListDto> { state.with(|s| s.orders.clone()) };
 
     // Мемоизированные итоги - вычисляются только при изменении orders
     let totals = Memo::new(move |_| {
