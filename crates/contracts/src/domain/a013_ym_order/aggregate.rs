@@ -314,3 +314,38 @@ impl AggregateRoot for YmOrder {
         Origin::Marketplace
     }
 }
+
+// =============================================================================
+// List DTO for frontend (flat structure for list views)
+// =============================================================================
+
+/// DTO для списка заказов (минимальные поля для list view)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderListDto {
+    pub id: String,
+    pub document_no: String,
+    #[serde(default)]
+    pub status_changed_at: String,
+    #[serde(default)]
+    pub creation_date: String,
+    #[serde(default)]
+    pub delivery_date: String,
+    #[serde(default)]
+    pub campaign_id: String,
+    #[serde(default)]
+    pub status_norm: String,
+    #[serde(default)]
+    pub total_qty: f64,
+    #[serde(default)]
+    pub total_amount: f64,
+    pub total_amount_api: Option<f64>,
+    #[serde(default)]
+    pub lines_count: usize,
+    pub delivery_total: Option<f64>,
+    #[serde(default)]
+    pub subsidies_total: f64,
+    #[serde(default)]
+    pub is_posted: bool,
+    #[serde(default)]
+    pub is_error: bool,
+}

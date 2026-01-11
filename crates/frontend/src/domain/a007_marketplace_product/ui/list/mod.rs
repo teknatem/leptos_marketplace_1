@@ -12,6 +12,7 @@ use crate::shared::list_utils::{
     get_sort_class, get_sort_indicator, highlight_matches,
 };
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
+use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use contracts::domain::common::AggregateId;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -19,21 +20,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use thaw::*;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MarketplaceProductListItemDto {
-    pub id: String,
-    pub code: String,
-    pub description: String,
-    pub marketplace_ref: String,
-    pub connection_mp_ref: String,
-    pub marketplace_sku: String,
-    pub barcode: Option<String>,
-    pub article: String,
-    pub nomenclature_ref: Option<String>,
-    pub is_posted: bool,
-    pub created_at: String,
-}
 
 impl ExcelExportable for MarketplaceProductListItemDto {
     fn headers() -> Vec<&'static str> {

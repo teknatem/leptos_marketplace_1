@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768083967",
+  "generated_at_utc": "unix:1768139163",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -8,20 +8,20 @@
   ],
   "totals": {
     "backend": {
-      "files": 207,
-      "lines": 36980
+      "files": 210,
+      "lines": 36959
     },
     "contracts": {
       "files": 109,
-      "lines": 8693
+      "lines": 8767
     },
     "frontend": {
       "files": 244,
-      "lines": 47686
+      "lines": 47616
     },
     "total": {
-      "files": 560,
-      "lines": 93359
+      "files": 563,
+      "lines": 93342
     }
   },
   "aggregates": {
@@ -29,19 +29,19 @@
     "totals": {
       "backend": {
         "files": 58,
-        "lines": 7721
+        "lines": 7722
       },
       "contracts": {
         "files": 42,
-        "lines": 5505
+        "lines": 5579
       },
       "frontend": {
         "files": 98,
-        "lines": 27449
+        "lines": 27379
       },
       "total": {
         "files": 198,
-        "lines": 40675
+        "lines": 40680
       }
     },
     "items": [
@@ -201,15 +201,15 @@
           },
           "contracts": {
             "files": 2,
-            "lines": 302
+            "lines": 322
           },
           "frontend": {
             "files": 8,
-            "lines": 1481
+            "lines": 1467
           },
           "total": {
             "files": 13,
-            "lines": 2425
+            "lines": 2431
           }
         }
       },
@@ -345,15 +345,15 @@
           },
           "contracts": {
             "files": 2,
-            "lines": 318
+            "lines": 353
           },
           "frontend": {
             "files": 6,
-            "lines": 3594
+            "lines": 3538
           },
           "total": {
             "files": 12,
-            "lines": 5016
+            "lines": 4995
           }
         }
       },
@@ -413,11 +413,11 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 461
+            "lines": 462
           },
           "contracts": {
             "files": 2,
-            "lines": 304
+            "lines": 323
           },
           "frontend": {
             "files": 5,
@@ -425,7 +425,7 @@
           },
           "total": {
             "files": 11,
-            "lines": 2549
+            "lines": 2569
           }
         }
       },

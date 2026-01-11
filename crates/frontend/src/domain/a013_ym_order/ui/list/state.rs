@@ -1,9 +1,9 @@
-use super::YmOrderDto;
+use contracts::domain::a013_ym_order::aggregate::YmOrderListDto;
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct YmOrderState {
-    pub orders: Vec<YmOrderDto>,
+    pub orders: Vec<YmOrderListDto>,
     pub date_from: String,
     pub date_to: String,
     pub selected_organization_id: Option<String>,

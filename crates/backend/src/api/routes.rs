@@ -1,57 +1,15 @@
 use axum::{
-    middleware,
     routing::{get, post},
     Router,
 };
 
-use crate::{handlers, system};
+use super::handlers;
 
-/// Конфигурация всех роутов приложения
-pub fn configure_routes() -> Router {
+/// Конфигурация бизнес-роутов приложения
+pub fn configure_business_routes() -> Router {
     Router::new()
-        .route("/health", get(|| async { "ok" }))
         // ========================================
-        // SYSTEM AUTH ROUTES (PUBLIC)
-        // ========================================
-        .route(
-            "/api/system/auth/login",
-            post(system::handlers::auth::login),
-        )
-        .route(
-            "/api/system/auth/refresh",
-            post(system::handlers::auth::refresh),
-        )
-        .route(
-            "/api/system/auth/logout",
-            post(system::handlers::auth::logout),
-        )
-        // System auth routes (protected)
-        .route(
-            "/api/system/auth/me",
-            get(system::handlers::auth::current_user)
-                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
-        )
-        // System users management (admin only)
-        .route(
-            "/api/system/users",
-            get(system::handlers::users::list)
-                .post(system::handlers::users::create)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
-        )
-        .route(
-            "/api/system/users/:id",
-            get(system::handlers::users::get_by_id)
-                .put(system::handlers::users::update)
-                .delete(system::handlers::users::delete)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
-        )
-        .route(
-            "/api/system/users/:id/change-password",
-            post(system::handlers::users::change_password)
-                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
-        )
-        // ========================================
-        // BUSINESS ROUTES (existing, without auth for now)
+        // AGGREGATES (A001-A016)
         // ========================================
         // A001 Connection 1C handlers
         .route(
@@ -421,7 +379,7 @@ pub fn configure_routes() -> Router {
             post(handlers::a016_ym_returns::batch_unpost_documents),
         )
         // ========================================
-        // USECASES
+        // USECASES (U501-U506)
         // ========================================
         // UseCase u501: Import from UT
         .route(
@@ -478,38 +436,7 @@ pub fn configure_routes() -> Router {
             get(handlers::usecases::u506_get_progress),
         )
         // ========================================
-        // SYSTEM SCHEDULED TASKS ROUTES
-        // ========================================
-        .route(
-            "/api/sys/scheduled_tasks",
-            get(handlers::tasks::list_scheduled_tasks)
-                .post(handlers::tasks::create_scheduled_task)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
-        )
-        .route(
-            "/api/sys/scheduled_tasks/:id",
-            get(handlers::tasks::get_scheduled_task)
-                .put(handlers::tasks::update_scheduled_task)
-                .delete(handlers::tasks::delete_scheduled_task)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
-        )
-        .route(
-            "/api/sys/scheduled_tasks/:id/toggle_enabled",
-            post(handlers::tasks::toggle_scheduled_task_enabled)
-                .layer(middleware::from_fn(system::auth::middleware::require_admin)),
-        )
-        .route(
-            "/api/sys/scheduled_tasks/:id/progress/:session_id",
-            get(handlers::tasks::get_task_progress)
-                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
-        )
-        .route(
-            "/api/sys/scheduled_tasks/:id/log/:session_id",
-            get(handlers::tasks::get_task_log)
-                .layer(middleware::from_fn(system::auth::middleware::require_auth)),
-        )
-        // ========================================
-        // PROJECTIONS
+        // PROJECTIONS (P900-P906)
         // ========================================
         // P900 Sales Register handlers
         .route(
@@ -610,30 +537,11 @@ pub fn configure_routes() -> Router {
             get(handlers::p906_nomenclature_prices::get_periods),
         )
         // ========================================
-        // DASHBOARDS
+        // DASHBOARDS (D400)
         // ========================================
         // D400 Monthly Summary Dashboard
         .route(
             "/api/d400/monthly_summary",
             get(handlers::d400_monthly_summary::get_monthly_summary),
-        )
-        // ========================================
-        // UTILITIES
-        // ========================================
-        // Logs handlers
-        .route(
-            "/api/logs",
-            get(handlers::logs::list_all)
-                .post(handlers::logs::create)
-                .delete(handlers::logs::clear_all),
-        )
-        // Form Settings handlers
-        .route(
-            "/api/form-settings/:form_key",
-            get(handlers::form_settings::get_settings),
-        )
-        .route(
-            "/api/form-settings",
-            post(handlers::form_settings::save_settings),
         )
 }

@@ -300,3 +300,22 @@ impl AggregateRoot for YmReturn {
     }
 }
 
+// =============================================================================
+// List DTO for frontend (flat structure for list views)
+// =============================================================================
+
+/// DTO для списка возвратов (минимальные поля для list view)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmReturnListItemDto {
+    pub id: String,
+    pub return_id: i64,
+    pub order_id: i64,
+    pub return_type: String,
+    pub refund_status: String,
+    pub total_items: i32,
+    pub total_amount: f64,
+    pub created_at_source: String,
+    pub fetched_at: String,
+    pub is_posted: bool,
+}
+

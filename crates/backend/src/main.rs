@@ -13,11 +13,10 @@
     clippy::derivable_impls
 )]
 
+pub mod api;
 pub mod dashboards;
 pub mod domain;
-pub mod handlers;
 pub mod projections;
-pub mod routes;
 pub mod shared;
 pub mod system;
 pub mod usecases;
@@ -66,7 +65,9 @@ async fn main() -> anyhow::Result<()> {
         .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION]);
 
     // 6. Build app with routes
-    let app = routes::configure_routes()
+    let app = axum::Router::new()
+        .merge(system::api::configure_system_routes())
+        .merge(api::configure_business_routes())
         .fallback_service(ServeDir::new("dist"))
         .layer(middleware::from_fn(
             system::middleware::request_logger::request_logger,

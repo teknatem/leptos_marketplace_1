@@ -1,6 +1,6 @@
 use axum::{extract::Query, Json};
 use chrono::NaiveDate;
-use contracts::domain::a013_ym_order::aggregate::YmOrder;
+use contracts::domain::a013_ym_order::aggregate::{YmOrder, YmOrderListDto};
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -46,26 +46,6 @@ fn default_sort_desc() -> bool {
 
 fn default_limit() -> usize {
     1000
-}
-
-/// DTO для быстрого списка (frontend)
-#[derive(Debug, Serialize)]
-pub struct YmOrderListDto {
-    pub id: String,
-    pub document_no: String,
-    pub status_changed_at: String,
-    pub creation_date: String,
-    pub delivery_date: String,
-    pub campaign_id: String,
-    pub status_norm: String,
-    pub total_qty: f64,
-    pub total_amount: f64,
-    pub total_amount_api: Option<f64>,
-    pub lines_count: usize,
-    pub delivery_total: Option<f64>,
-    pub subsidies_total: f64,
-    pub is_posted: bool,
-    pub is_error: bool,
 }
 
 /// Response для быстрого списка

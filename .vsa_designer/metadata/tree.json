@@ -10,6 +10,275 @@
       ],
       "children": [
         {
+          "name": "api",
+          "kind": "category",
+          "origins": [
+            "backend"
+          ],
+          "children": [
+            {
+              "name": "(no object)",
+              "kind": "domain_unit",
+              "origins": [
+                "backend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/api/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/routes.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "handlers",
+              "kind": "domain_unit",
+              "origins": [
+                "backend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/api/handlers/a001_connection_1c.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a002_organization.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a003_counterparty.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a004_nomenclature.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a005_marketplace.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a006_connection_mp.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a007_marketplace_product.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a008_marketplace_sales.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a009_ozon_returns.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a010_ozon_fbs_posting.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a011_ozon_fbo_posting.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a012_wb_sales.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a013_ym_order.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a014_ozon_transactions.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a015_wb_orders.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a016_ym_returns.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/d400_monthly_summary.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p900_mp_sales_register.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p901_nomenclature_barcodes.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p902_ozon_finance_realization.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p903_wb_finance_report.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p904_sales_data.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p905_wb_commission_history.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/p906_nomenclature_prices.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/usecases.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "dashboards",
           "kind": "category",
           "origins": [
@@ -3051,265 +3320,6 @@
           ]
         },
         {
-          "name": "handlers",
-          "kind": "category",
-          "origins": [
-            "backend"
-          ],
-          "children": [
-            {
-              "name": "(no object)",
-              "kind": "domain_unit",
-              "origins": [
-                "backend"
-              ],
-              "children": [
-                {
-                  "name": "src",
-                  "kind": "src",
-                  "origins": [
-                    "backend"
-                  ],
-                  "children": [
-                    {
-                      "name": "crates/backend/src/handlers/a001_connection_1c.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a002_organization.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a003_counterparty.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a004_nomenclature.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a005_marketplace.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a006_connection_mp.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a007_marketplace_product.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a008_marketplace_sales.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a009_ozon_returns.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a010_ozon_fbs_posting.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a011_ozon_fbo_posting.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a012_wb_sales.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a013_ym_order.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a014_ozon_transactions.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a015_wb_orders.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/a016_ym_returns.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/d400_monthly_summary.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/form_settings.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/logs.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p900_sales_register.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p901_barcodes.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p902_ozon_finance_realization.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p903_wb_finance_report.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p904_sales_data.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p905_wb_commission_history.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/p906_nomenclature_prices.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/sys_scheduled_task.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/handlers/usecases.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
           "name": "layout",
           "kind": "category",
           "origins": [
@@ -3675,14 +3685,6 @@
                   "children": [
                     {
                       "name": "crates/backend/src/main.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/routes.rs",
                       "kind": "file",
                       "origins": [
                         "backend"
@@ -5229,23 +5231,7 @@
                       "children": []
                     },
                     {
-                      "name": "crates/contracts/src/system/auth.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
                       "name": "crates/contracts/src/system/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/users.rs",
                       "kind": "file",
                       "origins": [
                         "contracts"
@@ -5265,10 +5251,93 @@
               ]
             },
             {
+              "name": "api",
+              "kind": "domain_unit",
+              "origins": [
+                "backend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/system/api/handlers/auth.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/handlers/form_settings.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/handlers/logs.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/handlers/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/handlers/tasks.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/handlers/users.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/api/routes.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
               "name": "auth",
               "kind": "domain_unit",
               "origins": [
                 "backend",
+                "contracts",
                 "frontend"
               ],
               "children": [
@@ -5277,6 +5346,7 @@
                   "kind": "src",
                   "origins": [
                     "backend",
+                    "contracts",
                     "frontend"
                   ],
                   "children": [
@@ -5321,6 +5391,14 @@
                       "children": []
                     },
                     {
+                      "name": "crates/contracts/src/system/auth/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
                       "name": "crates/frontend/src/system/auth/api.rs",
                       "kind": "file",
                       "origins": [
@@ -5357,48 +5435,6 @@
                       "kind": "file",
                       "origins": [
                         "frontend"
-                      ],
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "name": "handlers",
-              "kind": "domain_unit",
-              "origins": [
-                "backend"
-              ],
-              "children": [
-                {
-                  "name": "src",
-                  "kind": "src",
-                  "origins": [
-                    "backend"
-                  ],
-                  "children": [
-                    {
-                      "name": "crates/backend/src/system/handlers/auth.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/handlers/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/handlers/users.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
                       ],
                       "children": []
                     }
@@ -5483,173 +5519,11 @@
               ]
             },
             {
-              "name": "sys_scheduled_task",
-              "kind": "domain_unit",
-              "origins": [
-                "backend",
-                "contracts"
-              ],
-              "children": [
-                {
-                  "name": "src",
-                  "kind": "src",
-                  "origins": [
-                    "backend",
-                    "contracts"
-                  ],
-                  "children": [
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/initialization.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/logger.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/manager.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/managers/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/managers/u501_import_ut.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/managers/u502_import_ozon.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/managers/u503_import_yandex.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/managers/u504_import_wildberries.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/registry.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/repository.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/service.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/backend/src/system/sys_scheduled_task/worker.rs",
-                      "kind": "file",
-                      "origins": [
-                        "backend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/sys_scheduled_task/aggregate.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/sys_scheduled_task/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/sys_scheduled_task/progress.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/sys_scheduled_task/request.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/contracts/src/system/sys_scheduled_task/response.rs",
-                      "kind": "file",
-                      "origins": [
-                        "contracts"
-                      ],
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
               "name": "tasks",
               "kind": "domain_unit",
               "origins": [
+                "backend",
+                "contracts",
                 "frontend"
               ],
               "children": [
@@ -5657,9 +5531,155 @@
                   "name": "src",
                   "kind": "src",
                   "origins": [
+                    "backend",
+                    "contracts",
                     "frontend"
                   ],
                   "children": [
+                    {
+                      "name": "crates/backend/src/system/tasks/initialization.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/logger.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/manager.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/managers/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/managers/u501_import_ut.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/managers/u502_import_ozon.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/managers/u503_import_yandex.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/managers/u504_import_wildberries.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/registry.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/repository.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/service.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/system/tasks/worker.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/tasks/aggregate.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/tasks/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/tasks/progress.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/tasks/request.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/tasks/response.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
                     {
                       "name": "crates/frontend/src/system/tasks/api.rs",
                       "kind": "file",
@@ -5717,6 +5737,7 @@
               "kind": "domain_unit",
               "origins": [
                 "backend",
+                "contracts",
                 "frontend"
               ],
               "children": [
@@ -5725,6 +5746,7 @@
                   "kind": "src",
                   "origins": [
                     "backend",
+                    "contracts",
                     "frontend"
                   ],
                   "children": [
@@ -5749,6 +5771,14 @@
                       "kind": "file",
                       "origins": [
                         "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/system/users/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
                       ],
                       "children": []
                     },

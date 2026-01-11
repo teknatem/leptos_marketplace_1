@@ -1,24 +1,9 @@
 use axum::{extract::Path, extract::Query, Json};
-use contracts::domain::common::AggregateId;
+use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a007_marketplace_product;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MarketplaceProductListItemDto {
-    pub id: String,
-    pub code: String,
-    pub description: String,
-    pub marketplace_ref: String,
-    pub connection_mp_ref: String,
-    pub marketplace_sku: String,
-    pub barcode: Option<String>,
-    pub article: String,
-    pub nomenclature_ref: Option<String>,
-    pub is_posted: bool,
-    pub created_at: String,
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PaginatedMarketplaceProductResponse {

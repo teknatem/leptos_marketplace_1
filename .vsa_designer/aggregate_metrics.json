@@ -20,7 +20,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 4638
+          "handler_file": 0
         }
       },
       "a002_organization": {
@@ -42,7 +42,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 2493
+          "handler_file": 0
         }
       },
       "a003_counterparty": {
@@ -64,7 +64,7 @@
           "tree": 20906
         },
         "handlers": {
-          "handler_file": 2203
+          "handler_file": 0
         }
       },
       "a004_nomenclature": {
@@ -86,7 +86,7 @@
           "tree": 30018
         },
         "handlers": {
-          "handler_file": 5922
+          "handler_file": 0
         }
       },
       "a005_marketplace": {
@@ -108,7 +108,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 2460
+          "handler_file": 0
         }
       },
       "a006_connection_mp": {
@@ -130,7 +130,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 2788
+          "handler_file": 0
         }
       },
       "a007_marketplace_product": {
@@ -141,18 +141,18 @@
           "service.rs": 13334
         },
         "contracts": {
-          "aggregate.rs": 9553,
+          "aggregate.rs": 10331,
           "misc": 20
         },
         "frontend": {
           "details": 37640,
-          "list": 26528,
+          "list": 26186,
           "misc": 46,
           "picker": 0,
           "tree": 0
         },
         "handlers": {
-          "handler_file": 6167
+          "handler_file": 0
         }
       },
       "a008_marketplace_sales": {
@@ -174,7 +174,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 2378
+          "handler_file": 0
         }
       },
       "a009_ozon_returns": {
@@ -196,7 +196,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 3834
+          "handler_file": 0
         }
       },
       "a010_ozon_fbs_posting": {
@@ -218,7 +218,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 5307
+          "handler_file": 0
         }
       },
       "a011_ozon_fbo_posting": {
@@ -240,7 +240,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 4346
+          "handler_file": 0
         }
       },
       "a012_wb_sales": {
@@ -262,7 +262,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 23810
+          "handler_file": 0
         }
       },
       "a013_ym_order": {
@@ -273,18 +273,18 @@
           "service.rs": 14797
         },
         "contracts": {
-          "aggregate.rs": 10291,
+          "aggregate.rs": 11399,
           "misc": 22
         },
         "frontend": {
           "details": 78130,
-          "list": 124087,
+          "list": 122685,
           "misc": 43,
           "picker": 0,
           "tree": 0
         },
         "handlers": {
-          "handler_file": 11973
+          "handler_file": 0
         }
       },
       "a014_ozon_transactions": {
@@ -306,7 +306,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 6256
+          "handler_file": 0
         }
       },
       "a015_wb_orders": {
@@ -328,18 +328,18 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 9665
+          "handler_file": 0
         }
       },
       "a016_ym_returns": {
         "backend": {
           "misc": 59,
           "posting.rs": 2126,
-          "repository.rs": 12878,
+          "repository.rs": 12908,
           "service.rs": 1608
         },
         "contracts": {
-          "aggregate.rs": 9217,
+          "aggregate.rs": 9906,
           "misc": 22
         },
         "frontend": {
@@ -350,7 +350,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 14553
+          "handler_file": 0
         }
       },
       "common": {
@@ -396,7 +396,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 137
+          "handler_file": 0
         }
       },
       "a002_organization": {
@@ -418,7 +418,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 74
+          "handler_file": 0
         }
       },
       "a003_counterparty": {
@@ -440,7 +440,7 @@
           "tree": 534
         },
         "handlers": {
-          "handler_file": 65
+          "handler_file": 0
         }
       },
       "a004_nomenclature": {
@@ -462,7 +462,7 @@
           "tree": 733
         },
         "handlers": {
-          "handler_file": 177
+          "handler_file": 0
         }
       },
       "a005_marketplace": {
@@ -484,7 +484,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 71
+          "handler_file": 0
         }
       },
       "a006_connection_mp": {
@@ -506,7 +506,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 81
+          "handler_file": 0
         }
       },
       "a007_marketplace_product": {
@@ -517,18 +517,18 @@
           "service.rs": 345
         },
         "contracts": {
-          "aggregate.rs": 301,
+          "aggregate.rs": 321,
           "misc": 1
         },
         "frontend": {
           "details": 851,
-          "list": 627,
+          "list": 613,
           "misc": 3,
           "picker": 0,
           "tree": 0
         },
         "handlers": {
-          "handler_file": 177
+          "handler_file": 0
         }
       },
       "a008_marketplace_sales": {
@@ -550,7 +550,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 68
+          "handler_file": 0
         }
       },
       "a009_ozon_returns": {
@@ -572,7 +572,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 110
+          "handler_file": 0
         }
       },
       "a010_ozon_fbs_posting": {
@@ -594,7 +594,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 146
+          "handler_file": 0
         }
       },
       "a011_ozon_fbo_posting": {
@@ -616,7 +616,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 122
+          "handler_file": 0
         }
       },
       "a012_wb_sales": {
@@ -638,7 +638,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 699
+          "handler_file": 0
         }
       },
       "a013_ym_order": {
@@ -649,18 +649,18 @@
           "service.rs": 388
         },
         "contracts": {
-          "aggregate.rs": 316,
+          "aggregate.rs": 351,
           "misc": 2
         },
         "frontend": {
           "details": 1126,
-          "list": 2465,
+          "list": 2409,
           "misc": 3,
           "picker": 0,
           "tree": 0
         },
         "handlers": {
-          "handler_file": 360
+          "handler_file": 0
         }
       },
       "a014_ozon_transactions": {
@@ -682,7 +682,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 169
+          "handler_file": 0
         }
       },
       "a015_wb_orders": {
@@ -704,18 +704,18 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 246
+          "handler_file": 0
         }
       },
       "a016_ym_returns": {
         "backend": {
           "misc": 4,
           "posting.rs": 55,
-          "repository.rs": 350,
+          "repository.rs": 351,
           "service.rs": 52
         },
         "contracts": {
-          "aggregate.rs": 302,
+          "aggregate.rs": 321,
           "misc": 2
         },
         "frontend": {
@@ -726,7 +726,7 @@
           "tree": 0
         },
         "handlers": {
-          "handler_file": 423
+          "handler_file": 0
         }
       },
       "common": {
