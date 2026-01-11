@@ -1,5 +1,5 @@
 use chrono::Utc;
-use contracts::system::sys_scheduled_task::aggregate::{
+use contracts::system::tasks::aggregate::{
     ScheduledTask, ScheduledTaskId,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
@@ -11,7 +11,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "sys_scheduled_tasks")]
+#[sea_orm(table_name = "sys_tasks")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,

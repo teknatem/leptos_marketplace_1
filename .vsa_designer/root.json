@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768070285",
+  "generated_at_utc": "unix:1768083967",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -17,11 +17,11 @@
     },
     "frontend": {
       "files": 244,
-      "lines": 47995
+      "lines": 47686
     },
     "total": {
       "files": 560,
-      "lines": 93668
+      "lines": 93359
     }
   },
   "aggregates": {

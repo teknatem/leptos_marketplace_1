@@ -3395,14 +3395,6 @@
                         "frontend"
                       ],
                       "children": []
-                    },
-                    {
-                      "name": "crates/frontend/src/layout/center/tabs/tabs.rs",
-                      "kind": "file",
-                      "origins": [
-                        "frontend"
-                      ],
-                      "children": []
                     }
                   ]
                 }
@@ -3549,14 +3541,6 @@
                       "children": []
                     },
                     {
-                      "name": "crates/frontend/src/layout/right/panel/logs_api.rs",
-                      "kind": "file",
-                      "origins": [
-                        "frontend"
-                      ],
-                      "children": []
-                    },
-                    {
                       "name": "crates/frontend/src/layout/right/panel/mod.rs",
                       "kind": "file",
                       "origins": [
@@ -3574,6 +3558,48 @@
                     },
                     {
                       "name": "crates/frontend/src/layout/right/right.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "tabs",
+              "kind": "domain_unit",
+              "origins": [
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/frontend/src/layout/tabs/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/layout/tabs/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/layout/tabs/registry.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"
@@ -3673,6 +3699,14 @@
                     },
                     {
                       "name": "crates/frontend/src/app.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/app_shell.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"
@@ -4376,49 +4410,6 @@
                     },
                     {
                       "name": "crates/frontend/src/projections/p906_nomenclature_prices/ui/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "frontend"
-                      ],
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "routes",
-          "kind": "category",
-          "origins": [
-            "frontend"
-          ],
-          "children": [
-            {
-              "name": "(no object)",
-              "kind": "domain_unit",
-              "origins": [
-                "frontend"
-              ],
-              "children": [
-                {
-                  "name": "src",
-                  "kind": "src",
-                  "origins": [
-                    "frontend"
-                  ],
-                  "children": [
-                    {
-                      "name": "crates/frontend/src/routes/mod.rs",
-                      "kind": "file",
-                      "origins": [
-                        "frontend"
-                      ],
-                      "children": []
-                    },
-                    {
-                      "name": "crates/frontend/src/routes/routes.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"

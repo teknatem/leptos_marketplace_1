@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
-use contracts::system::sys_scheduled_task::aggregate::{ScheduledTask, ScheduledTaskId};
-use contracts::system::sys_scheduled_task::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
-use crate::system::sys_scheduled_task::repository;
+use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
+use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
+use crate::system::tasks::repository;
 use uuid::Uuid;
 
 pub async fn list_all() -> Result<Vec<ScheduledTask>> {

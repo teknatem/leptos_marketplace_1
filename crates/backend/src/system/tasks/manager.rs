@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use contracts::system::sys_scheduled_task::aggregate::ScheduledTask;
-use contracts::system::sys_scheduled_task::progress::TaskProgress;
+use contracts::system::tasks::aggregate::ScheduledTask;
+use contracts::system::tasks::progress::TaskProgress;
 use std::sync::Arc;
 
 /// Трейт для менеджеров запланированных задач.

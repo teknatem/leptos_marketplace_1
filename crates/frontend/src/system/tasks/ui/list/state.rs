@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use contracts::system::sys_scheduled_task::response::ScheduledTaskResponse;
+use contracts::system::tasks::response::ScheduledTaskResponse;
 
 #[derive(Debug, Clone, Default)]
 pub struct ScheduledTaskListState {

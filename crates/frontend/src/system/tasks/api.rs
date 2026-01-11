@@ -1,10 +1,10 @@
-use contracts::system::sys_scheduled_task::request::{
+use contracts::system::tasks::request::{
     CreateScheduledTaskDto, UpdateScheduledTaskDto, ToggleScheduledTaskEnabledDto,
 };
-use contracts::system::sys_scheduled_task::response::{
+use contracts::system::tasks::response::{
     ScheduledTaskResponse, ScheduledTaskListResponse,
 };
-use contracts::system::sys_scheduled_task::progress::TaskProgressResponse;
+use contracts::system::tasks::progress::TaskProgressResponse;
 use gloo_net::http::Request;
 use crate::system::auth::storage;
 

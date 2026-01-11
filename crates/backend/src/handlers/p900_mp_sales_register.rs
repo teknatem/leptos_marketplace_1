@@ -192,4 +192,3 @@ pub async fn get_by_registrator(
 
     Ok(Json(dtos))
 }
-

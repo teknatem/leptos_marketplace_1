@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     system::initialization::ensure_admin_user_exists().await?;
 
     // 4.1. Initialize scheduled tasks
-    let worker = system::sys_scheduled_task::initialization::initialize_scheduled_tasks().await?;
+    let worker = system::tasks::initialization::initialize_scheduled_tasks().await?;
 
     // 4.2. Start background worker for scheduled tasks
     tokio::spawn(async move {

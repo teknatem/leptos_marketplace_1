@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::system::sys_scheduled_task::aggregate::ScheduledTask;
+use crate::system::tasks::aggregate::ScheduledTask;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduledTaskResponse {

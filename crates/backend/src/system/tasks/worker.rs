@@ -11,7 +11,7 @@ use super::{
     registry::TaskManagerRegistry,
     service,
 };
-use contracts::system::sys_scheduled_task::progress::TaskStatus;
+use contracts::system::tasks::progress::TaskStatus;
 
 /// Фоновый воркер для выполнения запланированных задач.
 pub struct ScheduledTaskWorker {
