@@ -1,29 +1,29 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use contracts::system::sys_scheduled_task::aggregate::ScheduledTask;
-use contracts::system::sys_scheduled_task::progress::TaskProgress;
-use contracts::usecases::u502_import_from_ozon::request::ImportRequest;
+use contracts::system::tasks::aggregate::ScheduledTask;
+use contracts::system::tasks::progress::TaskProgress;
+use contracts::usecases::u503_import_from_yandex::request::ImportRequest;
 use std::sync::Arc;
 
-use crate::system::sys_scheduled_task::logger::TaskLogger;
-use crate::system::sys_scheduled_task::manager::TaskManager;
-use crate::usecases::u502_import_from_ozon::ImportExecutor;
+use crate::system::tasks::logger::TaskLogger;
+use crate::system::tasks::manager::TaskManager;
+use crate::usecases::u503_import_from_yandex::ImportExecutor;
 
-/// Менеджер для задачи импорта из OZON (u502)
-pub struct U502ImportOzonManager {
+/// Менеджер для задачи импорта из Yandex Market (u503)
+pub struct U503ImportYandexManager {
     executor: Arc<ImportExecutor>,
 }
 
-impl U502ImportOzonManager {
+impl U503ImportYandexManager {
     pub fn new(executor: Arc<ImportExecutor>) -> Self {
         Self { executor }
     }
 }
 
 #[async_trait]
-impl TaskManager for U502ImportOzonManager {
+impl TaskManager for U503ImportYandexManager {
     fn task_type(&self) -> &'static str {
-        "u502_import_ozon"
+        "u503_import_yandex"
     }
 
     async fn run(
@@ -32,7 +32,7 @@ impl TaskManager for U502ImportOzonManager {
         session_id: &str,
         logger: Arc<TaskLogger>,
     ) -> Result<()> {
-        logger.write_log(session_id, "Starting U502 Import from OZON...")?;
+        logger.write_log(session_id, "Starting U503 Import from Yandex Market...")?;
 
         let config: ImportRequest = serde_json::from_str(&task.config_json)?;
 
@@ -46,7 +46,7 @@ impl TaskManager for U502ImportOzonManager {
             .execute_import(session_id, &config, &connection)
             .await?;
 
-        logger.write_log(session_id, "U502 Import from OZON completed.")?;
+        logger.write_log(session_id, "U503 Import from Yandex Market completed.")?;
         Ok(())
     }
 

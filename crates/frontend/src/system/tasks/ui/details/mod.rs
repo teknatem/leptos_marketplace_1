@@ -1,6 +1,6 @@
-use contracts::system::sys_scheduled_task::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
-use contracts::system::sys_scheduled_task::response::ScheduledTaskResponse;
-use contracts::system::sys_scheduled_task::progress::TaskProgressResponse;
+use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
+use contracts::system::tasks::response::ScheduledTaskResponse;
+use contracts::system::tasks::progress::TaskProgressResponse;
 use crate::shared::icons::icon;
 use crate::system::tasks::api;
 use leptos::ev;

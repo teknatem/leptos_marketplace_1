@@ -1,5 +1,5 @@
 -- Scheduled Tasks system table
-CREATE TABLE IF NOT EXISTS sys_scheduled_tasks (
+CREATE TABLE IF NOT EXISTS sys_tasks (
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
     description TEXT,

@@ -1,29 +1,29 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use contracts::system::sys_scheduled_task::aggregate::ScheduledTask;
-use contracts::system::sys_scheduled_task::progress::TaskProgress;
-use contracts::usecases::u504_import_from_wildberries::request::ImportRequest;
+use contracts::system::tasks::aggregate::ScheduledTask;
+use contracts::system::tasks::progress::TaskProgress;
+use contracts::usecases::u502_import_from_ozon::request::ImportRequest;
 use std::sync::Arc;
 
-use crate::system::sys_scheduled_task::logger::TaskLogger;
-use crate::system::sys_scheduled_task::manager::TaskManager;
-use crate::usecases::u504_import_from_wildberries::ImportExecutor;
+use crate::system::tasks::logger::TaskLogger;
+use crate::system::tasks::manager::TaskManager;
+use crate::usecases::u502_import_from_ozon::ImportExecutor;
 
-/// Менеджер для задачи импорта из Wildberries (u504)
-pub struct U504ImportWildberriesManager {
+/// Менеджер для задачи импорта из OZON (u502)
+pub struct U502ImportOzonManager {
     executor: Arc<ImportExecutor>,
 }
 
-impl U504ImportWildberriesManager {
+impl U502ImportOzonManager {
     pub fn new(executor: Arc<ImportExecutor>) -> Self {
         Self { executor }
     }
 }
 
 #[async_trait]
-impl TaskManager for U504ImportWildberriesManager {
+impl TaskManager for U502ImportOzonManager {
     fn task_type(&self) -> &'static str {
-        "u504_import_wildberries"
+        "u502_import_ozon"
     }
 
     async fn run(
@@ -32,7 +32,7 @@ impl TaskManager for U504ImportWildberriesManager {
         session_id: &str,
         logger: Arc<TaskLogger>,
     ) -> Result<()> {
-        logger.write_log(session_id, "Starting U504 Import from Wildberries...")?;
+        logger.write_log(session_id, "Starting U502 Import from OZON...")?;
 
         let config: ImportRequest = serde_json::from_str(&task.config_json)?;
 
@@ -46,7 +46,7 @@ impl TaskManager for U504ImportWildberriesManager {
             .execute_import(session_id, &config, &connection)
             .await?;
 
-        logger.write_log(session_id, "U504 Import from Wildberries completed.")?;
+        logger.write_log(session_id, "U502 Import from OZON completed.")?;
         Ok(())
     }
 

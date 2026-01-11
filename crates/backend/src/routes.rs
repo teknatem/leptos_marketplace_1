@@ -482,30 +482,30 @@ pub fn configure_routes() -> Router {
         // ========================================
         .route(
             "/api/sys/scheduled_tasks",
-            get(handlers::sys_scheduled_task::list_scheduled_tasks)
-                .post(handlers::sys_scheduled_task::create_scheduled_task)
+            get(handlers::tasks::list_scheduled_tasks)
+                .post(handlers::tasks::create_scheduled_task)
                 .layer(middleware::from_fn(system::auth::middleware::require_admin)),
         )
         .route(
             "/api/sys/scheduled_tasks/:id",
-            get(handlers::sys_scheduled_task::get_scheduled_task)
-                .put(handlers::sys_scheduled_task::update_scheduled_task)
-                .delete(handlers::sys_scheduled_task::delete_scheduled_task)
+            get(handlers::tasks::get_scheduled_task)
+                .put(handlers::tasks::update_scheduled_task)
+                .delete(handlers::tasks::delete_scheduled_task)
                 .layer(middleware::from_fn(system::auth::middleware::require_admin)),
         )
         .route(
             "/api/sys/scheduled_tasks/:id/toggle_enabled",
-            post(handlers::sys_scheduled_task::toggle_scheduled_task_enabled)
+            post(handlers::tasks::toggle_scheduled_task_enabled)
                 .layer(middleware::from_fn(system::auth::middleware::require_admin)),
         )
         .route(
             "/api/sys/scheduled_tasks/:id/progress/:session_id",
-            get(handlers::sys_scheduled_task::get_task_progress)
+            get(handlers::tasks::get_task_progress)
                 .layer(middleware::from_fn(system::auth::middleware::require_auth)),
         )
         .route(
             "/api/sys/scheduled_tasks/:id/log/:session_id",
-            get(handlers::sys_scheduled_task::get_task_log)
+            get(handlers::tasks::get_task_log)
                 .layer(middleware::from_fn(system::auth::middleware::require_auth)),
         )
         // ========================================
@@ -514,40 +514,40 @@ pub fn configure_routes() -> Router {
         // P900 Sales Register handlers
         .route(
             "/api/p900/sales-register",
-            get(handlers::p900_sales_register::list_sales),
+            get(handlers::p900_mp_sales_register::list_sales),
         )
         .route(
             "/api/p900/sales-register/:marketplace/:document_no/:line_id",
-            get(handlers::p900_sales_register::get_sale_detail),
+            get(handlers::p900_mp_sales_register::get_sale_detail),
         )
         .route(
             "/api/p900/stats/by-date",
-            get(handlers::p900_sales_register::get_stats_by_date),
+            get(handlers::p900_mp_sales_register::get_stats_by_date),
         )
         .route(
             "/api/p900/stats/by-marketplace",
-            get(handlers::p900_sales_register::get_stats_by_marketplace),
+            get(handlers::p900_mp_sales_register::get_stats_by_marketplace),
         )
         .route(
             "/api/p900/backfill-product-refs",
-            post(handlers::p900_sales_register::backfill_product_refs),
+            post(handlers::p900_mp_sales_register::backfill_product_refs),
         )
         .route(
             "/api/projections/p900/:registrator_ref",
-            get(handlers::p900_sales_register::get_by_registrator),
+            get(handlers::p900_mp_sales_register::get_by_registrator),
         )
         // P901 Nomenclature Barcodes handlers
         .route(
             "/api/p901/barcode/:barcode",
-            get(handlers::p901_barcodes::get_by_barcode),
+            get(handlers::p901_nomenclature_barcodes::get_by_barcode),
         )
         .route(
             "/api/p901/nomenclature/:nomenclature_ref/barcodes",
-            get(handlers::p901_barcodes::get_barcodes_by_nomenclature),
+            get(handlers::p901_nomenclature_barcodes::get_barcodes_by_nomenclature),
         )
         .route(
             "/api/p901/barcodes",
-            get(handlers::p901_barcodes::list_barcodes),
+            get(handlers::p901_nomenclature_barcodes::list_barcodes),
         )
         // P902 OZON Finance Realization handlers
         .route(

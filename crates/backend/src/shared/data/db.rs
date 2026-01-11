@@ -1,4 +1,4 @@
-﻿use once_cell::sync::OnceCell;
+use once_cell::sync::OnceCell;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use crate::shared::config;
 
@@ -2346,20 +2346,20 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     }
 
     // ============================================================
-    // System: Scheduled Tasks
+    // System: Tasks (Scheduled Tasks)
     // ============================================================
-    let check_scheduled_tasks = conn
+    let check_tasks = conn
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_scheduled_tasks';"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_tasks';"
                 .to_string(),
         ))
         .await?;
 
-    if check_scheduled_tasks.is_empty() {
-        tracing::info!("Creating sys_scheduled_tasks table");
-        let create_scheduled_tasks_sql = r#"
-            CREATE TABLE sys_scheduled_tasks (
+    if check_tasks.is_empty() {
+        tracing::info!("Creating sys_tasks table");
+        let create_tasks_sql = r#"
+            CREATE TABLE sys_tasks (
                 id TEXT PRIMARY KEY NOT NULL,
                 code TEXT NOT NULL UNIQUE,
                 description TEXT,
@@ -2378,7 +2378,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         "#;
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
-            create_scheduled_tasks_sql.to_string(),
+            create_tasks_sql.to_string(),
         ))
         .await?;
     }

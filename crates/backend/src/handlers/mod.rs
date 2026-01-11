@@ -17,8 +17,8 @@ pub mod a015_wb_orders;
 pub mod a016_ym_returns;
 
 // Projection handlers (p900-p906)
-pub mod p900_sales_register;
-pub mod p901_barcodes;
+pub mod p900_mp_sales_register;
+pub mod p901_nomenclature_barcodes;
 pub mod p902_ozon_finance_realization;
 pub mod p903_wb_finance_report;
 pub mod p904_sales_data;
@@ -38,4 +38,4 @@ pub mod usecases;
 pub mod logs;
 
 // System handlers
-pub mod sys_scheduled_task;
+pub mod tasks;

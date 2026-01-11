@@ -135,7 +135,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     </TableRow>
                                 }.into_any()
                             } else {
-                                tasks.into_iter().map(|task: contracts::system::sys_scheduled_task::response::ScheduledTaskResponse| {
+                                tasks.into_iter().map(|task: contracts::system::tasks::response::ScheduledTaskResponse| {
                                     let id = task.id.clone();
                                     let code = task.code.clone();
                                     let id_for_toggle = task.id.clone();
