@@ -476,12 +476,47 @@
    List Container & Pagination
    ============================================ */
 
+.page,
+.center {
+  /* Theme-aware scrollbar for main page scrolling (Firefox) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
+}
+
+/* Theme-aware scrollbar for main page scrolling (Chromium/WebKit) */
+.page::-webkit-scrollbar,
+.center::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.page::-webkit-scrollbar-track,
+.center::-webkit-scrollbar-track {
+  background: var(--list-scrollbar-track);
+}
+
+.page::-webkit-scrollbar-thumb,
+.center::-webkit-scrollbar-thumb {
+  background: var(--list-scrollbar-thumb);
+  border-radius: 10px;
+  border: 2px solid var(--list-scrollbar-track);
+}
+
+.page::-webkit-scrollbar-thumb:hover,
+.center::-webkit-scrollbar-thumb:hover {
+  background: var(--list-scrollbar-thumb-hover);
+}
+
 .list-container {
   display: flex;
   flex-direction: column;
   height: 100%;
   background: var(--color-bg-primary);
   padding: var(--spacing-sm);
+
+  /* Theme-aware scrollbar (Firefox) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
 }
 
 .list-container .table-container {
@@ -490,6 +525,30 @@
   max-height: none;
   overflow: auto;
   border-radius: var(--radius-lg);
+}
+
+/* Theme-aware scrollbar (Chromium/WebKit) */
+.list-container::-webkit-scrollbar,
+.list-container .table-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.list-container::-webkit-scrollbar-track,
+.list-container .table-container::-webkit-scrollbar-track {
+  background: var(--list-scrollbar-track);
+}
+
+.list-container::-webkit-scrollbar-thumb,
+.list-container .table-container::-webkit-scrollbar-thumb {
+  background: var(--list-scrollbar-thumb);
+  border-radius: 10px;
+  border: 2px solid var(--list-scrollbar-track);
+}
+
+.list-container::-webkit-scrollbar-thumb:hover,
+.list-container .table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--list-scrollbar-thumb-hover);
 }
 
 .list-header-row {
@@ -669,7 +728,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-surface);
+  background: var(--colorBrandBackground2);
   border-bottom: 1px solid var(--color-border);
   gap: var(--spacing-md);
   flex-wrap: nowrap;
@@ -848,7 +907,7 @@
   padding: 5px 12px;
   height: 30px;
   background: var(--top-header-btn-hover);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -876,8 +935,8 @@
   max-width: 400px;
   max-height: 400px;
   overflow-y: auto;
-  background: var(--dropdown-bg);
-  border: 1px solid var(--border-color);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   z-index: 1000;
@@ -887,7 +946,7 @@
 .windows-dropdown__empty {
   padding: 16px 12px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
 
@@ -907,7 +966,7 @@
 }
 
 .windows-dropdown__item--active {
-  background: var(--color-primary-10);
+  background: var(--color-primary-100);
   border-left-color: var(--color-primary);
   font-weight: 500;
 }
@@ -937,8 +996,8 @@
 
 .windows-dropdown__item-close:hover {
   opacity: 1;
-  background: var(--color-danger-10);
-  color: var(--color-danger);
+  background: var(--color-error-50);
+  color: var(--color-error);
 }
 
 @keyframes slideDown {

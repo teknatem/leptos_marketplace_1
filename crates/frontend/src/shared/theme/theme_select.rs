@@ -39,8 +39,8 @@ fn apply_theme(theme: &str) {
             // Update theme stylesheet link
             if let Some(link) = document.get_element_by_id("theme-stylesheet") {
                 if let Ok(link_element) = link.dyn_into::<web_sys::HtmlLinkElement>() {
-                    let _ =
-                        link_element.set_href(&format!("static/themes/{}/{}.css", theme, theme));
+                    link_element.set_disabled(false);
+                    let _ = link_element.set_href(&format!("static/themes/{}/{}.css", theme, theme));
                 }
             }
         }
@@ -58,9 +58,17 @@ fn set_thaw_background(value: &str) {
                 .flatten()
             {
                 if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
-                    let _ = html_element
-                        .style()
-                        .set_property("--colorNeutralBackground1", value);
+                    // NOTE: This is intentionally a programmatic override for the forest theme.
+                    // We use remove_property to restore Thaw defaults when leaving forest.
+                    if value.is_empty() {
+                        let _ = html_element
+                            .style()
+                            .remove_property("--colorNeutralBackground1");
+                    } else {
+                        let _ = html_element
+                            .style()
+                            .set_property("--colorNeutralBackground1", value);
+                    }
                 }
             }
         }
@@ -91,9 +99,11 @@ pub fn ThemeSelect() -> impl IntoView {
             };
             ctx.0.set(thaw_theme);
 
-            // Set transparent background for forest theme on mount
+            // Forest theme: make Thaw surfaces transparent so background image is visible.
             if saved_theme == "forest" {
                 set_thaw_background("transparent");
+            } else {
+                set_thaw_background("");
             }
         }
     });
@@ -115,11 +125,10 @@ pub fn ThemeSelect() -> impl IntoView {
             };
             ctx.0.set(thaw_theme);
 
-            // Set transparent background for forest theme
+            // Forest theme: make Thaw surfaces transparent so background image is visible.
             if theme == "forest" {
                 set_thaw_background("transparent");
             } else {
-                // Reset to default for other themes
                 set_thaw_background("");
             }
         }

@@ -137,6 +137,49 @@ pub fn DateRangePicker(
 
     <style>
         ".date-range-picker-compact .thaw-button--small { width: 32px; min-width: 32px; height: 32px;}"
+        "
+        /* Match Thaw Input visuals (bottom stroke differs) */
+        .date-range-picker {
+            box-sizing: border-box;
+            border: 1px solid var(--colorNeutralStroke1, #d1d1d1);
+            border-bottom-color: var(--colorNeutralStrokeAccessible, var(--colorNeutralStroke2, rgba(0, 0, 0, 0.25)));
+            border-radius: var(--borderRadiusMedium, 4px);
+            background: var(--colorNeutralBackground1, #fff);
+            min-height: 32px;
+            height: 32px;
+            box-shadow: none;
+        }
+
+        .date-range-picker:hover {
+            border-color: var(--colorNeutralStroke1Hover, var(--colorNeutralStroke1, #d1d1d1));
+            border-bottom-color: var(--colorNeutralStrokeAccessibleHover, var(--colorNeutralStrokeAccessible, var(--colorNeutralStroke2, rgba(0, 0, 0, 0.25))));
+        }
+
+        .date-range-picker:focus-within {
+            border-color: var(--colorBrandStroke1, var(--color-primary, #3b82f6));
+            box-shadow:
+                0 0 0 2px var(--colorBrandStroke2, rgba(59, 130, 246, 0.20)),
+                inset 0 -1px 0 var(--colorBrandStroke1, var(--color-primary, #3b82f6));
+        }
+
+        /* Inner date inputs: mimic Thaw Input inner field */
+        .date-range-picker input[type=\"date\"] {
+            /*height: 100%;*/
+            box-sizing: border-box;
+            background: transparent;
+            border-radius: 0;
+            cursor: pointer;
+        }
+
+        /* Calendar icon (Chromium/WebKit) */
+        .date-range-picker input[type=\"date\"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+        }
+
+        .date-range-picker input[type=\"date\"]:focus {
+            outline: none;
+        }
+        "
     </style>
 
         <Flex vertical=true gap=FlexGap::Small>
@@ -146,7 +189,7 @@ pub fn DateRangePicker(
             })}
 
             // Даты и кнопки на второй строке
-            <Flex align=FlexAlign::Center gap=FlexGap::Small style="border: 1px solid var(--colorNeutralStroke1, #d1d1d1); border-radius: var(--borderRadiusMedium, 4px); background: var(--colorNeutralBackground1, #fff); min-height: 32px; height: 32px;">
+            <Flex class="date-range-picker" align=FlexAlign::Center gap=FlexGap::Small>
                 // Поле даты "от"
                 <input
                     type="date"
@@ -155,9 +198,13 @@ pub fn DateRangePicker(
                         on_from_change(event_target_value(&ev));
                     }
                     style="
+                        margin-top: 4px;
+                        margin-bottom: 4px;                    
                         padding: 0px 12px;
+                        margin-left: 4px;
                         font-size: 0.875rem;
                         border: none;
+                        border-radius: var(--borderRadiusMedium, 4px);
                         background: var(--colorNeutralBackground6, #fff);
                         color: var(--colorNeutralForeground1, #242424);
                         width: 130px;
@@ -175,9 +222,12 @@ pub fn DateRangePicker(
                         on_to_change(event_target_value(&ev));
                     }
                     style="
+                        margin-top: 4px;
+                        margin-bottom: 4px;                    
                         padding: 0px 12px;
                         font-size: 0.875rem;
                         border: none;
+                        border-radius: var(--borderRadiusMedium, 4px);
                         background: var(--colorNeutralBackground6, #fff);
                         color: var(--colorNeutralForeground1, #242424);
                         width: 130px;

@@ -31,6 +31,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
+use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
 use crate::projections::p903_wb_finance_report::ui::list::WbFinanceReportList;
 use crate::projections::p904_sales_data::ui::list::SalesDataList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
@@ -85,6 +86,30 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
         "a004_nomenclature_list" => {
             view! { <NomenclatureList /> }.into_any()
+        }
+        k if k.starts_with("a004_nomenclature_detail_") => {
+            let id = k
+                .strip_prefix("a004_nomenclature_detail_")
+                .unwrap()
+                .to_string();
+            view! {
+                <crate::domain::a004_nomenclature::ui::details::NomenclatureDetails
+                    id=Some(id)
+                    on_saved=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                    on_cancel=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
         }
 
         // a005: Marketplaces
@@ -327,6 +352,36 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
         "p903_wb_finance_report" => {
             view! { <WbFinanceReportList /> }.into_any()
+        }
+        k if k.starts_with("p903_wb_finance_report_detail_") => {
+            let rest = k
+                .strip_prefix("p903_wb_finance_report_detail_")
+                .unwrap()
+                .to_string();
+            let Some((rr_dt_encoded, rrd_id_str)) = rest.rsplit_once("__") else {
+                log!("⚠️ Bad p903 detail tab key: {}", k);
+                return view! { <div class="placeholder">{"Bad finance report tab key"}</div> }
+                    .into_any();
+            };
+
+            let rr_dt = urlencoding::decode(&rr_dt_encoded)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| rr_dt_encoded.to_string());
+            let rrd_id: i64 = rrd_id_str.parse().unwrap_or_default();
+
+            view! {
+                <WbFinanceReportDetail
+                    rr_dt=rr_dt
+                    rrd_id=rrd_id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
         }
         "p904_sales_data" => {
             log!("✅ Creating SalesDataList");

@@ -54,6 +54,7 @@
             // Update theme stylesheet
             const link = document.getElementById('theme-stylesheet');
             if (link) {
+                link.disabled = false;
                 link.href = 'static/themes/' + savedTheme + '/' + savedTheme + '.css';
             }
         })();

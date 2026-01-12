@@ -16,3 +16,57 @@ td:first-child {
 [data-theme="light"] .thaw-config-provider {
     --fontFamilyBase: "Roboto", sans-serif;
 }
+
+.thaw-table-row {
+    height: 36px !important;
+  }
+  
+.thaw-table-cell,
+.thaw-table-header-cell {
+    height: 36px !important;
+  }
+
+/* THAW Input/Textarea placeholder styling - italic and lighter */
+.thaw-input__input::placeholder,
+.thaw-textarea__textarea::placeholder {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+/* THAW Input/Textarea placeholder for different themes */
+[data-theme="light"] .thaw-input__input::placeholder,
+[data-theme="light"] .thaw-textarea__textarea::placeholder {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .thaw-input__input::placeholder,
+[data-theme="dark"] .thaw-textarea__textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="forest"] .thaw-input__input::placeholder,
+[data-theme="forest"] .thaw-textarea__textarea::placeholder {
+  color: #8d8d8d;
+}
+
+/* THAW Input readonly styling - visually distinct from editable */
+.thaw-input__input:read-only,
+.thaw-textarea__textarea:read-only {
+  background-color: var(--color-bg-secondary);
+  cursor: default;
+}
+
+[data-theme="light"] .thaw-input__input:read-only,
+[data-theme="light"] .thaw-textarea__textarea:read-only {
+  background-color: #f9fafb;
+}
+
+[data-theme="dark"] .thaw-input__input:read-only,
+[data-theme="dark"] .thaw-textarea__textarea:read-only {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="forest"] .thaw-input__input:read-only,
+[data-theme="forest"] .thaw-textarea__textarea:read-only {
+  background-color: rgba(255, 255, 255, 0.03);
+}

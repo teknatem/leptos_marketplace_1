@@ -2,11 +2,13 @@ pub mod state;
 
 use self::state::{create_state, WbSalesTotals};
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::components::date_input::DateInput;
-use crate::shared::components::month_selector::MonthSelector;
-use crate::shared::components::table_checkbox::TableCheckbox;
+use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::components::ui::button::Button as UiButton;
+use crate::shared::icons::icon;
 use crate::shared::list_utils::{
-    format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
+    format_number, get_sort_class, get_sort_indicator, Sortable,
 };
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
@@ -16,6 +18,7 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
@@ -99,6 +102,7 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
     result
 }
 
+const TABLE_ID: &str = "a012-wb-sales-table";
 const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_column_widths";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +215,9 @@ pub fn WbSalesList() -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
 
+    // Filter panel expansion state (same pattern as a016_ym_returns)
+    let (is_filter_expanded, set_is_filter_expanded) = signal(false);
+
     // Batch operation state
     let (posting_in_progress, set_posting_in_progress) = signal(false);
     let (_, set_operation_results) = signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
@@ -322,16 +329,6 @@ pub fn WbSalesList() -> impl IntoView {
     // Get items (sorting is now done on server) - no clone, returns reference via signal
     let get_items = move || -> Vec<WbSalesDto> { state.with(|s| s.sales.clone()) };
 
-    // Мемоизированные итоги - вычисляются только при изменении sales
-    let totals = Memo::new(move |_| {
-        state.with(|s| {
-            let total_amount: f64 = s.sales.iter().filter_map(|item| item.amount_line).sum();
-            let total_price: f64 = s.sales.iter().filter_map(|item| item.total_price).sum();
-            let total_finished: f64 = s.sales.iter().filter_map(|item| item.finished_price).sum();
-            (s.sales.len(), total_amount, total_price, total_finished)
-        })
-    });
-
     // Load saved settings from database on mount IF not already loaded in memory
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
@@ -385,6 +382,82 @@ pub fn WbSalesList() -> impl IntoView {
             });
         } else {
             log!("Used cached data for A012");
+        }
+    });
+
+    // Thaw inputs: keep local RwSignal, sync -> state (one-way)
+    let search_sale_id = RwSignal::new(state.get_untracked().search_sale_id.clone());
+    let search_srid = RwSignal::new(state.get_untracked().search_srid.clone());
+    let selected_org_id = RwSignal::new(
+        state
+            .get_untracked()
+            .selected_organization_id
+            .clone()
+            .unwrap_or_default(),
+    );
+
+    Effect::new(move || {
+        let v = search_sale_id.get();
+        untrack(move || {
+            state.update(|s| {
+                s.search_sale_id = v;
+                s.page = 0;
+            });
+        });
+    });
+
+    Effect::new(move || {
+        let v = search_srid.get();
+        untrack(move || {
+            state.update(|s| {
+                s.search_srid = v;
+                s.page = 0;
+            });
+        });
+    });
+
+    Effect::new(move || {
+        let v = selected_org_id.get();
+        untrack(move || {
+            state.update(|s| {
+                s.selected_organization_id = if v.is_empty() { None } else { Some(v.clone()) };
+                s.page = 0;
+            });
+        });
+    });
+
+    // Count active filters (same style as a016_ym_returns)
+    let active_filters_count = Signal::derive(move || {
+        let s = state.get();
+        let mut count = 0;
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if s.selected_organization_id.is_some() {
+            count += 1;
+        }
+        if !s.search_sale_id.is_empty() {
+            count += 1;
+        }
+        if !s.search_srid.is_empty() {
+            count += 1;
+        }
+        count
+    });
+
+    // Init column resize after data is rendered
+    Effect::new(move |_| {
+        let is_loaded = state.get().is_loaded;
+        let _page = state.get().page;
+        let _len = state.get().sales.len();
+        if is_loaded {
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(50).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
         }
     });
 
@@ -458,7 +531,7 @@ pub fn WbSalesList() -> impl IntoView {
     let is_selected = move |id: &str| state.with(|s| s.selected_ids.contains(&id.to_string()));
 
     // Массовое проведение
-    let post_selected = move |_| {
+    let post_selected = move |_: leptos::ev::MouseEvent| {
         let ids = state.with(|s| s.selected_ids.clone());
         if ids.is_empty() {
             return;
@@ -524,7 +597,7 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Массовая отмена проведения
-    let unpost_selected = move |_| {
+    let unpost_selected = move |_: leptos::ev::MouseEvent| {
         let ids = state.with(|s| s.selected_ids.clone());
         if ids.is_empty() {
             return;
@@ -591,7 +664,7 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Save current settings to database
-    let save_settings_to_db = move |_| {
+    let save_settings_to_db = move |_: leptos::ev::MouseEvent| {
         let settings = json!({
             "date_from": state.with(|s| s.date_from.clone()),
             "date_to": state.with(|s| s.date_to.clone()),
@@ -616,7 +689,7 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Load and restore settings from database
-    let restore_settings = move |_| {
+    let restore_settings = move |_: leptos::ev::MouseEvent| {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
@@ -674,277 +747,196 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     view! {
-        <div class="wb-sales-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            // Header - Row 1: Title with Pagination, Post/Unpost and Settings Buttons
-            <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">"📋 WB Sales"</h2>
-
-                    // === PAGINATION CONTROLS ===
-                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px;">
-                        // First page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| go_to_page(0)
-                            title="Первая страница"
-                        >
-                            "⏮"
-                        </button>
-
-                        // Previous page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                if current > 0 {
-                                    go_to_page(current - 1);
-                                }
-                            }
-                            title="Предыдущая страница"
-                        >
-                            "◀"
-                        </button>
-
-                        // Page info
-                        <span style="color: white; font-size: 12px; font-weight: 500; min-width: 100px; text-align: center;">
-                            {move || {
-                                let page = state.with(|s| s.page);
-                                let total_pages = state.with(|s| s.total_pages);
-                                let total = state.with(|s| s.total_count);
-                                format!("{} / {} ({})", page + 1, total_pages.max(1), total)
-                            }}
-                        </span>
-
-                        // Next page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                if current < max_page {
-                                    go_to_page(current + 1);
-                                }
-                            }
-                            title="Следующая страница"
-                        >
-                            "▶"
-                        </button>
-
-                        // Last page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                go_to_page(max_page);
-                            }
-                            title="Последняя страница"
-                        >
-                            "⏭"
-                        </button>
-
-                        // Divider
-                        <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
-
-                        // Page size selector
-                        <select
-                            style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer;"
-                            prop:value=move || state.with(|s| s.page_size.to_string())
-                            on:change=move |ev| {
-                                if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-                                    change_page_size(size);
-                                }
-                            }
-                        >
-                            <option value="50" style="color: black;">"50"</option>
-                            <option value="100" style="color: black;">"100"</option>
-                            <option value="200" style="color: black;">"200"</option>
-                            <option value="500" style="color: black;">"500"</option>
-                            <option value="10000" style="color: black;">"10000"</option>
-                        </select>
-                        <span style="color: rgba(255,255,255,0.8); font-size: 10px;">"на стр."</span>
+        <div class="page page--wide">
+            <div class="page-header">
+                <div class="page-header__content">
+                    <div class="page-header__icon">{icon("trending-up")}</div>
+                    <div class="page-header__text">
+                        <h1 class="page-header__title">"Продажи Wildberries"</h1>
+                        <div class="page-header__badge">
+                            <UiBadge variant="primary".to_string()>
+                                {move || state.get().total_count.to_string()}
+                            </UiBadge>
+                        </div>
                     </div>
-                    // === END PAGINATION ===
-
-                    // Post/Unpost buttons
-                    <button
-                        class="button button--primary"
-                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
-                        on:click=post_selected
-                    >
-                        {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
-                    </button>
-                    <button
-                        class="button button--warning"
-                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
-                        on:click=unpost_selected
-                    >
-                        {move || format!("✗ Unpost ({})", state.with(|s| s.selected_ids.len()))}
-                    </button>
                 </div>
 
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    // Excel export button
-                    <button
-                        class="button button--excel"
-                        on:click=move |_| {
-                            let data = get_items();
-                            if let Err(e) = export_to_csv(&data) {
-                                log!("Failed to export: {}", e);
-                            }
-                        }
-                        prop:disabled=move || loading.get() || state.with(|s| s.sales.is_empty())
-                    >
-                        "📊 Excel"
-                    </button>
-
-                    {move || {
-                        if let Some(msg) = save_notification.get() {
-                            view! {
-                                <span style="font-size: 0.75rem; color: white; font-weight: 500; margin-right: 8px;">{msg}</span>
-                            }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }
-                    }}
-                    <button
-                        class="button button--ghost button--small"
-                        on:click=restore_settings
-                        title="Восстановить настройки из базы данных"
-                    >
-                        "🔄"
-                    </button>
-                    <button
-                        class="button button--ghost button--small"
-                        on:click=save_settings_to_db
-                        title="Сохранить настройки в базу данных"
-                    >
-                        "💾"
-                    </button>
+                <div class="page-header__actions">
+                    <Space>
+                        <UiButton
+                            variant="primary".to_string()
+                            on_click=Callback::new(post_selected)
+                            disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
+                        >
+                            {icon("check")}
+                            {move || format!("Post ({})", state.get().selected_ids.len())}
+                        </UiButton>
+                        <UiButton
+                            variant="secondary".to_string()
+                            on_click=Callback::new(unpost_selected)
+                            disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
+                        >
+                            {icon("x")}
+                            {move || format!("Unpost ({})", state.get().selected_ids.len())}
+                        </UiButton>
+                        <UiButton
+                            variant="secondary".to_string()
+                            on_click=Callback::new(move |_| {
+                                let data = get_items();
+                                if let Err(e) = export_to_csv(&data) {
+                                    log!("Failed to export: {}", e);
+                                }
+                            })
+                            disabled=loading.get() || state.get().sales.is_empty()
+                        >
+                            {icon("download")}
+                            "Excel"
+                        </UiButton>
+                        <UiButton
+                            variant="ghost".to_string()
+                            size="sm".to_string()
+                            on_click=Callback::new(restore_settings)
+                            disabled=false
+                        >
+                            {icon("refresh")}
+                        </UiButton>
+                        <UiButton
+                            variant="ghost".to_string()
+                            size="sm".to_string()
+                            on_click=Callback::new(save_settings_to_db)
+                            disabled=false
+                        >
+                            {icon("save")}
+                        </UiButton>
+                        {move || save_notification.get().map(|msg| view! {
+                            <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">{msg}</span>
+                        })}
+                    </Space>
                 </div>
             </div>
 
-            // Header - Row 2: Filters and Actions - All in one row
-            <div style="background: white; padding: 8px 12px; margin: 0 -12px 10px -12px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                // Period section
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Период:"</label>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_from)
-                        on_change=move |val| state.update(|s| s.date_from = val)
-                    />
-                    <span style="color: #6c757d;">"—"</span>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_to)
-                        on_change=move |val| state.update(|s| s.date_to = val)
-                    />
-                    <MonthSelector
-                        on_select=Callback::new(move |(from, to)| {
-                            state.update(|s| {
-                                s.date_from = from;
-                                s.date_to = to;
-                            });
-                        })
-                    />
-                </div>
-
-                // Organization filter
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Организация:"</label>
-                    <select
-                        prop:value=move || state.get().selected_organization_id.clone().unwrap_or_default()
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| {
-                                if value.is_empty() {
-                                    s.selected_organization_id = None;
+            <div class="filter-panel">
+                <div class="filter-panel-header">
+                    <div
+                        class="filter-panel-header__left"
+                        on:click=move |_| set_is_filter_expanded.update(|e| *e = !*e)
+                    >
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            class=move || {
+                                if is_filter_expanded.get() {
+                                    "filter-panel__chevron filter-panel__chevron--expanded"
                                 } else {
-                                    s.selected_organization_id = Some(value);
+                                    "filter-panel__chevron"
                                 }
-                            });
-                        }
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 200px; background: #fff;"
-                    >
-                        <option value="">"Все организации"</option>
-                        {move || organizations.get().into_iter().map(|org| {
-                            let org_id = org.id.clone();
-                            let org_id_for_selected = org.id.clone();
-                            let org_desc = org.description.clone();
-                            view! {
-                                <option value=org_id selected=move || {
-                                    state.get().selected_organization_id.as_ref() == Some(&org_id_for_selected)
-                                }>
-                                    {org_desc}
-                                </option>
                             }
-                        }).collect_view()}
-                    </select>
+                        >
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                        {icon("filter")}
+                        <span class="filter-panel__title">"Фильтры"</span>
+                        {move || {
+                            let count = active_filters_count.get();
+                            if count > 0 {
+                                view! {
+                                    <UiBadge variant="primary".to_string()>{count}</UiBadge>
+                                }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }
+                        }}
+                    </div>
+
+                    <div class="filter-panel-header__center">
+                        <PaginationControls
+                            current_page=Signal::derive(move || state.get().page)
+                            total_pages=Signal::derive(move || state.get().total_pages)
+                            total_count=Signal::derive(move || state.get().total_count)
+                            page_size=Signal::derive(move || state.get().page_size)
+                            on_page_change=Callback::new(go_to_page)
+                            on_page_size_change=Callback::new(change_page_size)
+                            page_size_options=vec![50, 100, 200, 500, 10000]
+                        />
+                    </div>
+
+                    <div class="filter-panel-header__right">
+                        <thaw::Button
+                            appearance=ButtonAppearance::Subtle
+                            on_click=move |_| load_sales()
+                            disabled=loading.get()
+                        >
+                            {icon("refresh")}
+                            {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                        </thaw::Button>
+                    </div>
                 </div>
 
-                // Search by Sale ID
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Sale ID:"</label>
-                    <input
-                        type="text"
-                        placeholder="S9100426422573"
-                        prop:value=move || state.get().search_sale_id
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| s.search_sale_id = value);
-                        }
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; width: 150px; background: #fff;"
-                    />
-                </div>
-
-                // Search by SRID
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"SRID:"</label>
-                    <input
-                        type="text"
-                        placeholder="Document №"
-                        prop:value=move || state.get().search_srid
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| s.search_srid = value);
-                        }
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; width: 150px; background: #fff;"
-                    />
-                </div>
-
-                // Update button
-                <button
-                    class="button button--primary"
-                    on:click=move |_| {
-                        load_sales();
+                <div class=move || {
+                    if is_filter_expanded.get() {
+                        "filter-panel__collapsible filter-panel__collapsible--expanded"
+                    } else {
+                        "filter-panel__collapsible filter-panel__collapsible--collapsed"
                     }
-                    prop:disabled=move || loading.get()
-                >
-                    "↻ Обновить"
-                </button>
+                }>
+                    <div class="filter-panel-content">
+                        <Flex gap=FlexGap::Small align=FlexAlign::End>
+                            <div style="min-width: 420px;">
+                                <DateRangePicker
+                                    date_from=Signal::derive(move || state.get().date_from)
+                                    date_to=Signal::derive(move || state.get().date_to)
+                                    on_change=Callback::new(move |(from, to)| {
+                                        state.update(|s| {
+                                            s.date_from = from;
+                                            s.date_to = to;
+                                            s.page = 0;
+                                        });
+                                        load_sales();
+                                    })
+                                    label="Период:".to_string()
+                                />
+                            </div>
+
+                            <div style="width: 260px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Организация:"</Label>
+                                    <Select value=selected_org_id>
+                                        <option value="">"Все организации"</option>
+                                        {move || organizations.get().into_iter().map(|org| {
+                                            let id = org.id.clone();
+                                            view! {
+                                                <option value=id>{org.description}</option>
+                                            }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
+                            </div>
+
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Sale ID:"</Label>
+                                    <Input value=search_sale_id placeholder="S9100426422573" />
+                                </Flex>
+                            </div>
+
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"SRID:"</Label>
+                                    <Input value=search_srid placeholder="Document №" />
+                                </Flex>
+                            </div>
+                        </Flex>
+                    </div>
+                </div>
             </div>
 
-            // Totals display (for current page)
-            {move || if !loading.get() {
-                let (count, total_amount, total_price, total_finished) = totals.get();
-                let total_count = state.with(|s| s.total_count);
-                view! {
-                    <div style="margin-bottom: 10px; padding: 3px 12px; background: var(--color-background-alt, #f5f5f5); border-radius: 4px; display: flex; align-items: center; flex-wrap: wrap;">
-                        <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text);">
-                            "На странице: " {format_number_int(count as f64)} " из " {format_number_int(total_count as f64)} " | "
-                            "К выплате: " {format_number(total_amount)} " | "
-                            "Полная цена: " {format_number(total_price)} " | "
-                            "Итоговая: " {format_number(total_finished)}
-                        </span>
-                    </div>
-                }.into_any()
-            } else {
-                view! { <></> }.into_any()
-            }}
-
-            // Selection summary panel (shows when items are selected)
+            // Selection summary panel (shows when items are selected) - keep existing logic
             {move || {
                 let selected_count = state.with(|s| s.selected_ids.len());
                 let is_processing = current_operation.get().is_some();
@@ -953,39 +945,49 @@ pub fn WbSalesList() -> impl IntoView {
                     let selected_totals = move || {
                         let sel_ids = state.with(|s| s.selected_ids.clone());
                         let all_items = get_items();
-                        let selected_items: Vec<_> = all_items.into_iter()
+                        let selected_items: Vec<_> = all_items
+                            .into_iter()
                             .filter(|item| sel_ids.contains(&item.id))
                             .collect();
 
                         let count = selected_items.len();
                         let total_qty: f64 = selected_items.iter().map(|s| s.qty).sum();
-                        let total_amount: f64 = selected_items.iter().filter_map(|s| s.amount_line).sum();
-                        let total_price: f64 = selected_items.iter().filter_map(|s| s.total_price).sum();
-                        let total_finished: f64 = selected_items.iter().filter_map(|s| s.finished_price).sum();
+                        let total_amount: f64 =
+                            selected_items.iter().filter_map(|s| s.amount_line).sum();
+                        let total_price: f64 =
+                            selected_items.iter().filter_map(|s| s.total_price).sum();
+                        let total_finished: f64 =
+                            selected_items.iter().filter_map(|s| s.finished_price).sum();
 
                         (count, total_qty, total_amount, total_price, total_finished)
                     };
 
                     let (sel_count, sel_qty, sel_amount, sel_price, sel_finished) = selected_totals();
 
-                    let progress_percent = if let Some((processed, total)) = current_operation.get() {
-                        if total > 0 {
-                            (processed as f64 / total as f64 * 100.0) as i32
+                    let progress_percent =
+                        if let Some((processed, total)) = current_operation.get() {
+                            if total > 0 {
+                                (processed as f64 / total as f64 * 100.0) as i32
+                            } else {
+                                0
+                            }
                         } else {
                             0
-                        }
-                    } else {
-                        0
-                    };
+                        };
 
                     let background_style = if is_processing {
                         if progress_percent == 0 {
-                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;".to_string()
+                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
+                                .to_string()
                         } else {
-                            format!("background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;", progress_percent, progress_percent)
+                            format!(
+                                "background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);",
+                                progress_percent, progress_percent
+                            )
                         }
                     } else {
-                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;".to_string()
+                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
+                            .to_string()
                     };
 
                     view! {
@@ -1001,13 +1003,14 @@ pub fn WbSalesList() -> impl IntoView {
                                     "Итоговая: " {format_number(sel_finished)}
                                 </span>
                                 <div style="margin-left: auto;">
-                                    <button
-                                        class="button button--secondary"
-                                        on:click=move |_| state.update(|s| s.selected_ids.clear())
-                                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
+                                    <thaw::Button
+                                        appearance=ButtonAppearance::Subtle
+                                        on_click=move |_| state.update(|s| s.selected_ids.clear())
+                                        disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
                                     >
-                                        "✕ Clear"
-                                    </button>
+                                        {icon("x")}
+                                        "Clear"
+                                    </thaw::Button>
                                 </div>
                             </div>
                         </div>
@@ -1017,147 +1020,248 @@ pub fn WbSalesList() -> impl IntoView {
                 }
             }}
 
-            {move || error.get().map(|err| view! {
-                <div class="error-message" style="padding: 12px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828; margin-bottom: 10px;">{err}</div>
-            })}
-
+            // Error message
             {move || {
-                if loading.get() {
+                if let Some(err) = error.get() {
                     view! {
-                        <div class="loading-spinner" style="text-align: center; padding: 40px;">"Загрузка продаж..."</div>
-                    }.into_any()
-                } else {
-                    let items = get_items();
-                    let current_sort_field = state.with(|s| s.sort_field.clone());
-                    let current_sort_asc = state.with(|s| s.sort_ascending);
-
-                    // Initialize column resize after each render
-                    spawn_local(async {
-                        gloo_timers::future::TimeoutFuture::new(50).await;
-                        init_column_resize("wb-sales-table", COLUMN_WIDTHS_KEY);
-                    });
-
-                    view! {
-                        <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
-                            <table id="wb-sales-table" class="table__data table--striped" style="min-width: 1740px; table-layout: fixed;">
-                                <thead>
-                                    <tr>
-                                        <th class="table__header-cell table__header-cell--checkbox">
-                                            <input
-                                                type="checkbox"
-                                                class="table__checkbox"
-                                                on:change=toggle_all
-                                                prop:checked=move || all_selected()
-                                            />
-                                        </th>
-                                        <th class="resizable" style="width: 130px; min-width: 80px;" on:click=move |_| toggle_sort("document_no")>
-                                            <span class="table__sortable-header">"SRID" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 140px; min-width: 100px;" on:click=move |_| toggle_sort("sale_id")>
-                                            <span class="table__sortable-header">"Sale ID" <span class={get_sort_class("sale_id", &current_sort_field)}>{get_sort_indicator("sale_id", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("sale_date")>
-                                            <span class="table__sortable-header">"Дата" <span class={get_sort_class("sale_date", &current_sort_field)}>{get_sort_indicator("sale_date", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 85px; min-width: 60px;" on:click=move |_| toggle_sort("operation_date")>
-                                            <span class="table__sortable-header">"Операция" <span class={get_sort_class("operation_date", &current_sort_field)}>{get_sort_indicator("operation_date", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 140px; min-width: 80px;" on:click=move |_| toggle_sort("organization_name")>
-                                            <span class="table__sortable-header">"Организация" <span class={get_sort_class("organization_name", &current_sort_field)}>{get_sort_indicator("organization_name", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 100px; min-width: 60px;" on:click=move |_| toggle_sort("supplier_article")>
-                                            <span class="table__sortable-header">"Артикул" <span class={get_sort_class("supplier_article", &current_sort_field)}>{get_sort_indicator("supplier_article", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("marketplace_article")>
-                                            <span class="table__sortable-header">"Арт. МП" <span class={get_sort_class("marketplace_article", &current_sort_field)}>{get_sort_indicator("marketplace_article", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 90px; min-width: 60px;" on:click=move |_| toggle_sort("nomenclature_article")>
-                                            <span class="table__sortable-header">"Арт. 1С" <span class={get_sort_class("nomenclature_article", &current_sort_field)}>{get_sort_indicator("nomenclature_article", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("nomenclature_code")>
-                                            <span class="table__sortable-header">"Код" <span class={get_sort_class("nomenclature_code", &current_sort_field)}>{get_sort_indicator("nomenclature_code", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="min-width: 150px;" on:click=move |_| toggle_sort("name")>
-                                            <span class="table__sortable-header">"Название" <span class={get_sort_class("name", &current_sort_field)}>{get_sort_indicator("name", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable text-right" style="width: 55px; min-width: 45px;" on:click=move |_| toggle_sort("qty")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Кол" <span class={get_sort_class("qty", &current_sort_field)}>{get_sort_indicator("qty", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable text-right" style="width: 90px; min-width: 70px;" on:click=move |_| toggle_sort("amount_line")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"К выплате" <span class={get_sort_class("amount_line", &current_sort_field)}>{get_sort_indicator("amount_line", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable text-right" style="width: 80px; min-width: 60px;" on:click=move |_| toggle_sort("total_price")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Полная" <span class={get_sort_class("total_price", &current_sort_field)}>{get_sort_indicator("total_price", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable text-right" style="width: 70px; min-width: 50px;" on:click=move |_| toggle_sort("finished_price")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Итог" <span class={get_sort_class("finished_price", &current_sort_field)}>{get_sort_indicator("finished_price", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th class="resizable" style="width: 60px; min-width: 45px;" on:click=move |_| toggle_sort("event_type")>
-                                            <span class="table__sortable-header">"Тип" <span class={get_sort_class("event_type", &current_sort_field)}>{get_sort_indicator("event_type", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {items.into_iter().map(|item| {
-                                        // Pre-compute all values once
-                                        let id = item.id.clone();
-                                        let doc_no = item.document_no.clone();
-                                        let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
-                                        let date = format_date(&item.sale_date);
-                                        let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
-                                        let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
-                                        let supplier_art = item.supplier_article;
-                                        let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
-                                        let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
-                                        let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
-                                        let name = item.name;
-                                        let qty = format!("{:.0}", item.qty);
-                                        let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                        let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                        let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                        let event = item.event_type;
-
-                                        // Clone once for closures
-                                        let id_check = id.clone();
-                                        let id_toggle = id.clone();
-                                        let id_row = id.clone();
-                                        let doc_row = doc_no.clone();
-
-                                        // Single click handler for entire row
-                                        let on_row_click = move |_| {
-                                            open_detail(id_row.clone(), doc_row.clone());
-                                        };
-
-                                        view! {
-                                            <tr on:click=on_row_click.clone()>
-                                                <TableCheckbox
-                                                    checked=Signal::derive(move || is_selected(&id_check))
-                                                    on_change=Callback::new(move |_checked| toggle_selection(id_toggle.clone()))
-                                                />
-                                                <td class="cell-truncate">{doc_no}</td>
-                                                <td class="cell-truncate" style="color: #6a1b9a;">{sale_id}</td>
-                                                <td>{date}</td>
-                                                <td style="color: #c62828; font-weight: 500;">{op_date}</td>
-                                                <td class="cell-truncate">{org_name}</td>
-                                                <td class="cell-truncate">{supplier_art}</td>
-                                                <td class="cell-truncate" style="color: #1565c0;">{mp_art}</td>
-                                                <td class="cell-truncate" style="color: #2e7d32;">{nom_art}</td>
-                                                <td class="cell-truncate" style="color: #2e7d32;">{nom_code}</td>
-                                                <td class="cell-truncate">{name}</td>
-                                                <td class="text-right">{qty}</td>
-                                                <td class="text-right">{amount}</td>
-                                                <td class="text-right">{total}</td>
-                                                <td class="text-right">{finished}</td>
-                                                <td>{event}</td>
-                                            </tr>
-                                        }
-                                    }).collect::<Vec<_>>()}
-                                </tbody>
-                            </table>
+                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);">
+                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                            <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
                         </div>
                     }.into_any()
+                } else {
+                    view! { <></> }.into_any()
                 }
             }}
+
+            <div class="page-content">
+                <div class="list-container">
+                    {move || {
+                        if loading.get() {
+                            return view! {
+                                <div class="loading-spinner" style="text-align: center; padding: 40px;">
+                                    "Загрузка продаж..."
+                                </div>
+                            }.into_any();
+                        }
+
+                        let items = get_items();
+
+                        view! {
+                            // Only horizontal scrolling here; vertical scrolling is handled by `.page`
+                            <div class="table-container" style="overflow-x: auto; overflow-y: visible;">
+                                <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1740px;">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHeaderCell resizable=false class="fixed-checkbox-column">
+                                                <input
+                                                    type="checkbox"
+                                                    style="cursor: pointer;"
+                                                    on:change=toggle_all
+                                                    prop:checked=move || all_selected()
+                                                />
+                                            </TableHeaderCell>
+
+                                        <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                            <div
+                                                class="table__sortable-header"
+                                                style="cursor: pointer;"
+                                                on:click=move |_| toggle_sort("document_no")
+                                            >
+                                                "SRID"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "document_no", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("sale_id")>
+                                                "Sale ID"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "sale_id"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "sale_id", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=85.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("sale_date")>
+                                                "Дата"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "sale_date"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "sale_date", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=85.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("operation_date")>
+                                                "Операция"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "operation_date"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "operation_date", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("organization_name")>
+                                                "Организация"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "organization_name"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "organization_name", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("supplier_article")>
+                                                "Артикул"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "supplier_article"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "supplier_article", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("marketplace_article")>
+                                                "Арт. МП"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "marketplace_article"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "marketplace_article", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("nomenclature_article")>
+                                                "Арт. 1С"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "nomenclature_article"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "nomenclature_article", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("nomenclature_code")>
+                                                "Код"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "nomenclature_code"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "nomenclature_code", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=200.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("name")>
+                                                "Название"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "name"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "name", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=55.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("qty")>
+                                                "Кол"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "qty"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "qty", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("amount_line")>
+                                                "К выплате"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "amount_line"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "amount_line", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=80.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("total_price")>
+                                                "Полная"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_price"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "total_price", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("finished_price")>
+                                                "Итог"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "finished_price"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "finished_price", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("event_type")>
+                                                "Тип"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "event_type"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "event_type", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        </TableRow>
+                                    </TableHeader>
+
+                                    <TableBody>
+                                        {items.into_iter().map(|item| {
+                                            let id = item.id.clone();
+                                            let doc_no = item.document_no.clone();
+                                            let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
+                                            let date = format_date(&item.sale_date);
+                                            let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
+                                            let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
+                                            let supplier_art = item.supplier_article;
+                                            let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
+                                            let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
+                                            let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
+                                            let name = item.name;
+                                            let qty = format!("{:.0}", item.qty);
+                                            let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                            let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                            let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                            let event = item.event_type;
+
+                                            let id_check = id.clone();
+                                            let id_toggle = id.clone();
+                                            let id_for_open = id.clone();
+                                            let doc_for_open = doc_no.clone();
+
+                                            view! {
+                                                <TableRow>
+                                                    <TableCell class="fixed-checkbox-column">
+                                                        <input
+                                                            type="checkbox"
+                                                            style="cursor: pointer;"
+                                                            on:click=|e| e.stop_propagation()
+                                                            prop:checked=move || is_selected(&id_check)
+                                                            on:change=move |_ev| toggle_selection(id_toggle.clone())
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <TableCellLayout truncate=true>
+                                                            <a
+                                                                href="#"
+                                                                style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                                                on:click=move |e| {
+                                                                    e.prevent_default();
+                                                                    open_detail(id_for_open.clone(), doc_for_open.clone());
+                                                                }
+                                                            >
+                                                                {doc_no}
+                                                            </a>
+                                                        </TableCellLayout>
+                                                    </TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{sale_id}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{date}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{op_date}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{org_name}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{supplier_art}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{mp_art}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{nom_art}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{nom_code}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout truncate=true>{name}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{qty}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{amount}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{total}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{finished}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{event}</TableCellLayout></TableCell>
+                                                </TableRow>
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        }.into_any()
+                    }}
+                </div>
+            </div>
         </div>
     }
 }
