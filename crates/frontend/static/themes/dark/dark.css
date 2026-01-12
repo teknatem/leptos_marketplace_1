@@ -1,6 +1,6 @@
 /* ============================================
    Dark Theme
-   Only color variable overrides
+   Minimal set of overrides actually used by core CSS
    ============================================ */
 
 :root {
@@ -12,30 +12,30 @@
 
   /* Text Colors */
   --color-text-primary: rgba(255, 255, 255, 0.95);
-  --color-text-secondary: rgba(255, 255, 255, 0.7);
-  --color-text-tertiary: rgba(255, 255, 255, 0.5);
-  --color-text-muted: rgba(255, 255, 255, 0.5);
+  --color-text-secondary: rgba(255, 255, 255, 0.70);
+  --color-text-tertiary: rgba(255, 255, 255, 0.55);
+  --color-text-muted: rgba(255, 255, 255, 0.50);
 
   /* Background Colors */
-  --color-bg-primary: rgba(15, 23, 42, 0.9);
-  --color-bg-secondary: rgba(30, 41, 59, 0.2);
-  --color-surface: rgba(30, 41, 59, 0.4);
-  --color-code-bg: rgba(0, 0, 0, 0.4);
-  
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: rgba(30, 41, 59, 0.35);
+  --color-surface: rgba(30, 41, 59, 0.60);
+  --color-code-bg: rgba(0, 0, 0, 0.35);
+
   /* Border Colors */
-  --color-border: rgba(255, 255, 255, 0.15);
+  --color-border: rgba(255, 255, 255, 0.14);
   --color-border-light: rgba(255, 255, 255, 0.08);
-  --color-border-lighter: rgba(255, 255, 255, 0.08);
+  --color-border-lighter: rgba(255, 255, 255, 0.06);
 
   /* Interactive States */
-  --color-hover: rgba(255, 255, 255, 0.08);
-  --color-hover-bg: rgba(255, 255, 255, 0.1);
-  --color-active: rgba(255, 255, 255, 0.15);
+  --color-hover: rgba(255, 255, 255, 0.06);
+  --color-hover-bg: rgba(255, 255, 255, 0.08);
+  --color-active: rgba(255, 255, 255, 0.12);
   --color-disabled: rgba(255, 255, 255, 0.38);
 
   /* Link Colors */
-  --color-link: #60a5fa;
-  --color-link-hover: #93c5fd;
+  --color-link: #93c5fd;
+  --color-link-hover: #bfdbfe;
 
   /* Table Colors */
   --table-header-bg: rgba(55, 71, 79, 0.85);
@@ -49,63 +49,63 @@
   --btn-primary-bg: #60a5fa;
   --btn-primary-hover: #93c5fd;
   --btn-primary-text: #ffffff;
-  
+
   --btn-secondary-bg: rgba(71, 85, 105, 0.9);
   --btn-secondary-hover: rgba(100, 116, 139, 0.9);
   --btn-secondary-text: #ffffff;
 
   --btn-ghost-bg: transparent;
-  --btn-ghost-hover: rgba(255, 255, 255, 0.1);
-  --btn-ghost-text: rgba(255, 255, 255, 0.8);
+  --btn-ghost-hover: rgba(255, 255, 255, 0.10);
+  --btn-ghost-text: rgba(255, 255, 255, 0.80);
 
   /* Badge Colors */
-  --badge-primary-bg: rgba(96, 165, 250, 0.2);
+  --badge-primary-bg: rgba(96, 165, 250, 0.20);
   --badge-primary-text: #60a5fa;
-  --badge-primary-border: rgba(96, 165, 250, 0.3);
+  --badge-primary-border: rgba(96, 165, 250, 0.30);
 
-  --badge-success-bg: rgba(34, 197, 94, 0.2);
+  --badge-success-bg: rgba(34, 197, 94, 0.20);
   --badge-success-text: #22c55e;
-  --badge-success-border: rgba(34, 197, 94, 0.3);
+  --badge-success-border: rgba(34, 197, 94, 0.30);
 
-  --badge-warning-bg: rgba(251, 191, 36, 0.2);
+  --badge-warning-bg: rgba(251, 191, 36, 0.20);
   --badge-warning-text: #fbbf24;
-  --badge-warning-border: rgba(251, 191, 36, 0.3);
+  --badge-warning-border: rgba(251, 191, 36, 0.30);
 
-  --badge-error-bg: rgba(239, 68, 68, 0.2);
+  --badge-error-bg: rgba(239, 68, 68, 0.20);
   --badge-error-text: #ef4444;
-  --badge-error-border: rgba(239, 68, 68, 0.3);
+  --badge-error-border: rgba(239, 68, 68, 0.30);
 
-  --badge-neutral-bg: rgba(255, 255, 255, 0.2);
+  --badge-neutral-bg: rgba(255, 255, 255, 0.20);
   --badge-neutral-text: rgba(255, 255, 255, 0.85);
-  --badge-neutral-border: rgba(255, 255, 255, 0.3);
+  --badge-neutral-border: rgba(255, 255, 255, 0.30);
 
   /* Tab Colors */
-  --tab-text: rgba(255, 255, 255, 0.5);
+  --tab-text: rgba(255, 255, 255, 0.50);
   --tab-text-hover: rgba(255, 255, 255, 0.85);
   --tab-text-active: rgba(255, 255, 255, 0.95);
   --tab-border-active: #60a5fa;
   --tab-bg: rgba(30, 41, 59, 0.15);
   --tab-bg-hover: rgba(255, 255, 255, 0.08);
-  --tab-bg-active: rgba(96, 165, 250, 0.1);
-  --tab-close-bg: rgba(255, 255, 255, 0.2);
-  --tab-close-text: rgba(255, 255, 255, 0.7);
+  --tab-bg-active: rgba(96, 165, 250, 0.10);
+  --tab-close-bg: rgba(255, 255, 255, 0.20);
+  --tab-close-text: rgba(255, 255, 255, 0.70);
   --tab-close-hover: #ff69b4;
   --tab-close-active: #90EE90;
 
   /* Modal Colors */
-  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --modal-overlay: rgba(0, 0, 0, 0.50);
   --modal-bg: rgba(30, 41, 59, 0.85);
-  --modal-border: rgba(255, 255, 255, 0.2);
+  --modal-border: rgba(255, 255, 255, 0.20);
   --modal-header-bg: rgba(255, 255, 255, 0.05);
 
   /* Sidebar Colors */
-  --sidebar-bg: rgba(30, 35, 45, 0.5);
+  --sidebar-bg: rgba(30, 35, 45, 0.50);
   --sidebar-text: rgba(255, 255, 255, 0.75);
   --sidebar-text-active: #93c5fd;
-  --sidebar-item-hover: rgba(255, 255, 255, 0.1);
-  --sidebar-item-active-bg: rgba(96, 165, 250, 0.2);
+  --sidebar-item-hover: rgba(255, 255, 255, 0.10);
+  --sidebar-item-active-bg: rgba(96, 165, 250, 0.20);
   --sidebar-item-active-border: #60a5fa;
-  --sidebar-header-bg: rgba(40, 45, 55, 0.7);
+  --sidebar-header-bg: rgba(40, 45, 55, 0.70);
   --sidebar-header-border: rgba(255, 255, 255, 0.15);
   --sidebar-border: rgba(255, 255, 255, 0.15);
 
@@ -117,63 +117,78 @@
   /* Top Header Colors */
   --top-header-bg: rgba(17, 24, 39, 0.35);
   --top-header-text: #ffffff;
-  --top-header-border: rgba(255, 255, 255, 0.2);
-  --top-header-btn-hover: rgba(255, 255, 255, 0.1);
+  --top-header-border: rgba(255, 255, 255, 0.20);
+  --top-header-btn-hover: rgba(255, 255, 255, 0.10);
 
   /* Panel Colors */
-  --panel-bg: rgba(30, 35, 45, 0.5);
+  --panel-bg: rgba(30, 35, 45, 0.50);
   --panel-border: rgba(255, 255, 255, 0.15);
-  --panel-resizer-hover: rgba(255, 255, 255, 0.1);
+  --panel-resizer-hover: rgba(255, 255, 255, 0.10);
 
   /* Card Colors */
   --card-bg: rgba(30, 41, 59, 0.25);
-  --card-border: rgba(255, 255, 255, 0.2);
+  --card-border: rgba(255, 255, 255, 0.20);
 
   /* Form Colors */
-  --form-label-text: rgba(255, 255, 255, 0.9);
-  --form-input-bg: rgba(255, 255, 255, 0.1);
-  --form-input-border: rgba(255, 255, 255, 0.2);
+  --form-label-text: rgba(255, 255, 255, 0.90);
+  --form-input-bg: rgba(255, 255, 255, 0.10);
+  --form-input-border: rgba(255, 255, 255, 0.20);
   --form-input-focus-border: #60a5fa;
-  --form-input-focus-shadow: rgba(96, 165, 250, 0.2);
-  --form-placeholder: rgba(255, 255, 255, 0.4);
+  --form-input-focus-shadow: rgba(96, 165, 250, 0.20);
+  --form-placeholder: rgba(255, 255, 255, 0.40);
   --form-group-bg: rgba(255, 255, 255, 0.02);
-  --form-group-border: rgba(255, 255, 255, 0.1);
+  --form-group-border: rgba(255, 255, 255, 0.10);
 
   /* Info/Warning/Code Box Colors */
   --info-box-bg: rgba(96, 165, 250, 0.08);
   --info-box-border: rgba(96, 165, 250, 0.25);
 
   --warning-box-bg: rgba(251, 191, 36, 0.08);
-  --warning-box-border: rgba(251, 191, 36, 0.3);
+  --warning-box-border: rgba(251, 191, 36, 0.30);
   --warning-box-text-color: #fbbf24;
 
-  --code-box-bg: rgba(0, 0, 0, 0.3);
+  --code-box-bg: rgba(0, 0, 0, 0.30);
   --code-box-border: rgba(255, 255, 255, 0.15);
-  --code-box-text: rgba(255, 255, 255, 0.7);
+  --code-box-text: rgba(255, 255, 255, 0.70);
 
   /* Cross-theme behavior tokens */
   --app-bg-color: var(--color-bg-primary);
-  --app-bg-image: url("/static/themes/dark/background.jpg");
-  --app-main-bg: rgba(0, 0, 0, 0.05);
-  --header-backdrop-blur: 8px;
+  --app-bg-image: none;
+  --app-main-bg: var(--color-bg-primary);
+  --header-backdrop-blur: 0px;
   --right-backdrop-blur: 0px;
   --form-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
 
   /* Color scale tokens used by core utilities */
-  --color-primary-100: rgba(96, 165, 250, 0.2);
+  --color-primary-50: rgba(96, 165, 250, 0.10);
+  --color-primary-100: rgba(96, 165, 250, 0.20);
+  --color-primary-200: rgba(96, 165, 250, 0.35);
   --color-primary-700: #93c5fd;
+  --color-primary-800: rgba(96, 165, 250, 0.35);
+  --color-primary-900: rgba(96, 165, 250, 0.20);
+
   --color-success-600: #22c55e;
   --color-success-700: #16a34a;
+
   --color-warning-50: rgba(251, 191, 36, 0.12);
   --color-warning-500: #f59e0b;
   --color-warning-600: #d97706;
   --color-warning-700: #b45309;
+
+  --color-error-50: rgba(239, 68, 68, 0.10);
+  --color-error-100: rgba(239, 68, 68, 0.22);
   --color-error-600: #dc2626;
   --color-error-700: #b91c1c;
+
   --color-info-600: #0ea5e9;
   --color-info-700: #0284c7;
+
+  --color-neutral-50: rgba(255, 255, 255, 0.06);
   --color-neutral-100: rgba(255, 255, 255, 0.08);
-  --color-neutral-600: rgba(255, 255, 255, 0.7);
+  --color-neutral-200: rgba(255, 255, 255, 0.14);
+  --color-neutral-600: rgba(255, 255, 255, 0.70);
+  --color-neutral-700: rgba(255, 255, 255, 0.16);
+  --color-neutral-800: rgba(30, 41, 59, 0.60);
 
   /* Status badge colors */
   --badge-status-posted-bg: rgba(34, 197, 94, 0.22);
@@ -183,44 +198,8 @@
   --badge-status-not-posted-text: #fbbf24;
   --badge-status-not-posted-border: rgba(251, 191, 36, 0.35);
 
-  /* Component tokens */
-  --detail-form-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-  --detail-form-header-text: #ffffff;
-
-  --activity-success-bg: rgba(34, 197, 94, 0.12);
-  --activity-success-fg: #22c55e;
-  --activity-warning-bg: rgba(251, 191, 36, 0.12);
-  --activity-warning-fg: #fbbf24;
-  --activity-error-bg: rgba(239, 68, 68, 0.12);
-  --activity-error-fg: #ef4444;
-
-  --stat-success-gradient: linear-gradient(135deg, #22c55e, #86efac);
-  --stat-warning-gradient: linear-gradient(135deg, #fbbf24, #fde68a);
-  --stat-error-gradient: linear-gradient(135deg, #ef4444, #fca5a5);
-
-  /* Layout tokens */
-  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-  --list-header-text: #ffffff;
-  --list-header-border: rgba(0, 0, 0, 0.1);
-
-  --pagination-controls-bg: rgba(255, 255, 255, 0.12);
-  --pagination-controls-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-bg: rgba(255, 255, 255, 0.1);
-  --pagination-btn-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-bg: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-border: rgba(255, 255, 255, 0.3);
-  --pagination-text: rgba(255, 255, 255, 0.95);
-
-  --page-size-select-bg: rgba(255, 255, 255, 0.1);
-  --page-size-select-border: rgba(255, 255, 255, 0.2);
-  --page-size-select-hover-bg: rgba(255, 255, 255, 0.15);
-  --page-size-select-hover-border: rgba(255, 255, 255, 0.3);
-  --page-size-option-bg: #ffffff;
-  --page-size-option-fg: #333333;
-
-  --sidebar-scrollbar-thumb: rgba(0, 0, 0, 0.2);
-  --sidebar-scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
-
-
-
+  /* List/table scrollbar (content areas) */
+  --list-scrollbar-track: rgba(0, 0, 0, 0.15);
+  --list-scrollbar-thumb: rgba(255, 255, 255, 0.20);
+  --list-scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
 }

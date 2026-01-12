@@ -64,10 +64,10 @@ pub fn DimensionInput(
                     placeholder=placeholder
                     attr:id=id.clone()
                     attr:maxlength=maxlength.to_string()
-                    attr:style="width: 100%;"
+                    attr:style="width: 100%; padding-right: 0px;"
                 >
                     <InputSuffix slot>
-                        <div style="display: flex; gap: 4px;">
+                        <div style="display: flex; gap: 0px;">
                             <Button
                                 appearance=ButtonAppearance::Subtle
                                 shape=ButtonShape::Square

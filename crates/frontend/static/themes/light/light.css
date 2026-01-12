@@ -160,7 +160,9 @@
   --form-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23525252' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
 
   /* Color scale tokens used by core utilities */
+  --color-primary-50: rgba(37, 99, 235, 0.08);
   --color-primary-100: #dbeafe;
+  --color-primary-200: rgba(37, 99, 235, 0.18);
   --color-primary-700: #1e40af;
   --color-success-600: #16a34a;
   --color-success-700: #15803d;
@@ -168,11 +170,15 @@
   --color-warning-500: #f59e0b;
   --color-warning-600: #d97706;
   --color-warning-700: #b45309;
+  --color-error-50: rgba(239, 68, 68, 0.08);
+  --color-error-100: rgba(239, 68, 68, 0.18);
   --color-error-600: #dc2626;
   --color-error-700: #b91c1c;
   --color-info-600: #0284c7;
   --color-info-700: #0369a1;
+  --color-neutral-50: rgba(0, 0, 0, 0.03);
   --color-neutral-100: #f3f4f6;
+  --color-neutral-200: rgba(0, 0, 0, 0.10);
   --color-neutral-600: #6b7280;
 
   /* Status badge colors */

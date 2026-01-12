@@ -1,84 +1,333 @@
-use super::model;
+//! ViewModel for Nomenclature details form (EditDetails MVVM Standard)
+//!
+//! Contains all form fields as individual RwSignals for THAW two-way binding,
+//! nested data (barcodes), UI state, and commands.
+
+use super::model::{self, DimensionValuesResponse, NomenclatureBarcodeDto};
 use contracts::domain::a004_nomenclature::aggregate::NomenclatureDto;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
-use std::rc::Rc;
+
+/// Helper to convert empty strings to None
+fn opt(v: String) -> Option<String> {
+    if v.trim().is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
 
 /// ViewModel for Nomenclature details form
 #[derive(Clone)]
-pub struct NomenclatureDetailsViewModel {
-    pub form: RwSignal<NomenclatureDto>,
+pub struct NomenclatureDetailsVm {
+    // === Form fields (individual RwSignals for THAW) ===
+    pub id: RwSignal<Option<String>>,
+    pub code: RwSignal<String>,
+    pub description: RwSignal<String>,
+    pub full_description: RwSignal<String>,
+    pub article: RwSignal<String>,
+    pub comment: RwSignal<String>,
+    pub is_folder: RwSignal<bool>,
+    pub parent_id: RwSignal<String>,
+
+    // Dimension fields
+    pub dim1_category: RwSignal<String>,
+    pub dim2_line: RwSignal<String>,
+    pub dim3_model: RwSignal<String>,
+    pub dim4_format: RwSignal<String>,
+    pub dim5_sink: RwSignal<String>,
+    pub dim6_size: RwSignal<String>,
+
+    // === Nested data (tables) ===
+    pub barcodes: RwSignal<Vec<NomenclatureBarcodeDto>>,
+    pub barcodes_count: RwSignal<usize>,
+    pub barcodes_loaded: RwSignal<bool>,
+    pub barcodes_loading: RwSignal<bool>,
+
+    // === Reference data (dropdown options) ===
+    pub dimension_options: RwSignal<Option<DimensionValuesResponse>>,
+
+    // === UI State ===
+    pub active_tab: RwSignal<&'static str>,
+    pub loading: RwSignal<bool>,
+    pub saving: RwSignal<bool>,
     pub error: RwSignal<Option<String>>,
+    pub success: RwSignal<Option<String>>,
 }
 
-impl NomenclatureDetailsViewModel {
+impl NomenclatureDetailsVm {
+    /// Create a new ViewModel instance
     pub fn new() -> Self {
         Self {
-            form: RwSignal::new(NomenclatureDto::default()),
+            // Form fields
+            id: RwSignal::new(None),
+            code: RwSignal::new(String::new()),
+            description: RwSignal::new(String::new()),
+            full_description: RwSignal::new(String::new()),
+            article: RwSignal::new(String::new()),
+            comment: RwSignal::new(String::new()),
+            is_folder: RwSignal::new(false),
+            parent_id: RwSignal::new(String::new()),
+
+            // Dimensions
+            dim1_category: RwSignal::new(String::new()),
+            dim2_line: RwSignal::new(String::new()),
+            dim3_model: RwSignal::new(String::new()),
+            dim4_format: RwSignal::new(String::new()),
+            dim5_sink: RwSignal::new(String::new()),
+            dim6_size: RwSignal::new(String::new()),
+
+            // Nested data
+            barcodes: RwSignal::new(Vec::new()),
+            barcodes_count: RwSignal::new(0),
+            barcodes_loaded: RwSignal::new(false),
+            barcodes_loading: RwSignal::new(false),
+
+            // Reference data
+            dimension_options: RwSignal::new(None),
+
+            // UI state
+            active_tab: RwSignal::new("general"),
+            loading: RwSignal::new(false),
+            saving: RwSignal::new(false),
             error: RwSignal::new(None),
+            success: RwSignal::new(None),
         }
     }
 
-    pub fn is_edit_mode(&self) -> impl Fn() -> bool + '_ {
-        move || self.form.get().id.is_some()
+    // === Derived signals ===
+
+    /// Check if in edit mode (has ID)
+    pub fn is_edit_mode(&self) -> Signal<bool> {
+        let id = self.id;
+        Signal::derive(move || id.get().is_some())
     }
 
-    pub fn is_form_valid(&self) -> impl Fn() -> bool + '_ {
-        move || Self::validate_form(&self.form.get()).is_ok()
+    /// Check if form is valid
+    pub fn is_valid(&self) -> Signal<bool> {
+        let description = self.description;
+        Signal::derive(move || !description.get().trim().is_empty())
     }
 
-    fn validate_form(dto: &NomenclatureDto) -> Result<(), &'static str> {
-        if dto.description.trim().is_empty() {
-            return Err("Наименование обязательно для заполнения");
+    /// Check if save button should be disabled
+    pub fn is_save_disabled(&self) -> Signal<bool> {
+        let saving = self.saving;
+        let is_valid = self.is_valid();
+        Signal::derive(move || saving.get() || !is_valid.get())
+    }
+
+    // === Validation ===
+
+    /// Validate form and return error message if invalid
+    pub fn validate(&self) -> Result<(), String> {
+        if self.description.get().trim().is_empty() {
+            return Err("Наименование обязательно для заполнения".into());
         }
         Ok(())
     }
 
-    /// Load form data from server if ID is provided
-    pub fn load_if_needed(&self, id: Option<String>) {
-        let Some(existing_id) = id else {
-            return;
-        };
+    // === Data loading ===
 
-        let this = self.clone();
+    /// Load dimension options (should be called on mount)
+    pub fn load_dimension_options(&self) {
+        let dimension_options = self.dimension_options;
         leptos::task::spawn_local(async move {
-            match super::model::fetch_by_id(existing_id).await {
-                Ok(item) => {
-                    this.form.update(|f| {
-                        f.id = Some(item.base.id.as_string());
-                        f.code = Some(item.base.code);
-                        f.description = item.base.description;
-                        f.full_description = Some(item.full_description);
-                        f.comment = item.base.comment;
-                        f.is_folder = item.is_folder;
-                        f.parent_id = item.parent_id;
-                        f.article = Some(item.article);
-                        f.updated_at = Some(item.base.metadata.updated_at);
-                        // Load dimension fields
-                        f.dim1_category = Some(item.dim1_category);
-                        f.dim2_line = Some(item.dim2_line);
-                        f.dim3_model = Some(item.dim3_model);
-                        f.dim4_format = Some(item.dim4_format);
-                        f.dim5_sink = Some(item.dim5_sink);
-                        f.dim6_size = Some(item.dim6_size);
-                    });
-                }
-                Err(e) => this.error.set(Some(e)),
+            match model::fetch_dimension_values().await {
+                Ok(data) => dimension_options.set(Some(data)),
+                Err(_) => dimension_options.set(None),
             }
         });
     }
 
-    pub fn save_command(&self, on_saved: Rc<dyn Fn(())>) -> impl Fn() + '_ {
-        move || {
-            let this = self.clone();
-            let dto = this.form.get();
-            let on_saved_cb = on_saved.clone();
-            leptos::task::spawn_local(async move {
-                match model::save_form(dto).await {
-                    Ok(_) => on_saved_cb(()),
-                    Err(e) => this.error.set(Some(e)),
+    /// Load entity data by ID
+    pub fn load(&self, id: String) {
+        let this = self.clone();
+        this.loading.set(true);
+        this.error.set(None);
+        this.id.set(Some(id.clone()));
+
+        leptos::task::spawn_local(async move {
+            match model::fetch_by_id(id).await {
+                Ok(item) => {
+                    this.from_aggregate(&item);
+                    this.loading.set(false);
                 }
-            });
+                Err(e) => {
+                    this.error.set(Some(e));
+                    this.loading.set(false);
+                }
+            }
+        });
+    }
+
+    /// Load barcodes (lazy, called when barcodes tab is activated)
+    pub fn load_barcodes(&self) {
+        let Some(nom_id) = self.id.get() else {
+            return;
+        };
+
+        if self.barcodes_loaded.get() {
+            return;
         }
+
+        let this = self.clone();
+        this.barcodes_loading.set(true);
+
+        leptos::task::spawn_local(async move {
+            match model::fetch_barcodes_by_nomenclature(nom_id).await {
+                Ok(data) => {
+                    this.barcodes.set(data.barcodes);
+                    this.barcodes_count.set(data.total_count);
+                    this.barcodes_loaded.set(true);
+                    this.barcodes_loading.set(false);
+                }
+                Err(_) => {
+                    this.barcodes.set(Vec::new());
+                    this.barcodes_count.set(0);
+                    this.barcodes_loaded.set(true);
+                    this.barcodes_loading.set(false);
+                }
+            }
+        });
+    }
+
+    // === Commands ===
+
+    /// Save the form
+    pub fn save(&self, on_saved: Callback<()>) {
+        if let Err(msg) = self.validate() {
+            self.error.set(Some(msg));
+            return;
+        }
+
+        let this = self.clone();
+        this.saving.set(true);
+        this.error.set(None);
+
+        let dto = this.to_dto();
+
+        leptos::task::spawn_local(async move {
+            match model::save_form(dto).await {
+                Ok(new_id) => {
+                    // Update ID if it was a new record
+                    if this.id.get().is_none() {
+                        this.id.set(Some(new_id));
+                    }
+                    this.saving.set(false);
+                    this.success.set(Some("Сохранено успешно".into()));
+                    on_saved.run(());
+                }
+                Err(e) => {
+                    this.saving.set(false);
+                    this.error.set(Some(e));
+                }
+            }
+        });
+    }
+
+    /// Reset form to initial state
+    pub fn reset(&self) {
+        self.id.set(None);
+        self.code.set(String::new());
+        self.description.set(String::new());
+        self.full_description.set(String::new());
+        self.article.set(String::new());
+        self.comment.set(String::new());
+        self.is_folder.set(false);
+        self.parent_id.set(String::new());
+
+        self.dim1_category.set(String::new());
+        self.dim2_line.set(String::new());
+        self.dim3_model.set(String::new());
+        self.dim4_format.set(String::new());
+        self.dim5_sink.set(String::new());
+        self.dim6_size.set(String::new());
+
+        self.barcodes.set(Vec::new());
+        self.barcodes_count.set(0);
+        self.barcodes_loaded.set(false);
+
+        self.active_tab.set("general");
+        self.error.set(None);
+        self.success.set(None);
+    }
+
+    // === Tab helpers ===
+
+    /// Set active tab
+    pub fn set_tab(&self, tab: &'static str) {
+        self.active_tab.set(tab);
+    }
+
+    /// Get dimension options for a specific dimension
+    pub fn get_dim_options(&self, dim: &str) -> Signal<Vec<String>> {
+        let dimension_options = self.dimension_options;
+        let dim = dim.to_string();
+        Signal::derive(move || {
+            dimension_options
+                .get()
+                .map(|d| match dim.as_str() {
+                    "dim1_category" => d.dim1_category,
+                    "dim2_line" => d.dim2_line,
+                    "dim3_model" => d.dim3_model,
+                    "dim4_format" => d.dim4_format,
+                    "dim5_sink" => d.dim5_sink,
+                    "dim6_size" => d.dim6_size,
+                    _ => Vec::new(),
+                })
+                .unwrap_or_default()
+        })
+    }
+
+    // === Private helpers ===
+
+    /// Convert ViewModel to DTO for saving
+    fn to_dto(&self) -> NomenclatureDto {
+        NomenclatureDto {
+            id: self.id.get(),
+            code: opt(self.code.get()),
+            description: self.description.get(),
+            full_description: opt(self.full_description.get()),
+            is_folder: self.is_folder.get(),
+            parent_id: opt(self.parent_id.get()),
+            article: opt(self.article.get()),
+            comment: opt(self.comment.get()),
+            updated_at: None,
+            mp_ref_count: 0,
+            dim1_category: opt(self.dim1_category.get()),
+            dim2_line: opt(self.dim2_line.get()),
+            dim3_model: opt(self.dim3_model.get()),
+            dim4_format: opt(self.dim4_format.get()),
+            dim5_sink: opt(self.dim5_sink.get()),
+            dim6_size: opt(self.dim6_size.get()),
+            is_assembly: None,
+            base_nomenclature_ref: None,
+        }
+    }
+
+    /// Populate ViewModel from loaded aggregate
+    fn from_aggregate(&self, item: &contracts::domain::a004_nomenclature::aggregate::Nomenclature) {
+        self.id.set(Some(item.base.id.as_string()));
+        self.code.set(item.base.code.clone());
+        self.description.set(item.base.description.clone());
+        self.full_description.set(item.full_description.clone());
+        self.article.set(item.article.clone());
+        self.comment.set(item.base.comment.clone().unwrap_or_default());
+        self.is_folder.set(item.is_folder);
+        self.parent_id
+            .set(item.parent_id.clone().unwrap_or_default());
+
+        self.dim1_category.set(item.dim1_category.clone());
+        self.dim2_line.set(item.dim2_line.clone());
+        self.dim3_model.set(item.dim3_model.clone());
+        self.dim4_format.set(item.dim4_format.clone());
+        self.dim5_sink.set(item.dim5_sink.clone());
+        self.dim6_size.set(item.dim6_size.clone());
+    }
+}
+
+impl Default for NomenclatureDetailsVm {
+    fn default() -> Self {
+        Self::new()
     }
 }
