@@ -137,7 +137,7 @@ pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     // Получаем данные из всех проекций
-    let p900_items = crate::projections::p900_mp_sales_register::repository::get_by_registrator(&id)
+    let p900_items = crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get p900 projections: {}", e);

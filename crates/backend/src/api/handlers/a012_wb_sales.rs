@@ -675,7 +675,7 @@ pub async fn get_projections(
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     // Получаем данные из проекций p900 и p904 (WB Sales использует только эти)
     let p900_items =
-        crate::projections::p900_mp_sales_register::repository::get_by_registrator(&id)
+        crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get p900 projections: {}", e);

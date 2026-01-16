@@ -34,7 +34,7 @@ pub async fn store_document_with_raw(
         }
     } else {
         // Если is_posted = false, удаляем проекции (если были)
-        if let Err(e) = crate::projections::p900_mp_sales_register::repository::delete_by_registrator(&id.to_string()).await {
+        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string()).await {
             tracing::error!("Failed to delete projections for OZON FBO document: {}", e);
         }
     }

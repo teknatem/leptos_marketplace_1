@@ -39,6 +39,8 @@ pub struct SalesRegisterDto {
     pub discount_total: Option<f64>,
     pub price_effective: Option<f64>,
     pub amount_line: Option<f64>,
+    /// Плановая себестоимость (из p906_nomenclature_prices)
+    pub cost: Option<f64>,
     pub currency_code: Option<String>,
     pub loaded_at_utc: String,
     pub payload_version: i32,
@@ -67,6 +69,8 @@ enum SortColumn {
     Sku,
     Qty,
     Amount,
+    Cost,
+    Profit,
     Status,
 }
 
@@ -154,6 +158,28 @@ pub fn SalesRegisterList() -> impl IntoView {
                             .partial_cmp(&b_amt)
                             .unwrap_or(std::cmp::Ordering::Equal)
                     }
+                    SortColumn::Cost => {
+                        // Себестоимость = cost * qty
+                        let a_cost = a.cost.map(|c| c * a.qty).unwrap_or(0.0);
+                        let b_cost = b.cost.map(|c| c * b.qty).unwrap_or(0.0);
+                        a_cost
+                            .partial_cmp(&b_cost)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    SortColumn::Profit => {
+                        // Прибыль = amount_line - (cost * qty)
+                        let a_profit = match a.cost {
+                            Some(c) => a.amount_line.unwrap_or(0.0) - c * a.qty,
+                            None => 0.0,
+                        };
+                        let b_profit = match b.cost {
+                            Some(c) => b.amount_line.unwrap_or(0.0) - c * b.qty,
+                            None => 0.0,
+                        };
+                        a_profit
+                            .partial_cmp(&b_profit)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    }
                     SortColumn::Status => a.status_norm.cmp(&b.status_norm),
                 };
                 match direction {
@@ -165,12 +191,20 @@ pub fn SalesRegisterList() -> impl IntoView {
         data
     };
 
-    // Вычисление итогов по Qty и Amount
+    // Вычисление итогов по Qty, Amount, Cost и Profit
     let totals = move || {
         let data = sorted_sales();
         let total_qty: f64 = data.iter().map(|s| s.qty).sum();
         let total_amount: f64 = data.iter().map(|s| s.amount_line.unwrap_or(0.0)).sum();
-        (total_qty, total_amount)
+        let total_cost: f64 = data
+            .iter()
+            .filter_map(|s| s.cost.map(|c| c * s.qty))
+            .sum();
+        let total_profit: f64 = data
+            .iter()
+            .filter_map(|s| s.cost.map(|c| s.amount_line.unwrap_or(0.0) - c * s.qty))
+            .sum();
+        (total_qty, total_amount, total_cost, total_profit)
     };
 
     let load_sales = move || {
@@ -267,12 +301,14 @@ pub fn SalesRegisterList() -> impl IntoView {
                 </button>
 
                 {move || if !loading.get() {
-                    let (total_qty, total_amount) = totals();
+                    let (total_qty, total_amount, total_cost, total_profit) = totals();
                     view! {
                         <span style="margin-left: 8px; font-size: var(--font-size-sm); color: var(--color-text-muted);">
                             "Total: " {sales.get().len()} " records | "
                             "Qty: " {format!("{:.2}", total_qty)} " | "
-                            "Amount: " {format!("{:.2}", total_amount)}
+                            "Amount: " {format!("{:.2}", total_amount)} " | "
+                            "Cost: " {format!("{:.2}", total_cost)} " | "
+                            "Profit: " {format!("{:.2}", total_profit)}
                         </span>
                     }.into_any()
                 } else {
@@ -496,6 +532,40 @@ pub fn SalesRegisterList() -> impl IntoView {
                                             </th>
                                             <th
                                                 style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Cost)
+                                                title="Себестоимость (cost × qty)"
+                                            >
+                                                "Cost "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Cost) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
+                                                on:click=move |_| handle_column_click(SortColumn::Profit)
+                                                title="Прибыль (amount - cost × qty)"
+                                            >
+                                                "Profit "
+                                                {move || {
+                                                    if sort_column.get() == Some(SortColumn::Profit) {
+                                                        match sort_direction.get() {
+                                                            SortDirection::Asc => "↑",
+                                                            SortDirection::Desc => "↓",
+                                                        }
+                                                    } else {
+                                                        ""
+                                                    }
+                                                }}
+                                            </th>
+                                            <th
+                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
                                                 on:click=move |_| handle_column_click(SortColumn::Status)
                                             >
                                                 "Status "
@@ -526,6 +596,10 @@ pub fn SalesRegisterList() -> impl IntoView {
                                         let org_ref = sale.organization_ref.clone();
                                         let org_ref_short = org_ref[..8.min(org_ref.len())].to_string();
 
+                                        // Себестоимость и прибыль
+                                        let cost_total = sale.cost.map(|c| c * qty);
+                                        let profit = sale.cost.map(|c| amount_line - c * qty);
+
                                         // Данные для открытия документа
                                         let document_type = sale.document_type.clone();
                                         let registrator_ref = sale.registrator_ref.clone();
@@ -554,6 +628,25 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                 <td style="border: 1px solid #ddd; padding: 8px;">{seller_sku}</td>
                                                 <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{format!("{:.2}", qty)}</td>
                                                 <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{format!("{:.2}", amount_line)}</td>
+                                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                                                    {match cost_total {
+                                                        Some(c) => format!("{:.2}", c),
+                                                        None => "-".to_string(),
+                                                    }}
+                                                </td>
+                                                <td style={
+                                                    let base_style = "border: 1px solid #ddd; padding: 8px; text-align: right;";
+                                                    match profit {
+                                                        Some(p) if p >= 0.0 => format!("{} color: #4CAF50; font-weight: 500;", base_style),
+                                                        Some(_) => format!("{} color: #f44336; font-weight: 500;", base_style),
+                                                        None => base_style.to_string(),
+                                                    }
+                                                }>
+                                                    {match profit {
+                                                        Some(p) => format!("{:.2}", p),
+                                                        None => "-".to_string(),
+                                                    }}
+                                                </td>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">{status_norm}</td>
                                                 <td style="border: 1px solid #ddd; padding: 8px;">
                                                     // UUID ссылка на организацию
@@ -583,7 +676,7 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
     let mut csv = String::from("\u{FEFF}");
 
     // Заголовок с точкой с запятой как разделитель
-    csv.push_str("Date;Marketplace;Document №;Product;SKU;Qty;Amount;Status;Organization\n");
+    csv.push_str("Date;Marketplace;Document №;Product;SKU;Qty;Amount;Cost;Profit;Status;Organization\n");
 
     for sale in data {
         let title = sale.title.as_deref().unwrap_or("").replace("\"", "\"\"");
@@ -595,12 +688,24 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
         let amount_line = sale.amount_line.unwrap_or(0.0);
         let org_ref_short = &sale.organization_ref[..8.min(sale.organization_ref.len())];
 
+        // Себестоимость и прибыль
+        let cost_total = sale.cost.map(|c| c * sale.qty);
+        let profit = sale.cost.map(|c| amount_line - c * sale.qty);
+
         // Форматируем числа с запятой как десятичный разделитель
         let qty_str = format!("{:.2}", sale.qty).replace(".", ",");
         let amount_str = format!("{:.2}", amount_line).replace(".", ",");
+        let cost_str = match cost_total {
+            Some(c) => format!("{:.2}", c).replace(".", ","),
+            None => "".to_string(),
+        };
+        let profit_str = match profit {
+            Some(p) => format!("{:.2}", p).replace(".", ","),
+            None => "".to_string(),
+        };
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};\"{}\";\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\";\"{}\"\n",
             sale.sale_date,
             sale.marketplace,
             sale.document_no,
@@ -608,6 +713,8 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
             seller_sku,
             qty_str,
             amount_str,
+            cost_str,
+            profit_str,
             sale.status_norm,
             org_ref_short
         ));
