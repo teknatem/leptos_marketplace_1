@@ -17,10 +17,8 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     repository::update(&document).await?;
 
     // Удалить старые проекции (если были)
-    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(
-        &id.to_string(),
-    )
-    .await?;
+    crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
+        .await?;
 
     // Создать новую проекцию (возврат = отрицательные значения в Sales Register)
     crate::projections::p900_mp_sales_register::service::project_ozon_returns(&document, id).await?;
@@ -49,10 +47,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     repository::update(&document).await?;
 
     // Удалить проекции
-    crate::projections::p900_mp_sales_register::repository::delete_by_registrator(
-        &id.to_string(),
-    )
-    .await?;
+    crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
+        .await?;
 
     tracing::info!("Unposted document a009 (OZON Return): {}", id);
     Ok(())

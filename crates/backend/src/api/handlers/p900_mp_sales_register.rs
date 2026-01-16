@@ -1,17 +1,17 @@
 use axum::{extract::Query, Json};
 use contracts::projections::p900_mp_sales_register::{
-    DailyStat, MarketplaceStat, SalesRegisterDetailDto, SalesRegisterDto,
-    SalesRegisterListRequest, SalesRegisterListResponse, SalesRegisterStatsByDateRequest,
-    SalesRegisterStatsByDateResponse, SalesRegisterStatsByMarketplaceResponse,
+    SalesRegisterDetailDto, SalesRegisterDto, SalesRegisterListRequest, SalesRegisterListResponse,
+    SalesRegisterStatsByDateRequest, SalesRegisterStatsByDateResponse,
+    SalesRegisterStatsByMarketplaceResponse,
 };
 
-use crate::projections::p900_mp_sales_register::{backfill, repository};
+use crate::projections::p900_mp_sales_register::{backfill, repository, service};
 
 /// Handler для получения списка продаж с фильтрами
 pub async fn list_sales(
     Query(req): Query<SalesRegisterListRequest>,
 ) -> Result<Json<SalesRegisterListResponse>, axum::http::StatusCode> {
-    let (items, total) = repository::list_with_filters(
+    let (items, total) = service::list_with_filters(
         &req.date_from,
         &req.date_to,
         req.marketplace,
@@ -47,7 +47,7 @@ pub async fn get_sale_detail(
         String,
     )>,
 ) -> Result<Json<SalesRegisterDetailDto>, axum::http::StatusCode> {
-    let item = repository::get_by_id(&marketplace, &document_no, &line_id)
+    let item = service::get_by_id(&marketplace, &document_no, &line_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get sale detail: {}", e);
@@ -70,48 +70,28 @@ pub async fn get_sale_detail(
 pub async fn get_stats_by_date(
     Query(req): Query<SalesRegisterStatsByDateRequest>,
 ) -> Result<Json<SalesRegisterStatsByDateResponse>, axum::http::StatusCode> {
-    let stats = repository::get_stats_by_date(&req.date_from, &req.date_to, req.marketplace)
+    let stats = service::calculate_daily_stats(&req.date_from, &req.date_to, req.marketplace)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get stats by date: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let dtos: Vec<DailyStat> = stats
-        .into_iter()
-        .map(|s| DailyStat {
-            date: s.date,
-            sales_count: s.sales_count,
-            total_qty: s.total_qty,
-            total_revenue: s.total_revenue,
-        })
-        .collect();
-
-    Ok(Json(SalesRegisterStatsByDateResponse { data: dtos }))
+    Ok(Json(SalesRegisterStatsByDateResponse { data: stats }))
 }
 
 /// Handler для статистики по маркетплейсам
 pub async fn get_stats_by_marketplace(
     Query(req): Query<SalesRegisterStatsByDateRequest>,
 ) -> Result<Json<SalesRegisterStatsByMarketplaceResponse>, axum::http::StatusCode> {
-    let stats = repository::get_stats_by_marketplace(&req.date_from, &req.date_to)
+    let stats = service::calculate_marketplace_stats(&req.date_from, &req.date_to)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get stats by marketplace: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let dtos: Vec<MarketplaceStat> = stats
-        .into_iter()
-        .map(|s| MarketplaceStat {
-            marketplace: s.marketplace,
-            sales_count: s.sales_count,
-            total_qty: s.total_qty,
-            total_revenue: s.total_revenue,
-        })
-        .collect();
-
-    Ok(Json(SalesRegisterStatsByMarketplaceResponse { data: dtos }))
+    Ok(Json(SalesRegisterStatsByMarketplaceResponse { data: stats }))
 }
 
 /// Handler для запуска backfill marketplace_product_ref
@@ -170,6 +150,7 @@ fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
         discount_total: model.discount_total,
         price_effective: model.price_effective,
         amount_line: model.amount_line,
+        cost: model.cost,
         currency_code: model.currency_code,
         loaded_at_utc: model.loaded_at_utc,
         payload_version: model.payload_version,
@@ -181,7 +162,7 @@ fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
 pub async fn get_by_registrator(
     axum::extract::Path(registrator_ref): axum::extract::Path<String>,
 ) -> Result<Json<Vec<SalesRegisterDto>>, axum::http::StatusCode> {
-    let items = repository::get_by_registrator(&registrator_ref)
+    let items = service::get_by_registrator(&registrator_ref)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get projections by registrator: {}", e);

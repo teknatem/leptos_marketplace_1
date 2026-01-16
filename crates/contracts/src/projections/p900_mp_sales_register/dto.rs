@@ -39,6 +39,8 @@ pub struct SalesRegisterDto {
     pub discount_total: Option<f64>,
     pub price_effective: Option<f64>,
     pub amount_line: Option<f64>,
+    /// Плановая себестоимость (из p906_nomenclature_prices)
+    pub cost: Option<f64>,
     pub currency_code: Option<String>,
 
     // Technical fields

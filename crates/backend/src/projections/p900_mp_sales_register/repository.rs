@@ -61,6 +61,8 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub amount_line: Option<f64>,
     #[sea_orm(nullable)]
+    pub cost: Option<f64>,
+    #[sea_orm(nullable)]
     pub currency_code: Option<String>,
 
     // Technical fields
@@ -115,6 +117,7 @@ pub struct SalesRegisterEntry {
     // Quantities and money
     pub qty: f64,
     pub price_list: Option<f64>,
+    pub cost: Option<f64>,
     pub discount_total: Option<f64>,
     pub price_effective: Option<f64>,
     pub amount_line: Option<f64>,
@@ -165,6 +168,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             title: Set(entry.title.clone()),
             qty: Set(entry.qty),
             price_list: Set(entry.price_list),
+            cost: Set(entry.cost),
             discount_total: Set(entry.discount_total),
             price_effective: Set(entry.price_effective),
             amount_line: Set(entry.amount_line),
@@ -199,6 +203,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             title: Set(entry.title.clone()),
             qty: Set(entry.qty),
             price_list: Set(entry.price_list),
+            cost: Set(entry.cost),
             discount_total: Set(entry.discount_total),
             price_effective: Set(entry.price_effective),
             amount_line: Set(entry.amount_line),
@@ -298,21 +303,12 @@ pub async fn list_with_filters(
     Ok((items, total))
 }
 
-/// Структура для статистики по дате
-#[derive(Debug, Clone)]
-pub struct DailyStat {
-    pub date: String,
-    pub sales_count: i32,
-    pub total_qty: f64,
-    pub total_revenue: f64,
-}
-
-/// Получить статистику по датам
-pub async fn get_stats_by_date(
+/// Получить записи по диапазону дат (для статистики в service)
+pub async fn list_by_date_range(
     date_from: &str,
     date_to: &str,
     marketplace: Option<String>,
-) -> Result<Vec<DailyStat>> {
+) -> Result<Vec<Model>> {
     let mut query = Entity::find()
         .filter(Column::SaleDate.gte(date_from.to_string()))
         .filter(Column::SaleDate.lte(date_to.to_string()));
@@ -322,73 +318,7 @@ pub async fn get_stats_by_date(
     }
 
     let items = query.all(conn()).await?;
-
-    // Группировка по датам в памяти
-    use std::collections::HashMap;
-    let mut stats_map: HashMap<String, DailyStat> = HashMap::new();
-
-    for item in items {
-        let stat = stats_map
-            .entry(item.sale_date.clone())
-            .or_insert(DailyStat {
-                date: item.sale_date.clone(),
-                sales_count: 0,
-                total_qty: 0.0,
-                total_revenue: 0.0,
-            });
-        stat.sales_count += 1;
-        stat.total_qty += item.qty;
-        stat.total_revenue += item.amount_line.unwrap_or(0.0);
-    }
-
-    let mut result: Vec<DailyStat> = stats_map.into_values().collect();
-    result.sort_by(|a, b| a.date.cmp(&b.date));
-
-    Ok(result)
-}
-
-/// Структура для статистики по маркетплейсу
-#[derive(Debug, Clone)]
-pub struct MarketplaceStat {
-    pub marketplace: String,
-    pub sales_count: i32,
-    pub total_qty: f64,
-    pub total_revenue: f64,
-}
-
-/// Получить статистику по маркетплейсам
-pub async fn get_stats_by_marketplace(
-    date_from: &str,
-    date_to: &str,
-) -> Result<Vec<MarketplaceStat>> {
-    let items = Entity::find()
-        .filter(Column::SaleDate.gte(date_from.to_string()))
-        .filter(Column::SaleDate.lte(date_to.to_string()))
-        .all(conn())
-        .await?;
-
-    // Группировка по маркетплейсам в памяти
-    use std::collections::HashMap;
-    let mut stats_map: HashMap<String, MarketplaceStat> = HashMap::new();
-
-    for item in items {
-        let stat = stats_map
-            .entry(item.marketplace.clone())
-            .or_insert(MarketplaceStat {
-                marketplace: item.marketplace.clone(),
-                sales_count: 0,
-                total_qty: 0.0,
-                total_revenue: 0.0,
-            });
-        stat.sales_count += 1;
-        stat.total_qty += item.qty;
-        stat.total_revenue += item.amount_line.unwrap_or(0.0);
-    }
-
-    let mut result: Vec<MarketplaceStat> = stats_map.into_values().collect();
-    result.sort_by(|a, b| a.marketplace.cmp(&b.marketplace));
-
-    Ok(result)
+    Ok(items)
 }
 
 /// Получить все записи с NULL marketplace_product_ref (для backfill)

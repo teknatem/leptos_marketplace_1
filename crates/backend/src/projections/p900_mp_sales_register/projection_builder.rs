@@ -1,5 +1,8 @@
 use super::repository::SalesRegisterEntry;
-use crate::domain::a007_marketplace_product::service::{find_or_create_for_sale, get_by_id, FindOrCreateParams};
+use crate::domain::a007_marketplace_product::service::{
+    find_or_create_for_sale, get_by_id, FindOrCreateParams,
+};
+use crate::projections::p906_nomenclature_prices;
 use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
@@ -16,8 +19,25 @@ async fn get_nomenclature_ref(marketplace_product_id: Uuid) -> anyhow::Result<Op
     }
 }
 
+/// Helper функция для получения себестоимости из p906_nomenclature_prices
+/// Возвращает None если nomenclature_ref отсутствует или цена не найдена
+async fn get_cost_for_nomenclature(
+    nomenclature_ref: &Option<String>,
+    sale_date: &str,
+) -> anyhow::Result<Option<f64>> {
+    match nomenclature_ref {
+        Some(ref nom_ref) => {
+            p906_nomenclature_prices::repository::get_price_for_date(nom_ref, sale_date).await
+        }
+        None => Ok(None),
+    }
+}
+
 /// Конвертировать OZON FBS Posting в записи Sales Register
-pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
+pub async fn from_ozon_fbs(
+    document: &OzonFbsPosting,
+    document_id: &str,
+) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -73,6 +93,7 @@ pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> anyh
             // Quantities and money
             qty: line.qty,
             price_list: line.price_list,
+            cost: Some(0.00),
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
@@ -89,7 +110,10 @@ pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> anyh
 }
 
 /// Конвертировать OZON FBO Posting в записи Sales Register
-pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
+pub async fn from_ozon_fbo(
+    document: &OzonFboPosting,
+    document_id: &str,
+) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     for (_idx, line) in document.lines.iter().enumerate() {
@@ -145,6 +169,7 @@ pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> anyh
             // Quantities and money
             qty: line.qty,
             price_list: line.price_list,
+            cost: Some(0.00),
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
@@ -161,8 +186,13 @@ pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> anyh
 }
 
 /// Конвертировать WB Sales в запись Sales Register
-pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Result<SalesRegisterEntry> {
+pub async fn from_wb_sales(
+    document: &WbSales,
+    document_id: &str,
+) -> anyhow::Result<SalesRegisterEntry> {
     let event_time = document.state.sale_dt;
+    let sale_date = event_time.date_naive();
+    let sale_date_str = sale_date.format("%Y-%m-%d").to_string();
 
     // Поиск или создание a007
     let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
@@ -176,6 +206,9 @@ pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Res
 
     // Получить nomenclature_ref из a007
     let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
+
+    // Получить себестоимость из p906_nomenclature_prices
+    let cost = get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?;
 
     Ok(SalesRegisterEntry {
         // NK
@@ -197,7 +230,7 @@ pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Res
 
         // Timestamps and status
         event_time_source: event_time,
-        sale_date: event_time.date_naive(),
+        sale_date,
         source_updated_at: document.state.last_change_dt,
         status_source: document.state.event_type.clone(),
         status_norm: document.state.status_norm.clone(),
@@ -211,6 +244,7 @@ pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Res
         // Quantities and money
         qty: document.line.qty,
         price_list: document.line.price_list,
+        cost,
         discount_total: document.line.discount_total,
         price_effective: document.line.price_effective,
         amount_line: document.line.amount_line,
@@ -224,7 +258,10 @@ pub async fn from_wb_sales(document: &WbSales, document_id: &str) -> anyhow::Res
 
 /// Конвертировать YM Order в записи Sales Register
 /// ВАЖНО: Записи создаются только если заполнена delivery_date!
-pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Result<Vec<SalesRegisterEntry>> {
+pub async fn from_ym_order(
+    document: &YmOrder,
+    document_id: &str,
+) -> anyhow::Result<Vec<SalesRegisterEntry>> {
     let mut entries = Vec::new();
 
     // Проверяем наличие delivery_date - без нее не проецируем
@@ -287,6 +324,7 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Res
             // Quantities and money
             qty: line.qty,
             price_list: line.price_list,
+            cost: Some(0.00),
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
@@ -304,13 +342,12 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> anyhow::Res
 
 /// Конвертировать OZON Returns (возвраты) в запись Sales Register
 /// ВАЖНО: Количество и сумма будут ОТРИЦАТЕЛЬНЫМИ (возврат = минус продажи)
-pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> anyhow::Result<SalesRegisterEntry> {
+pub async fn from_ozon_returns(
+    document: &OzonReturns,
+    document_id: &str,
+) -> anyhow::Result<SalesRegisterEntry> {
     // Используем return_date как дату события (конвертируем NaiveDate в DateTime)
-    let event_time = document
-        .return_date
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc();
+    let event_time = document.return_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
 
     // Поиск или создание a007
     let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
@@ -363,6 +400,7 @@ pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> any
         // Quantities and money - ОТРИЦАТЕЛЬНЫЕ!
         qty: qty_negative,
         price_list: None,
+        cost: Some(0.00),
         discount_total: None,
         price_effective: Some(document.price),
         amount_line: Some(amount_negative),

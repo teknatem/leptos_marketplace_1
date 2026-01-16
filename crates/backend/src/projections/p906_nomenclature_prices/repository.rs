@@ -344,3 +344,19 @@ pub async fn get_unique_periods() -> Result<Vec<String>> {
 
     Ok(results.into_iter().map(|r| r.period).collect())
 }
+
+/// Получить актуальную цену для номенклатуры на указанную дату
+/// Логика: найти запись с MAX(period) WHERE period <= sale_date
+pub async fn get_price_for_date(nomenclature_ref: &str, sale_date: &str) -> Result<Option<f64>> {
+    let db = conn();
+
+    // Находим цену с максимальной датой period, которая <= sale_date
+    let result = Entity::find()
+        .filter(Column::NomenclatureRef.eq(nomenclature_ref))
+        .filter(Column::Period.lte(sale_date))
+        .order_by_desc(Column::Period)
+        .one(db)
+        .await?;
+
+    Ok(result.map(|m| m.price))
+}

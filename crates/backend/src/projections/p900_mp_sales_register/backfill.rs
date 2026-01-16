@@ -1,5 +1,7 @@
 use super::repository::{self, SalesRegisterEntry};
-use crate::domain::a007_marketplace_product::service::{find_or_create_for_sale, FindOrCreateParams};
+use crate::domain::a007_marketplace_product::service::{
+    find_or_create_for_sale, FindOrCreateParams,
+};
 use anyhow::Result;
 
 /// Статистика backfill операции
@@ -26,7 +28,10 @@ pub async fn backfill_marketplace_product_refs() -> Result<BackfillStats> {
     let records = repository::get_records_with_null_product_ref().await?;
     stats.total_records = records.len();
 
-    tracing::info!("Found {} records with NULL marketplace_product_ref", stats.total_records);
+    tracing::info!(
+        "Found {} records with NULL marketplace_product_ref",
+        stats.total_records
+    );
 
     for record in records {
         match backfill_single_record(&record).await {
@@ -83,7 +88,10 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
         }
     };
 
-    let title = record.title.clone().unwrap_or_else(|| "Unknown".to_string());
+    let title = record
+        .title
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
 
     // Определяем marketplace_id по названию маркетплейса
     // ПРИМЕЧАНИЕ: Здесь используется упрощённая логика
@@ -133,9 +141,20 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
         registrator_ref: record.registrator_ref.clone(),
 
         // Timestamps and status
-        event_time_source: record.event_time_source.parse().ok().unwrap_or_else(chrono::Utc::now),
-        sale_date: record.sale_date.parse().ok().unwrap_or_else(|| chrono::Utc::now().date_naive()),
-        source_updated_at: record.source_updated_at.as_ref().and_then(|s| s.parse().ok()),
+        event_time_source: record
+            .event_time_source
+            .parse()
+            .ok()
+            .unwrap_or_else(chrono::Utc::now),
+        sale_date: record
+            .sale_date
+            .parse()
+            .ok()
+            .unwrap_or_else(|| chrono::Utc::now().date_naive()),
+        source_updated_at: record
+            .source_updated_at
+            .as_ref()
+            .and_then(|s| s.parse().ok()),
         status_source: record.status_source.clone(),
         status_norm: record.status_norm.clone(),
 
@@ -148,6 +167,7 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
         // Quantities and money
         qty: record.qty,
         price_list: record.price_list,
+        cost: Some(0.00),
         discount_total: record.discount_total,
         price_effective: record.price_effective,
         amount_line: record.amount_line,
