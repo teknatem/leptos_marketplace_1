@@ -29,3 +29,19 @@ pub async fn get_monthly_summary(
     }
 }
 
+/// GET /api/d400/periods
+pub async fn get_available_periods() -> Result<Json<Vec<String>>, StatusCode> {
+    match service::get_available_periods().await {
+        Ok(periods) => {
+            tracing::info!(
+                "D400 Dashboard: Returning {} available periods",
+                periods.len()
+            );
+            Ok(Json(periods))
+        }
+        Err(e) => {
+            tracing::error!("D400 Dashboard: Failed to get periods: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}

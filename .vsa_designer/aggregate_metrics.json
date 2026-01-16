@@ -13,8 +13,8 @@
           "misc": 16441
         },
         "frontend": {
-          "details": 14760,
-          "list": 21678,
+          "details": 14382,
+          "list": 21300,
           "misc": 93,
           "picker": 0,
           "tree": 0
@@ -35,8 +35,8 @@
           "misc": 106
         },
         "frontend": {
-          "details": 13187,
-          "list": 14579,
+          "details": 12809,
+          "list": 14135,
           "misc": 123,
           "picker": 4624,
           "tree": 0
@@ -57,11 +57,11 @@
           "misc": 91
         },
         "frontend": {
-          "details": 16376,
+          "details": 15998,
           "list": 0,
           "misc": 46,
           "picker": 0,
-          "tree": 20906
+          "tree": 20540
         },
         "handlers": {
           "handler_file": 0
@@ -79,11 +79,11 @@
           "misc": 715
         },
         "frontend": {
-          "details": 48001,
-          "list": 39732,
+          "details": 47635,
+          "list": 39354,
           "misc": 74,
           "picker": 11623,
-          "tree": 30018
+          "tree": 29652
         },
         "handlers": {
           "handler_file": 0
@@ -101,8 +101,8 @@
           "misc": 20
         },
         "frontend": {
-          "details": 20087,
-          "list": 18703,
+          "details": 19709,
+          "list": 18259,
           "misc": 126,
           "picker": 8363,
           "tree": 0
@@ -123,8 +123,8 @@
           "misc": 163
         },
         "frontend": {
-          "details": 37714,
-          "list": 24312,
+          "details": 37348,
+          "list": 23934,
           "misc": 176,
           "picker": 0,
           "tree": 0
@@ -145,7 +145,7 @@
           "misc": 20
         },
         "frontend": {
-          "details": 37640,
+          "details": 37339,
           "list": 26186,
           "misc": 46,
           "picker": 0,
@@ -168,7 +168,7 @@
         },
         "frontend": {
           "details": 0,
-          "list": 22382,
+          "list": 22004,
           "misc": 28,
           "picker": 0,
           "tree": 0
@@ -189,7 +189,7 @@
           "misc": 20
         },
         "frontend": {
-          "details": 45258,
+          "details": 44971,
           "list": 44809,
           "misc": 44,
           "picker": 0,
@@ -234,7 +234,7 @@
         },
         "frontend": {
           "details": 62458,
-          "list": 58132,
+          "list": 56762,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -255,7 +255,7 @@
           "misc": 22
         },
         "frontend": {
-          "details": 71756,
+          "details": 71389,
           "list": 77299,
           "misc": 43,
           "picker": 0,
@@ -299,7 +299,7 @@
           "misc": 20
         },
         "frontend": {
-          "details": 82544,
+          "details": 81895,
           "list": 55018,
           "misc": 44,
           "picker": 0,
@@ -322,7 +322,7 @@
         },
         "frontend": {
           "details": 97541,
-          "list": 41063,
+          "list": 40110,
           "misc": 105,
           "picker": 0,
           "tree": 0
@@ -389,8 +389,8 @@
           "misc": 469
         },
         "frontend": {
-          "details": 356,
-          "list": 521,
+          "details": 344,
+          "list": 509,
           "misc": 4,
           "picker": 0,
           "tree": 0
@@ -411,8 +411,8 @@
           "misc": 4
         },
         "frontend": {
-          "details": 341,
-          "list": 343,
+          "details": 329,
+          "list": 330,
           "misc": 6,
           "picker": 134,
           "tree": 0
@@ -433,11 +433,11 @@
           "misc": 3
         },
         "frontend": {
-          "details": 421,
+          "details": 409,
           "list": 0,
           "misc": 3,
           "picker": 0,
-          "tree": 534
+          "tree": 522
         },
         "handlers": {
           "handler_file": 0
@@ -455,11 +455,11 @@
           "misc": 25
         },
         "frontend": {
-          "details": 1290,
-          "list": 889,
+          "details": 1278,
+          "list": 877,
           "misc": 5,
           "picker": 246,
-          "tree": 733
+          "tree": 721
         },
         "handlers": {
           "handler_file": 0
@@ -477,8 +477,8 @@
           "misc": 1
         },
         "frontend": {
-          "details": 464,
-          "list": 449,
+          "details": 452,
+          "list": 436,
           "misc": 6,
           "picker": 204,
           "tree": 0
@@ -499,8 +499,8 @@
           "misc": 6
         },
         "frontend": {
-          "details": 786,
-          "list": 555,
+          "details": 774,
+          "list": 543,
           "misc": 8,
           "picker": 0,
           "tree": 0
@@ -521,7 +521,7 @@
           "misc": 1
         },
         "frontend": {
-          "details": 851,
+          "details": 842,
           "list": 613,
           "misc": 3,
           "picker": 0,
@@ -544,7 +544,7 @@
         },
         "frontend": {
           "details": 0,
-          "list": 507,
+          "list": 495,
           "misc": 2,
           "picker": 0,
           "tree": 0
@@ -565,7 +565,7 @@
           "misc": 1
         },
         "frontend": {
-          "details": 739,
+          "details": 730,
           "list": 841,
           "misc": 3,
           "picker": 0,
@@ -610,7 +610,7 @@
         },
         "frontend": {
           "details": 834,
-          "list": 1039,
+          "list": 1010,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -631,7 +631,7 @@
           "misc": 2
         },
         "frontend": {
-          "details": 1691,
+          "details": 1689,
           "list": 1576,
           "misc": 3,
           "picker": 0,
@@ -675,7 +675,7 @@
           "misc": 1
         },
         "frontend": {
-          "details": 862,
+          "details": 846,
           "list": 1077,
           "misc": 3,
           "picker": 0,
@@ -698,7 +698,7 @@
         },
         "frontend": {
           "details": 1269,
-          "list": 753,
+          "list": 727,
           "misc": 6,
           "picker": 0,
           "tree": 0

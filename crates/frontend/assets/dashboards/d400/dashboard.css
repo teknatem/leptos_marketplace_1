@@ -1,0 +1,255 @@
+/* All styles scoped to #bolt-root */
+
+#bolt-root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1f2937;
+    padding: 32px;
+    box-sizing: border-box;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    min-height: 100vh;
+  }
+  
+  #bolt-root * {
+    box-sizing: border-box;
+  }
+  
+  #bolt-root .dashboard-header {
+    margin-bottom: 32px;
+    padding: 24px 32px;
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+  
+  #bolt-root .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  
+  #bolt-root .dashboard-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+    letter-spacing: -0.025em;
+  }
+  
+  #bolt-root .dashboard-period {
+    font-size: 15px;
+    color: #e0f2fe;
+    margin: 0;
+    font-weight: 500;
+  }
+  
+  #bolt-root .period-selector-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  #bolt-root .period-label {
+    font-size: 15px;
+    color: #e0f2fe;
+    font-weight: 500;
+    margin: 0;
+  }
+  
+  #bolt-root .period-selector {
+    padding: 8px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #0c4a6e;
+    background: #ffffff;
+    border: 2px solid #bae6fd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+  }
+  
+  #bolt-root .period-selector:hover {
+    background: #f0f9ff;
+    border-color: #7dd3fc;
+  }
+  
+  #bolt-root .period-selector:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+  }
+  
+  #bolt-root .dashboard-table-wrapper {
+    overflow-x: auto;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+  }
+  
+  #bolt-root .dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  
+  #bolt-root .dashboard-table thead {
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+  
+  #bolt-root .dashboard-table th {
+    padding: 16px 20px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    border-bottom: 2px solid #cbd5e1;
+    white-space: nowrap;
+  }
+  
+  #bolt-root .dashboard-table th.numeric {
+    text-align: right;
+  }
+  
+  #bolt-root .dashboard-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+  }
+  
+  #bolt-root .dashboard-table th.sortable:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+  
+  #bolt-root .dashboard-table th.sortable.sorted {
+    color: #0ea5e9;
+  }
+  
+  #bolt-root .dashboard-table th.sortable .sort-arrow {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    color: #0ea5e9;
+  }
+  
+  #bolt-root .dashboard-table tbody tr {
+    border-bottom: 1px solid #f1f5f9;
+    transition: all 0.2s ease;
+  }
+  
+  #bolt-root .dashboard-table tbody tr:last-child {
+    border-bottom: none;
+  }
+  
+  #bolt-root .dashboard-table tbody tr:hover {
+    background: #f8fafc;
+    transform: scale(1.001);
+  }
+  
+  #bolt-root .dashboard-table td {
+    padding: 16px 20px;
+    color: #334155;
+    transition: all 0.2s ease;
+  }
+  
+  #bolt-root .dashboard-table td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  
+  #bolt-root .dashboard-table td.numeric .percentage {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+  }
+  
+  #bolt-root .dashboard-table td.label {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  
+  #bolt-root .dashboard-table tr.level-0 {
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    font-weight: 700;
+  }
+  
+  #bolt-root .dashboard-table tr.level-0 td {
+    color: #0f172a;
+    font-size: 15px;
+    padding: 18px 20px;
+  }
+  
+  #bolt-root .dashboard-table tr.level-0 td.numeric {
+    font-size: 16px;
+    color: #0ea5e9;
+  }
+  
+  #bolt-root .dashboard-table tr.level-0:hover {
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  }
+  
+  #bolt-root .dashboard-table tr.level-1 td.label {
+    padding-left: 40px;
+    font-weight: 500;
+    position: relative;
+  }
+  
+  #bolt-root .dashboard-table tr.level-1 td.label::before {
+    content: "└";
+    position: absolute;
+    left: 24px;
+    color: #cbd5e1;
+    font-weight: 400;
+  }
+  
+  #bolt-root .dashboard-table tr.indicator-returns.level-0 td.numeric {
+    color: #ef4444;
+  }
+  
+  #bolt-root .dashboard-table tr.indicator-returns.level-1 td.numeric {
+    color: #dc2626;
+  }
+  
+  #bolt-root .dashboard-table tr.indicator-separator {
+    height: 12px;
+    background: transparent;
+    border: none;
+  }
+  
+  #bolt-root .dashboard-table tr.indicator-separator:hover {
+    background: transparent;
+    transform: none;
+  }
+  
+  #bolt-root .empty-state {
+    padding: 64px 32px;
+    text-align: center;
+    color: #64748b;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+  
+  #bolt-root .empty-state-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    opacity: 0.4;
+    filter: grayscale(1);
+  }
+  
+  #bolt-root .empty-state-text {
+    font-size: 18px;
+    margin: 0;
+    font-weight: 500;
+  }
+  

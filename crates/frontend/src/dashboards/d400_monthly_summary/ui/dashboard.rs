@@ -1,31 +1,57 @@
 use crate::dashboards::d400_monthly_summary::api;
-use crate::layout::global_context::AppGlobalContext;
-use crate::shared::list_utils::format_number;
 use chrono::{Datelike, Utc};
-use contracts::dashboards::d400_monthly_summary::{
-    DrilldownFilter, IndicatorRow, MonthlySummaryResponse,
-};
+use contracts::dashboards::d400_monthly_summary::MonthlySummaryResponse;
+use js_sys::{Array, Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use serde::Serialize;
+use serde_wasm_bindgen::Serializer;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::HtmlIFrameElement;
 
 /// Monthly Summary Dashboard component
 #[component]
 pub fn MonthlySummaryDashboard() -> impl IntoView {
-    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext context not found");
-
     // Current date for default month selection
     let now = Utc::now().date_naive();
     let (selected_year, set_selected_year) = signal(now.year());
     let (selected_month, set_selected_month) = signal(now.month());
+    let (available_periods, set_available_periods) = signal(Vec::<String>::new());
+    let initial_period_set = StoredValue::new(false);
 
     // Data state
     let (data, set_data) = signal(None::<MonthlySummaryResponse>);
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
 
-    // Load data function
-    let load_data = move || {
+    // Iframe state (HtmlIFrameElement is not Send+Sync, store locally)
+    let iframe_element = StoredValue::new_local(None::<HtmlIFrameElement>);
+    let (iframe_loaded, set_iframe_loaded) = signal(false);
+
+    // Load available periods on mount
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match api::get_available_periods().await {
+                Ok(periods) => {
+                    if !periods.is_empty() && !initial_period_set.get_value() {
+                        if let Some((year, month)) = parse_period(&periods[0]) {
+                            set_selected_year.set(year);
+                            set_selected_month.set(month);
+                            initial_period_set.set_value(true);
+                        }
+                    }
+                    set_available_periods.set(periods);
+                }
+                Err(err) => {
+                    log::error!("Failed to load D400 periods: {}", err);
+                }
+            }
+        });
+    });
+
+    // Load data when period changes
+    Effect::new(move |_| {
         let year = selected_year.get();
         let month = selected_month.get();
         set_loading.set(true);
@@ -43,117 +69,70 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
                 }
             }
         });
-    };
-
-    // Load data on mount
-    Effect::new(move |_| {
-        load_data();
     });
 
-    // Month navigation
-    let go_prev_month = move |_| {
-        let (new_year, new_month) = if selected_month.get() == 1 {
-            (selected_year.get() - 1, 12)
-        } else {
-            (selected_year.get(), selected_month.get() - 1)
+    // Handle period change requests from iframe
+    Effect::new(move |_| {
+        let window = match web_sys::window() {
+            Some(window) => window,
+            None => return,
         };
-        set_selected_year.set(new_year);
-        set_selected_month.set(new_month);
-        load_data();
-    };
 
-    let go_next_month = move |_| {
-        let (new_year, new_month) = if selected_month.get() == 12 {
-            (selected_year.get() + 1, 1)
-        } else {
-            (selected_year.get(), selected_month.get() + 1)
+        let handler = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+            let data = event.data();
+            let Ok(msg_type) = Reflect::get(&data, &JsValue::from_str("type")) else {
+                return;
+            };
+
+            if msg_type.as_string().as_deref() != Some("d400_period_change") {
+                return;
+            }
+
+            let Ok(period_value) = Reflect::get(&data, &JsValue::from_str("period")) else {
+                return;
+            };
+            let Some(period) = period_value.as_string() else {
+                return;
+            };
+
+            if let Some((year, month)) = parse_period(&period) {
+                set_selected_year.set(year);
+                set_selected_month.set(month);
+            }
+        }) as Box<dyn FnMut(_)>);
+
+        let _ =
+            window.add_event_listener_with_callback("message", handler.as_ref().unchecked_ref());
+        handler.forget();
+    });
+
+    // Render dashboard into iframe when data or iframe changes
+    Effect::new(move |_| {
+        let current_data = data.get();
+        let is_loaded = iframe_loaded.get();
+
+        let Some(current_data) = current_data else {
+            return;
         };
-        set_selected_year.set(new_year);
-        set_selected_month.set(new_month);
-        load_data();
-    };
+        if !is_loaded {
+            return;
+        };
+        let Some(iframe) = iframe_element.get_value() else {
+            return;
+        };
 
-    let go_current_month = move |_| {
-        let now = Utc::now().date_naive();
-        set_selected_year.set(now.year());
-        set_selected_month.set(now.month());
-        load_data();
-    };
-
-    // Handle drilldown click
-    let handle_drilldown = {
-        let tabs_store = tabs_store.clone();
-        move |_filter: DrilldownFilter, _mp: Option<String>| {
-            // TODO: In the future, we can pass filters to the component
-            // For now, just open the p904_sales_data tab
-            tabs_store.open_tab("p904_sales_data", "Sales Data (P904)");
+        let periods = available_periods.get();
+        if let Err(err) = render_dashboard_in_iframe(&iframe, &current_data, &periods) {
+            log::error!("Failed to render D400 iframe dashboard: {:?}", err);
         }
-    };
-
-    // Month names in Russian
-    let month_name = move || match selected_month.get() {
-        1 => "Январь",
-        2 => "Февраль",
-        3 => "Март",
-        4 => "Апрель",
-        5 => "Май",
-        6 => "Июнь",
-        7 => "Июль",
-        8 => "Август",
-        9 => "Сентябрь",
-        10 => "Октябрь",
-        11 => "Ноябрь",
-        12 => "Декабрь",
-        _ => "—",
-    };
+    });
 
     view! {
         <div class="d400-dashboard">
-            // Header with gradient
-            <div class="d400-header">
-                <div class="d400-header-content">
-                    <h1 class="d400-title">"Сводка по маркетплейсам"</h1>
-                    <p class="d400-subtitle">"Ключевые показатели эффективности за период"</p>
-                </div>
-
-                <div class="d400-month-selector">
-                    <button
-                        class="d400-nav-btn"
-                        on:click=go_prev_month
-                        title="Предыдущий месяц"
-                    >
-                        "‹"
-                    </button>
-
-                    <div class="d400-month-display">
-                        <span class="d400-month-name">{month_name}</span>
-                        <span class="d400-year">{move || selected_year.get()}</span>
-                    </div>
-
-                    <button
-                        class="d400-nav-btn"
-                        on:click=go_next_month
-                        title="Следующий месяц"
-                    >
-                        "›"
-                    </button>
-
-                    <button
-                        class="d400-today-btn"
-                        on:click=go_current_month
-                        title="Текущий месяц"
-                    >
-                        "Сегодня"
-                    </button>
-                </div>
-            </div>
-
-            // Loading state
             {move || {
                 if loading.get() {
                     view! {
                         <div class="d400-loading">
-                            <div class="d400-spinner"></div>
                             <span>"Загрузка данных..."</span>
                         </div>
                     }.into_any()
@@ -162,7 +141,6 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
                 }
             }}
 
-            // Error state
             {move || {
                 if let Some(err) = error.get() {
                     view! {
@@ -176,133 +154,78 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
                 }
             }}
 
-            // Data table
-            {move || {
-                let handle_drilldown = handle_drilldown.clone();
-
-                if let Some(response) = data.get() {
-                    let marketplaces = response.marketplaces.clone();
-                    let rows = response.rows.clone();
-
-                    view! {
-                        <div class="d400-table-wrapper">
-                            <table class="d400-table">
-                                <thead>
-                                    <tr>
-                                        <th class="d400-th d400-th-indicator">"Показатель"</th>
-                                        {marketplaces.iter().map(|mp| {
-                                            let mp_display = mp.clone();
-                                            let mp_class = format!("d400-th d400-th-mp d400-mp-{}", mp.to_lowercase());
-                                            view! {
-                                                <th class=mp_class>{mp_display}</th>
-                                            }
-                                        }).collect_view()}
-                                        <th class="d400-th d400-th-total">"ИТОГО"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rows.iter().map(|row| {
-                                        let row_clone = row.clone();
-                                        let marketplaces_clone = marketplaces.clone();
-                                        let is_total_row = row.level == 0;
-                                        let handle_drilldown = handle_drilldown.clone();
-
-                                        view! {
-                                            <DashboardRow
-                                                row=row_clone
-                                                marketplaces=marketplaces_clone
-                                                is_total=is_total_row
-                                                on_drilldown=handle_drilldown
-                                            />
-                                        }
-                                    }).collect_view()}
-                                </tbody>
-                            </table>
-                        </div>
-                    }.into_any()
-                } else if !loading.get() {
-                    view! {
-                        <div class="d400-empty">
-                            <span class="d400-empty-icon">"📊"</span>
-                            <span>"Нет данных для отображения"</span>
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
+            <iframe
+                src="assets/dashboards/d400/dashboard.html"
+                style="width: 100%; height: 900px; border: none;"
+                on:load=move |ev| {
+                    let iframe = ev
+                        .target()
+                        .and_then(|t| t.dyn_into::<HtmlIFrameElement>().ok());
+                    iframe_element.set_value(iframe);
+                    set_iframe_loaded.set(true);
                 }
-            }}
+            ></iframe>
         </div>
     }
 }
 
-/// Dashboard row component
-#[component]
-fn DashboardRow(
-    row: IndicatorRow,
-    marketplaces: Vec<String>,
-    is_total: bool,
-    on_drilldown: impl Fn(DrilldownFilter, Option<String>) + Clone + 'static,
-) -> impl IntoView {
-    let row_class = if is_total {
-        "d400-row d400-row-total"
+fn render_dashboard_in_iframe(
+    iframe: &HtmlIFrameElement,
+    data: &MonthlySummaryResponse,
+    available_periods: &[String],
+) -> Result<(), JsValue> {
+    let window = iframe
+        .content_window()
+        .ok_or_else(|| JsValue::from_str("Iframe window not available"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| JsValue::from_str("Iframe document not available"))?;
+    let container = document
+        .get_element_by_id("bolt-root")
+        .ok_or_else(|| JsValue::from_str("bolt-root element not found"))?;
+
+    let render_value = Reflect::get(&window, &JsValue::from_str("render"))?;
+    if !render_value.is_function() {
+        return Err(JsValue::from_str("render is not a function"));
+    }
+    let render_fn: Function = render_value.dyn_into()?;
+    let data_value = data
+        .serialize(&Serializer::json_compatible())
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    let options = js_sys::Object::new();
+    let periods_array = Array::new();
+    for period in available_periods {
+        periods_array.push(&JsValue::from_str(period));
+    }
+
+    let on_period_change = Function::new_with_args(
+        "period",
+        "window.parent.postMessage({type:'d400_period_change', period: period}, '*');",
+    );
+
+    Reflect::set(
+        &options,
+        &JsValue::from_str("availablePeriods"),
+        &periods_array,
+    )?;
+    Reflect::set(
+        &options,
+        &JsValue::from_str("onPeriodChange"),
+        &on_period_change,
+    )?;
+
+    render_fn.call3(&window, &container.into(), &data_value, &options)?;
+    Ok(())
+}
+
+fn parse_period(period: &str) -> Option<(i32, u32)> {
+    let mut parts = period.split('-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    if (1..=12).contains(&month) {
+        Some((year, month))
     } else {
-        "d400-row d400-row-detail"
-    };
-
-    let name_class = if is_total {
-        "d400-td d400-td-name"
-    } else {
-        "d400-td d400-td-name d400-td-name-indent"
-    };
-
-    let value_class = if is_total {
-        "d400-td d400-td-value"
-    } else {
-        "d400-td d400-td-value d400-td-value-detail"
-    };
-
-    let total_class = if is_total {
-        "d400-td d400-td-total-value"
-    } else {
-        "d400-td d400-td-total-value d400-td-total-detail"
-    };
-
-    // Display name with group
-    let display_name = if let Some(ref group) = row.group_name {
-        format!("└ {}", group)
-    } else {
-        row.indicator_name.clone()
-    };
-
-    let filter = row.drilldown_filter.clone();
-
-    view! {
-        <tr class=row_class>
-            <td class=name_class>
-                {display_name}
-            </td>
-            {marketplaces.iter().map(|mp| {
-                let value = row.values.get(mp).copied().unwrap_or(0.0);
-                let formatted = format_number(value);
-                let mp_clone = mp.clone();
-                let filter_clone = filter.clone();
-                let on_drilldown_clone = on_drilldown.clone();
-
-                view! {
-                    <td
-                        class=value_class
-                        on:click=move |_| {
-                            on_drilldown_clone(filter_clone.clone(), Some(mp_clone.clone()));
-                        }
-                        title="Нажмите для детализации"
-                    >
-                        {formatted}
-                    </td>
-                }
-            }).collect_view()}
-            <td class=total_class>
-                {format_number(row.values.get("total").copied().unwrap_or(0.0))}
-            </td>
-        </tr>
+        None
     }
 }

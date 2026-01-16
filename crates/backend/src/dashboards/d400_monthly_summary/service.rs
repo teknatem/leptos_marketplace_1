@@ -53,6 +53,11 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     })
 }
 
+/// Get available periods for the dashboard (YYYY-MM)
+pub async fn get_available_periods() -> Result<Vec<String>> {
+    repository::get_available_periods().await
+}
+
 /// Build indicator rows from aggregated data
 fn build_indicator_rows(
     data: &[(Option<String>, Option<String>, f64)], // (marketplace_code, org_name, value)
@@ -62,6 +67,10 @@ fn build_indicator_rows(
     year: i32,
     month: u32,
 ) -> Vec<IndicatorRow> {
+    if data.is_empty() {
+        return Vec::new();
+    }
+
     let mut rows = Vec::new();
 
     // Calculate totals by marketplace and organization

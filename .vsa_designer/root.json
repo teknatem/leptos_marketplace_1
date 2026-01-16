@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768256933",
+  "generated_at_utc": "unix:1768543380",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -17,11 +17,11 @@
     },
     "frontend": {
       "files": 259,
-      "lines": 48594
+      "lines": 48371
     },
     "total": {
       "files": 578,
-      "lines": 94320
+      "lines": 94097
     }
   },
   "aggregates": {
@@ -37,11 +37,11 @@
       },
       "frontend": {
         "files": 111,
-        "lines": 28152
+        "lines": 27891
       },
       "total": {
         "files": 211,
-        "lines": 41453
+        "lines": 41192
       }
     },
     "items": [
@@ -61,11 +61,11 @@
           },
           "frontend": {
             "files": 7,
-            "lines": 881
+            "lines": 857
           },
           "total": {
             "files": 14,
-            "lines": 2013
+            "lines": 1989
           }
         }
       },
@@ -85,11 +85,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 824
+            "lines": 799
           },
           "total": {
             "files": 13,
-            "lines": 1328
+            "lines": 1303
           }
         }
       },
@@ -109,11 +109,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 958
+            "lines": 934
           },
           "total": {
             "files": 13,
-            "lines": 1372
+            "lines": 1348
           }
         }
       },
@@ -133,11 +133,11 @@
           },
           "frontend": {
             "files": 17,
-            "lines": 3163
+            "lines": 3127
           },
           "total": {
             "files": 24,
-            "lines": 4173
+            "lines": 4137
           }
         }
       },
@@ -157,11 +157,11 @@
           },
           "frontend": {
             "files": 9,
-            "lines": 1123
+            "lines": 1098
           },
           "total": {
             "files": 14,
-            "lines": 1632
+            "lines": 1607
           }
         }
       },
@@ -181,11 +181,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 1349
+            "lines": 1325
           },
           "total": {
             "files": 10,
-            "lines": 2007
+            "lines": 1983
           }
         }
       },
@@ -205,11 +205,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 1467
+            "lines": 1458
           },
           "total": {
             "files": 13,
-            "lines": 2431
+            "lines": 2422
           }
         }
       },
@@ -229,11 +229,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 509
+            "lines": 497
           },
           "total": {
             "files": 8,
-            "lines": 1025
+            "lines": 1013
           }
         }
       },
@@ -253,11 +253,11 @@
           },
           "frontend": {
             "files": 4,
-            "lines": 1583
+            "lines": 1574
           },
           "total": {
             "files": 10,
-            "lines": 2420
+            "lines": 2411
           }
         }
       },
@@ -301,11 +301,11 @@
           },
           "frontend": {
             "files": 4,
-            "lines": 1876
+            "lines": 1847
           },
           "total": {
             "files": 10,
-            "lines": 2459
+            "lines": 2430
           }
         }
       },
@@ -325,11 +325,11 @@
           },
           "frontend": {
             "files": 14,
-            "lines": 3270
+            "lines": 3268
           },
           "total": {
             "files": 20,
-            "lines": 4221
+            "lines": 4219
           }
         }
       },
@@ -373,11 +373,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 1942
+            "lines": 1926
           },
           "total": {
             "files": 12,
-            "lines": 3179
+            "lines": 3163
           }
         }
       },
@@ -397,11 +397,11 @@
           },
           "frontend": {
             "files": 4,
-            "lines": 2028
+            "lines": 2002
           },
           "total": {
             "files": 10,
-            "lines": 2831
+            "lines": 2805
           }
         }
       },
@@ -466,11 +466,11 @@
       },
       "frontend": {
         "files": 18,
-        "lines": 3824
+        "lines": 3812
       },
       "total": {
         "files": 96,
-        "lines": 19098
+        "lines": 19086
       }
     },
     "items": [
@@ -632,11 +632,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 655
+            "lines": 643
           },
           "total": {
             "files": 12,
-            "lines": 1703
+            "lines": 1691
           }
         }
       }
@@ -655,11 +655,11 @@
       },
       "frontend": {
         "files": 27,
-        "lines": 6130
+        "lines": 6120
       },
       "total": {
         "files": 61,
-        "lines": 11082
+        "lines": 11072
       }
     },
     "items": [
@@ -703,11 +703,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 583
+            "lines": 573
           },
           "total": {
             "files": 9,
-            "lines": 1276
+            "lines": 1266
           }
         }
       },

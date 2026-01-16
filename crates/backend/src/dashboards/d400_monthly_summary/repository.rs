@@ -96,6 +96,28 @@ pub async fn get_returns_by_marketplace_and_org(
     Ok(results)
 }
 
+/// Get distinct available periods (YYYY-MM) from p904_sales_data
+pub async fn get_available_periods() -> Result<Vec<String>> {
+    let db = get_connection();
+
+    let sql = r#"
+        SELECT DISTINCT SUBSTR(p904.date, 1, 7) AS period
+        FROM p904_sales_data p904
+        WHERE p904.date IS NOT NULL AND p904.date != ''
+        ORDER BY period DESC
+    "#;
+
+    #[derive(Debug, FromQueryResult)]
+    struct PeriodRow {
+        period: Option<String>,
+    }
+
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
+    let results = PeriodRow::find_by_statement(stmt).all(db).await?;
+
+    Ok(results.into_iter().filter_map(|r| r.period).collect())
+}
+
 /// Get list of all marketplace types that have data
 pub async fn get_active_marketplaces() -> Result<Vec<String>> {
     let db = get_connection();

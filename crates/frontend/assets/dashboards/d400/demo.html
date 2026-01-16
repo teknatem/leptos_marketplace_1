@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Demo</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #e2e8f0;
+    }
+    .demo-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div id="bolt-root"></div>
+  </div>
+
+  <script src="dashboard.js"></script>
+  <script>
+    // Available periods for the selector
+    const availablePeriods = ["2025-10", "2025-11", "2025-12"];
+
+    // Data for different periods
+    const dataByPeriod = {
+      "2025-10": {
+        "period": "2025-10",
+        "marketplaces": ["WB", "OZON", "YM"],
+        "rows": [
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": null,
+            "level": 0,
+            "values": {"WB": 1150000.0, "OZON": 720000.0, "YM": 190000.0, "total": 2060000.0}
+          },
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": "ООО Альфа",
+            "level": 1,
+            "values": {"WB": 690000.0, "OZON": 380000.0, "YM": 80000.0, "total": 1150000.0}
+          },
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": "ООО Бета",
+            "level": 1,
+            "values": {"WB": 460000.0, "OZON": 340000.0, "YM": 110000.0, "total": 910000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": null,
+            "level": 0,
+            "values": {"WB": 110000.0, "OZON": 65000.0, "YM": 12000.0, "total": 187000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": "ООО Альфа",
+            "level": 1,
+            "values": {"WB": 65000.0, "OZON": 32000.0, "YM": 4000.0, "total": 101000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": "ООО Бета",
+            "level": 1,
+            "values": {"WB": 45000.0, "OZON": 33000.0, "YM": 8000.0, "total": 86000.0}
+          }
+        ]
+      },
+      "2025-11": {
+        "period": "2025-11",
+        "marketplaces": ["WB", "OZON", "YM"],
+        "rows": [
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": null,
+            "level": 0,
+            "values": {"WB": 1200000.0, "OZON": 750000.0, "YM": 200000.0, "total": 2150000.0}
+          },
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": "ООО Альфа",
+            "level": 1,
+            "values": {"WB": 720000.0, "OZON": 395000.0, "YM": 85000.0, "total": 1200000.0}
+          },
+          {
+            "indicator_id": "revenue",
+            "indicator_name": "Выручка",
+            "group_name": "ООО Бета",
+            "level": 1,
+            "values": {"WB": 480000.0, "OZON": 355000.0, "YM": 115000.0, "total": 950000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": null,
+            "level": 0,
+            "values": {"WB": 115000.0, "OZON": 68000.0, "YM": 14000.0, "total": 197000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": "ООО Альфа",
+            "level": 1,
+            "values": {"WB": 68000.0, "OZON": 34000.0, "YM": 5000.0, "total": 107000.0}
+          },
+          {
+            "indicator_id": "returns",
+            "indicator_name": "Возвраты",
+            "group_name": "ООО Бета",
+            "level": 1,
+            "values": {"WB": 47000.0, "OZON": 34000.0, "YM": 9000.0, "total": 90000.0}
+          }
+        ]
+      },
+      "2025-12": {
+        "period": "2025-12",
+        "marketplaces": ["WB", "OZON", "YM"],
+        "rows": [
+        {
+          "indicator_id": "revenue",
+          "indicator_name": "Выручка",
+          "group_name": null,
+          "level": 0,
+          "values": {
+            "WB": 1250000.0,
+            "OZON": 780000.0,
+            "YM": 210000.0,
+            "total": 2240000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": null
+          }
+        },
+        {
+          "indicator_id": "revenue",
+          "indicator_name": "Выручка",
+          "group_name": "ООО Альфа",
+          "level": 1,
+          "values": {
+            "WB": 750000.0,
+            "OZON": 410000.0,
+            "YM": 90000.0,
+            "total": 1250000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": "ООО Альфа"
+          }
+        },
+        {
+          "indicator_id": "revenue",
+          "indicator_name": "Выручка",
+          "group_name": "ООО Бета",
+          "level": 1,
+          "values": {
+            "WB": 500000.0,
+            "OZON": 370000.0,
+            "YM": 120000.0,
+            "total": 990000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": "ООО Бета"
+          }
+        },
+        {
+          "indicator_id": "returns",
+          "indicator_name": "Возвраты",
+          "group_name": null,
+          "level": 0,
+          "values": {
+            "WB": 120000.0,
+            "OZON": 70000.0,
+            "YM": 15000.0,
+            "total": 205000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": null
+          }
+        },
+        {
+          "indicator_id": "returns",
+          "indicator_name": "Возвраты",
+          "group_name": "ООО Альфа",
+          "level": 1,
+          "values": {
+            "WB": 70000.0,
+            "OZON": 35000.0,
+            "YM": 5000.0,
+            "total": 110000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": "ООО Альфа"
+          }
+        },
+        {
+          "indicator_id": "returns",
+          "indicator_name": "Возвраты",
+          "group_name": "ООО Бета",
+          "level": 1,
+          "values": {
+            "WB": 50000.0,
+            "OZON": 35000.0,
+            "YM": 10000.0,
+            "total": 95000.0
+          },
+          "drilldown_filter": {
+            "date_from": "2025-12-01",
+            "date_to": "2025-12-31",
+            "marketplace_type": null,
+            "organization_ref": "ООО Бета"
+          }
+        }
+      ]
+      }
+    };
+
+    // Current period
+    let currentPeriod = "2025-12";
+
+    // Function to render dashboard with current period
+    function renderDashboard() {
+      const container = document.getElementById('bolt-root');
+      const data = dataByPeriod[currentPeriod];
+
+      window.render(container, data, {
+        availablePeriods: availablePeriods,
+        onPeriodChange: function(newPeriod) {
+          currentPeriod = newPeriod;
+          renderDashboard();
+        }
+      });
+    }
+
+    // Initial render
+    renderDashboard();
+  </script>
+</body>
+</html>
