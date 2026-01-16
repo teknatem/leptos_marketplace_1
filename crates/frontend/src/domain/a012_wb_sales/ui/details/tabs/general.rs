@@ -3,21 +3,9 @@
 use super::super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::clipboard::copy_to_clipboard;
+use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use thaw::*;
-
-/// Format datetime string for display
-fn format_datetime(datetime_str: &str) -> String {
-    if let Some((date_part, time_part)) = datetime_str.split_once('T') {
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                let time = time_part.split('.').next().unwrap_or(time_part);
-                return format!("{}.{}.{} {}", day, month, year, time);
-            }
-        }
-    }
-    datetime_str.to_string()
-}
 
 /// General tab component - displays document overview cards
 #[component]
@@ -101,10 +89,16 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
 
             view! {
                 <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; justify-items: start;">
+
+                //left column
+                <Flex vertical=true gap=FlexGap::Medium>
                     // Document card
                     <Card attr:style="width: 600px; margin: 0px;">
                         <h4 class="details-section__title">"Документ"</h4>
-
+                        <div class="form__group">
+                            <label class="form__label">"Дата (sale dt)"</label>
+                            <Input value=RwSignal::new(sale_dt) attr:readonly=true />
+                        </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                         <div class="form__group">
                             <label class="form__label">"№"</label>
@@ -116,75 +110,10 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                         </div>
                         </div>
 
-                        <div class="form__group">
-                            <label class="form__label">"Описание"</label>
-                            <Input value=RwSignal::new(description) attr:readonly=true />
-                        </div>
                     </Card>
-
-                    // Status card
+                    // Goods card
                     <Card attr:style="width: 600px; margin: 0px;">
-                        <h4 class="details-section__title">"Статус"</h4>
-                        <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md);">
-                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                                {event_type}
-                            </Badge>
-                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
-                                {status_norm}
-                            </Badge>
-                        </Flex>
-                        <div class="form__group">
-                            <label class="form__label">"Sale dt"</label>
-                            <Input value=RwSignal::new(sale_dt) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Last change"</label>
-                            <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
-                        </div>
-                        <Flex gap=FlexGap::Large style="margin-top: var(--spacing-md);">
-                            <Badge
-                                appearance=BadgeAppearance::Outline
-                                color=if is_supply { BadgeColor::Success } else { BadgeColor::Danger }
-                            >
-                                {if is_supply { "Supply: Yes" } else { "Supply: No" }}
-                            </Badge>
-                            <Badge
-                                appearance=BadgeAppearance::Outline
-                                color=if is_realization { BadgeColor::Success } else { BadgeColor::Danger }
-                            >
-                                {if is_realization { "Realization: Yes" } else { "Realization: No" }}
-                            </Badge>
-                        </Flex>
-                    </Card>
-
-                    // Warehouse card
-                    <Card attr:style="width: 600px; margin: 0px;">
-                        <h4 class="details-section__title">"Склад"</h4>
-                        <div class="form__group">
-                            <label class="form__label">"Название"</label>
-                            <Input value=RwSignal::new(wh_name) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Тип"</label>
-                            <Input value=RwSignal::new(wh_type) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Created"</label>
-                            <Input value=RwSignal::new(created_at) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Updated"</label>
-                            <Input value=RwSignal::new(updated_at) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Version"</label>
-                            <Input value=RwSignal::new(version) attr:readonly=true />
-                        </div>
-                    </Card>
-
-                    // Links card
-                    <Card attr:style="width: 600px; margin: 0px;">
-                        <h4 class="details-section__title">"Связи"</h4>
+                        <h4 class="details-section__title">"Номенклатура"</h4>
                         <div class="form__group">
                             <label class="form__label">"Товар маркетплейса"</label>
                             <Button
@@ -217,6 +146,72 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 }}
                             </Button>
                         </div>
+
+                    </Card>
+                    // Warehouse card
+                    <Card attr:style="width: 600px; margin: 0px;">
+                        <h4 class="details-section__title">"Склад"</h4>
+                        <div class="form__group">
+                            <label class="form__label">"Название"</label>
+                            <Input value=RwSignal::new(wh_name) attr:readonly=true />
+                        </div>
+                        <div class="form__group">
+                            <label class="form__label">"Тип"</label>
+                            <Input value=RwSignal::new(wh_type) attr:readonly=true />
+                        </div>
+                        <div class="form__group">
+                            <label class="form__label">"Created"</label>
+                            <Input value=RwSignal::new(created_at) attr:readonly=true />
+                        </div>
+                        <div class="form__group">
+                            <label class="form__label">"Updated"</label>
+                            <Input value=RwSignal::new(updated_at) attr:readonly=true />
+                        </div>
+                        <div class="form__group">
+                            <label class="form__label">"Version"</label>
+                            <Input value=RwSignal::new(version) attr:readonly=true />
+                        </div>
+                    </Card>
+
+                </Flex>
+
+                //right column
+                <Flex vertical=true gap=FlexGap::Medium>
+                // Status card
+                <Card attr:style="width: 600px; margin: 0px;">
+                <h4 class="details-section__title">"Статус"</h4>
+                <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md);">
+                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                        {event_type}
+                    </Badge>
+                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
+                        {status_norm}
+                    </Badge>
+                    <Badge
+                        appearance=BadgeAppearance::Outline
+                        color=if is_supply { BadgeColor::Success } else { BadgeColor::Danger }
+                    >
+                        {if is_supply { "Supply: Yes" } else { "Supply: No" }}
+                    </Badge>
+                    <Badge
+                        appearance=BadgeAppearance::Outline
+                        color=if is_realization { BadgeColor::Success } else { BadgeColor::Danger }
+                    >
+                        {if is_realization { "Realization: Yes" } else { "Realization: No" }}
+                    </Badge>
+                </Flex>
+                <div class="form__group">
+                    <label class="form__label">"Last change"</label>
+                    <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
+                </div>
+                <div class="form__group">
+                    <label class="form__label">"Описание"</label>
+                    <Input value=RwSignal::new(description) attr:readonly=true />
+                </div>
+            </Card>
+                    // Links card
+                    <Card attr:style="width: 600px; margin: 0px;">
+                        <h4 class="details-section__title">"Связи"</h4>
                         <div class="form__group">
                             <label class="form__label">"Connection ID"</label>
                             <IdWithCopy value=conn_id.clone() />
@@ -230,6 +225,9 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <IdWithCopy value=mp_id.clone() />
                         </div>
                     </Card>
+
+                </Flex>
+
                 </div>
             }.into_any()
         }}

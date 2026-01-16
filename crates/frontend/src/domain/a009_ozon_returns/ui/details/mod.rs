@@ -1,3 +1,4 @@
+use crate::shared::date_utils::format_datetime;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -725,15 +726,5 @@ fn render_projections_tab(
                 }
             }}
         </div>
-    }
-}
-
-// Утилита для форматирования datetime
-fn format_datetime(dt_str: &str) -> String {
-    // Простое форматирование ISO 8601
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(dt_str) {
-        dt.format("%Y-%m-%d %H:%M:%S").to_string()
-    } else {
-        dt_str.to_string()
     }
 }

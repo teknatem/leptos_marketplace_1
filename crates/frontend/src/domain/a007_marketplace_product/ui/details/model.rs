@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
@@ -6,16 +7,6 @@ use contracts::domain::a007_marketplace_product::aggregate::{
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response};
-
-fn api_base() -> String {
-    let window = web_sys::window().unwrap();
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
 
 pub async fn fetch_by_id(id: String) -> Result<MarketplaceProduct, String> {
     let opts = RequestInit::new();

@@ -1,4 +1,5 @@
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
+use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -37,17 +38,6 @@ enum SortColumn {
 enum SortDirection {
     Asc,
     Desc,
-}
-
-/// Форматирует ISO8601 дату в русский формат DD.MM.YYYY HH:MM:SS
-fn format_datetime(iso_string: &str) -> String {
-    // Пытаемся распарсить ISO8601 дату
-    if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(iso_string) {
-        parsed.format("%d.%m.%Y %H:%M:%S").to_string()
-    } else {
-        // Если не удалось, возвращаем исходную строку
-        iso_string.to_string()
-    }
 }
 
 #[component]

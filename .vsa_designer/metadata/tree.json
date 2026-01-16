@@ -1813,7 +1813,39 @@
                       "children": []
                     },
                     {
-                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/view.rs",
+                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/tabs/barcodes.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/tabs/dimensions.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/tabs/general.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a004_nomenclature/ui/details/tabs/mod.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"
@@ -2718,6 +2750,78 @@
                     },
                     {
                       "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/general.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/json.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/line.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/links.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/tabs/projections.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a012_wb_sales/ui/details/view_model.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"
@@ -4496,6 +4600,22 @@
                       "kind": "file",
                       "origins": [
                         "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/shared/api_utils.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/shared/clipboard.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
                       ],
                       "children": []
                     },

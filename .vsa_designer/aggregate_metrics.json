@@ -79,7 +79,7 @@
           "misc": 715
         },
         "frontend": {
-          "details": 38684,
+          "details": 48001,
           "list": 39732,
           "misc": 74,
           "picker": 11623,
@@ -255,8 +255,8 @@
           "misc": 22
         },
         "frontend": {
-          "details": 123508,
-          "list": 73468,
+          "details": 71756,
+          "list": 77299,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -455,7 +455,7 @@
           "misc": 25
         },
         "frontend": {
-          "details": 864,
+          "details": 1290,
           "list": 889,
           "misc": 5,
           "picker": 246,
@@ -631,8 +631,8 @@
           "misc": 2
         },
         "frontend": {
-          "details": 1448,
-          "list": 1472,
+          "details": 1691,
+          "list": 1576,
           "misc": 3,
           "picker": 0,
           "tree": 0

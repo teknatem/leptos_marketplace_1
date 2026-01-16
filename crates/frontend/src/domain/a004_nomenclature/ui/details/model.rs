@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
 use serde::{Deserialize, Serialize};
 
@@ -28,19 +29,6 @@ pub struct DimensionValuesResponse {
     pub dim4_format: Vec<String>,
     pub dim5_sink: Vec<String>,
     pub dim6_size: Vec<String>,
-}
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
 }
 
 pub async fn fetch_by_id(id: String) -> Result<Nomenclature, String> {

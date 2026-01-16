@@ -1,4 +1,5 @@
 use super::super::details::CounterpartyDetails;
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a003_counterparty::aggregate::Counterparty;
@@ -6,19 +7,6 @@ use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
 
 async fn fetch_counterparties() -> Result<Vec<Counterparty>, String> {
     use wasm_bindgen::JsCast;

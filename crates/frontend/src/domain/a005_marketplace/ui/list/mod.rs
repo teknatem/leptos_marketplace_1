@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
+use crate::shared::api_utils::api_base;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
@@ -329,20 +330,6 @@ pub fn MarketplaceList() -> impl IntoView {
             // Details is opened via ModalStackService
         </div>
     }
-}
-
-// Build API base URL. Always use port 3000 for the backend API.
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
 }
 
 async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {

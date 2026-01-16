@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768151669",
+  "generated_at_utc": "unix:1768256933",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -16,12 +16,12 @@
       "lines": 8767
     },
     "frontend": {
-      "files": 244,
-      "lines": 47616
+      "files": 259,
+      "lines": 48594
     },
     "total": {
-      "files": 563,
-      "lines": 93342
+      "files": 578,
+      "lines": 94320
     }
   },
   "aggregates": {
@@ -36,12 +36,12 @@
         "lines": 5579
       },
       "frontend": {
-        "files": 98,
-        "lines": 27379
+        "files": 111,
+        "lines": 28152
       },
       "total": {
-        "files": 198,
-        "lines": 40680
+        "files": 211,
+        "lines": 41453
       }
     },
     "items": [
@@ -132,12 +132,12 @@
             "lines": 338
           },
           "frontend": {
-            "files": 13,
-            "lines": 2737
+            "files": 17,
+            "lines": 3163
           },
           "total": {
-            "files": 20,
-            "lines": 3747
+            "files": 24,
+            "lines": 4173
           }
         }
       },
@@ -324,12 +324,12 @@
             "lines": 289
           },
           "frontend": {
-            "files": 5,
-            "lines": 2923
+            "files": 14,
+            "lines": 3270
           },
           "total": {
-            "files": 11,
-            "lines": 3874
+            "files": 20,
+            "lines": 4221
           }
         }
       },

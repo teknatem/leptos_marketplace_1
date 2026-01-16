@@ -1,4 +1,5 @@
 use crate::domain::a006_connection_mp::ui::details::ConnectionMPDetails;
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
@@ -450,19 +451,6 @@ pub fn ConnectionMPList() -> impl IntoView {
             </Show>
         </div>
     }
-}
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
 }
 
 async fn fetch_connections() -> Result<Vec<ConnectionMP>, String> {

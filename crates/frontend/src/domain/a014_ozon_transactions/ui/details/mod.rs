@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 // Import posting detail components
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
 use crate::domain::a011_ozon_fbo_posting::ui::details::OzonFboPostingDetail;
+use crate::shared::date_utils::format_datetime_space as format_datetime;
 
 // DTO структуры для детального представления
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,23 +70,6 @@ pub struct ItemDto {
 pub struct ServiceDto {
     pub name: String,
     pub price: f64,
-}
-
-/// Форматирует дату из "2025-10-11 00:00:00" в dd.mm.yyyy HH:MM
-fn format_datetime(date_str: &str) -> String {
-    // Парсим формат "2025-10-11 00:00:00"
-    let parts: Vec<&str> = date_str.split_whitespace().collect();
-    if parts.len() >= 2 {
-        let date_part = parts[0];
-        let time_part = parts[1];
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                let time_short: String = time_part.chars().take(5).collect(); // HH:MM
-                return format!("{}.{}.{} {}", day, month, year, time_short);
-            }
-        }
-    }
-    date_str.to_string() // fallback
 }
 
 #[component]

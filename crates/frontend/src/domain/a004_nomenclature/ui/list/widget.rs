@@ -1,5 +1,6 @@
 use super::super::details::NomenclatureDetails;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::excel_importer::{ColumnDef, DataType, ExcelImporter};
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
@@ -17,19 +18,6 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 
 use super::state::create_state;
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
 
 #[derive(Debug, Clone, Deserialize)]
 struct PaginatedResponse {
