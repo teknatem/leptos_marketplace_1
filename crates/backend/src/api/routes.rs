@@ -544,4 +544,8 @@ pub fn configure_business_routes() -> Router {
             "/api/d400/monthly_summary",
             get(handlers::d400_monthly_summary::get_monthly_summary),
         )
+        .route(
+            "/api/d400/periods",
+            get(handlers::d400_monthly_summary::get_available_periods),
+        )
 }
