@@ -1,5 +1,5 @@
 use super::details::WbOrdersDetail;
-use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use crate::shared::list_utils::{format_number, format_number_int, get_sort_indicator, Sortable};
 use chrono::{Datelike, Utc};
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -28,32 +28,6 @@ fn format_date(iso_date: &str) -> String {
         }
     }
     iso_date.to_string() // fallback
-}
-
-/// Форматирует число с разделителем тысяч (пробел)
-fn format_number_with_separator(num: f64, decimals: usize) -> String {
-    let formatted = format!("{:.prec$}", num, prec = decimals);
-    let parts: Vec<&str> = formatted.split('.').collect();
-
-    let integer_part = parts[0];
-    let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
-
-    // Добавляем пробелы каждые 3 цифры справа налево
-    let mut result = String::new();
-    let chars: Vec<char> = integer_part.chars().collect();
-    for (i, ch) in chars.iter().rev().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            result.insert(0, ' ');
-        }
-        result.insert(0, *ch);
-    }
-
-    if decimals > 0 && !decimal_part.is_empty() {
-        result.push('.');
-        result.push_str(decimal_part);
-    }
-
-    result
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -449,10 +423,10 @@ pub fn WbOrdersList() -> impl IntoView {
                                         view! {
                                             <>
                                                 <span style="font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); background: var(--color-background-alt, #f5f5f5); padding: 6px 12px; border-radius: 4px;">
-                                                    "Total: " {format_number_with_separator(count as f64, 0)} " records | "
-                                                    "Кол-во: " {format_number_with_separator(total_qty, 0)} " | "
-                                                    "Итоговая цена: " {format_number_with_separator(total_finished, 2)} " | "
-                                                    "Полная цена: " {format_number_with_separator(total_price, 2)}
+                                                "Total: " {format_number_int(count as f64)} " records | "
+                                                "Кол-во: " {format_number_int(total_qty)} " | "
+                                                "Итоговая цена: " {format_number(total_finished)} " | "
+                                                "Полная цена: " {format_number(total_price)}
                                                 </span>
                                                 {limit_warning}
                                             </>

@@ -17,7 +17,7 @@
   --color-text-muted: rgba(255, 255, 255, 0.50);
 
   /* Background Colors */
-  --color-bg-primary: #0f172a;
+  --color-bg-primary: #292929;
   --color-bg-secondary: rgba(30, 41, 59, 0.35);
   --color-surface: rgba(30, 41, 59, 0.60);
   --color-code-bg: rgba(0, 0, 0, 0.35);
@@ -94,7 +94,7 @@
 
   /* Modal Colors */
   --modal-overlay: rgba(0, 0, 0, 0.50);
-  --modal-bg: rgba(30, 41, 59, 0.85);
+  --modal-bg: #292929;
   --modal-border: rgba(255, 255, 255, 0.20);
   --modal-header-bg: rgba(255, 255, 255, 0.05);
 
@@ -130,8 +130,8 @@
   --card-border: rgba(255, 255, 255, 0.20);
 
   /* Form Colors */
-  --form-label-text: rgba(255, 255, 255, 0.90);
-  --form-input-bg: rgba(255, 255, 255, 0.10);
+  --form-label-text: rgb(105, 162, 211);
+  --form-input-bg: rgba(255, 255, 255, 0);
   --form-input-border: rgba(255, 255, 255, 0.20);
   --form-input-focus-border: #60a5fa;
   --form-input-focus-shadow: rgba(96, 165, 250, 0.20);

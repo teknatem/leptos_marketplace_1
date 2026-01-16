@@ -1,4 +1,5 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
+use crate::shared::api_utils::api_base;
 use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
@@ -269,20 +270,6 @@ pub fn OrganizationList() -> impl IntoView {
                     </Show>
         </div>
     }
-}
-
-// Build API base URL. Always use port 3000 for the backend API.
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
 }
 
 async fn fetch_organizations() -> Result<Vec<Organization>, String> {

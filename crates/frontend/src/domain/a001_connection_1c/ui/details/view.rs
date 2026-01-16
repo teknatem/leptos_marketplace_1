@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use contracts::domain::a001_connection_1c::aggregate::{
     Connection1CDatabaseDto, ConnectionTestResult,
@@ -225,19 +226,6 @@ struct Connection1CAggregateDto {
     login: String,
     password: String,
     is_primary: bool,
-}
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
 }
 
 async fn fetch_connection(id: &str) -> Result<Connection1CAggregateDto, String> {

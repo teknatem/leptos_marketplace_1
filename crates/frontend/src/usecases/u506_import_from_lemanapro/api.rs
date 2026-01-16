@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::usecases::u506_import_from_lemanapro::progress::ImportProgress;
@@ -5,19 +6,6 @@ use contracts::usecases::u506_import_from_lemanapro::request::ImportRequest;
 use contracts::usecases::u506_import_from_lemanapro::response::ImportResponse;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response};
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
 
 pub async fn get_connections() -> Result<Vec<ConnectionMP>, String> {
     let opts = RequestInit::new();

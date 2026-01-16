@@ -40,7 +40,8 @@ fn apply_theme(theme: &str) {
             if let Some(link) = document.get_element_by_id("theme-stylesheet") {
                 if let Ok(link_element) = link.dyn_into::<web_sys::HtmlLinkElement>() {
                     link_element.set_disabled(false);
-                    let _ = link_element.set_href(&format!("static/themes/{}/{}.css", theme, theme));
+                    let _ =
+                        link_element.set_href(&format!("static/themes/{}/{}.css", theme, theme));
                 }
             }
         }

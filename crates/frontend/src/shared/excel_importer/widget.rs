@@ -1,5 +1,6 @@
 use super::parser::read_excel_from_file;
 use super::types::{ColumnDef, ExcelData};
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use serde_json::Value;
@@ -7,19 +8,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use wasm_bindgen::JsCast;
 use thaw::*;
-
-fn api_base() -> String {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return String::new(),
-    };
-    let location = window.location();
-    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
-}
 
 #[component]
 pub fn ExcelImporter(

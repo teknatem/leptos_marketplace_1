@@ -1,4 +1,5 @@
 use super::details::OzonFboPostingDetail;
+use crate::shared::date_utils::format_datetime;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
 use gloo_net::http::Request;
@@ -6,36 +7,6 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-
-/// Форматирует ISO 8601 дату в dd.mm.yyyy HH:MM
-fn format_datetime(iso_date: &str) -> String {
-    // Парсим ISO 8601: "2025-11-05T16:52:58.585775200Z"
-    if let Some(date_part) = iso_date.split('T').next() {
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                // Извлекаем время
-                if let Some(time_part) = iso_date.split('T').nth(1) {
-                    if let Some((hour_min, _)) = time_part.split_once(':') {
-                        if let Some((hour, min)) = hour_min.split_once(':') {
-                            return format!("{}.{}.{} {}:{}", day, month, year, hour, min);
-                        } else {
-                            // Если только час
-                            let parts: Vec<&str> = time_part.split(':').collect();
-                            if parts.len() >= 2 {
-                                return format!(
-                                    "{}.{}.{} {}:{}",
-                                    day, month, year, parts[0], parts[1]
-                                );
-                            }
-                        }
-                    }
-                }
-                return format!("{}.{}.{}", day, month, year);
-            }
-        }
-    }
-    iso_date.to_string() // fallback
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFboPostingDto {
