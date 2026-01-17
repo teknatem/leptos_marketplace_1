@@ -65,10 +65,15 @@
 
 /* Модификаторы */
 .table__cell--checkbox
-.table__cell--right
+.table__cell--right        /* ONLY for cell values, NOT for headers */
 .table__row--selected
 .table--striped;
 ```
+
+**ВАЖНО по выравниванию:**
+- Заголовки колонок всегда выравниваются **влево** (используйте `.table__header-cell` без модификатора)
+- Числовые значения в ячейках выравниваются **вправо** (используйте `.table__cell--right`)
+- ❌ НЕ используйте `.table__header-cell--right` - класс устарел
 
 ### ❌ Запрещено
 
@@ -573,7 +578,7 @@ pub fn FeatureList() -> impl IntoView {
                                     "Дата" {get_sort_indicator("date", &sort_field, sort_ascending)}
                                 </th>
                                 <th class="table__header-cell resizable">"Номер"</th>
-                                <th class="table__header-cell table__header-cell--right resizable">"Сумма"</th>
+                                <th class="table__header-cell resizable">"Сумма"</th>
                             </tr>
 
                             // Строка итогов (легко включить/выключить через if)

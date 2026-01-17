@@ -1147,7 +1147,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=55.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("qty")>
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("qty")>
                                                 "Кол"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "qty"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "qty", s.sort_ascending))}
@@ -1155,7 +1155,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=90.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("amount_line")>
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("amount_line")>
                                                 "К выплате"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "amount_line"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "amount_line", s.sort_ascending))}
@@ -1163,7 +1163,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=80.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("total_price")>
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_price")>
                                                 "Полная"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_price"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "total_price", s.sort_ascending))}
@@ -1171,7 +1171,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=70.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer; justify-content: flex-end;" on:click=move |_| toggle_sort("finished_price")>
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("finished_price")>
                                                 "Итог"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "finished_price"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "finished_price", s.sort_ascending))}

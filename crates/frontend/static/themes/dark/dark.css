@@ -18,8 +18,8 @@
 
   /* Background Colors */
   --color-bg-primary: #292929;
-  --color-bg-secondary: rgba(30, 41, 59, 0.35);
-  --color-surface: rgba(30, 41, 59, 0.60);
+  --color-bg-secondary: rgba(40, 40, 40, 0.35);
+  --color-surface: rgba(55, 55, 55, 0.8);
   --color-code-bg: rgba(0, 0, 0, 0.35);
 
   /* Border Colors */
@@ -99,8 +99,8 @@
   --modal-header-bg: rgba(255, 255, 255, 0.05);
 
   /* Sidebar Colors */
-  --sidebar-bg: rgba(30, 35, 45, 0.50);
-  --sidebar-text: rgba(255, 255, 255, 0.75);
+  --sidebar-bg: rgba(42, 45, 51, 0.5);
+  --sidebar-text: rgba(255, 255, 255, 0.9);
   --sidebar-text-active: #93c5fd;
   --sidebar-item-hover: rgba(255, 255, 255, 0.10);
   --sidebar-item-active-bg: rgba(96, 165, 250, 0.20);
@@ -110,7 +110,7 @@
   --sidebar-border: rgba(255, 255, 255, 0.15);
 
   /* Header Colors */
-  --header-bg: rgba(55, 71, 79, 0.85);
+  --header-bg: rgba(64, 72, 76, 0.85);
   --header-text: #ffffff;
   --header-border: rgba(255, 255, 255, 0.15);
 

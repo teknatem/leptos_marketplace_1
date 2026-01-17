@@ -5,14 +5,15 @@
 use super::super::dimension_input::DimensionInput;
 use super::super::view_model::NomenclatureDetailsVm;
 use leptos::prelude::*;
+use thaw::*;
 
 /// Dimensions tab component with all dimension fields
 #[component]
 pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
-        <div class="details-section">
+        <div style="max-width:700px">
+        <Card>
             <h4 class="details-section__title">"Измерения"</h4>
-
             <DimensionInput
                 id="dim1_category"
                 label="Категория"
@@ -108,6 +109,7 @@ pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                 })
                 options=vm.get_dim_options("dim6_size")
             />
+        </Card>
         </div>
     }
 }

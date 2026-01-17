@@ -10,6 +10,7 @@ use thaw::*;
 #[component]
 pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
+        <Card>
         <div class="details-section">
             <h4 class="details-section__title">"Основные поля"</h4>
             <div class="details-grid--3col">
@@ -55,5 +56,6 @@ pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                 </div>
             </div>
         </div>
+        </Card>
     }
 }

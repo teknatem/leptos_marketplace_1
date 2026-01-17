@@ -122,21 +122,21 @@
    ============================================ */
 
 .form__group {
-  margin-bottom: 8px;
-  margin-top: 8px;
+  margin-bottom: 0px;
+  margin-top: 0px;
   padding: 0;
   border-radius: 0;
   background: transparent;
   border: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .form__label {
   display: block;
-  margin-bottom: 2px;
-  font-size: var(--font-size-sm);
+  margin-bottom: 0px;
+  font-size: var(--font-size-md);
   font-weight: 500;
   color: var(--form-label-text);
 }
@@ -237,7 +237,7 @@
 }
 
 .details-section__title {
-  margin: 0 0 var(--spacing-sm) 0;
+  margin: 0;
   padding-bottom: 4px;
   border-bottom: 2px solid var(--color-border);
   font-size: 14px;
@@ -923,9 +923,11 @@ th.resizable {
   text-align: right;
 }
 
-.table__header-cell--right {
+/* DEPRECATED: Headers should always align left. Use .table__header-cell only.
+   Only cell values should align right using .table__cell--right */
+/* .table__header-cell--right {
   text-align: right;
-}
+} */
 
 /* Tree toggle */
 .table__tree-label {
@@ -1086,10 +1088,12 @@ th.resizable {
 
 /* Wide modal variant */
 .modal-content-wide {
-  max-width: 1200px;
+  max-width: 1300px;
   width: 90%;
   max-height: 90vh;
-  overflow: auto;
+  height: calc(100vh - 80px); 
+  overflow: hidden; 
+  margin: 0;
 }
 
 /* ============================================

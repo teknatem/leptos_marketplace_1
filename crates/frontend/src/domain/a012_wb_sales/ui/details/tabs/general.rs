@@ -88,7 +88,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let has_nom_ref = nom_ref.is_some();
 
             view! {
-                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; justify-items: start;">
+                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; align-content: start;">
 
                 //left column
                 <Flex vertical=true gap=FlexGap::Medium>
