@@ -399,6 +399,24 @@ pub fn configure_business_routes() -> Router {
             "/api/a017-llm-agent/:id/test",
             post(handlers::a017_llm_agent::test_connection),
         )
+        // A018 LLM Chat handlers
+        .route(
+            "/api/a018-llm-chat",
+            get(handlers::a018_llm_chat::list_all).post(handlers::a018_llm_chat::upsert),
+        )
+        .route(
+            "/api/a018-llm-chat/list",
+            get(handlers::a018_llm_chat::list_paginated),
+        )
+        .route(
+            "/api/a018-llm-chat/:id",
+            get(handlers::a018_llm_chat::get_by_id).delete(handlers::a018_llm_chat::delete),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/messages",
+            get(handlers::a018_llm_chat::get_messages)
+                .post(handlers::a018_llm_chat::send_message),
+        )
         // ========================================
         // USECASES (U501-U506)
         // ========================================

@@ -1,0 +1,190 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "LlmChat",
+  "entity_index": "a018",
+  "collection_name": "llm_chat",
+  "table_name": "a018_llm_chat",
+  "ui": {
+    "element_name": "Чат LLM",
+    "element_name_en": "LLM Chat",
+    "list_name": "Чаты LLM",
+    "list_name_en": "LLM Chats",
+    "icon": "message-square"
+  },
+  "ai": {
+    "description": "Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат связан с конкретным агентом (a017_llm_agent).",
+    "questions": [
+      "Какие чаты существуют?",
+      "Как создать новый чат?",
+      "Как посмотреть историю сообщений чата?",
+      "Какой агент используется в чате?"
+    ],
+    "related": [
+      "a017_llm_agent",
+      "a019_llm_artifact"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "LlmChatId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "CHAT-001",
+        "hint": "Уникальный код чата",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "Анализ продаж за январь",
+        "hint": "Описательное название чата",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": {
+        "required": true,
+        "min_length": 3,
+        "max_length": 500
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Дополнительная информация",
+        "hint": "Произвольный комментарий",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "input_type": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 1000
+      }
+    },
+    {
+      "name": "agent_id",
+      "rust_type": "LlmAgentId",
+      "field_type": "reference",
+      "source": "custom",
+      "ui": {
+        "label": "Агент LLM",
+        "label_en": "LLM Agent",
+        "hint": "Какой агент используется для этого чата",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200,
+        "input_type": "select"
+      },
+      "reference": {
+        "entity": "a017_llm_agent",
+        "display_field": "description"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на агента LLM (a017_llm_agent), который используется для генерации ответов в этом чате"
+    },
+    {
+      "name": "created_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Создан",
+        "label_en": "Created",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 180,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Обновлён",
+        "label_en": "Updated",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "is_deleted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Удалён",
+        "label_en": "Deleted",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "version",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Версия",
+        "label_en": "Version",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ pub mod a014_ozon_transactions;
 pub mod a015_wb_orders;
 pub mod a016_ym_returns;
 pub mod a017_llm_agent;
+pub mod a018_llm_chat;
 
 // Projection handlers (p900-p906)
 pub mod p900_mp_sales_register;

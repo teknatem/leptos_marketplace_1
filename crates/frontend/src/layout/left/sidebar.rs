@@ -85,7 +85,10 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             id: "operations",
             label: "Операции",
             icon: "layers",
-            items: vec![("u505_match_nomenclature", "Сопоставление", "layers")],
+            items: vec![
+                ("u505_match_nomenclature", "Сопоставление", "layers"),
+                ("a018_llm_chat", "LLM Чат", "message-square"),
+            ],
             admin_only: false,
         },
         MenuGroup {
