@@ -1,30 +1,31 @@
 /* Применяется к ячейке заголовка и обычным ячейкам */
-.fixed-checkbox-column, 
-td:first-child { 
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    padding: 0 8px; /* отступы, чтобы они не раздували ячейку */
+.fixed-checkbox-column,
+td:first-child {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 8px;
+  /* отступы, чтобы они не раздували ячейку */
 }
 
 /* Темы */
 [data-theme="dark"] .thaw-config-provider,
 [data-theme="forest"] .thaw-config-provider {
-    --fontFamilyBase: "Roboto", sans-serif;
+  --fontFamilyBase: "Roboto", sans-serif;
 }
 
 [data-theme="light"] .thaw-config-provider {
-    --fontFamilyBase: "Roboto", sans-serif;
+  --fontFamilyBase: "Roboto", sans-serif;
 }
 
 .thaw-table-row {
-    height: 36px !important;
-  }
-  
+  height: 36px !important;
+}
+
 .thaw-table-cell,
 .thaw-table-header-cell {
-    height: 36px !important;
-  }
+  height: 36px !important;
+}
 
 /* THAW Input/Textarea placeholder styling - italic and lighter */
 .thaw-input__input::placeholder,
@@ -78,4 +79,9 @@ td:first-child {
   min-width: 0 !important;
   box-sizing: border-box !important;
   overflow: visible !important;
+  margin: 0 !important;
+}
+
+.thaw-card[role="group"] {
+  background-color: transparent !important;
 }

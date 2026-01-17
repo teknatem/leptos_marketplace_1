@@ -4,127 +4,125 @@
    ============================================ */
 
 :root {
-  /* =========================================================
+   /* =========================================================
      Cross-theme behavior tokens (can be overridden by themes)
      ========================================================= */
-  --app-bg-color: var(--color-bg-primary);
-  --app-bg-image: none;
-  --app-main-bg: var(--color-bg-primary);
-  --header-backdrop-blur: 0px;
-  --right-backdrop-blur: 0px;
-  --form-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23525252' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+   --app-bg-color: var(--color-bg-primary);
+   --app-bg-image: none;
+   --app-main-bg: var(--color-bg-primary);
+   --header-backdrop-blur: 0px;
+   --right-backdrop-blur: 0px;
+   --form-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23525252' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
 
-  /* =========================================================
+   /* =========================================================
      Cross-theme component tokens (override in theme files)
      ========================================================= */
-  --detail-form-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-  --detail-form-header-text: #ffffff;
+   --detail-form-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+   --detail-form-header-text: #ffffff;
 
-  --activity-success-bg: rgba(76, 175, 80, 0.1);
-  --activity-success-fg: #4caf50;
-  --activity-warning-bg: rgba(255, 152, 0, 0.1);
-  --activity-warning-fg: #ff9800;
-  --activity-error-bg: rgba(244, 67, 54, 0.1);
-  --activity-error-fg: #f44336;
+   --activity-success-bg: rgba(76, 175, 80, 0.1);
+   --activity-success-fg: #4caf50;
+   --activity-warning-bg: rgba(255, 152, 0, 0.1);
+   --activity-warning-fg: #ff9800;
+   --activity-error-bg: rgba(244, 67, 54, 0.1);
+   --activity-error-fg: #f44336;
 
-  --stat-success-gradient: linear-gradient(135deg, #4caf50, #81c784);
-  --stat-warning-gradient: linear-gradient(135deg, #ff9800, #ffb74d);
-  --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
+   --stat-success-gradient: linear-gradient(135deg, #4caf50, #81c784);
+   --stat-warning-gradient: linear-gradient(135deg, #ff9800, #ffb74d);
+   --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
 
-  /* List header + pagination (used in core/layout.css) */
-  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-  --list-header-text: #ffffff;
-  --list-header-border: rgba(0, 0, 0, 0.1);
+   /* List header + pagination (used in core/layout.css) */
 
-  --pagination-controls-bg: rgba(255, 255, 255, 0.12);
-  --pagination-controls-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-bg: rgba(255, 255, 255, 0.1);
-  --pagination-btn-border: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-bg: rgba(255, 255, 255, 0.2);
-  --pagination-btn-hover-border: rgba(255, 255, 255, 0.3);
-  --pagination-text: rgba(255, 255, 255, 0.95);
 
-  --page-size-select-bg: rgba(255, 255, 255, 0.1);
-  --page-size-select-border: rgba(255, 255, 255, 0.2);
-  --page-size-select-hover-bg: rgba(255, 255, 255, 0.15);
-  --page-size-select-hover-border: rgba(255, 255, 255, 0.3);
-  --page-size-option-bg: #ffffff;
-  --page-size-option-fg: #333333;
+   --pagination-controls-bg: rgba(255, 255, 255, 0.12);
+   --pagination-controls-border: rgba(255, 255, 255, 0.2);
+   --pagination-btn-bg: rgba(255, 255, 255, 0.1);
+   --pagination-btn-border: rgba(255, 255, 255, 0.2);
+   --pagination-btn-hover-bg: rgba(255, 255, 255, 0.2);
+   --pagination-btn-hover-border: rgba(255, 255, 255, 0.3);
+   --pagination-text: rgba(255, 255, 255, 0.95);
 
-  /* Sidebar scrollbar */
-  --sidebar-scrollbar-thumb: rgba(0, 0, 0, 0.2);
-  --sidebar-scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+   --page-size-select-bg: rgba(255, 255, 255, 0.1);
+   --page-size-select-border: rgba(255, 255, 255, 0.2);
+   --page-size-select-hover-bg: rgba(255, 255, 255, 0.15);
+   --page-size-select-hover-border: rgba(255, 255, 255, 0.3);
+   --page-size-option-bg: #ffffff;
+   --page-size-option-fg: #333333;
 
-  /* List/table scrollbar (content areas) */
-  --list-scrollbar-track: transparent;
-  --list-scrollbar-thumb: rgba(0, 0, 0, 0.18);
-  --list-scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+   /* Sidebar scrollbar */
+   --sidebar-scrollbar-thumb: rgba(0, 0, 0, 0.2);
+   --sidebar-scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
 
-  /* Layout Dimensions */
-  --sidebar-width: 260px;
-  --top-header-height: 36px;
-  --panel-width: 260px;
-  --panel-resizer-width: 6px;
+   /* List/table scrollbar (content areas) */
+   --list-scrollbar-track: transparent;
+   --list-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+   --list-scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
 
-  /* Spacing Scale (unified) */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-2xl: 40px;
-  --spacing-3xl: 48px;
-  --spacing-4xl: 56px;
-  --spacing-5xl: 64px;
+   /* Layout Dimensions */
+   --sidebar-width: 260px;
+   --top-header-height: 36px;
+   --panel-width: 260px;
+   --panel-resizer-width: 6px;
 
-  /* Border Radius (unified) */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-full: 50%;
+   /* Spacing Scale (unified) */
+   --spacing-xs: 4px;
+   --spacing-sm: 8px;
+   --spacing-md: 16px;
+   --spacing-lg: 24px;
+   --spacing-xl: 32px;
+   --spacing-2xl: 40px;
+   --spacing-3xl: 48px;
+   --spacing-4xl: 56px;
+   --spacing-5xl: 64px;
 
-  /* Typography - Font Sizes */
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-base: 13px;
-  --font-size-md: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
-  --font-size-h3: 1.3rem;
+   /* Border Radius (unified) */
+   --radius-sm: 4px;
+   --radius-md: 6px;
+   --radius-lg: 8px;
+   --radius-full: 50%;
 
-  /* Typography - Font Weights */
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
+   /* Typography - Font Sizes */
+   --font-size-xs: 11px;
+   --font-size-sm: 12px;
+   --font-size-base: 13px;
+   --font-size-md: 14px;
+   --font-size-lg: 16px;
+   --font-size-xl: 18px;
+   --font-size-h3: 1.3rem;
 
-  /* Typography - Line Heights */
-  --line-height-tight: 1.2;
-  --line-height-normal: 1.4;
+   /* Typography - Font Weights */
+   --font-weight-normal: 400;
+   --font-weight-medium: 500;
+   --font-weight-semibold: 600;
+   --font-weight-bold: 700;
 
-  /* Shadows (without colors) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
+   /* Typography - Line Heights */
+   --line-height-tight: 1.2;
+   --line-height-normal: 1.4;
 
-  /* Table Dimensions */
-  --table-header-height: 30px;
+   /* Shadows (without colors) */
+   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
+   --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
 
-  /* Opacity Values */
-  --opacity-panel: 0.6;
+   /* Table Dimensions */
+   --table-header-height: 30px;
 
-  /* Transitions */
-  --transition-fast: 0.15s ease;
-  --transition-base: 0.3s ease;
+   /* Opacity Values */
+   --opacity-panel: 0.6;
 
-  /* Z-index Scale */
-  --z-base: 1;
-  --z-resizer: 2;
-  --z-totals: 9;
-  --z-header: 10;
-  --z-sticky: 10;
-  --z-top-header: 1100;
-  --z-modal: 10000;
-  --z-dropdown: 1200;
-  --z-overlay: 9999;
+   /* Transitions */
+   --transition-fast: 0.15s ease;
+   --transition-base: 0.3s ease;
+
+   /* Z-index Scale */
+   --z-base: 1;
+   --z-resizer: 2;
+   --z-totals: 9;
+   --z-header: 10;
+   --z-sticky: 10;
+   --z-top-header: 1100;
+   --z-modal: 10000;
+   --z-dropdown: 1200;
+   --z-overlay: 9999;
 }

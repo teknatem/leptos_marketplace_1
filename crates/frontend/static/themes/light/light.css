@@ -49,7 +49,7 @@
   --btn-primary-bg: #2563eb;
   --btn-primary-hover: #1d4ed8;
   --btn-primary-text: #ffffff;
-  
+
   --btn-secondary-bg: #525252;
   --btn-secondary-hover: #404040;
   --btn-secondary-text: #ffffff;
@@ -190,7 +190,7 @@
   --badge-status-not-posted-border: rgba(224, 244, 6, 0.5);
 
   /* Component tokens */
-  --detail-form-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+  --detail-form-header-bg: linear-gradient(135deg, #4a5568b5 0%, #2d3748aa 100%);
   --detail-form-header-text: #ffffff;
 
   --activity-success-bg: rgba(76, 175, 80, 0.1);
@@ -205,9 +205,6 @@
   --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
 
   /* Layout tokens */
-  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
-  --list-header-text: #ffffff;
-  --list-header-border: rgba(0, 0, 0, 0.1);
 
   --pagination-controls-bg: rgba(0, 0, 0, 0.05);
   --pagination-controls-border: rgba(0, 0, 0, 0.15);
