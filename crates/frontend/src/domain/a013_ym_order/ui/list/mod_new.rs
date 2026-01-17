@@ -931,19 +931,19 @@ pub fn YmOrderList() -> impl IntoView {
                                             <span class="table__sortable-header">"Статус" <span class={get_sort_class("status_norm", &current_sort_field)}>{get_sort_indicator("status_norm", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 60px; min-width: 50px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 70px; min-width: 60px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_qty")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Кол-во" <span class={get_sort_class("total_qty", &current_sort_field)}>{get_sort_indicator("total_qty", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Кол-во" <span class={get_sort_class("total_qty", &current_sort_field)}>{get_sort_indicator("total_qty", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_amount")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Сумма" <span class={get_sort_class("total_amount", &current_sort_field)}>{get_sort_indicator("total_amount", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Сумма" <span class={get_sort_class("total_amount", &current_sort_field)}>{get_sort_indicator("total_amount", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("delivery_total")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Доставка" <span class={get_sort_class("delivery_total", &current_sort_field)}>{get_sort_indicator("delivery_total", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Доставка" <span class={get_sort_class("delivery_total", &current_sort_field)}>{get_sort_indicator("delivery_total", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                         <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("subsidies_total")>
-                                            <span class="table__sortable-header" style="justify-content: flex-end;">"Субсидии" <span class={get_sort_class("subsidies_total", &current_sort_field)}>{get_sort_indicator("subsidies_total", &current_sort_field, current_sort_asc)}</span></span>
+                                            <span class="table__sortable-header">"Субсидии" <span class={get_sort_class("subsidies_total", &current_sort_field)}>{get_sort_indicator("subsidies_total", &current_sort_field, current_sort_asc)}</span></span>
                                         </th>
                                     </tr>
                                 </thead>

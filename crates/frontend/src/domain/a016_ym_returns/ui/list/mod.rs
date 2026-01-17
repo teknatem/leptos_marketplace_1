@@ -875,8 +875,8 @@ pub fn YmReturnsList() -> impl IntoView {
                                     "Статус"
                                     <span class={move || get_sort_class("refund_status", &state.get().sort_field)}>{move || get_sort_indicator("refund_status", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--right resizable">"Шт."</th>
-                                <th class="table__header-cell table__header-cell--right resizable">"Сумма"</th>
+                                <th class="table__header-cell resizable">"Шт."</th>
+                                <th class="table__header-cell resizable">"Сумма"</th>
                                 <th class="table__header-cell table__header-cell--center">"✓"</th>
                             </tr>
                             // Totals row - серверные итоги по всему датасету

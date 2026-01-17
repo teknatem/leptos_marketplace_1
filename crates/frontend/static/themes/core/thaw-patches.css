@@ -70,3 +70,12 @@ td:first-child {
 [data-theme="forest"] .thaw-textarea__textarea:read-only {
   background-color: rgba(255, 255, 255, 0.03);
 }
+
+/* Override Thaw Card default width for details forms */
+.thaw-card {
+  width: 100% !important;
+  max-width: 700px !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}

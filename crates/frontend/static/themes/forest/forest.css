@@ -11,7 +11,7 @@
   --color-error: #f44336;
 
   /* Text Colors */
-  --color-text-primary: #1f2937;
+  --color-text-primary: #f1f2f5;
   --color-text-secondary: #6b7280;
   --color-text-tertiary: #9ca3af;
   --color-text-muted: #9ca3af;
@@ -20,7 +20,7 @@
   /*--color-bg-primary: rgba(2, 40, 15, 0.9);*/
   --color-bg-primary: rgba(2, 40, 15, 0.20);
   --color-bg-secondary: rgba(10, 66, 12, 0.5);
-  --color-surface: rgba(255, 255, 255, 0.1);
+  --color-surface: rgba(55, 75, 55, 0.8);
   --color-code-bg: rgba(200, 230, 201, 0.2);
 
   /* Border Colors */
@@ -95,7 +95,7 @@
 
   /* Modal Colors */
   --modal-overlay: rgba(0, 0, 0, 0.5);
-  --modal-bg: rgba(255, 255, 255, 0.95);
+  --modal-bg: rgba(50, 50, 50, 0.75);
   --modal-border: rgba(165, 214, 167, 0.5);
   --modal-header-bg: #f5f5f5;
 
@@ -191,7 +191,7 @@
   --badge-status-not-posted-border: rgba(255, 193, 7, 0.4);
 
   /* Component tokens */
-  --detail-form-header-bg: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%);
+  --detail-form-header-bg: linear-gradient(135deg, #2e7d3294 0%, #1b5e1f8d 100%);
   --detail-form-header-text: #ffffff;
 
   --activity-success-bg: rgba(76, 175, 80, 0.12);
@@ -206,7 +206,7 @@
   --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
 
   /* Layout tokens */
-  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d4839 100%);
   --list-header-text: #ffffff;
   --list-header-border: rgba(0, 0, 0, 0.1);
 

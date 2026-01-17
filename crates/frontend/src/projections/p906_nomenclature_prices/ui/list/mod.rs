@@ -340,7 +340,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                                     </span>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=true min_width=120.0 class="table__header-cell--right">
+                                <TableHeaderCell resizable=true min_width=120.0>
                                     "Цена"
                                     <span
                                         class={move || get_sort_class("price", &state.get().sort_by)}

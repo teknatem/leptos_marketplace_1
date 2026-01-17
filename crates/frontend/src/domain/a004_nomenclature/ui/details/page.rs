@@ -59,7 +59,7 @@ pub fn NomenclatureDetails(
                 <TabBar vm=vm_tabs.clone() />
 
                 // Tab content
-                <div style="height: 60vh; overflow: hidden;">
+                <div style="height: 60vh; overflow-y: auto; overflow-x: hidden;">
                     <TabContent vm=vm_content.clone() />
                 </div>
             </div>
@@ -236,9 +236,9 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
         {move || match active_tab.get() {
             "general" => view! {
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); height: 100%; overflow-y: auto;">
-                    <GeneralTab vm=vm_general.clone() />
-                    <DimensionsTab vm=vm_dimensions.clone() />
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md); height: 100%; overflow-y: auto; align-items: start; align-content: start;">
+                   <GeneralTab vm=vm_general.clone() />
+                   <DimensionsTab vm=vm_dimensions.clone() />
                 </div>
             }.into_any(),
             "dimensions" => view! {
