@@ -28,6 +28,7 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
+use crate::domain::a018_llm_chat::ui::list::LlmChatList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -287,6 +288,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a017: LLM Agents
         "a017_llm_agent" => view! { <LlmAgentList /> }.into_any(),
+
+        // a018: LLM Chat
+        "a018_llm_chat" => view! { <LlmChatList /> }.into_any(),
 
         // ═══════════════════════════════════════════════════════════════════
         // Use Cases (u501-u506)
