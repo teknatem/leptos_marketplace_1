@@ -118,6 +118,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             items: vec![
                 ("sys_users", "Пользователи", "users"),
                 ("sys_scheduled_tasks", "Регламентные задания", "calendar"),
+                ("a017_llm_agent", "Агенты LLM", "robot"),
                 ("sys_thaw_test", "Тест Thaw UI", "test-tube"),
             ],
             admin_only: true,

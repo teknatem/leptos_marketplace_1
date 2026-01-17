@@ -1,0 +1,264 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "LlmAgent",
+  "entity_index": "a017",
+  "collection_name": "llm_agent",
+  "table_name": "a017_llm_agent",
+  "ui": {
+    "element_name": "Агент LLM",
+    "element_name_en": "LLM Agent",
+    "list_name": "Агенты LLM",
+    "list_name_en": "LLM Agents",
+    "icon": "robot"
+  },
+  "ai": {
+    "description": "Настройки подключения к провайдерам LLM (OpenAI, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и системный промпт. Используется для создания чатов и выполнения запросов к языковым моделям.",
+    "questions": [
+      "Какие LLM агенты настроены?",
+      "Как добавить OpenAI агента?",
+      "Какие параметры можно настроить для агента?",
+      "Как изменить температуру модели?"
+    ],
+    "related": [
+      "a018_llm_chat",
+      "a019_llm_artifact"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "LlmAgentId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "GPT4O-MAIN",
+        "hint": "Уникальный код агента",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "GPT-4o основной агент",
+        "hint": "Описательное название агента",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 250
+      },
+      "validation": {
+        "required": true,
+        "min_length": 3,
+        "max_length": 255
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Используется для анализа продаж",
+        "hint": "Произвольный комментарий",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 1000
+      }
+    },
+    {
+      "name": "provider_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Провайдер",
+        "label_en": "Provider",
+        "hint": "Тип провайдера LLM",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "select",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Поддерживаемые провайдеры: OpenAI (GPT-4, GPT-4o), Anthropic (Claude), Ollama (локальные модели)"
+    },
+    {
+      "name": "api_endpoint",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "API Endpoint",
+        "label_en": "API Endpoint",
+        "placeholder": "https://api.openai.com/v1",
+        "hint": "URL эндпоинта API провайдера",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": {
+        "required": true,
+        "max_length": 500,
+        "pattern": "^https?://.+",
+        "custom_error": "URL должен начинаться с http:// или https://"
+      },
+      "ai_hint": "OpenAI: https://api.openai.com/v1, Anthropic: https://api.anthropic.com, Ollama: http://localhost:11434"
+    },
+    {
+      "name": "api_key",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "API Ключ",
+        "label_en": "API Key",
+        "placeholder": "sk-...",
+        "hint": "API ключ для аутентификации",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "password"
+      },
+      "validation": {
+        "required": true,
+        "max_length": 500
+      },
+      "ai_hint": "Хранится в зашифрованном виде. Для OpenAI формат: sk-..."
+    },
+    {
+      "name": "model_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Модель",
+        "label_en": "Model",
+        "placeholder": "gpt-4o",
+        "hint": "Название модели",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 100
+      },
+      "ai_hint": "OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral"
+    },
+    {
+      "name": "temperature",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Temperature",
+        "label_en": "Temperature",
+        "placeholder": "0.7",
+        "hint": "Креативность ответов (0.0-2.0)",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true,
+        "min": 0.0,
+        "max": 2.0
+      },
+      "ai_hint": "0.0 - детерминированные ответы, 1.0 - сбалансированно, 2.0 - максимально креативно"
+    },
+    {
+      "name": "max_tokens",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Max Tokens",
+        "label_en": "Max Tokens",
+        "placeholder": "4096",
+        "hint": "Максимальная длина ответа",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true,
+        "min": 256,
+        "max": 128000
+      },
+      "ai_hint": "GPT-4o поддерживает до 128k токенов, GPT-3.5 - до 16k"
+    },
+    {
+      "name": "system_prompt",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Системный промпт",
+        "label_en": "System Prompt",
+        "placeholder": "Ты аналитик данных маркетплейсов...",
+        "hint": "Базовая инструкция для агента",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 5000
+      },
+      "ai_hint": "Определяет роль и поведение агента. Например: 'Ты эксперт по SQL и аналитике маркетплейсов. Отвечай кратко и точно.'"
+    },
+    {
+      "name": "is_primary",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Основной",
+        "label_en": "Primary",
+        "hint": "Использовать по умолчанию",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Только один агент может быть основным. При установке флага автоматически снимается с других агентов."
+    }
+  ]
+}

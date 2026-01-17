@@ -378,6 +378,27 @@ pub fn configure_business_routes() -> Router {
             "/api/a016/ym-returns/batch-unpost",
             post(handlers::a016_ym_returns::batch_unpost_documents),
         )
+        // A017 LLM Agent handlers
+        .route(
+            "/api/a017-llm-agent",
+            get(handlers::a017_llm_agent::list_all).post(handlers::a017_llm_agent::upsert),
+        )
+        .route(
+            "/api/a017-llm-agent/list",
+            get(handlers::a017_llm_agent::list_paginated),
+        )
+        .route(
+            "/api/a017-llm-agent/primary",
+            get(handlers::a017_llm_agent::get_primary),
+        )
+        .route(
+            "/api/a017-llm-agent/:id",
+            get(handlers::a017_llm_agent::get_by_id).delete(handlers::a017_llm_agent::delete),
+        )
+        .route(
+            "/api/a017-llm-agent/:id/test",
+            post(handlers::a017_llm_agent::test_connection),
+        )
         // ========================================
         // USECASES (U501-U506)
         // ========================================

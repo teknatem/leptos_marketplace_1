@@ -27,6 +27,7 @@ use crate::domain::a015_wb_orders::ui::details::WbOrdersDetail;
 use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
+use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -84,9 +85,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "a004_nomenclature" => {
             view! { <crate::domain::a004_nomenclature::ui::tree::NomenclatureTree /> }.into_any()
         }
-        "a004_nomenclature_list" => {
-            view! { <NomenclatureList /> }.into_any()
-        }
+        "a004_nomenclature_list" => view! { <NomenclatureList /> }.into_any(),
         k if k.starts_with("a004_nomenclature_detail_") => {
             let id = k
                 .strip_prefix("a004_nomenclature_detail_")
@@ -119,9 +118,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
 
         // a007: Marketplace Products
-        "a007_marketplace_product" => {
-            view! { <MarketplaceProductList /> }.into_any()
-        }
+        "a007_marketplace_product" => view! { <MarketplaceProductList /> }.into_any(),
         k if k.starts_with("a007_marketplace_product_detail_") => {
             let id = k
                 .strip_prefix("a007_marketplace_product_detail_")
@@ -140,30 +137,24 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             }
             .into_any()
         }
-        "a007_marketplace_product_new" => {
-            view! {
-                <MarketplaceProductDetails
-                    id=None
-                    on_close=Callback::new({
-                        let key_for_close = key_for_close.clone();
-                        move |_| {
-                            tabs_store.close_tab(&key_for_close);
-                        }
-                    })
-                />
-            }
-            .into_any()
+        "a007_marketplace_product_new" => view! {
+            <MarketplaceProductDetails
+                id=None
+                on_close=Callback::new({
+                    let key_for_close = key_for_close.clone();
+                    move |_| {
+                        tabs_store.close_tab(&key_for_close);
+                    }
+                })
+            />
         }
+        .into_any(),
 
         // a008: Marketplace Sales
-        "a008_marketplace_sales" => {
-            view! { <MarketplaceSalesList /> }.into_any()
-        }
+        "a008_marketplace_sales" => view! { <MarketplaceSalesList /> }.into_any(),
 
         // a009: Ozon Returns
-        "a009_ozon_returns" => {
-            view! { <OzonReturnsList /> }.into_any()
-        }
+        "a009_ozon_returns" => view! { <OzonReturnsList /> }.into_any(),
         k if k.starts_with("a009_ozon_returns_detail_") => {
             let id = k
                 .strip_prefix("a009_ozon_returns_detail_")
@@ -185,24 +176,15 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a010: Ozon FBS Postings
-        "a010_ozon_fbs_posting" => {
-            view! { <OzonFbsPostingList /> }.into_any()
-        }
+        "a010_ozon_fbs_posting" => view! { <OzonFbsPostingList /> }.into_any(),
 
         // a011: Ozon FBO Postings
-        "a011_ozon_fbo_posting" => {
-            view! { <OzonFboPostingList /> }.into_any()
-        }
+        "a011_ozon_fbo_posting" => view! { <OzonFboPostingList /> }.into_any(),
 
         // a012: Wildberries Sales
-        "a012_wb_sales" => {
-            view! { <WbSalesList /> }.into_any()
-        }
+        "a012_wb_sales" => view! { <WbSalesList /> }.into_any(),
         k if k.starts_with("a012_wb_sales_detail_") => {
-            let id = k
-                .strip_prefix("a012_wb_sales_detail_")
-                .unwrap()
-                .to_string();
+            let id = k.strip_prefix("a012_wb_sales_detail_").unwrap().to_string();
             log!("✅ Creating WbSalesDetail with id: {}", id);
             view! {
                 <WbSalesDetail
@@ -219,14 +201,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a013: Yandex Market Orders
-        "a013_ym_order" => {
-            view! { <YmOrderList /> }.into_any()
-        }
+        "a013_ym_order" => view! { <YmOrderList /> }.into_any(),
         k if k.starts_with("a013_ym_order_detail_") => {
-            let id = k
-                .strip_prefix("a013_ym_order_detail_")
-                .unwrap()
-                .to_string();
+            let id = k.strip_prefix("a013_ym_order_detail_").unwrap().to_string();
             log!("✅ Creating YmOrderDetail with id: {}", id);
             view! {
                 <YmOrderDetail
@@ -243,9 +220,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a014: Ozon Transactions
-        "a014_ozon_transactions" => {
-            view! { <OzonTransactionsList /> }.into_any()
-        }
+        "a014_ozon_transactions" => view! { <OzonTransactionsList /> }.into_any(),
         k if k.starts_with("a014_ozon_transactions_detail_") => {
             let id = k
                 .strip_prefix("a014_ozon_transactions_detail_")
@@ -267,9 +242,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a015: Wildberries Orders
-        "a015_wb_orders" => {
-            view! { <WbOrdersList /> }.into_any()
-        }
+        "a015_wb_orders" => view! { <WbOrdersList /> }.into_any(),
         k if k.starts_with("a015_wb_orders_detail_") => {
             let id = k
                 .strip_prefix("a015_wb_orders_detail_")
@@ -291,9 +264,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a016: Yandex Market Returns
-        "a016_ym_returns" => {
-            view! { <YmReturnsList /> }.into_any()
-        }
+        "a016_ym_returns" => view! { <YmReturnsList /> }.into_any(),
         k if k.starts_with("a016_ym_returns_detail_") => {
             let id = k
                 .strip_prefix("a016_ym_returns_detail_")
@@ -314,19 +285,15 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             .into_any()
         }
 
+        // a017: LLM Agents
+        "a017_llm_agent" => view! { <LlmAgentList /> }.into_any(),
+
         // ═══════════════════════════════════════════════════════════════════
         // Use Cases (u501-u506)
         // ═══════════════════════════════════════════════════════════════════
-
-        "u501_import_from_ut" => {
-            view! { <u501_import_from_ut::ImportWidget /> }.into_any()
-        }
-        "u502_import_from_ozon" => {
-            view! { <u502_import_from_ozon::ImportWidget /> }.into_any()
-        }
-        "u503_import_from_yandex" => {
-            view! { <u503_import_from_yandex::ImportWidget /> }.into_any()
-        }
+        "u501_import_from_ut" => view! { <u501_import_from_ut::ImportWidget /> }.into_any(),
+        "u502_import_from_ozon" => view! { <u502_import_from_ozon::ImportWidget /> }.into_any(),
+        "u503_import_from_yandex" => view! { <u503_import_from_yandex::ImportWidget /> }.into_any(),
         "u504_import_from_wildberries" => {
             view! { <u504_import_from_wildberries::ImportWidget /> }.into_any()
         }
@@ -340,19 +307,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // ═══════════════════════════════════════════════════════════════════
         // Projections (p900-p906)
         // ═══════════════════════════════════════════════════════════════════
-
-        "p900_sales_register" => {
-            view! { <SalesRegisterList /> }.into_any()
-        }
-        "p901_barcodes" => {
-            view! { <BarcodesList /> }.into_any()
-        }
-        "p902_ozon_finance_realization" => {
-            view! { <OzonFinanceRealizationList /> }.into_any()
-        }
-        "p903_wb_finance_report" => {
-            view! { <WbFinanceReportList /> }.into_any()
-        }
+        "p900_sales_register" => view! { <SalesRegisterList /> }.into_any(),
+        "p901_barcodes" => view! { <BarcodesList /> }.into_any(),
+        "p902_ozon_finance_realization" => view! { <OzonFinanceRealizationList /> }.into_any(),
+        "p903_wb_finance_report" => view! { <WbFinanceReportList /> }.into_any(),
         k if k.starts_with("p903_wb_finance_report_detail_") => {
             let rest = k
                 .strip_prefix("p903_wb_finance_report_detail_")
@@ -387,16 +345,12 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating SalesDataList");
             view! { <SalesDataList /> }.into_any()
         }
-        "p905_commission_history" => {
-            view! { <CommissionHistoryList /> }.into_any()
-        }
+        "p905_commission_history" => view! { <CommissionHistoryList /> }.into_any(),
         k if k.starts_with("p905-commission/") => {
             let id = k.strip_prefix("p905-commission/").unwrap().to_string();
             view! { <CommissionHistoryDetails id=id /> }.into_any()
         }
-        "p905-commission-new" => {
-            view! { <CommissionHistoryDetails /> }.into_any()
-        }
+        "p905-commission-new" => view! { <CommissionHistoryDetails /> }.into_any(),
         "p906_nomenclature_prices" => {
             log!("✅ Creating NomenclaturePricesList");
             view! { <NomenclaturePricesList /> }.into_any()
@@ -405,13 +359,8 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // ═══════════════════════════════════════════════════════════════════
         // System (sys_*)
         // ═══════════════════════════════════════════════════════════════════
-
-        "sys_users" => {
-            view! { <UsersListPage /> }.into_any()
-        }
-        "sys_scheduled_tasks" => {
-            view! { <ScheduledTaskList /> }.into_any()
-        }
+        "sys_users" => view! { <UsersListPage /> }.into_any(),
+        "sys_scheduled_tasks" => view! { <ScheduledTaskList /> }.into_any(),
         k if k.starts_with("sys_scheduled_task_detail_") => {
             let id = k
                 .strip_prefix("sys_scheduled_task_detail_")
@@ -427,7 +376,6 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // ═══════════════════════════════════════════════════════════════════
         // Dashboards (d400-d401)
         // ═══════════════════════════════════════════════════════════════════
-
         "d400_monthly_summary" => {
             log!("✅ Creating MonthlySummaryDashboard");
             view! { <MonthlySummaryDashboard /> }.into_any()
@@ -440,7 +388,6 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // ═══════════════════════════════════════════════════════════════════
         // Unknown / Fallback
         // ═══════════════════════════════════════════════════════════════════
-
         _ => {
             log!("⚠️ Unknown tab type: {}", key);
             view! { <div class="placeholder">{"Not implemented yet"}</div> }.into_any()

@@ -1,4 +1,4 @@
-// Aggregate handlers (a001-a016)
+// Aggregate handlers (a001-a017)
 pub mod a001_connection_1c;
 pub mod a002_organization;
 pub mod a003_counterparty;
@@ -15,6 +15,7 @@ pub mod a013_ym_order;
 pub mod a014_ozon_transactions;
 pub mod a015_wb_orders;
 pub mod a016_ym_returns;
+pub mod a017_llm_agent;
 
 // Projection handlers (p900-p906)
 pub mod p900_mp_sales_register;

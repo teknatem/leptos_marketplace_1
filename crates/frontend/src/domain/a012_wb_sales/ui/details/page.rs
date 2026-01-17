@@ -46,13 +46,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     // Lazy loading for tabs
     Effect::new({
         let vm = vm.clone();
-        move || {
-            match vm.active_tab.get() {
-                "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
-                "projections" if !vm.projections_loaded.get() => vm.load_projections(),
-                "links" | "line" if !vm.finance_reports_loaded.get() => vm.load_finance_reports(),
-                _ => {}
-            }
+        move || match vm.active_tab.get() {
+            "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
+            "projections" if !vm.projections_loaded.get() => vm.load_projections(),
+            "links" | "line" if !vm.finance_reports_loaded.get() => vm.load_finance_reports(),
+            _ => {}
         }
     });
 
@@ -132,10 +130,10 @@ fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
             <div class="detail-form-header-right">
                 // Post/Unpost buttons
                 <PostButtons vm=vm.clone() />
-                
+
                 <Button
                     appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Small
+                    size=ButtonSize::Medium
                     on_click=move |_| on_close.run(())
                 >
                     "Закрыть"
@@ -157,7 +155,7 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
         let vm = vm.clone();
         Callback::new(move |_: ()| vm.post())
     };
-    
+
     let on_unpost = {
         let vm = vm;
         Callback::new(move |_: ()| vm.unpost())
@@ -169,23 +167,23 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
             <Show when=move || !is_posted.get()>
                 <Button
                     appearance=ButtonAppearance::Primary
-                    size=ButtonSize::Small
+                    size=ButtonSize::Medium
                     on_click=move |_| on_post.run(())
                     disabled=Signal::derive(move || posting.get())
                 >
-                    {move || if posting.get() { "Проведение..." } else { "✓ Провести" }}
+                    {move || if posting.get() { "Проведение..." } else { "✓ Post" }}
                 </Button>
             </Show>
-            
+
             // Unpost button (shown when posted)
             <Show when=move || is_posted.get()>
                 <Button
                     appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Small
+                    size=ButtonSize::Medium
                     on_click=move |_| on_unpost.run(())
                     disabled=Signal::derive(move || posting.get())
                 >
-                    {move || if posting.get() { "Отмена..." } else { "✗ Отменить" }}
+                    {move || if posting.get() { "Отмена..." } else { "✗ Unpost" }}
                 </Button>
             </Show>
         </Show>

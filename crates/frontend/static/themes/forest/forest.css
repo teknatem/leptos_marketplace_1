@@ -50,7 +50,7 @@
   --btn-primary-bg: #43a047;
   --btn-primary-hover: #388e3c;
   --btn-primary-text: #ffffff;
-  
+
   --btn-secondary-bg: #757575;
   --btn-secondary-hover: #616161;
   --btn-secondary-text: #ffffff;
@@ -206,9 +206,7 @@
   --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
 
   /* Layout tokens */
-  --list-header-bg: linear-gradient(135deg, #4a5568 0%, #2d4839 100%);
-  --list-header-text: #ffffff;
-  --list-header-border: rgba(0, 0, 0, 0.1);
+
 
   --pagination-controls-bg: rgba(76, 175, 80, 0.08);
   --pagination-controls-border: rgba(76, 175, 80, 0.25);

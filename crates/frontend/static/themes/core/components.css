@@ -101,22 +101,6 @@
   background: var(--color-info-700);
 }
 
-.button--icon-transparent {
-  background: transparent;
-  color: var(--list-header-text);
-  border: none;
-  padding: 4px 8px;
-  min-width: auto;
-}
-
-.button--icon-transparent:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.button--icon-transparent:disabled {
-  opacity: 0.3;
-}
-
 /* ============================================
    Forms
    ============================================ */
@@ -984,6 +968,7 @@ th.resizable {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -1009,6 +994,7 @@ th.resizable {
     transform: scale(0.92);
     opacity: 0;
   }
+
   to {
     transform: scale(1);
     opacity: 1;
@@ -1020,6 +1006,7 @@ th.resizable {
     transform: translateY(20px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -1091,8 +1078,8 @@ th.resizable {
   max-width: 1300px;
   width: 90%;
   max-height: 90vh;
-  height: calc(100vh - 80px); 
-  overflow: hidden; 
+  height: calc(100vh - 80px);
+  overflow: hidden;
   margin: 0;
 }
 
@@ -1600,14 +1587,12 @@ th.resizable {
 .login__background {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    125deg,
-    #a8e063 0%,
-    #56ab2f 25%,
-    #00b4db 50%,
-    #56ccf2 75%,
-    #a8e063 100%
-  );
+  background: linear-gradient(125deg,
+      #a8e063 0%,
+      #56ab2f 25%,
+      #00b4db 50%,
+      #56ccf2 75%,
+      #a8e063 100%);
   background-size: 200% 200%;
   animation: gradientFlow 15s ease infinite;
 }
@@ -1616,9 +1601,11 @@ th.resizable {
   0% {
     background-position: 0% 50%;
   }
+
   50% {
     background-position: 100% 50%;
   }
+
   100% {
     background-position: 0% 50%;
   }
@@ -1649,6 +1636,7 @@ th.resizable {
     opacity: 0;
     transform: translateY(20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2105,14 +2093,12 @@ th.resizable {
 
 /* Dark theme overrides for login */
 body[data-theme="dark"] .login__background {
-  background: linear-gradient(
-    125deg,
-    #1a1a2e 0%,
-    #16213e 25%,
-    #0f3460 50%,
-    #533483 75%,
-    #1a1a2e 100%
-  );
+  background: linear-gradient(125deg,
+      #1a1a2e 0%,
+      #16213e 25%,
+      #0f3460 50%,
+      #533483 75%,
+      #1a1a2e 100%);
   background-size: 200% 200%;
 }
 
@@ -2143,14 +2129,12 @@ body[data-theme="dark"] .login__footer-text {
 
 /* Forest theme overrides for login */
 body[data-theme="forest"] .login__background {
-  background: linear-gradient(
-    125deg,
-    #2e7d32 0%,
-    #1b5e20 25%,
-    #43a047 50%,
-    #66bb6a 75%,
-    #2e7d32 100%
-  );
+  background: linear-gradient(125deg,
+      #2e7d32 0%,
+      #1b5e20 25%,
+      #43a047 50%,
+      #66bb6a 75%,
+      #2e7d32 100%);
   background-size: 200% 200%;
 }
 
@@ -2311,7 +2295,9 @@ body[data-theme="forest"] .login__card {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Dark theme adjustments */
