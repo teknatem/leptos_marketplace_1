@@ -28,7 +28,10 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
+use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
+use crate::domain::a019_llm_artifact::ui::details::LlmArtifactDetails;
+use crate::domain::a019_llm_artifact::ui::list::LlmArtifactList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -291,6 +294,47 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a018: LLM Chat
         "a018_llm_chat" => view! { <LlmChatList /> }.into_any(),
+        k if k.starts_with("a018_llm_chat_detail_") => {
+            let id = k
+                .strip_prefix("a018_llm_chat_detail_")
+                .unwrap()
+                .to_string();
+            log!("✅ Creating LlmChatDetails with id: {}", id);
+            view! {
+                <LlmChatDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a019: LLM Artifacts
+        "a019_llm_artifact" => view! { <LlmArtifactList /> }.into_any(),
+        k if k.starts_with("a019_llm_artifact_detail_") => {
+            let id = k
+                .strip_prefix("a019_llm_artifact_detail_")
+                .unwrap()
+                .to_string();
+            log!("✅ Creating LlmArtifactDetails with id: {}", id);
+            view! {
+                <LlmArtifactDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // ═══════════════════════════════════════════════════════════════════
         // Use Cases (u501-u506)

@@ -1,4 +1,5 @@
 use crate::domain::a017_llm_agent::aggregate::LlmAgentId;
+use crate::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use crate::domain::common::{
     AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
 };
@@ -66,13 +67,23 @@ pub struct LlmChat {
     #[serde(flatten)]
     pub base: BaseAggregate<LlmChatId>,
     pub agent_id: LlmAgentId,
+    pub model_name: String,
 }
 
 impl LlmChat {
     /// Создать новый чат для вставки в БД
-    pub fn new_for_insert(code: String, description: String, agent_id: LlmAgentId) -> Self {
+    pub fn new_for_insert(
+        code: String,
+        description: String,
+        agent_id: LlmAgentId,
+        model_name: String,
+    ) -> Self {
         let base = BaseAggregate::new(LlmChatId::new_v4(), code, description);
-        Self { base, agent_id }
+        Self {
+            base,
+            agent_id,
+            model_name,
+        }
     }
 
     /// Создать чат с известным ID
@@ -81,9 +92,14 @@ impl LlmChat {
         code: String,
         description: String,
         agent_id: LlmAgentId,
+        model_name: String,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
-        Self { base, agent_id }
+        Self {
+            base,
+            agent_id,
+            model_name,
+        }
     }
 
     pub fn to_string_id(&self) -> String {
@@ -161,6 +177,30 @@ impl AggregateRoot for LlmChat {
     }
 }
 
+/// Действие с артефактом
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ArtifactAction {
+    Created,
+    Updated,
+}
+
+impl ArtifactAction {
+    pub fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "created" => Ok(ArtifactAction::Created),
+            "updated" => Ok(ArtifactAction::Updated),
+            _ => Err(format!("Unknown artifact action: {}", s)),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            ArtifactAction::Created => "created",
+            ArtifactAction::Updated => "updated",
+        }
+    }
+}
+
 /// Сообщение чата
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatMessage {
@@ -169,7 +209,13 @@ pub struct LlmChatMessage {
     pub role: ChatRole,
     pub content: String,
     pub tokens_used: Option<i32>,
+    pub model_name: Option<String>,
+    pub confidence: Option<f64>,
     pub created_at: DateTime<Utc>,
+    
+    // Связь с артефактами
+    pub artifact_id: Option<LlmArtifactId>,
+    pub artifact_action: Option<ArtifactAction>,
 }
 
 impl LlmChatMessage {
@@ -181,11 +227,38 @@ impl LlmChatMessage {
             role,
             content,
             tokens_used: None,
+            model_name: None,
+            confidence: None,
             created_at: Utc::now(),
+            artifact_id: None,
+            artifact_action: None,
         }
     }
 
-    /// Создать сообщение с информацией о токенах
+    /// Создать сообщение с полной информацией
+    pub fn new_with_metadata(
+        chat_id: LlmChatId,
+        role: ChatRole,
+        content: String,
+        tokens_used: Option<i32>,
+        model_name: Option<String>,
+        confidence: Option<f64>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            chat_id,
+            role,
+            content,
+            tokens_used,
+            model_name,
+            confidence,
+            created_at: Utc::now(),
+            artifact_id: None,
+            artifact_action: None,
+        }
+    }
+
+    /// Создать сообщение с информацией о токенах (deprecated, использовать new_with_metadata)
     pub fn new_with_tokens(
         chat_id: LlmChatId,
         role: ChatRole,
@@ -198,7 +271,11 @@ impl LlmChatMessage {
             role,
             content,
             tokens_used,
+            model_name: None,
+            confidence: None,
             created_at: Utc::now(),
+            artifact_id: None,
+            artifact_action: None,
         }
     }
 
@@ -225,6 +302,8 @@ pub struct LlmChatListItem {
     pub code: String,
     pub description: String,
     pub agent_id: String,
+    pub agent_name: Option<String>,
+    pub model_name: String,
     pub created_at: DateTime<Utc>,
     pub message_count: Option<i64>,
     pub last_message_at: Option<DateTime<Utc>>,
@@ -237,6 +316,8 @@ impl From<LlmChat> for LlmChatListItem {
             code: chat.base.code,
             description: chat.base.description,
             agent_id: chat.agent_id.as_string(),
+            agent_name: None,
+            model_name: chat.model_name,
             created_at: chat.base.metadata.created_at,
             message_count: None,
             last_message_at: None,

@@ -28,5 +28,5 @@ rand = "0.8"
 base64 = "0.22"
 sha2 = "0.10"
 toml = "0.8"
-async-openai = "0.25"
+async-openai = { version = "0.32.3", features = ["chat-completion", "model"] }
 thiserror = "1.0"

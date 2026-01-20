@@ -1,6 +1,6 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-01-17T19:34:06Z
+// Generated: 2026-01-20T20:58:45Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -175,6 +175,35 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("Ссылка на агента LLM (a017_llm_agent), который используется для генерации ответов в этом чате"),
+        nested_fields: None,
+        ref_aggregate: None,
+        enum_values: None,
+    },
+    FieldMetadata {
+        name: "model_name",
+        rust_type: "String",
+        field_type: FieldType::Primitive,
+        source: FieldSource::Custom,
+        ui: FieldUiMetadata {
+            label: "Модель по умолчанию",
+            label_en: Some("Default Model"),
+            placeholder: Some("gpt-4o"),
+            hint: Some("Модель LLM, используемая по умолчанию для сообщений этого чата"),
+            visible_in_list: true,
+            visible_in_form: true,
+            widget: None,
+            column_width: Some(150),
+        },
+        validation: ValidationRules {
+            required: true,
+            min: None,
+            max: None,
+            min_length: None,
+            max_length: Some(100),
+            pattern: None,
+            custom_error: None,
+        },
+        ai_hint: Some("Название модели LLM (например, gpt-4o, gpt-4-turbo), которая будет использоваться для генерации ответов, если не переопределена в конкретном сообщении"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,

@@ -1,6 +1,6 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-01-17T19:34:06Z
+// Generated: 2026-01-20T20:58:45Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -262,6 +262,35 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral"),
+        nested_fields: None,
+        ref_aggregate: None,
+        enum_values: None,
+    },
+    FieldMetadata {
+        name: "available_models",
+        rust_type: "String",
+        field_type: FieldType::Primitive,
+        source: FieldSource::Specific,
+        ui: FieldUiMetadata {
+            label: "Доступные модели",
+            label_en: Some("Available Models"),
+            placeholder: None,
+            hint: Some("JSON список моделей из API"),
+            visible_in_list: false,
+            visible_in_form: false,
+            widget: Some("textarea"),
+            column_width: None,
+        },
+        validation: ValidationRules {
+            required: false,
+            min: None,
+            max: None,
+            min_length: None,
+            max_length: None,
+            pattern: None,
+            custom_error: None,
+        },
+        ai_hint: Some("JSON массив объектов с полями: id, created, owned_by. Загружается из /v1/models API провайдера."),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,

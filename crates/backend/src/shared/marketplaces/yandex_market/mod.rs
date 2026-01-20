@@ -8,11 +8,13 @@ pub struct YandexMarketClient;
 
 /// Ответ от API Яндекс.Маркет для получения информации о кампании
 #[derive(Debug, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct YandexCampaignResponse {
     campaigns: Vec<YandexCampaign>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[allow(dead_code)]
 struct YandexCampaign {
     id: i64,
     domain: String,

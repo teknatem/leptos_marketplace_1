@@ -24,6 +24,7 @@ pub struct Model {
     pub max_tokens: i32,
     pub system_prompt: Option<String>,
     pub is_primary: bool,
+    pub available_models: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -65,6 +66,7 @@ impl From<Model> for LlmAgent {
             max_tokens: m.max_tokens,
             system_prompt: m.system_prompt,
             is_primary: m.is_primary,
+            available_models: m.available_models,
         }
     }
 }
@@ -192,6 +194,7 @@ pub async fn insert(agent: &LlmAgent) -> anyhow::Result<()> {
         max_tokens: Set(agent.max_tokens),
         system_prompt: Set(agent.system_prompt.clone()),
         is_primary: Set(agent.is_primary),
+        available_models: Set(agent.available_models.clone()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -218,6 +221,7 @@ pub async fn update(agent: &LlmAgent) -> anyhow::Result<()> {
         max_tokens: Set(agent.max_tokens),
         system_prompt: Set(agent.system_prompt.clone()),
         is_primary: Set(agent.is_primary),
+        available_models: Set(agent.available_models.clone()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(agent.base.metadata.created_at)),

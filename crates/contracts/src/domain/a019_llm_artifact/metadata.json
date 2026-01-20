@@ -1,0 +1,341 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "LlmArtifact",
+  "entity_index": "a019",
+  "collection_name": "llm_artifact",
+  "table_name": "a019_llm_artifact",
+  "ui": {
+    "element_name": "Артефакт LLM",
+    "element_name_en": "LLM Artifact",
+    "list_name": "Артефакты LLM",
+    "list_name_en": "LLM Artifacts",
+    "icon": "file-code"
+  },
+  "ai": {
+    "description": "SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, содержит SQL запрос, параметры и конфигурацию визуализации.",
+    "questions": [
+      "Какие артефакты созданы в чате?",
+      "Как создать новый SQL артефакт?",
+      "Как посмотреть историю артефактов?",
+      "Какой агент создал артефакт?"
+    ],
+    "related": [
+      "a017_llm_agent",
+      "a018_llm_chat"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "LlmArtifactId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "ARTIFACT-001",
+        "hint": "Уникальный код артефакта",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "Отчет по продажам WB за январь",
+        "hint": "Краткое описательное название артефакта",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": {
+        "required": true,
+        "min_length": 3,
+        "max_length": 500
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Версия с группировкой по категориям и фильтром по сумме > 10000",
+        "hint": "Подробное описание, отличия, примечания",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "input_type": "textarea",
+        "column_width": 250
+      },
+      "validation": {
+        "required": false,
+        "max_length": 2000
+      }
+    },
+    {
+      "name": "chat_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Чат",
+        "label_en": "Chat",
+        "hint": "Чат, в котором был создан артефакт",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200,
+        "input_type": "select"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на чат LLM (a018_llm_chat), в котором был создан этот артефакт"
+    },
+    {
+      "name": "agent_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Агент LLM",
+        "label_en": "LLM Agent",
+        "hint": "Агент, который создал артефакт",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200,
+        "input_type": "select"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на агента LLM (a017_llm_agent), который создал этот артефакт"
+    },
+    {
+      "name": "artifact_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип артефакта",
+        "label_en": "Artifact Type",
+        "hint": "Тип артефакта (SQL запрос, отчет, дашборд и т.д.)",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120,
+        "input_type": "select"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип артефакта. sql_query - SQL запрос для получения данных"
+    },
+    {
+      "name": "status",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Статус",
+        "label_en": "Status",
+        "hint": "Статус артефакта",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120,
+        "input_type": "select"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус артефакта: draft (черновик), active (используется), deprecated (устарел), failed (ошибка)"
+    },
+    {
+      "name": "sql_query",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "SQL Запрос",
+        "label_en": "SQL Query",
+        "placeholder": "SELECT * FROM orders WHERE ...",
+        "hint": "SQL запрос для получения данных",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "input_type": "textarea"
+      },
+      "validation": {
+        "required": true,
+        "min_length": 10,
+        "max_length": 50000
+      },
+      "ai_hint": "SQL запрос, который будет выполняться для получения данных. Может содержать параметры в формате {{parameter_name}}"
+    },
+    {
+      "name": "query_params",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Параметры запроса",
+        "label_en": "Query Parameters",
+        "placeholder": "{\"date_from\": \"2024-01-01\", \"date_to\": \"2024-01-31\"}",
+        "hint": "JSON с параметрами для подстановки в SQL",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "input_type": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 10000
+      },
+      "ai_hint": "JSON объект с параметрами для подстановки в SQL запрос. Например: {\"start_date\": \"2024-01-01\", \"marketplace_id\": \"WB\"}"
+    },
+    {
+      "name": "visualization_config",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Конфигурация визуализации",
+        "label_en": "Visualization Config",
+        "placeholder": "{\"chart_type\": \"bar\", \"x_axis\": \"date\", \"y_axis\": \"revenue\"}",
+        "hint": "JSON конфигурация для визуализации результатов",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "input_type": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 10000
+      },
+      "ai_hint": "JSON конфигурация для визуализации результатов SQL запроса. Определяет тип графика, оси, цвета и т.д."
+    },
+    {
+      "name": "last_executed_at",
+      "rust_type": "Option<DateTime<Utc>>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Последнее выполнение",
+        "label_en": "Last Executed",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 180,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Дата и время последнего выполнения SQL запроса"
+    },
+    {
+      "name": "execution_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Кол-во выполнений",
+        "label_en": "Execution Count",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": {
+        "required": true,
+        "min": 0
+      },
+      "ai_hint": "Количество раз, которое SQL запрос был выполнен"
+    },
+    {
+      "name": "created_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Создан",
+        "label_en": "Created",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 180,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Обновлён",
+        "label_en": "Updated",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "is_deleted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Удалён",
+        "label_en": "Deleted",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "version",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Версия",
+        "label_en": "Version",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

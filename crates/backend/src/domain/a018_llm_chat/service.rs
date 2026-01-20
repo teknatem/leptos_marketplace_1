@@ -3,7 +3,7 @@ use crate::domain::a017_llm_agent::repository as agent_repository;
 use crate::shared::llm::openai_provider::OpenAiProvider;
 use crate::shared::llm::types::{ChatMessage, LlmProvider};
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
-use contracts::domain::a018_llm_chat::aggregate::{ChatRole, LlmChat, LlmChatId, LlmChatMessage};
+use contracts::domain::a018_llm_chat::aggregate::{ChatRole, LlmChat, LlmChatId, LlmChatMessage, LlmChatListItem};
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -15,11 +15,13 @@ pub struct LlmChatDto {
     pub description: String,
     pub comment: Option<String>,
     pub agent_id: String,
+    pub model_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
     pub content: String,
+    pub model_name: Option<String>,
 }
 
 /// Создание нового чата
@@ -33,14 +35,17 @@ pub async fn create(dto: LlmChatDto) -> anyhow::Result<Uuid> {
         Uuid::parse_str(&dto.agent_id).map_err(|e| anyhow::anyhow!("Invalid agent_id: {}", e))?;
     let agent_id = LlmAgentId::new(agent_uuid);
 
-    // Проверяем что агент существует
-    agent_repository::find_by_id(&agent_id.as_string())
+    // Проверяем что агент существует и получаем его для model_name
+    let agent = agent_repository::find_by_id(&agent_id.as_string())
         .await?
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", dto.agent_id))?;
 
     let db = crate::shared::data::db::get_connection();
 
-    let mut aggregate = LlmChat::new_for_insert(code, dto.description, agent_id);
+    // Используем модель из DTO или дефолтную из агента
+    let model_name = dto.model_name.unwrap_or_else(|| agent.model_name.clone());
+
+    let mut aggregate = LlmChat::new_for_insert(code, dto.description, agent_id, model_name);
 
     // Валидация
     aggregate
@@ -85,6 +90,10 @@ pub async fn update(dto: LlmChatDto) -> anyhow::Result<()> {
         let agent_uuid = Uuid::parse_str(&new_agent_id_str)
             .map_err(|e| anyhow::anyhow!("Invalid agent_id: {}", e))?;
         aggregate.agent_id = LlmAgentId::new(agent_uuid);
+    }
+
+    if let Some(model_name) = dto.model_name {
+        aggregate.model_name = model_name;
     }
 
     // Валидация
@@ -137,6 +146,13 @@ pub async fn list_paginated(page: u64, page_size: u64) -> anyhow::Result<(Vec<Ll
     Ok((chats, total))
 }
 
+/// Получить список чатов с подсчетом сообщений и временем последнего сообщения
+pub async fn list_with_stats() -> anyhow::Result<Vec<LlmChatListItem>> {
+    let db = crate::shared::data::db::get_connection();
+    let chats = repository::list_with_stats(&db).await?;
+    Ok(chats)
+}
+
 /// Получить все сообщения чата
 pub async fn get_messages(chat_id: &str) -> anyhow::Result<Vec<LlmChatMessage>> {
     let chat_uuid =
@@ -150,7 +166,10 @@ pub async fn get_messages(chat_id: &str) -> anyhow::Result<Vec<LlmChatMessage>> 
 }
 
 /// Отправить сообщение пользователя и получить ответ от LLM
-pub async fn send_message(chat_id: &str, user_message: String) -> anyhow::Result<LlmChatMessage> {
+pub async fn send_message(
+    chat_id: &str,
+    request: SendMessageRequest,
+) -> anyhow::Result<LlmChatMessage> {
     let chat_uuid =
         Uuid::parse_str(chat_id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
     let chat_id_obj = LlmChatId::new(chat_uuid);
@@ -167,8 +186,15 @@ pub async fn send_message(chat_id: &str, user_message: String) -> anyhow::Result
         .await?
         .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
+    // Выбор модели: из запроса -> из чата -> из агента
+    let model_to_use = request
+        .model_name
+        .as_ref()
+        .map(|s| s.clone())
+        .unwrap_or_else(|| chat.model_name.clone());
+
     // 3. Сохранить сообщение пользователя
-    let user_msg = LlmChatMessage::user(chat_id_obj, user_message);
+    let user_msg = LlmChatMessage::user(chat_id_obj, request.content);
     repository::insert_message(&db, &user_msg).await?;
 
     // 4. Получить историю сообщений для контекста
@@ -195,11 +221,11 @@ pub async fn send_message(chat_id: &str, user_message: String) -> anyhow::Result
         llm_messages.push(chat_msg);
     }
 
-    // 6. Создать LLM провайдера
+    // 6. Создать LLM провайдера с выбранной моделью
     let provider = OpenAiProvider::new_with_endpoint(
         agent.api_endpoint.clone(),
         agent.api_key.clone(),
-        agent.model_name.clone(),
+        model_to_use.clone(),
         agent.temperature,
         agent.max_tokens,
     );
@@ -210,12 +236,14 @@ pub async fn send_message(chat_id: &str, user_message: String) -> anyhow::Result
         .await
         .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
 
-    // 8. Сохранить ответ ассистента
-    let assistant_msg = LlmChatMessage::new_with_tokens(
+    // 8. Сохранить ответ ассистента с метаданными
+    let assistant_msg = LlmChatMessage::new_with_metadata(
         chat_id_obj,
         ChatRole::Assistant,
         llm_response.content,
         llm_response.tokens_used,
+        Some(model_to_use),
+        llm_response.confidence,
     );
 
     repository::insert_message(&db, &assistant_msg).await?;

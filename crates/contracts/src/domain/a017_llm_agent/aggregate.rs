@@ -87,6 +87,9 @@ pub struct LlmAgent {
 
     /// Флаг основного агента
     pub is_primary: bool,
+
+    /// Список доступных моделей (JSON)
+    pub available_models: Option<String>,
 }
 
 impl LlmAgent {
@@ -101,6 +104,7 @@ impl LlmAgent {
         max_tokens: i32,
         system_prompt: Option<String>,
         is_primary: bool,
+        available_models: Option<String>,
     ) -> Self {
         let base = BaseAggregate::new(LlmAgentId::new_v4(), code, description);
         Self {
@@ -113,6 +117,7 @@ impl LlmAgent {
             max_tokens,
             system_prompt,
             is_primary,
+            available_models,
         }
     }
 
@@ -128,6 +133,7 @@ impl LlmAgent {
         max_tokens: i32,
         system_prompt: Option<String>,
         is_primary: bool,
+        available_models: Option<String>,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -140,6 +146,7 @@ impl LlmAgent {
             max_tokens,
             system_prompt,
             is_primary,
+            available_models,
         }
     }
 

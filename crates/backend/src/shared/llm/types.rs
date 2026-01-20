@@ -70,6 +70,7 @@ pub struct LlmResponse {
     pub tokens_used: Option<i32>,
     pub model: String,
     pub finish_reason: Option<String>,
+    pub confidence: Option<f64>,
 }
 
 /// Трейт для LLM провайдеров

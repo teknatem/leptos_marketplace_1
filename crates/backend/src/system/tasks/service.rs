@@ -3,7 +3,6 @@ use chrono::Utc;
 use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
 use crate::system::tasks::repository;
-use uuid::Uuid;
 
 pub async fn list_all() -> Result<Vec<ScheduledTask>> {
     repository::list_all().await.map_err(|e| anyhow::anyhow!("Database error: {}", e))

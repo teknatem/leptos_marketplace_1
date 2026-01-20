@@ -1,5 +1,5 @@
 use super::repository;
-use contracts::domain::a017_llm_agent::aggregate::{LlmAgent, LlmAgentId, LlmProviderType};
+use contracts::domain::a017_llm_agent::aggregate::{LlmAgent, LlmProviderType};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,6 +17,7 @@ pub struct LlmAgentDto {
     pub max_tokens: i32,
     pub system_prompt: Option<String>,
     pub is_primary: bool,
+    pub available_models: Option<String>,
 }
 
 /// Создание нового агента LLM
@@ -37,6 +38,7 @@ pub async fn create(dto: LlmAgentDto) -> anyhow::Result<Uuid> {
         dto.max_tokens,
         dto.system_prompt,
         dto.is_primary,
+        dto.available_models,
     );
 
     // Валидация
@@ -87,6 +89,7 @@ pub async fn update(dto: LlmAgentDto) -> anyhow::Result<()> {
     aggregate.max_tokens = dto.max_tokens;
     aggregate.system_prompt = dto.system_prompt;
     aggregate.is_primary = dto.is_primary;
+    // available_models не обновляется через update, только через fetch_models endpoint
 
     // Валидация
     aggregate

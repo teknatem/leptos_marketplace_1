@@ -124,6 +124,26 @@
       "ai_hint": "Ссылка на агента LLM (a017_llm_agent), который используется для генерации ответов в этом чате"
     },
     {
+      "name": "model_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "custom",
+      "ui": {
+        "label": "Модель по умолчанию",
+        "label_en": "Default Model",
+        "placeholder": "gpt-4o",
+        "hint": "Модель LLM, используемая по умолчанию для сообщений этого чата",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 100
+      },
+      "ai_hint": "Название модели LLM (например, gpt-4o, gpt-4-turbo), которая будет использоваться для генерации ответов, если не переопределена в конкретном сообщении"
+    },
+    {
       "name": "created_at",
       "rust_type": "DateTime<Utc>",
       "field_type": "primitive",
