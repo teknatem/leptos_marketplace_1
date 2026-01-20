@@ -1,9 +1,10 @@
 use chrono::Utc;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
-use contracts::domain::a018_llm_chat::aggregate::{ChatRole, LlmChat, LlmChatId, LlmChatMessage};
+use contracts::domain::a018_llm_chat::aggregate::{ArtifactAction, ChatRole, LlmChat, LlmChatId, LlmChatMessage, LlmChatListItem};
+use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, FromQueryResult};
 use sea_orm::prelude::Expr;
 use uuid::Uuid;
 
@@ -20,6 +21,7 @@ mod chat {
         pub description: String,
         pub comment: Option<String>,
         pub agent_id: String,
+        pub model_name: String,
         pub is_deleted: bool,
         pub is_posted: bool,
         pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -46,7 +48,11 @@ mod message {
         pub role: String,
         pub content: String,
         pub tokens_used: Option<i32>,
+        pub model_name: Option<String>,
+        pub confidence: Option<f64>,
         pub created_at: String,
+        pub artifact_id: Option<String>,
+        pub artifact_action: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -77,6 +83,7 @@ impl From<chat::Model> for LlmChat {
                 events: Default::default(),
             },
             agent_id: LlmAgentId::new(agent_uuid),
+            model_name: m.model_name,
         }
     }
 }
@@ -90,13 +97,25 @@ impl From<message::Model> for LlmChatMessage {
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
+        let artifact_id = m.artifact_id.and_then(|id_str| {
+            Uuid::parse_str(&id_str).ok().map(LlmArtifactId::new)
+        });
+
+        let artifact_action = m.artifact_action.and_then(|action_str| {
+            ArtifactAction::from_str(&action_str).ok()
+        });
+
         LlmChatMessage {
             id,
             chat_id: LlmChatId::new(chat_id),
             role,
             content: m.content,
             tokens_used: m.tokens_used,
+            model_name: m.model_name,
+            confidence: m.confidence,
             created_at,
+            artifact_id,
+            artifact_action,
         }
     }
 }
@@ -133,6 +152,72 @@ pub async fn list_paginated(
     Ok((models.into_iter().map(|m| m.into()).collect(), total))
 }
 
+#[derive(Debug, FromQueryResult)]
+struct ChatWithStats {
+    id: String,
+    code: String,
+    description: String,
+    agent_id: String,
+    agent_name: Option<String>,
+    model_name: String,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    message_count: Option<i64>,
+    last_message_at: Option<String>,
+}
+
+/// Получить список чатов с подсчетом сообщений и временем последнего сообщения
+pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListItem>, DbErr> {
+    let sql = r#"
+        SELECT 
+            c.id,
+            c.code,
+            c.description,
+            c.agent_id,
+            a.description as agent_name,
+            c.model_name,
+            c.created_at,
+            COUNT(m.id) as message_count,
+            MAX(m.created_at) as last_message_at
+        FROM a018_llm_chat c
+        LEFT JOIN a017_llm_agent a ON c.agent_id = a.id
+        LEFT JOIN a018_llm_chat_message m ON c.id = m.chat_id
+        WHERE c.is_deleted = 0
+        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, c.model_name, c.created_at
+        ORDER BY c.created_at DESC
+    "#;
+
+    let results = ChatWithStats::find_by_statement(sea_orm::Statement::from_sql_and_values(
+        db.get_database_backend(),
+        sql,
+        vec![],
+    ))
+    .all(db)
+    .await?;
+
+    Ok(results
+        .into_iter()
+        .map(|r| {
+            let last_message_at = r.last_message_at.and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(&s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            });
+
+            LlmChatListItem {
+                id: r.id,
+                code: r.code,
+                description: r.description,
+                agent_id: r.agent_id,
+                agent_name: r.agent_name,
+                model_name: r.model_name,
+                created_at: r.created_at.unwrap_or_else(Utc::now),
+                message_count: r.message_count,
+                last_message_at,
+            }
+        })
+        .collect())
+}
+
 /// Найти чат по ID
 pub async fn find_by_id(db: &DatabaseConnection, id: &LlmChatId) -> Result<Option<LlmChat>, DbErr> {
     let model = chat::Entity::find_by_id(id.as_string()).one(db).await?;
@@ -148,6 +233,7 @@ pub async fn insert(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         description: Set(chat.base.description.clone()),
         comment: Set(chat.base.comment.clone()),
         agent_id: Set(chat.agent_id.as_string()),
+        model_name: Set(chat.model_name.clone()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -168,6 +254,7 @@ pub async fn update(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         description: Set(chat.base.description.clone()),
         comment: Set(chat.base.comment.clone()),
         agent_id: Set(chat.agent_id.as_string()),
+        model_name: Set(chat.model_name.clone()),
         is_deleted: Set(chat.base.metadata.is_deleted),
         is_posted: Set(chat.base.metadata.is_posted),
         created_at: Set(Some(chat.base.metadata.created_at)),
@@ -217,7 +304,11 @@ pub async fn insert_message(db: &DatabaseConnection, message: &LlmChatMessage) -
         role: Set(message.role.as_str().to_string()),
         content: Set(message.content.clone()),
         tokens_used: Set(message.tokens_used),
+        model_name: Set(message.model_name.clone()),
+        confidence: Set(message.confidence),
         created_at: Set(message.created_at.to_rfc3339()),
+        artifact_id: Set(message.artifact_id.map(|id| id.as_string())),
+        artifact_action: Set(message.artifact_action.as_ref().map(|a| a.as_str().to_string())),
     };
 
     active_model.insert(db).await?;

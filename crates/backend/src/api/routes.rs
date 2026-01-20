@@ -399,10 +399,18 @@ pub fn configure_business_routes() -> Router {
             "/api/a017-llm-agent/:id/test",
             post(handlers::a017_llm_agent::test_connection),
         )
+        .route(
+            "/api/a017-llm-agent/:id/fetch-models",
+            post(handlers::a017_llm_agent::fetch_models),
+        )
         // A018 LLM Chat handlers
         .route(
             "/api/a018-llm-chat",
             get(handlers::a018_llm_chat::list_all).post(handlers::a018_llm_chat::upsert),
+        )
+        .route(
+            "/api/a018-llm-chat/with-stats",
+            get(handlers::a018_llm_chat::list_with_stats),
         )
         .route(
             "/api/a018-llm-chat/list",
@@ -416,6 +424,25 @@ pub fn configure_business_routes() -> Router {
             "/api/a018-llm-chat/:id/messages",
             get(handlers::a018_llm_chat::get_messages)
                 .post(handlers::a018_llm_chat::send_message),
+        )
+        // A019 LLM Artifact handlers
+        .route(
+            "/api/a019-llm-artifact",
+            get(handlers::a019_llm_artifact::list_all)
+                .post(handlers::a019_llm_artifact::upsert),
+        )
+        .route(
+            "/api/a019-llm-artifact/list",
+            get(handlers::a019_llm_artifact::list_paginated),
+        )
+        .route(
+            "/api/a019-llm-artifact/chat/:chat_id",
+            get(handlers::a019_llm_artifact::list_by_chat),
+        )
+        .route(
+            "/api/a019-llm-artifact/:id",
+            get(handlers::a019_llm_artifact::get_by_id)
+                .delete(handlers::a019_llm_artifact::delete),
         )
         // ========================================
         // USECASES (U501-U506)

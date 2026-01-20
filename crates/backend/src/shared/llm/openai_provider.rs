@@ -1,7 +1,7 @@
 use super::types::{ChatMessage, ChatRole, LlmError, LlmProvider, LlmResponse};
 use async_openai::{
     config::OpenAIConfig,
-    types::{
+    types::chat::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
         CreateChatCompletionRequestArgs,
@@ -94,7 +94,9 @@ impl LlmProvider for OpenAiProvider {
             .model(&self.model)
             .messages(openai_messages)
             .temperature(self.temperature)
-            .max_tokens(self.max_tokens)
+            .max_completion_tokens(self.max_tokens)
+            .logprobs(true)
+            .top_logprobs(1)
             .build()
             .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
 
@@ -119,11 +121,35 @@ impl LlmProvider for OpenAiProvider {
         let tokens_used = response.usage.map(|u| u.total_tokens as i32);
         let finish_reason = choice.finish_reason.as_ref().map(|r| format!("{:?}", r));
 
+        // Вычислить confidence из logprobs
+        let confidence = choice.logprobs.as_ref().and_then(|logprobs| {
+            if let Some(content_logprobs) = &logprobs.content {
+                if content_logprobs.is_empty() {
+                    return None;
+                }
+                
+                // Вычислить среднюю вероятность (exp(logprob)) по всем токенам
+                let sum: f64 = content_logprobs.iter()
+                    .map(|token| (token.logprob as f64).exp())
+                    .sum();
+                let count = content_logprobs.len();
+                
+                if count > 0 {
+                    Some(sum / count as f64)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+
         Ok(LlmResponse {
             content,
             tokens_used,
             model: response.model.clone(),
             finish_reason,
+            confidence,
         })
     }
 
@@ -138,5 +164,60 @@ impl LlmProvider for OpenAiProvider {
 
     fn provider_name(&self) -> &str {
         "OpenAI"
+    }
+}
+
+impl OpenAiProvider {
+    /// Проверяет, является ли модель подходящей для chat completion
+    fn is_chat_model(model_id: &str) -> bool {
+        // Включаем chat-модели
+        let is_chat = model_id.starts_with("gpt-5")
+            || model_id.starts_with("gpt-4")
+            || model_id.starts_with("gpt-3.5")
+            || model_id.starts_with("o1-")
+            || model_id.starts_with("chatgpt-");
+        
+        // Исключаем специализированные модели
+        let is_excluded = model_id.starts_with("text-embedding-")
+            || model_id.starts_with("whisper-")
+            || model_id.starts_with("tts-")
+            || model_id.starts_with("dall-e-")
+            || model_id.starts_with("text-moderation-")
+            || model_id.starts_with("text-davinci-")
+            || model_id.starts_with("text-curie-")
+            || model_id.starts_with("text-babbage-")
+            || model_id.starts_with("text-ada-")
+            || model_id.starts_with("davinci-")
+            || model_id.starts_with("curie-")
+            || model_id.starts_with("babbage-")
+            || model_id.starts_with("ada-")
+            || model_id.contains("embedding")
+            || model_id.contains("search")
+            || model_id.contains("similarity")
+            || model_id.contains("edit")
+            || model_id.contains("insert")
+            || model_id.contains(":ft-"); // fine-tuned модели
+        
+        is_chat && !is_excluded
+    }
+    
+    /// Получить список доступных моделей для chat completion от OpenAI
+    pub async fn list_models(&self) -> Result<Vec<serde_json::Value>, LlmError> {
+        let response = self.client.models()
+            .list()
+            .await
+            .map_err(|e| LlmError::ApiError(e.to_string()))?;
+        
+        let models: Vec<serde_json::Value> = response.data
+            .into_iter()
+            .filter(|m| Self::is_chat_model(&m.id))
+            .map(|m| serde_json::json!({
+                "id": m.id,
+                "created": m.created,
+                "owned_by": m.owned_by
+            }))
+            .collect();
+        
+        Ok(models)
     }
 }

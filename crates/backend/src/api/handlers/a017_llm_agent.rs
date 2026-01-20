@@ -165,3 +165,68 @@ pub async fn test_connection(Path(id): Path<String>) -> Result<Json<serde_json::
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
+
+/// POST /api/a017-llm-agent/:id/fetch-models
+/// Загрузка списка доступных моделей из API провайдера
+pub async fn fetch_models(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    use crate::shared::llm::openai_provider::OpenAiProvider;
+    use contracts::domain::a017_llm_agent::aggregate::LlmProviderType;
+
+    // Получаем агента
+    let agent = match a017_llm_agent::service::get_by_id(&id).await {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
+        Err(_) => return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    // Загружаем модели через провайдер
+    let models = match agent.provider_type {
+        LlmProviderType::OpenAI => {
+            let provider = OpenAiProvider::new_with_endpoint(
+                agent.api_endpoint.clone(),
+                agent.api_key.clone(),
+                agent.model_name.clone(),
+                agent.temperature,
+                agent.max_tokens,
+            );
+
+            provider.list_models().await
+        }
+        _ => {
+            return Ok(Json(json!({
+                "success": false,
+                "message": "Provider not supported"
+            })));
+        }
+    };
+
+    match models {
+        Ok(model_list) => {
+            // Сохраняем в БД
+            let json_str = serde_json::to_string(&model_list).unwrap_or_default();
+            let mut updated_agent = agent.clone();
+            updated_agent.available_models = Some(json_str);
+            updated_agent.before_write();
+
+            if let Err(e) = a017_llm_agent::repository::update(&updated_agent).await {
+                tracing::error!("Failed to save models: {}", e);
+                return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+
+            Ok(Json(json!({
+                "success": true,
+                "models": model_list,
+                "count": model_list.len(),
+                "message": format!("Loaded {} models", model_list.len())
+            })))
+        }
+        Err(e) => Ok(Json(json!({
+            "success": false,
+            "message": format!("Failed to fetch models: {}", e),
+            "models": [],
+            "count": 0
+        })))
+    }
+}

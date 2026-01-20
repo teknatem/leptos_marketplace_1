@@ -53,7 +53,7 @@ impl ScheduledTaskWorker {
         let now = Utc::now();
         let tasks = service::list_enabled_tasks().await?;
 
-        for mut task in tasks {
+        for task in tasks {
             let should_run = match task.next_run_at {
                 Some(next_run_at) => next_run_at <= now,
                 None => true, // If next_run_at is not set, run it once or calculate it

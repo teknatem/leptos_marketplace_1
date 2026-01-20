@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a018_llm_chat;
-use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatMessage};
+use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatMessage, LlmChatListItem};
 
 #[derive(Deserialize)]
 pub struct LlmChatListParams {
@@ -26,6 +26,14 @@ pub struct LlmChatPaginatedResponse {
 /// GET /api/a018-llm-chat
 pub async fn list_all() -> Result<Json<Vec<LlmChat>>, axum::http::StatusCode> {
     match a018_llm_chat::service::list_all().await {
+        Ok(v) => Ok(Json(v)),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// GET /api/a018-llm-chat/with-stats
+pub async fn list_with_stats() -> Result<Json<Vec<LlmChatListItem>>, axum::http::StatusCode> {
+    match a018_llm_chat::service::list_with_stats().await {
         Ok(v) => Ok(Json(v)),
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -114,7 +122,7 @@ pub async fn send_message(
     Path(id): Path<String>,
     Json(payload): Json<a018_llm_chat::service::SendMessageRequest>,
 ) -> Result<Json<LlmChatMessage>, axum::http::StatusCode> {
-    match a018_llm_chat::service::send_message(&id, payload.content).await {
+    match a018_llm_chat::service::send_message(&id, payload).await {
         Ok(msg) => Ok(Json(msg)),
         Err(e) => {
             tracing::error!("Failed to send LLM message: {}", e);
