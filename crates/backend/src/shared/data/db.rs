@@ -2415,6 +2415,39 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     }
 
     // ============================================================
+    // System: Dashboard Configs
+    // ============================================================
+    let check_dashboard_configs = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_dashboard_configs';".to_string(),
+        ))
+        .await?;
+
+    if check_dashboard_configs.is_empty() {
+        tracing::info!("Creating sys_dashboard_configs table");
+        let create_dashboard_configs_sql = r#"
+            CREATE TABLE sys_dashboard_configs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                data_source TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_dashboard_configs_data_source ON sys_dashboard_configs(data_source);
+            CREATE INDEX idx_dashboard_configs_updated_at ON sys_dashboard_configs(updated_at DESC);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_dashboard_configs_sql.to_string(),
+        ))
+        .await?;
+        tracing::info!("sys_dashboard_configs table created successfully");
+    }
+
+    // ============================================================
     // System: Tasks (Scheduled Tasks)
     // ============================================================
     let check_tasks = conn

@@ -4,7 +4,7 @@
 //! возвращает соответствующий View. Все tab keys собраны здесь в одном месте.
 
 use crate::dashboards::MetadataDashboard;
-use crate::dashboards::MonthlySummaryDashboard;
+use crate::dashboards::{D401WbFinanceDashboard, MonthlySummaryDashboard};
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
@@ -431,6 +431,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "d401_metadata_dashboard" => {
             log!("✅ Creating MetadataDashboard");
             view! { <MetadataDashboard /> }.into_any()
+        }
+        "d401_wb_finance" => {
+            log!("✅ Creating D401WbFinanceDashboard");
+            view! { <D401WbFinanceDashboard /> }.into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

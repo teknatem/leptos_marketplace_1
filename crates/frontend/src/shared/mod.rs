@@ -1,6 +1,7 @@
 pub mod api_utils;
 pub mod clipboard;
 pub mod components;
+pub mod pivot;
 pub mod data;
 pub mod date_utils;
 pub mod excel_importer;

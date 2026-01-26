@@ -607,7 +607,7 @@ pub fn configure_business_routes() -> Router {
             post(handlers::p906_nomenclature_prices::import_excel),
         )
         // ========================================
-        // DASHBOARDS (D400)
+        // DASHBOARDS (D400-D401)
         // ========================================
         // D400 Monthly Summary Dashboard
         .route(
@@ -617,5 +617,37 @@ pub fn configure_business_routes() -> Router {
         .route(
             "/api/d400/periods",
             get(handlers::d400_monthly_summary::get_available_periods),
+        )
+        // D401 WB Finance Dashboard
+        .route(
+            "/api/d401/execute",
+            post(handlers::d401_wb_finance::execute_dashboard),
+        )
+        .route(
+            "/api/d401/generate-sql",
+            post(handlers::d401_wb_finance::generate_sql),
+        )
+        .route(
+            "/api/d401/schemas",
+            get(handlers::d401_wb_finance::list_schemas),
+        )
+        .route(
+            "/api/d401/schemas/:id",
+            get(handlers::d401_wb_finance::get_schema),
+        )
+        .route(
+            "/api/d401/schemas/:schema_id/fields/:field_id/values",
+            get(handlers::d401_wb_finance::get_distinct_values),
+        )
+        .route(
+            "/api/d401/configs",
+            get(handlers::d401_wb_finance::list_configs)
+                .post(handlers::d401_wb_finance::save_config),
+        )
+        .route(
+            "/api/d401/configs/:id",
+            get(handlers::d401_wb_finance::get_config)
+                .put(handlers::d401_wb_finance::update_config)
+                .delete(handlers::d401_wb_finance::delete_config),
         )
 }
