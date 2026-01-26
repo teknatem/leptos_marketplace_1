@@ -1680,6 +1680,9 @@ impl WildberriesApiClient {
 
     /// Загрузить финансовые отчеты из Wildberries по периоду (reportDetailByPeriod)
     /// Возвращает только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+    /// 
+    /// ВАЖНО: API имеет лимит 1 запрос в минуту!
+    /// Используется пагинация через rrdid для загрузки больших объемов данных.
     pub async fn fetch_finance_report_by_period(
         &self,
         connection: &ConnectionMP,
@@ -1702,89 +1705,180 @@ impl WildberriesApiClient {
             "║ WILDBERRIES FINANCE REPORT API - reportDetailByPeriod"
         ));
         self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
+        self.log_to_file(&format!("║ Rate limit: 1 request per minute (using pagination)"));
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝"
         ));
 
-        self.log_to_file(&format!(
-            "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}\nAuthorization: ****",
-            url, date_from_str, date_to_str
-        ));
+        let mut all_daily_reports: Vec<WbFinanceReportRow> = Vec::new();
+        let mut rrdid: i64 = 0;  // Начинаем с 0 для первой страницы
+        let limit = 100000;  // Максимальный лимит записей
+        let mut page_num = 1;
 
-        let response = match self
-            .client
-            .get(url)
-            .header("Authorization", &connection.api_key)
-            .query(&[
-                ("dateFrom", date_from_str.as_str()),
-                ("dateTo", date_to_str.as_str()),
-            ])
-            .send()
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                let error_msg = format!("HTTP request failed: {:?}", e);
-                self.log_to_file(&error_msg);
-                tracing::error!("Wildberries Finance Report API connection error: {}", e);
+        loop {
+            self.log_to_file(&format!(
+                "\n┌────────────────────────────────────────────────────────────┐"
+            ));
+            self.log_to_file(&format!(
+                "│ Page {}: rrdid={}, limit={}",
+                page_num, rrdid, limit
+            ));
+            self.log_to_file(&format!(
+                "└────────────────────────────────────────────────────────────┘"
+            ));
 
-                // Проверяем конкретные типы ошибок
-                if e.is_timeout() {
-                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
-                } else if e.is_connect() {
-                    anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
-                } else if e.is_request() {
-                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
-                } else {
-                    anyhow::bail!("Unknown error: {}", e);
+            self.log_to_file(&format!(
+                "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}&rrdid={}&limit={}\nAuthorization: ****",
+                url, date_from_str, date_to_str, rrdid, limit
+            ));
+
+            let response = match self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[
+                    ("dateFrom", date_from_str.as_str()),
+                    ("dateTo", date_to_str.as_str()),
+                    ("rrdid", &rrdid.to_string()),
+                    ("limit", &limit.to_string()),
+                ])
+                .send()
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let error_msg = format!("HTTP request failed: {:?}", e);
+                    self.log_to_file(&error_msg);
+                    tracing::error!("Wildberries Finance Report API connection error: {}", e);
+
+                    // Проверяем конкретные типы ошибок
+                    if e.is_timeout() {
+                        anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                    } else if e.is_connect() {
+                        anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                    } else if e.is_request() {
+                        anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                    } else {
+                        anyhow::bail!("Unknown error: {}", e);
+                    }
                 }
+            };
+
+            let status = response.status();
+            self.log_to_file(&format!("Response status: {}", status));
+
+            // Обработка 429 Too Many Requests - ждем и повторяем
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                self.log_to_file(&format!(
+                    "│ ⚠️ Rate limit hit (429). Waiting 65 seconds before retry..."
+                ));
+                tracing::warn!("WB Finance Report API rate limit hit. Waiting 65 seconds...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
+                continue;
             }
-        };
 
-        let status = response.status();
-        self.log_to_file(&format!("Response status: {}", status));
+            // Обработка 204 No Content - нет данных
+            if status == reqwest::StatusCode::NO_CONTENT {
+                self.log_to_file(&format!("│ No more data (204 No Content)"));
+                break;
+            }
 
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            self.log_to_file(&format!("ERROR Response body:\n{}", body));
-            tracing::error!("Wildberries Finance Report API request failed: {}", body);
-            anyhow::bail!(
-                "Wildberries Finance Report API failed with status {}: {}",
-                status,
-                body
-            );
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                self.log_to_file(&format!("ERROR Response body:\n{}", body));
+                tracing::error!("Wildberries Finance Report API request failed: {}", body);
+                anyhow::bail!(
+                    "Wildberries Finance Report API failed with status {}: {}",
+                    status,
+                    body
+                );
+            }
+
+            let body = response.text().await?;
+            
+            // Пустой ответ - конец данных
+            if body.trim().is_empty() || body.trim() == "[]" {
+                self.log_to_file(&format!("│ Empty response - no more data"));
+                break;
+            }
+
+            let body_preview = if body.chars().count() > 5000 {
+                let preview: String = body.chars().take(5000).collect();
+                format!("{}... (total {} chars)", preview, body.len())
+            } else {
+                body.clone()
+            };
+            self.log_to_file(&format!(
+                "=== RESPONSE BODY PREVIEW ===\n{}\n",
+                body_preview
+            ));
+
+            // Парсим записи
+            let page_rows: Vec<WbFinanceReportRow> = match serde_json::from_str(&body) {
+                Ok(rows) => rows,
+                Err(e) => {
+                    self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                    tracing::error!("Failed to parse Wildberries finance report response: {}", e);
+                    anyhow::bail!("Failed to parse finance report response: {}", e)
+                }
+            };
+
+            let page_count = page_rows.len();
+            self.log_to_file(&format!("│ Received {} records on page {}", page_count, page_num));
+
+            if page_count == 0 {
+                self.log_to_file(&format!("│ No records on this page - done"));
+                break;
+            }
+
+            // Находим максимальный rrd_id для следующей страницы
+            let max_rrd_id = page_rows
+                .iter()
+                .filter_map(|r| r.rrd_id)
+                .max()
+                .unwrap_or(0);
+
+            // Фильтруем только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+            let daily_rows: Vec<WbFinanceReportRow> = page_rows
+                .into_iter()
+                .filter(|row| row.report_type == Some(1))
+                .collect();
+
+            self.log_to_file(&format!(
+                "│ Filtered {} daily records (report_type=1)",
+                daily_rows.len()
+            ));
+
+            all_daily_reports.extend(daily_rows);
+
+            // Если получили меньше записей чем лимит, значит это последняя страница
+            if page_count < limit as usize {
+                self.log_to_file(&format!(
+                    "│ Received {} < {} records - this is the last page",
+                    page_count, limit
+                ));
+                break;
+            }
+
+            // Подготовка к следующей странице
+            rrdid = max_rrd_id;
+            page_num += 1;
+
+            self.log_to_file(&format!(
+                "│ → More records may be available. Next rrdid={}",
+                rrdid
+            ));
+            self.log_to_file(&format!(
+                "│ ⏳ Waiting 65 seconds before next request (rate limit: 1 req/min)..."
+            ));
+            
+            // ВАЖНО: API имеет лимит 1 запрос в минуту!
+            // Ждем 65 секунд для надежности
+            tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
         }
 
-        let body = response.text().await?;
-        let body_preview = if body.chars().count() > 5000 {
-            let preview: String = body.chars().take(5000).collect();
-            format!("{}... (total {} chars)", preview, body.len())
-        } else {
-            body.clone()
-        };
-        self.log_to_file(&format!(
-            "=== RESPONSE BODY PREVIEW ===\n{}\n",
-            body_preview
-        ));
-
-        // Парсим все записи
-        let all_rows: Vec<WbFinanceReportRow> = match serde_json::from_str(&body) {
-            Ok(rows) => rows,
-            Err(e) => {
-                self.log_to_file(&format!("Failed to parse JSON: {}", e));
-                tracing::error!("Failed to parse Wildberries finance report response: {}", e);
-                anyhow::bail!("Failed to parse finance report response: {}", e)
-            }
-        };
-
-        // Фильтруем только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
-        let daily_reports: Vec<WbFinanceReportRow> = all_rows
-            .into_iter()
-            .filter(|row| row.report_type == Some(1))
-            .collect();
-
         // Логируем первые 3 записи для проверки загрузки полей
-        for (idx, row) in daily_reports.iter().take(3).enumerate() {
+        for (idx, row) in all_daily_reports.iter().take(3).enumerate() {
             self.log_to_file(&format!(
                 "\n=== Sample Record {} ===\nrrd_id: {:?}\ncommission_percent: {:?}\nppvz_sales_commission: {:?}\nretail_price_withdisc_rub: {:?}\nretail_amount: {:?}\n",
                 idx + 1,
@@ -1807,8 +1901,8 @@ impl WildberriesApiClient {
             "\n╔════════════════════════════════════════════════════════════════╗"
         ));
         self.log_to_file(&format!(
-            "║ COMPLETED: Loaded {} daily finance report records",
-            daily_reports.len()
+            "║ COMPLETED: Loaded {} daily finance report records ({} pages)",
+            all_daily_reports.len(), page_num
         ));
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝\n"
@@ -1816,12 +1910,12 @@ impl WildberriesApiClient {
 
         tracing::info!(
             "✓ Wildberries Finance Report API: Successfully loaded {} daily records for period {} to {}",
-            daily_reports.len(),
+            all_daily_reports.len(),
             date_from_str,
             date_to_str
         );
 
-        Ok(daily_reports)
+        Ok(all_daily_reports)
     }
 
     /// Получить данные по заказам через Statistics API

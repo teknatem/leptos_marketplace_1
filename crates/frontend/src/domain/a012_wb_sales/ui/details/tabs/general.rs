@@ -23,6 +23,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let org_id = sale_data.header.organization_id.clone();
             let mp_id = sale_data.header.marketplace_id.clone();
             let document_no = sale_data.header.document_no.clone();
+            let sale_id = sale_data.header.sale_id.clone().unwrap_or_else(|| "—".to_string());
             let code = sale_data.code.clone();
             let description = sale_data.description.clone();
             let event_type = sale_data.state.event_type.clone();
@@ -33,6 +34,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 .unwrap_or_else(|| "—".to_string());
             let is_supply = sale_data.state.is_supply.unwrap_or(false);
             let is_realization = sale_data.state.is_realization.unwrap_or(false);
+            let is_fact = sale_data.line.is_fact.unwrap_or(false);
             let wh_name = sale_data.warehouse.warehouse_name.clone().unwrap_or_else(|| "—".to_string());
             let wh_type = sale_data.warehouse.warehouse_type.clone().unwrap_or_else(|| "—".to_string());
             let created_at = format_datetime(&sale_data.metadata.created_at);
@@ -95,19 +97,25 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     // Document card
                     <Card attr:style="width: 600px; margin: 0px;">
                         <h4 class="details-section__title">"Документ"</h4>
-                        <div class="form__group">
-                            <label class="form__label">"Дата (sale dt)"</label>
-                            <Input value=RwSignal::new(sale_dt) attr:readonly=true />
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                            <div class="form__group">
+                                <label class="form__label">"Дата (sale dt)"</label>
+                                <Input value=RwSignal::new(sale_dt) attr:readonly=true />
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Sale ID"</label>
+                                <Input value=RwSignal::new(sale_id) attr:readonly=true />
+                            </div>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
-                        <div class="form__group">
-                            <label class="form__label">"№"</label>
-                            <Input value=RwSignal::new(document_no) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Code"</label>
-                            <Input value=RwSignal::new(code) attr:readonly=true />
-                        </div>
+                            <div class="form__group">
+                                <label class="form__label">"№"</label>
+                                <Input value=RwSignal::new(document_no) attr:readonly=true />
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Code"</label>
+                                <Input value=RwSignal::new(code) attr:readonly=true />
+                            </div>
                         </div>
 
                     </Card>
@@ -125,7 +133,19 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 {move || {
                                     vm.marketplace_product_info
                                         .get()
-                                        .map(|i| if i.article.trim().is_empty() { i.description } else { i.article })
+                                        .map(|i| {
+                                            if i.description.trim().is_empty() {
+                                                if i.article.trim().is_empty() {
+                                                    "Открыть".to_string()
+                                                } else {
+                                                    format!("арт. {}", i.article)
+                                                }
+                                            } else if i.article.trim().is_empty() {
+                                                i.description
+                                            } else {
+                                                format!("{} (арт. {})", i.description, i.article)
+                                            }
+                                        })
                                         .unwrap_or_else(|| "Открыть".to_string())
                                 }}
                             </Button>
@@ -141,7 +161,19 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 {move || {
                                     vm.nomenclature_info
                                         .get()
-                                        .map(|i| if i.article.trim().is_empty() { i.description } else { i.article })
+                                        .map(|i| {
+                                            if i.description.trim().is_empty() {
+                                                if i.article.trim().is_empty() {
+                                                    "Открыть".to_string()
+                                                } else {
+                                                    format!("арт. {}", i.article)
+                                                }
+                                            } else if i.article.trim().is_empty() {
+                                                i.description
+                                            } else {
+                                                format!("{} (арт. {})", i.description, i.article)
+                                            }
+                                        })
                                         .unwrap_or_else(|| "Открыть".to_string())
                                 }}
                             </Button>
@@ -181,6 +213,12 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 <Card attr:style="width: 600px; margin: 0px;">
                 <h4 class="details-section__title">"Статус"</h4>
                 <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md);">
+                    <Badge 
+                        appearance=BadgeAppearance::Filled
+                        color=if is_fact { BadgeColor::Success } else { BadgeColor::Informative }
+                    >
+                        {if is_fact { "Факт" } else { "План" }}
+                    </Badge>
                     <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
                         {event_type}
                     </Badge>
@@ -213,16 +251,76 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     <Card attr:style="width: 600px; margin: 0px;">
                         <h4 class="details-section__title">"Связи"</h4>
                         <div class="form__group">
-                            <label class="form__label">"Connection ID"</label>
-                            <IdWithCopy value=conn_id.clone() />
+                            <label class="form__label">"Подключение"</label>
+                            <Flex gap=FlexGap::Small style="align-items: center;">
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let tabs_store = tabs_store;
+                                        let conn_id = conn_id.clone();
+                                        move |_| {
+                                            tabs_store.open_tab(&format!("a006_connection_mp_detail_{}", conn_id), "Подключение МП");
+                                        }
+                                    }
+                                    attr:style="flex: 1; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        vm.connection_info
+                                            .get()
+                                            .map(|i| i.description)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </Flex>
                         </div>
                         <div class="form__group">
-                            <label class="form__label">"Organization ID"</label>
-                            <IdWithCopy value=org_id.clone() />
+                            <label class="form__label">"Организация"</label>
+                            <Flex gap=FlexGap::Small style="align-items: center;">
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let tabs_store = tabs_store;
+                                        let org_id = org_id.clone();
+                                        move |_| {
+                                            tabs_store.open_tab(&format!("a002_organization_detail_{}", org_id), "Организация");
+                                        }
+                                    }
+                                    attr:style="flex: 1; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        vm.organization_info
+                                            .get()
+                                            .map(|i| i.description)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </Flex>
                         </div>
                         <div class="form__group">
-                            <label class="form__label">"Marketplace ID"</label>
-                            <IdWithCopy value=mp_id.clone() />
+                            <label class="form__label">"Маркетплейс"</label>
+                            <Flex gap=FlexGap::Small style="align-items: center;">
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let tabs_store = tabs_store;
+                                        let mp_id = mp_id.clone();
+                                        move |_| {
+                                            tabs_store.open_tab(&format!("a005_marketplace_detail_{}", mp_id), "Маркетплейс");
+                                        }
+                                    }
+                                    attr:style="flex: 1; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        vm.marketplace_info
+                                            .get()
+                                            .map(|i| i.name)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </Flex>
                         </div>
                     </Card>
 

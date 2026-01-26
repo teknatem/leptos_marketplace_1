@@ -1,5 +1,5 @@
-use super::ui::list::SalesDataDto;
 use chrono::{Datelike, Utc};
+use contracts::projections::p904_sales_data::dto::SalesDataDto;
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]

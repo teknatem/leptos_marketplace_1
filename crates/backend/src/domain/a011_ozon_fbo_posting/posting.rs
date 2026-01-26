@@ -19,11 +19,14 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Удалить старые проекции (если были)
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
     // Создать новые проекции
     crate::projections::p900_mp_sales_register::service::project_ozon_fbo(&document, id).await?;
+    crate::projections::p904_sales_data::service::project_ozon_fbo(&document, id).await?;
 
-    tracing::info!("Posted document a011: {}", id);
+    tracing::info!("Posted document a011: {} - projections created (P900 + P904)", id);
     Ok(())
 }
 
@@ -43,6 +46,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     // Удалить проекции
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
+        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
         .await?;
 
     tracing::info!("Unposted document a011: {}", id);

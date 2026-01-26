@@ -109,6 +109,33 @@ pub async fn upsert_entry(entry: &NomenclaturePriceEntry) -> Result<()> {
     Ok(())
 }
 
+/// Upsert записи с использованием транзакции (для bulk операций)
+pub async fn upsert_entry_txn<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    entry: &NomenclaturePriceEntry,
+) -> Result<()> {
+    // Проверяем существование записи по period + nomenclature_ref
+    let existing = Entity::find()
+        .filter(Column::Period.eq(&entry.period))
+        .filter(Column::NomenclatureRef.eq(&entry.nomenclature_ref))
+        .one(db)
+        .await?;
+
+    if let Some(existing_model) = existing {
+        // Update существующей записи
+        let mut active_model: ActiveModel = existing_model.into();
+        active_model.price = Set(entry.price);
+        active_model.updated_at = Set(entry.updated_at.to_rfc3339());
+        Entity::update(active_model).exec(db).await?;
+    } else {
+        // Insert новой записи
+        let active_model = entry.to_active_model();
+        Entity::insert(active_model).exec(db).await?;
+    }
+
+    Ok(())
+}
+
 /// Получить запись по ID
 pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
     let db = conn();

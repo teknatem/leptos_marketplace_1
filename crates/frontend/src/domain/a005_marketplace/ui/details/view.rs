@@ -159,6 +159,34 @@ pub fn MarketplaceDetails(
                         </div>
 
                         <div class="form__group">
+                            <label class="form__label" for="acquiring_fee_pro">{"Эквайринг, %"}</label>
+                            <input
+                                class="form__input"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="100"
+                                id="acquiring_fee_pro"
+                                prop:readonly=readonly
+                                prop:value={
+                                    let vm = vm_clone.clone();
+                                    move || format!("{:.2}", vm.form.get().acquiring_fee_pro)
+                                }
+                                on:input={
+                                    let vm = vm_clone.clone();
+                                    move |ev| {
+                                        if readonly {
+                                            return;
+                                        }
+                                        let value: f64 = event_target_value(&ev).parse().unwrap_or(0.0);
+                                        vm.form.update(|f| f.acquiring_fee_pro = value);
+                                    }
+                                }
+                                placeholder="0.00"
+                            />
+                        </div>
+
+                        <div class="form__group">
                             <label class="form__label" for="comment">{"Комментарий"}</label>
                             <textarea
                                 class="form__textarea"

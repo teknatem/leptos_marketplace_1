@@ -1,6 +1,105 @@
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 
+/// Подсветка JSON синтаксиса с цветами для разных типов данных
+fn highlight_json_html(json: &str) -> String {
+    let mut result = String::with_capacity(json.len() * 2);
+    let mut chars = json.chars().peekable();
+    let mut in_string = false;
+    let mut in_key = false;
+    let mut escape_next = false;
+    let mut current_token = String::new();
+    
+    while let Some(ch) = chars.next() {
+        if escape_next {
+            current_token.push(ch);
+            escape_next = false;
+            continue;
+        }
+        
+        match ch {
+            '\\' if in_string => {
+                escape_next = true;
+                current_token.push(ch);
+            }
+            '"' => {
+                if in_string {
+                    // Закрываем строку
+                    current_token.push('"');
+                    let class = if in_key { "json-key" } else { "json-string" };
+                    result.push_str(&format!("<span class=\"{}\">{}</span>", class, html_escape(&current_token)));
+                    current_token.clear();
+                    in_string = false;
+                    in_key = false;
+                } else {
+                    // Открываем строку
+                    in_string = true;
+                    current_token.push('"');
+                    // Проверяем, это ключ или значение
+                    let mut temp_chars = chars.clone();
+                    while let Some(ch) = temp_chars.next() {
+                        if ch == '"' {
+                            // Пропускаем содержимое строки до закрывающей кавычки
+                            break;
+                        }
+                    }
+                    // Смотрим что после закрывающей кавычки (пропуская пробелы)
+                    while let Some(ch) = temp_chars.next() {
+                        if !ch.is_whitespace() {
+                            if ch == ':' {
+                                in_key = true;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            ':' | ',' | '[' | ']' | '{' | '}' if !in_string => {
+                result.push_str(&format!("<span class=\"json-punctuation\">{}</span>", ch));
+            }
+            c if !in_string && !c.is_whitespace() => {
+                // Собираем числа, true, false, null
+                current_token.push(c);
+                if chars.peek().map(|&next| next.is_whitespace() || ",:]}".contains(next)).unwrap_or(true) {
+                    let class = if current_token == "true" || current_token == "false" {
+                        "json-boolean"
+                    } else if current_token == "null" {
+                        "json-null"
+                    } else if current_token.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+') {
+                        "json-number"
+                    } else {
+                        ""
+                    };
+                    
+                    if !class.is_empty() {
+                        result.push_str(&format!("<span class=\"{}\">{}</span>", class, html_escape(&current_token)));
+                    } else {
+                        result.push_str(&html_escape(&current_token));
+                    }
+                    current_token.clear();
+                }
+            }
+            c if in_string => {
+                current_token.push(c);
+            }
+            c => {
+                result.push(c);
+            }
+        }
+    }
+    
+    result
+}
+
+/// Экранирование HTML символов для безопасного отображения
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 #[component]
 pub fn JsonViewer(
     /// JSON строка для отображения
@@ -13,8 +112,10 @@ pub fn JsonViewer(
 
     let json_content_for_copy = json_content.clone();
     let json_content_for_download = json_content.clone();
-    let json_content_for_display = json_content.clone();
     let json_content_for_stats = json_content.clone();
+    
+    // Применяем подсветку синтаксиса
+    let highlighted_html = highlight_json_html(&json_content);
 
     // Копирование в буфер обмена
     let handle_copy = move |_| {
@@ -111,8 +212,7 @@ pub fn JsonViewer(
 
             // Область просмотра JSON
             <div class="json-viewer__body">
-                <pre class="json-viewer__content">
-                    {json_content_for_display}
+                <pre class="json-viewer__content" inner_html=highlighted_html>
                 </pre>
             </div>
 

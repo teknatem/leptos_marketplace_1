@@ -48,6 +48,35 @@ pub struct Model {
     pub finished_price: Option<f64>,
     #[sea_orm(nullable)]
     pub event_type: Option<String>,
+    // Financial fields (plan/fact)
+    #[sea_orm(nullable)]
+    pub is_fact: Option<bool>,
+    #[sea_orm(nullable)]
+    pub sell_out_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub sell_out_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub acquiring_fee_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub acquiring_fee_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub other_fee_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub other_fee_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub supplier_payout_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub supplier_payout_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub profit_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub profit_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub cost_of_production: Option<f64>,
+    #[sea_orm(nullable)]
+    pub commission_plan: Option<f64>,
+    #[sea_orm(nullable)]
+    pub commission_fact: Option<f64>,
     // JSON storage
     pub header_json: String,
     pub line_json: String,
@@ -171,15 +200,36 @@ pub async fn get_by_sale_id(sale_id: &str) -> Result<Option<WbSales>> {
     Ok(result.map(Into::into))
 }
 
+/// Get by composite unique key (document_no, event_type, supplier_article)
+pub async fn get_by_composite_key(
+    document_no: &str,
+    event_type: &str,
+    supplier_article: &str,
+) -> Result<Option<WbSales>> {
+    let result = Entity::find()
+        .filter(Column::DocumentNo.eq(document_no))
+        .filter(Column::EventType.eq(event_type))
+        .filter(Column::SupplierArticle.eq(supplier_article))
+        .one(conn())
+        .await?;
+    Ok(result.map(Into::into))
+}
+
 pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
 
-    // Try to find existing document by sale_id first (if available), then by document_no (srid)
-    let existing = if let Some(ref sale_id) = aggregate.header.sale_id {
-        get_by_sale_id(sale_id).await?
-    } else {
-        get_by_document_no(&aggregate.header.document_no).await?
-    };
+    // УПРОЩЕННАЯ ЛОГИКА: Поиск только по sale_id (единственный уникальный ключ)
+    let sale_id = aggregate.header.sale_id.as_ref()
+        .ok_or_else(|| anyhow::anyhow!("sale_id is required for upsert_document"))?;
+    
+    tracing::debug!(
+        "[REPOSITORY] upsert_document called with sale_id='{}', document_no='{}'",
+        sale_id,
+        aggregate.header.document_no
+    );
+
+    // Поиск существующего документа только по sale_id
+    let existing = get_by_sale_id(sale_id).await?;
 
     let header_json = serde_json::to_string(&aggregate.header)?;
     let line_json = serde_json::to_string(&aggregate.line)?;
@@ -200,9 +250,29 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let total_price = aggregate.line.total_price;
     let finished_price = aggregate.line.finished_price;
     let event_type = Some(aggregate.state.event_type.clone());
+    // Financial fields
+    let is_fact = aggregate.line.is_fact;
+    let sell_out_plan = aggregate.line.sell_out_plan;
+    let sell_out_fact = aggregate.line.sell_out_fact;
+    let acquiring_fee_plan = aggregate.line.acquiring_fee_plan;
+    let acquiring_fee_fact = aggregate.line.acquiring_fee_fact;
+    let other_fee_plan = aggregate.line.other_fee_plan;
+    let other_fee_fact = aggregate.line.other_fee_fact;
+    let supplier_payout_plan = aggregate.line.supplier_payout_plan;
+    let supplier_payout_fact = aggregate.line.supplier_payout_fact;
+    let profit_plan = aggregate.line.profit_plan;
+    let profit_fact = aggregate.line.profit_fact;
+    let cost_of_production = aggregate.line.cost_of_production;
+    let commission_plan = aggregate.line.commission_plan;
+    let commission_fact = aggregate.line.commission_fact;
 
     if let Some(existing_doc) = existing {
         let existing_uuid = existing_doc.base.id.value();
+        tracing::debug!(
+            "[REPOSITORY] Updating existing record: id={}, sale_id='{}'",
+            existing_uuid,
+            sale_id
+        );
         let active = ActiveModel {
             id: Set(existing_uuid.to_string()),
             code: Set(aggregate.base.code.clone()),
@@ -214,7 +284,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             sale_date: Set(sale_date),
             organization_id: Set(organization_id),
             connection_id: Set(connection_id),
-            supplier_article: Set(supplier_article),
+            supplier_article: Set(supplier_article.clone()),
             nm_id: Set(nm_id),
             barcode: Set(barcode),
             product_name: Set(product_name),
@@ -222,7 +292,22 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             amount_line: Set(amount_line),
             total_price: Set(total_price),
             finished_price: Set(finished_price),
-            event_type: Set(event_type),
+            event_type: Set(event_type.clone()),
+            // Financial fields
+            is_fact: Set(is_fact),
+            sell_out_plan: Set(sell_out_plan),
+            sell_out_fact: Set(sell_out_fact),
+            acquiring_fee_plan: Set(acquiring_fee_plan),
+            acquiring_fee_fact: Set(acquiring_fee_fact),
+            other_fee_plan: Set(other_fee_plan),
+            other_fee_fact: Set(other_fee_fact),
+            supplier_payout_plan: Set(supplier_payout_plan),
+            supplier_payout_fact: Set(supplier_payout_fact),
+            profit_plan: Set(profit_plan),
+            profit_fact: Set(profit_fact),
+            cost_of_production: Set(cost_of_production),
+            commission_plan: Set(commission_plan),
+            commission_fact: Set(commission_fact),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -240,6 +325,12 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
         active.update(conn()).await?;
         Ok(existing_uuid)
     } else {
+        tracing::debug!(
+            "[REPOSITORY] Inserting new record: id={}, sale_id='{}'",
+            uuid,
+            sale_id
+        );
+        
         let active = ActiveModel {
             id: Set(uuid.to_string()),
             code: Set(aggregate.base.code.clone()),
@@ -251,7 +342,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             sale_date: Set(sale_date),
             organization_id: Set(organization_id),
             connection_id: Set(connection_id),
-            supplier_article: Set(supplier_article),
+            supplier_article: Set(supplier_article.clone()),
             nm_id: Set(nm_id),
             barcode: Set(barcode),
             product_name: Set(product_name),
@@ -259,7 +350,22 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             amount_line: Set(amount_line),
             total_price: Set(total_price),
             finished_price: Set(finished_price),
-            event_type: Set(event_type),
+            event_type: Set(event_type.clone()),
+            // Financial fields
+            is_fact: Set(is_fact),
+            sell_out_plan: Set(sell_out_plan),
+            sell_out_fact: Set(sell_out_fact),
+            acquiring_fee_plan: Set(acquiring_fee_plan),
+            acquiring_fee_fact: Set(acquiring_fee_fact),
+            other_fee_plan: Set(other_fee_plan),
+            other_fee_fact: Set(other_fee_fact),
+            supplier_payout_plan: Set(supplier_payout_plan),
+            supplier_payout_fact: Set(supplier_payout_fact),
+            profit_plan: Set(profit_plan),
+            profit_fact: Set(profit_fact),
+            cost_of_production: Set(cost_of_production),
+            commission_plan: Set(commission_plan),
+            commission_fact: Set(commission_fact),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -274,6 +380,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),
         };
+        
         active.insert(conn()).await?;
         Ok(uuid)
     }
@@ -320,6 +427,21 @@ pub struct WbSalesListRow {
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub is_posted: bool,
+    // Financial fields
+    pub is_fact: Option<bool>,
+    pub sell_out_plan: Option<f64>,
+    pub sell_out_fact: Option<f64>,
+    pub acquiring_fee_plan: Option<f64>,
+    pub acquiring_fee_fact: Option<f64>,
+    pub other_fee_plan: Option<f64>,
+    pub other_fee_fact: Option<f64>,
+    pub supplier_payout_plan: Option<f64>,
+    pub supplier_payout_fact: Option<f64>,
+    pub profit_plan: Option<f64>,
+    pub profit_fact: Option<f64>,
+    pub cost_of_production: Option<f64>,
+    pub commission_plan: Option<f64>,
+    pub commission_fact: Option<f64>,
 }
 
 /// Query parameters for list
@@ -419,7 +541,10 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
         r#"SELECT 
             id, document_no, sale_id, sale_date, organization_id,
             supplier_article, product_name, qty, amount_line, total_price,
-            finished_price, event_type, marketplace_product_ref, nomenclature_ref, is_posted
+            finished_price, event_type, marketplace_product_ref, nomenclature_ref, is_posted,
+            is_fact, sell_out_plan, sell_out_fact, acquiring_fee_plan, acquiring_fee_fact,
+            other_fee_plan, other_fee_fact, supplier_payout_plan, supplier_payout_fact,
+            profit_plan, profit_fact, cost_of_production, commission_plan, commission_fact
         FROM a012_wb_sales 
         WHERE {}
         ORDER BY {} {} NULLS LAST
@@ -456,6 +581,20 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
                     .try_get::<i32>("", "is_posted")
                     .map(|v| v != 0)
                     .unwrap_or(false),
+                is_fact: row.try_get::<i32>("", "is_fact").ok().map(|v| v != 0),
+                sell_out_plan: row.try_get("", "sell_out_plan").ok(),
+                sell_out_fact: row.try_get("", "sell_out_fact").ok(),
+                acquiring_fee_plan: row.try_get("", "acquiring_fee_plan").ok(),
+                acquiring_fee_fact: row.try_get("", "acquiring_fee_fact").ok(),
+                other_fee_plan: row.try_get("", "other_fee_plan").ok(),
+                other_fee_fact: row.try_get("", "other_fee_fact").ok(),
+                supplier_payout_plan: row.try_get("", "supplier_payout_plan").ok(),
+                supplier_payout_fact: row.try_get("", "supplier_payout_fact").ok(),
+                profit_plan: row.try_get("", "profit_plan").ok(),
+                profit_fact: row.try_get("", "profit_fact").ok(),
+                cost_of_production: row.try_get("", "cost_of_production").ok(),
+                commission_plan: row.try_get("", "commission_plan").ok(),
+                commission_fact: row.try_get("", "commission_fact").ok(),
             })
         })
         .collect();

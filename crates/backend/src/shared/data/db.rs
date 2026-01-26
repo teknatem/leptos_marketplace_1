@@ -1,29 +1,29 @@
+use crate::shared::config;
 use once_cell::sync::OnceCell;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
-use crate::shared::config;
 
 static DB_CONN: OnceCell<DatabaseConnection> = OnceCell::new();
 
 pub async fn initialize_database() -> anyhow::Result<()> {
     // Load configuration from config.toml
     let cfg = config::load_config()?;
-    
+
     // Get database path from configuration
     let absolute_path = config::get_database_path(&cfg)?;
-    
+
     tracing::info!("Database path: {}", absolute_path.display());
-    
+
     // Create parent directory if it doesn't exist
     if let Some(parent) = absolute_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     // Normalize path separators and ensure proper URL form on Windows
     let normalized = absolute_path.to_string_lossy().replace('\\', "/");
     let needs_leading_slash = !normalized.starts_with('/') && normalized.contains(':');
     let prefix = if needs_leading_slash { "/" } else { "" };
     let db_url = format!("sqlite://{}{}?mode=rwc", prefix, normalized);
-    
+
     tracing::info!("Connecting to database: {}", db_url);
     let conn = Database::connect(&db_url).await?;
 
@@ -435,6 +435,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 url TEXT NOT NULL,
                 logo_path TEXT,
                 marketplace_type TEXT,
+                acquiring_fee_pro REAL DEFAULT 0.0,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -448,13 +449,14 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         ))
         .await?;
     } else {
-        // Ensure logo_path and marketplace_type columns exist; add if missing
+        // Ensure logo_path, marketplace_type and acquiring_fee_pro columns exist; add if missing
         let pragma = format!("PRAGMA table_info('{}');", "a005_marketplace");
         let cols = conn
             .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
             .await?;
         let mut has_logo_path = false;
         let mut has_marketplace_type = false;
+        let mut has_acquiring_fee_pro = false;
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
             if name == "logo_path" {
@@ -462,6 +464,9 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             }
             if name == "marketplace_type" {
                 has_marketplace_type = true;
+            }
+            if name == "acquiring_fee_pro" {
+                has_acquiring_fee_pro = true;
             }
         }
         if !has_logo_path {
@@ -477,6 +482,14 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "ALTER TABLE a005_marketplace ADD COLUMN marketplace_type TEXT;".to_string(),
+            ))
+            .await?;
+        }
+        if !has_acquiring_fee_pro {
+            tracing::info!("Adding acquiring_fee_pro column to a005_marketplace");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a005_marketplace ADD COLUMN acquiring_fee_pro REAL DEFAULT 0.0;".to_string(),
             ))
             .await?;
         }
@@ -1200,6 +1213,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 description TEXT NOT NULL,
                 comment TEXT,
                 document_no TEXT NOT NULL UNIQUE,
+                status_norm TEXT NOT NULL DEFAULT '',
+                substatus_raw TEXT,
                 header_json TEXT NOT NULL,
                 lines_json TEXT NOT NULL,
                 state_json TEXT NOT NULL,
@@ -1216,6 +1231,34 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             create_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Миграция: добавление полей status_norm и substatus_raw если их нет
+        let check_status_norm = r#"
+            SELECT COUNT(*) as cnt FROM pragma_table_info('a010_ozon_fbs_posting')
+            WHERE name='status_norm';
+        "#;
+        let has_status_norm = conn
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                check_status_norm.to_string(),
+            ))
+            .await?
+            .map(|row| row.try_get::<i32>("", "cnt").unwrap_or(0) > 0)
+            .unwrap_or(false);
+
+        if !has_status_norm {
+            tracing::info!("Adding status_norm and substatus_raw columns to a010_ozon_fbs_posting");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a010_ozon_fbs_posting ADD COLUMN status_norm TEXT NOT NULL DEFAULT '';".to_string(),
+            ))
+            .await?;
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a010_ozon_fbs_posting ADD COLUMN substatus_raw TEXT;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // a011_ozon_fbo_posting table - РґРѕРєСѓРјРµРЅС‚С‹ OZON FBO
@@ -1331,8 +1374,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 code TEXT NOT NULL DEFAULT '',
                 description TEXT NOT NULL,
                 comment TEXT,
-                document_no TEXT NOT NULL UNIQUE,
-                sale_id TEXT,
+                document_no TEXT NOT NULL,
+                sale_id TEXT NOT NULL UNIQUE,
                 -- Denormalized fields from JSON for fast queries
                 sale_date TEXT,
                 organization_id TEXT,
@@ -1362,7 +1405,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             );
             CREATE INDEX IF NOT EXISTS idx_a012_sale_date ON a012_wb_sales(sale_date);
             CREATE INDEX IF NOT EXISTS idx_a012_organization ON a012_wb_sales(organization_id);
-            CREATE INDEX IF NOT EXISTS idx_a012_sale_id ON a012_wb_sales(sale_id);
+            CREATE INDEX IF NOT EXISTS idx_a012_document_no ON a012_wb_sales(document_no);
         "#;
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,
@@ -1386,6 +1429,21 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             ("finished_price", "REAL"),
             ("event_type", "TEXT"),
             ("warehouse_json", "TEXT"),
+            // Financial fields (plan/fact)
+            ("is_fact", "INTEGER"),
+            ("sell_out_plan", "REAL"),
+            ("sell_out_fact", "REAL"),
+            ("acquiring_fee_plan", "REAL"),
+            ("acquiring_fee_fact", "REAL"),
+            ("other_fee_plan", "REAL"),
+            ("other_fee_fact", "REAL"),
+            ("supplier_payout_plan", "REAL"),
+            ("supplier_payout_fact", "REAL"),
+            ("profit_plan", "REAL"),
+            ("profit_fact", "REAL"),
+            ("cost_of_production", "REAL"),
+            ("commission_plan", "REAL"),
+            ("commission_fact", "REAL"),
         ];
 
         for (col_name, col_type) in new_columns {
@@ -1414,7 +1472,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         let indexes = vec![
             "CREATE INDEX IF NOT EXISTS idx_a012_sale_date ON a012_wb_sales(sale_date);",
             "CREATE INDEX IF NOT EXISTS idx_a012_organization ON a012_wb_sales(organization_id);",
-            "CREATE INDEX IF NOT EXISTS idx_a012_sale_id ON a012_wb_sales(sale_id);",
+            "CREATE INDEX IF NOT EXISTS idx_a012_document_no ON a012_wb_sales(document_no);",
         ];
         for idx_sql in indexes {
             let _ = conn
@@ -1506,10 +1564,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 col_name
             );
             let col_exists = conn
-                .query_one(Statement::from_string(
-                    DatabaseBackend::Sqlite,
-                    check_col,
-                ))
+                .query_one(Statement::from_string(DatabaseBackend::Sqlite, check_col))
                 .await?;
             if let Some(row) = col_exists {
                 let cnt: i32 = row.try_get("", "cnt").unwrap_or(0);
@@ -1519,11 +1574,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                         "ALTER TABLE a013_ym_order ADD COLUMN {} {}",
                         col_name, col_type
                     );
-                    conn.execute(Statement::from_string(
-                        DatabaseBackend::Sqlite,
-                        alter_sql,
-                    ))
-                    .await?;
+                    conn.execute(Statement::from_string(DatabaseBackend::Sqlite, alter_sql))
+                        .await?;
                 }
             }
         }
@@ -2171,6 +2223,23 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             ))
             .await?;
         }
+
+        // Migration: add cost column if not exists
+        let has_cost = check_column.iter().any(|row| {
+            row.try_get::<String>("", "name")
+                .ok()
+                .map(|name| name == "cost")
+                .unwrap_or(false)
+        });
+
+        if !has_cost {
+            tracing::info!("Migrating p904_sales_data: adding cost column");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE p904_sales_data ADD COLUMN cost REAL;".to_string(),
+            ))
+            .await?;
+        }
     }
 
     // ============================================================
@@ -2351,8 +2420,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     let check_tasks = conn
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_tasks';"
-                .to_string(),
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_tasks';".to_string(),
         ))
         .await?;
 

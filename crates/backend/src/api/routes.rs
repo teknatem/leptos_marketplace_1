@@ -602,6 +602,10 @@ pub fn configure_business_routes() -> Router {
             "/api/p906/periods",
             get(handlers::p906_nomenclature_prices::get_periods),
         )
+        .route(
+            "/api/p906/import-excel",
+            post(handlers::p906_nomenclature_prices::import_excel),
+        )
         // ========================================
         // DASHBOARDS (D400)
         // ========================================

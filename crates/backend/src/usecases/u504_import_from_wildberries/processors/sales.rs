@@ -1,11 +1,11 @@
+use super::super::wildberries_api_client::WbSaleRow;
+use crate::domain::a012_wb_sales;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
-use crate::domain::a012_wb_sales;
 use contracts::domain::a012_wb_sales::aggregate::{
     WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState, WbSalesWarehouse,
 };
-use super::super::wildberries_api_client::WbSaleRow;
+use contracts::domain::common::AggregateId;
 
 pub async fn process_sale_row(
     connection: &ConnectionMP,
@@ -18,20 +18,35 @@ pub async fn process_sale_row(
         .clone()
         .unwrap_or_else(|| format!("WB_{}", chrono::Utc::now().timestamp()));
 
-    let sale_id = sale_row.sale_id.clone();
-
-    // Проверяем, существует ли документ
-    let existing = if let Some(ref sid) = sale_id {
-        a012_wb_sales::service::get_by_sale_id(sid).await?
+    // sale_id - ГЛАВНЫЙ уникальный идентификатор для дедупликации
+    // Если нет от API - генерируем на основе SRID + event_type + supplier_article
+    let sale_id = if let Some(sid) = sale_row.sale_id.clone() {
+        sid
     } else {
-        a012_wb_sales::service::get_by_document_no(&document_no).await?
+        // Генерируем уникальный sale_id для гарантированной дедупликации
+        let supplier_article = sale_row.supplier_article.clone().unwrap_or_default();
+        let event_type = if sale_row.quantity.unwrap_or(0) < 0 {
+            "return"
+        } else {
+            "sale"
+        };
+        format!(
+            "WB_GEN_{}_{}_{}_{}",
+            document_no,
+            event_type,
+            supplier_article,
+            chrono::Utc::now().timestamp_millis()
+        )
     };
+
+    // Проверяем, существует ли документ по sale_id (единственный способ дедупликации)
+    let existing = a012_wb_sales::service::get_by_sale_id(&sale_id).await?;
     let is_new = existing.is_none();
 
-    // Создаем header
+    // Создаем header (sale_id теперь всегда заполнен - используется для дедупликации)
     let header = WbSalesHeader {
         document_no: document_no.clone(),
-        sale_id: sale_id.clone(),
+        sale_id: Some(sale_id.clone()),
         connection_id: connection.base.id.as_string(),
         organization_id: organization_id.to_string(),
         marketplace_id: connection.marketplace_id.clone(),
@@ -60,6 +75,21 @@ pub async fn process_sale_row(
         discount_percent: sale_row.discount_percent,
         spp: sale_row.spp,
         finished_price: sale_row.finished_price,
+        // Финансовые поля (будут заполнены при проведении документа)
+        is_fact: None,
+        sell_out_plan: None,
+        sell_out_fact: None,
+        acquiring_fee_plan: None,
+        acquiring_fee_fact: None,
+        other_fee_plan: None,
+        other_fee_fact: None,
+        supplier_payout_plan: None,
+        supplier_payout_fact: None,
+        profit_plan: None,
+        profit_fact: None,
+        cost_of_production: None,
+        commission_plan: None,
+        commission_fact: None,
     };
 
     // Парсим даты
@@ -67,14 +97,12 @@ pub async fn process_sale_row(
         chrono::DateTime::parse_from_rfc3339(date_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").map(
-                    |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
-                )
+                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
             })
             .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S").map(
-                    |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
-                )
+                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
+                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
             })
             .unwrap_or_else(|_| chrono::Utc::now())
     } else {
@@ -85,9 +113,8 @@ pub async fn process_sale_row(
         chrono::DateTime::parse_from_rfc3339(date_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S").map(
-                    |ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc),
-                )
+                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
+                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
             })
             .ok()
     });
@@ -134,8 +161,43 @@ pub async fn process_sale_row(
     );
 
     let raw_json = serde_json::to_string(sale_row)?;
-    a012_wb_sales::service::store_document_with_raw(document, &raw_json).await?;
-    
-    Ok(is_new)
-}
 
+    // Диагностика перед сохранением
+    tracing::debug!(
+        "Processing WB sale: sale_id={}, document_no={}, event_type={}, supplier_article={}",
+        sale_id,
+        document_no,
+        event_type,
+        supplier_article
+    );
+
+    match a012_wb_sales::service::store_document_with_raw(document, &raw_json).await {
+        Ok(_) => {
+            if is_new {
+                tracing::debug!("Created new WB sale: sale_id={}", sale_id);
+            } else {
+                tracing::debug!("Updated existing WB sale: sale_id={}", sale_id);
+            }
+            Ok(is_new)
+        }
+        Err(e) => {
+            tracing::error!(
+                "Failed to store WB sale - sale_id: {}, error: {}",
+                sale_id,
+                e
+            );
+
+            // Дополнительная диагностика при UNIQUE constraint violation
+            if e.to_string().contains("UNIQUE constraint failed") {
+                tracing::error!(
+                    "UNIQUE constraint violation on sale_id: {}\n  \
+                     This should not happen as sale_id is unique.\n  \
+                     Possible cause: race condition during parallel import",
+                    sale_id
+                );
+            }
+
+            Err(e)
+        }
+    }
+}

@@ -15,9 +15,9 @@ pub fn Button(
     /// Button type attribute
     #[prop(optional, into)]
     button_type: MaybeProp<String>,
-    /// Disabled state
-    #[prop(optional)]
-    disabled: bool,
+    /// Disabled state (reactive)
+    #[prop(optional, into)]
+    disabled: MaybeProp<bool>,
     /// Click event handler
     #[prop(optional)]
     on_click: Option<Callback<leptos::ev::MouseEvent>>,
@@ -45,7 +45,7 @@ pub fn Button(
         <button
             type=btn_type
             class=move || format!("button {} {} {}", variant_class(), size_class(), additional_class())
-            disabled=disabled
+            disabled=move || disabled.get().unwrap_or(false)
             on:click=move |ev| {
                 if let Some(handler) = on_click {
                     handler.run(ev);

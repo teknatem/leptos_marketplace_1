@@ -16,6 +16,7 @@ pub async fn create(dto: MarketplaceDto) -> anyhow::Result<Uuid> {
         dto.logo_path,
         dto.marketplace_type,
         dto.comment,
+        dto.acquiring_fee_pro,
     );
 
     // Валидация
@@ -82,6 +83,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             logo_path: Some("/assets/images/Wildberries.svg".into()),
             marketplace_type: Some(MarketplaceType::Wildberries),
             comment: Some("Крупнейший маркетплейс России".into()),
+            acquiring_fee_pro: 0.0,
         },
         MarketplaceDto {
             id: None,
@@ -91,6 +93,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             logo_path: Some("/assets/images/OZON.svg".into()),
             marketplace_type: Some(MarketplaceType::Ozon),
             comment: Some("Один из ведущих маркетплейсов".into()),
+            acquiring_fee_pro: 0.0,
         },
         MarketplaceDto {
             id: None,
@@ -100,6 +103,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             logo_path: Some("/assets/images/Yandex.svg".into()),
             marketplace_type: Some(MarketplaceType::YandexMarket),
             comment: None,
+            acquiring_fee_pro: 0.0,
         },
         MarketplaceDto {
             id: None,
@@ -109,6 +113,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             logo_path: Some("/assets/images/Kuper.svg".into()),
             marketplace_type: Some(MarketplaceType::Kuper),
             comment: None,
+            acquiring_fee_pro: 0.0,
         },
         MarketplaceDto {
             id: None,
@@ -118,6 +123,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             logo_path: Some("/assets/images/lemanapro.svg".into()),
             marketplace_type: Some(MarketplaceType::LemanaPro),
             comment: None,
+            acquiring_fee_pro: 0.0,
         },
     ];
 

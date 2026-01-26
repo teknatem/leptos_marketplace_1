@@ -19,12 +19,15 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Удалить старые проекции (если были)
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+        .await?;
 
-    // Создать новую проекцию (возврат = отрицательные значения в Sales Register)
+    // Создать новые проекции (возврат = отрицательные значения)
     crate::projections::p900_mp_sales_register::service::project_ozon_returns(&document, id).await?;
+    crate::projections::p904_sales_data::service::project_ozon_returns(&document, id).await?;
 
     tracing::info!(
-        "Posted document a009 (OZON Return): {} - projection created with negative qty: -{}",
+        "Posted document a009 (OZON Return): {} - projections created (P900 + P904) with negative qty: -{}",
         id,
         document.quantity
     );
@@ -48,6 +51,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     // Удалить проекции
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
+        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
         .await?;
 
     tracing::info!("Unposted document a009 (OZON Return): {}", id);

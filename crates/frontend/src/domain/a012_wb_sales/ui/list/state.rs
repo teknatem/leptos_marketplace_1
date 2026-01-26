@@ -23,6 +23,9 @@ pub struct WbSalesState {
     pub search_srid: String,
     // Серверные итоги
     pub server_totals: Option<WbSalesTotals>,
+    // Column visibility settings
+    pub show_operation_date: bool,
+    pub show_marketplace_article: bool,
 }
 
 /// Серверные итоги по датасету WB Sales
@@ -71,6 +74,9 @@ impl Default for WbSalesState {
             search_srid: String::new(),
             // Итоги
             server_totals: None,
+            // Column visibility defaults (hidden by default)
+            show_operation_date: false,
+            show_marketplace_article: false,
         }
     }
 }

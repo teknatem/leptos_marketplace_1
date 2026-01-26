@@ -1,11 +1,15 @@
 mod state;
 
 use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::excel_importer::{ColumnDef, DataType, ExcelImporter};
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
+use crate::shared::modal_stack::ModalStackService;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use state::{create_state, persist_state};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -15,6 +19,7 @@ fn P906Header(
     #[prop(into)] total_count: Signal<usize>,
     #[prop(into)] is_loading: Signal<bool>,
     on_refresh: Callback<()>,
+    on_import: Callback<()>,
 ) -> impl IntoView {
     view! {
         <div class="page-header">
@@ -31,6 +36,13 @@ fn P906Header(
             </div>
 
             <div class="page-header__actions">
+                <Button
+                    appearance=ButtonAppearance::Primary
+                    on_click=move |_| on_import.run(())
+                >
+                    <span>{vec![icon("upload").into_view()]}</span>
+                    <span>" Импорт Excel"</span>
+                </Button>
                 <Button
                     appearance=ButtonAppearance::Secondary
                     on_click=move |_| on_refresh.run(())
@@ -64,6 +76,9 @@ pub struct ListResponse {
 
 #[component]
 pub fn NomenclaturePricesList() -> impl IntoView {
+    let modal_stack =
+        use_context::<ModalStackService>().expect("ModalStackService should be provided");
+
     let state = create_state();
 
     let (items, set_items) = signal(Vec::<NomenclaturePriceDto>::new());
@@ -75,6 +90,25 @@ pub fn NomenclaturePricesList() -> impl IntoView {
     // inputs bound to Thaw controls
     let period = RwSignal::new(state.get_untracked().period.clone());
     let q = RwSignal::new(state.get_untracked().q.clone());
+
+    // Excel column definitions
+    let excel_columns = vec![
+        ColumnDef {
+            field_name: "date".to_string(),
+            title: "Дата".to_string(),
+            data_type: DataType::Date,
+        },
+        ColumnDef {
+            field_name: "article".to_string(),
+            title: "Артикул".to_string(),
+            data_type: DataType::String,
+        },
+        ColumnDef {
+            field_name: "price".to_string(),
+            title: "Себестоимость".to_string(),
+            data_type: DataType::Number,
+        },
+    ];
 
     // Load available periods (once)
     Effect::new(move |_| {
@@ -219,12 +253,47 @@ pub fn NomenclaturePricesList() -> impl IntoView {
         load();
     };
 
+    // Open Excel Importer via centralized modal stack
+    let open_excel_importer = {
+        let load_on_success = load.clone();
+        Callback::new(move |_| {
+            let columns = excel_columns.clone();
+            let close_lock = Arc::new(AtomicBool::new(false));
+            let close_guard = {
+                let close_lock = close_lock.clone();
+                Arc::new(move || !close_lock.load(Ordering::Relaxed))
+            };
+
+            modal_stack.push_with_frame_guard(
+                Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
+                Some("excel-importer-modal".to_string()),
+                Some(close_guard),
+                move |handle| {
+                    view! {
+                        <ExcelImporter
+                            columns=columns.clone()
+                            import_endpoint="/api/p906/import-excel".to_string()
+                            on_success=Callback::new(move |_| load_on_success())
+                            close_lock=close_lock.clone()
+                            on_cancel=Callback::new({
+                                let handle = handle.clone();
+                                move |_| handle.close()
+                            })
+                        />
+                    }
+                    .into_any()
+                },
+            );
+        })
+    };
+
     view! {
         <div class="page page--wide">
             <P906Header
                 total_count=Signal::derive(move || state.get().total_count)
                 is_loading=Signal::derive(move || is_loading.get())
                 on_refresh=Callback::new(move |_| load())
+                on_import=open_excel_importer
             />
 
             {move || {

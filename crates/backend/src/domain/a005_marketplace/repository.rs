@@ -1,7 +1,5 @@
 use chrono::Utc;
-use contracts::domain::a005_marketplace::aggregate::{
-    Marketplace, MarketplaceId,
-};
+use contracts::domain::a005_marketplace::aggregate::{Marketplace, MarketplaceId};
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use contracts::enums::marketplace_type::MarketplaceType;
 use serde::{Deserialize, Serialize};
@@ -13,7 +11,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::shared::data::db::get_connection;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a005_marketplace")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -24,6 +22,7 @@ pub struct Model {
     pub url: String,
     pub logo_path: Option<String>,
     pub marketplace_type: Option<String>,
+    pub acquiring_fee_pro: Option<f64>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -47,7 +46,8 @@ impl From<Model> for Marketplace {
         };
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
 
-        let marketplace_type = m.marketplace_type
+        let marketplace_type = m
+            .marketplace_type
             .as_ref()
             .and_then(|code| MarketplaceType::from_code(code));
 
@@ -62,6 +62,7 @@ impl From<Model> for Marketplace {
             url: m.url,
             logo_path: m.logo_path,
             marketplace_type,
+            acquiring_fee_pro: m.acquiring_fee_pro.unwrap_or(0.0),
         }
     }
 }
@@ -102,6 +103,7 @@ pub async fn insert(aggregate: &Marketplace) -> anyhow::Result<Uuid> {
         url: Set(aggregate.url.clone()),
         logo_path: Set(aggregate.logo_path.clone()),
         marketplace_type: Set(aggregate.marketplace_type.map(|t| t.code().to_string())),
+        acquiring_fee_pro: Set(Some(aggregate.acquiring_fee_pro)),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -122,6 +124,7 @@ pub async fn update(aggregate: &Marketplace) -> anyhow::Result<()> {
         url: Set(aggregate.url.clone()),
         logo_path: Set(aggregate.logo_path.clone()),
         marketplace_type: Set(aggregate.marketplace_type.map(|t| t.code().to_string())),
+        acquiring_fee_pro: Set(Some(aggregate.acquiring_fee_pro)),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),

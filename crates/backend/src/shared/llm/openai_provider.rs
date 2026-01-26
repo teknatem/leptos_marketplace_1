@@ -90,13 +90,22 @@ impl LlmProvider for OpenAiProvider {
     async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<LlmResponse, LlmError> {
         let openai_messages = self.convert_messages(messages)?;
 
-        let request = CreateChatCompletionRequestArgs::default()
+        // Создаём базовый запрос
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+        request_builder
             .model(&self.model)
-            .messages(openai_messages)
-            .temperature(self.temperature)
-            .max_completion_tokens(self.max_tokens)
-            .logprobs(true)
-            .top_logprobs(1)
+            .messages(openai_messages);
+        
+        // Добавляем расширенные параметры только для поддерживающих моделей
+        if Self::supports_advanced_params(&self.model) {
+            request_builder
+                .temperature(self.temperature)
+                .max_completion_tokens(self.max_tokens)
+                .logprobs(true)
+                .top_logprobs(1);
+        }
+        
+        let request = request_builder
             .build()
             .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
 
@@ -168,6 +177,20 @@ impl LlmProvider for OpenAiProvider {
 }
 
 impl OpenAiProvider {
+    /// Проверяет, поддерживает ли модель расширенные параметры (temperature, logprobs, max_tokens)
+    /// 
+    /// GPT-5 и o1/o3 модели имеют ограниченный API:
+    /// - Не поддерживают кастомный temperature (только дефолт 1.0)
+    /// - Не поддерживают logprobs для расчета confidence
+    /// - Не поддерживают max_completion_tokens
+    fn supports_advanced_params(model_id: &str) -> bool {
+        let is_restricted = model_id.starts_with("gpt-5")
+            || model_id.starts_with("o1-")
+            || model_id.starts_with("o3-");
+        
+        !is_restricted
+    }
+    
     /// Проверяет, является ли модель подходящей для chat completion
     fn is_chat_model(model_id: &str) -> bool {
         // Включаем chat-модели
@@ -175,6 +198,7 @@ impl OpenAiProvider {
             || model_id.starts_with("gpt-4")
             || model_id.starts_with("gpt-3.5")
             || model_id.starts_with("o1-")
+            || model_id.starts_with("o3-")
             || model_id.starts_with("chatgpt-");
         
         // Исключаем специализированные модели

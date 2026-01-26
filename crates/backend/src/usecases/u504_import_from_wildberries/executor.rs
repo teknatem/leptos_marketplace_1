@@ -506,6 +506,9 @@ impl ImportExecutor {
     }
 
     /// Импорт финансовых отчетов Wildberries из API в p903_wb_finance_report
+    /// 
+    /// ВАЖНО: API reportDetailByPeriod имеет лимит 1 запрос в минуту!
+    /// Данные загружаются за весь период с пагинацией, а не по дням.
     async fn import_wb_finance_report(
         &self,
         session_id: &str,
@@ -548,57 +551,72 @@ impl ImportExecutor {
                 }
             };
 
-        // Импорт по дням: для каждого дня делаем отдельный запрос
-        let mut current_date = date_from;
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Загрузка за период {} - {} (API: 1 запрос/мин)",
+                date_from.format("%Y-%m-%d"),
+                date_to.format("%Y-%m-%d")
+            )),
+        );
 
-        while current_date <= date_to {
-            self.progress_tracker.set_current_item(
-                session_id,
-                aggregate_index,
-                Some(format!("Загрузка за {}", current_date.format("%Y-%m-%d"))),
-            );
+        // Загружаем финансовые отчеты за весь период с пагинацией
+        // API сам использует пагинацию через rrdid и ждет между запросами
+        let report_rows = self
+            .api_client
+            .fetch_finance_report_by_period(connection, date_from, date_to)
+            .await?;
 
-            // Получаем финансовые отчеты из API WB за день
-            let report_rows = self
-                .api_client
-                .fetch_finance_report_by_period(connection, current_date, current_date)
-                .await?;
+        let total_rows = report_rows.len() as i32;
+        tracing::info!(
+            "Received {} finance report rows for period {} - {}",
+            total_rows,
+            date_from,
+            date_to
+        );
 
-            // Вставляем новые записи
-            for row in report_rows {
-                match finance_report::process_finance_report_row(connection, &organization_id, &row).await {
-                    Ok(_) => {
-                        total_inserted += 1;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to process finance report row: {}", e);
-                        self.progress_tracker.add_error(
-                            session_id,
-                            Some(aggregate_index.to_string()),
-                            "Failed to process finance report row".to_string(),
-                            Some(e.to_string()),
-                        );
-                    }
+        // Вставляем новые записи
+        for row in report_rows {
+            match finance_report::process_finance_report_row(connection, &organization_id, &row).await {
+                Ok(_) => {
+                    total_inserted += 1;
                 }
-
-                total_processed += 1;
-
-                // Обновляем прогресс периодически
-                if total_processed % 100 == 0 {
-                    self.progress_tracker.update_aggregate(
+                Err(e) => {
+                    tracing::error!("Failed to process finance report row: {}", e);
+                    self.progress_tracker.add_error(
                         session_id,
-                        aggregate_index,
-                        total_processed,
-                        None,
-                        total_inserted,
-                        0,
+                        Some(aggregate_index.to_string()),
+                        "Failed to process finance report row".to_string(),
+                        Some(e.to_string()),
                     );
                 }
             }
 
-            // Переходим к следующему дню
-            current_date = current_date.succ_opt().unwrap_or(current_date);
+            total_processed += 1;
+
+            // Обновляем прогресс каждые 100 записей
+            if total_processed % 100 == 0 {
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    Some(total_rows),
+                    total_inserted,
+                    0,
+                );
+            }
         }
+
+        // Финальное обновление с точным числом записей
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_processed,
+            Some(total_rows),
+            total_inserted,
+            0,
+        );
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
