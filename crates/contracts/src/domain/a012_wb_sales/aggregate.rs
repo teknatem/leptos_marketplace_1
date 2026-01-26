@@ -83,6 +83,36 @@ pub struct WbSalesLine {
     pub spp: Option<f64>,
     /// Итоговая цена для клиента (finishedPrice из WB API)
     pub finished_price: Option<f64>,
+    
+    // Финансовые показатели (план/факт)
+    /// Флаг: факт или план
+    pub is_fact: Option<bool>,
+    /// Выручка (план)
+    pub sell_out_plan: Option<f64>,
+    /// Выручка (факт)
+    pub sell_out_fact: Option<f64>,
+    /// Эквайринг (план)
+    pub acquiring_fee_plan: Option<f64>,
+    /// Эквайринг (факт)
+    pub acquiring_fee_fact: Option<f64>,
+    /// Прочие комиссии (план)
+    pub other_fee_plan: Option<f64>,
+    /// Прочие комиссии (факт)
+    pub other_fee_fact: Option<f64>,
+    /// Выплата поставщику (план)
+    pub supplier_payout_plan: Option<f64>,
+    /// Выплата поставщику (факт)
+    pub supplier_payout_fact: Option<f64>,
+    /// Прибыль (план)
+    pub profit_plan: Option<f64>,
+    /// Прибыль (факт)
+    pub profit_fact: Option<f64>,
+    /// Себестоимость продукции
+    pub cost_of_production: Option<f64>,
+    /// Комиссия (план)
+    pub commission_plan: Option<f64>,
+    /// Комиссия (факт)
+    pub commission_fact: Option<f64>,
 }
 
 /// Статусы и временные метки

@@ -29,6 +29,7 @@ pub struct WbSalesDetailDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderDto {
     pub document_no: String,
+    pub sale_id: Option<String>,
     pub connection_id: String,
     pub organization_id: String,
     pub marketplace_id: String,
@@ -52,6 +53,22 @@ pub struct LineDto {
     pub discount_percent: Option<f64>,
     pub spp: Option<f64>,
     pub finished_price: Option<f64>,
+    
+    // Plan/Fact fields
+    pub is_fact: Option<bool>,
+    pub sell_out_plan: Option<f64>,
+    pub sell_out_fact: Option<f64>,
+    pub acquiring_fee_plan: Option<f64>,
+    pub acquiring_fee_fact: Option<f64>,
+    pub other_fee_plan: Option<f64>,
+    pub other_fee_fact: Option<f64>,
+    pub supplier_payout_plan: Option<f64>,
+    pub supplier_payout_fact: Option<f64>,
+    pub profit_plan: Option<f64>,
+    pub profit_fact: Option<f64>,
+    pub cost_of_production: Option<f64>,
+    pub commission_plan: Option<f64>,
+    pub commission_fact: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +113,21 @@ pub struct MarketplaceProductInfo {
 pub struct NomenclatureInfo {
     pub description: String,
     pub article: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionInfo {
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationInfo {
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceInfo {
+    pub name: String,
 }
 
 // ============================================
@@ -288,4 +320,94 @@ pub async fn unpost_document(id: &str) -> Result<(), String> {
     }
     
     Ok(())
+}
+
+/// Fetch connection info
+pub async fn fetch_connection(id: &str) -> Result<ConnectionInfo, String> {
+    let url = format!("{}/api/connection_mp/{}", api_base(), id);
+    
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch connection: {}", e))?;
+    
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    Ok(ConnectionInfo {
+        description: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+/// Fetch organization info
+pub async fn fetch_organization(id: &str) -> Result<OrganizationInfo, String> {
+    let url = format!("{}/api/organization/{}", api_base(), id);
+    
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch organization: {}", e))?;
+    
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    Ok(OrganizationInfo {
+        description: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+/// Fetch marketplace info
+pub async fn fetch_marketplace(id: &str) -> Result<MarketplaceInfo, String> {
+    let url = format!("{}/api/marketplace/{}", api_base(), id);
+    
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch marketplace: {}", e))?;
+    
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    Ok(MarketplaceInfo {
+        name: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
 }

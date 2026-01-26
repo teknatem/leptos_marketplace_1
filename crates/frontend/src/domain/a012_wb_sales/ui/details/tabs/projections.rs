@@ -1,6 +1,7 @@
 //! Projections tab - p900 and p904 projection data
 
 use super::super::view_model::WbSalesDetailsVm;
+use crate::shared::json_viewer::widget::JsonViewer;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -33,10 +34,7 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     .unwrap_or_else(|_| proj_data.to_string());
 
                 view! {
-                    <div style="display: grid; grid-template-columns: 800px; gap: var(--spacing-md); align-items: start; justify-items: start;">
-                    <Card>
-                        <h4 class="details-section__title">"Проекции"</h4>
-
+                    <div style="display: grid; grid-template-columns: 100%; gap: var(--spacing-md); align-items: start; justify-items: start;">
                         // Summary badges
                         <Flex gap=FlexGap::Medium style="margin-bottom: var(--spacing-md);">
                             <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
@@ -47,11 +45,11 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </Badge>
                         </Flex>
 
-                        // JSON content
-                        <pre style="margin: 0; max-height: 70vh; overflow: auto; font-size: var(--font-size-sm); background: var(--color-bg-secondary); padding: var(--spacing-md); border-radius: var(--radius-sm);">
-                            {pretty}
-                        </pre>
-                    </Card>
+                        // JSON content with highlighting
+                        <JsonViewer 
+                            json_content=pretty 
+                            title="Проекции (p900 / p904)".to_string()
+                        />
                     </div>
                 }.into_any()
             } else {

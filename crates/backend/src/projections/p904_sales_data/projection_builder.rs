@@ -1,5 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
+use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
+use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
+use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::a014_ozon_transactions::aggregate::OzonTransactions;
@@ -7,9 +10,24 @@ use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use uuid::Uuid;
 
 use super::repository::Model;
+use crate::projections::p906_nomenclature_prices;
 
 /// Константа эквайринга ПРОДАЖИ (1.9%)
 const WB_ACQUIRING_RATE: f64 = 0.019;
+
+/// Helper функция для получения себестоимости из p906_nomenclature_prices
+/// Возвращает None если nomenclature_ref отсутствует или цена не найдена
+async fn get_cost_for_nomenclature(
+    nomenclature_ref: &Option<String>,
+    sale_date: &str,
+) -> Result<Option<f64>> {
+    match nomenclature_ref {
+        Some(ref nom_ref) => {
+            p906_nomenclature_prices::repository::get_price_for_date(nom_ref, sale_date).await
+        }
+        None => Ok(None),
+    }
+}
 
 pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Result<Vec<Model>> {
     let now = Utc::now().to_rfc3339();
@@ -44,7 +62,7 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
     let coinvest_persent = spp;
 
     // 6. commission_out / price_effective * 100 -> commission_percent (округляем до 2 знаков)
-    let commission_percent = if finished_price != 0.0 {
+    let commission_percent = if price_effective != 0.0 {
         ((commission_out / price_effective * 100.0) * 100.0).round() / 100.0
     } else {
         0.0
@@ -76,6 +94,15 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
     let seller_out = -(customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out);
     let total = -seller_out;
 
+    // Получить cost из p906_nomenclature_prices
+    let sale_date_str = document.state.sale_dt.format("%Y-%m-%d").to_string();
+    let mut cost = get_cost_for_nomenclature(&document.nomenclature_ref, &sale_date_str).await?;
+
+    // Если это возврат (price_effective <= 0), то себестоимость записывается с минусом
+    if price_effective <= 0.0 {
+        cost = cost.map(|c| -c);
+    }
+
     let entry = Model {
         id,
         registrator_ref: document_id.to_string(),
@@ -100,6 +127,7 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
         commission_percent,
         coinvest_persent,
         total,
+        cost,
 
         document_no: document.header.document_no.clone(),
         article: document.line.supplier_article.clone(),
@@ -227,6 +255,7 @@ pub async fn from_ozon_transactions(
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
                 total,
+                cost: None,
 
                 document_no: posting_number.clone(),
                 article: sku_str,
@@ -316,6 +345,7 @@ pub async fn from_ozon_transactions(
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
                 total,
+                cost: None,
 
                 document_no: posting_number.clone(),
                 article: line.offer_id.clone(),
@@ -400,6 +430,7 @@ pub async fn from_ozon_transactions(
                 commission_percent: 0.0,
                 coinvest_persent: 0.0,
                 total,
+                cost: None,
 
                 document_no: posting_number.clone(),
                 article: line.offer_id.clone(),
@@ -481,6 +512,7 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> Result<Vec<
             commission_percent: 0.0,
             coinvest_persent: 0.0,
             total: customer_in,
+            cost: None,
 
             document_no: document.header.document_no.clone(),
             article: line.shop_sku.clone(),
@@ -571,6 +603,7 @@ pub async fn from_ym_returns(document: &YmReturn, document_id: &str) -> Result<V
             commission_percent: 0.0,
             coinvest_persent: 0.0,
             total: customer_out,
+            cost: None,
 
             document_no: format!("YM-RET-{}", document.header.return_id),
             article: line.shop_sku.clone(),
@@ -584,6 +617,284 @@ pub async fn from_ym_returns(document: &YmReturn, document_id: &str) -> Result<V
         entries.len(),
         document.header.return_id,
         document.state.refund_status
+    );
+
+    Ok(entries)
+}
+
+/// Конвертировать OZON FBS Posting в записи Sales Data (P904)
+/// Только документы со статусом DELIVERED формируют проекции
+pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Result<Vec<Model>> {
+    let mut entries = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    // Проверяем статус документа - только DELIVERED формируют проекции
+    if document.state.status_norm != "DELIVERED" {
+        tracing::debug!(
+            "OZON FBS Posting {} has status '{}', skipping P904 projection (only DELIVERED allowed)",
+            document.header.document_no,
+            document.state.status_norm
+        );
+        return Ok(entries);
+    }
+
+    // Если нет строк, ничего не создаем
+    if document.lines.is_empty() {
+        tracing::warn!(
+            "OZON FBS Posting {} has no lines, skipping P904 projection",
+            document.header.document_no
+        );
+        return Ok(entries);
+    }
+
+    // Определяем дату для проекции (delivered_at или updated_at_source)
+    let date = document
+        .state
+        .delivered_at
+        .map(|dt| dt.to_rfc3339())
+        .or_else(|| document.state.updated_at_source.map(|dt| dt.to_rfc3339()))
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+    for line in &document.lines {
+        // customer_in берём из amount_line
+        let customer_in = line.amount_line.unwrap_or(0.0);
+
+        // Найти/создать a007_marketplace_product
+        let marketplace_product_ref =
+            crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+                crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                    marketplace_ref: document.header.marketplace_id.clone(),
+                    connection_mp_ref: document.header.connection_id.clone(),
+                    marketplace_sku: line.offer_id.clone(),
+                    barcode: line.barcode.clone(),
+                    title: line.name.clone(),
+                },
+            )
+            .await?;
+
+        // Получить nomenclature_ref из a007
+        let nomenclature_ref = if let Some(product) =
+            crate::domain::a007_marketplace_product::service::get_by_id(marketplace_product_ref)
+                .await?
+        {
+            product.nomenclature_ref.unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let entry = Model {
+            id: Uuid::new_v4().to_string(),
+            registrator_ref: document_id.to_string(),
+            registrator_type: "OZON_FBS".to_string(),
+            date: date.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
+            nomenclature_ref,
+            marketplace_product_ref: marketplace_product_ref.to_string(),
+
+            // Sums - заполняем только customer_in
+            customer_in,
+            customer_out: 0.0,
+            coinvest_in: 0.0,
+            commission_out: 0.0,
+            acquiring_out: 0.0,
+            penalty_out: 0.0,
+            logistics_out: 0.0,
+            seller_out: 0.0,
+            price_full: line.price_list.unwrap_or(0.0) * line.qty as f64,
+            price_list: line.price_list.unwrap_or(0.0),
+            price_return: 0.0,
+            commission_percent: 0.0,
+            coinvest_persent: 0.0,
+            total: customer_in,
+            cost: None,
+
+            document_no: document.header.document_no.clone(),
+            article: line.offer_id.clone(),
+            posted_at: now.clone(),
+        };
+        entries.push(entry);
+    }
+
+    tracing::info!(
+        "Created {} P904 entries from OZON FBS Posting {} (status: {})",
+        entries.len(),
+        document.header.document_no,
+        document.state.status_norm
+    );
+
+    Ok(entries)
+}
+
+/// Конвертировать OZON FBO Posting в записи Sales Data (P904)
+/// Документы формируют проекции независимо от статуса
+pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Result<Vec<Model>> {
+    let mut entries = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    // Если нет строк, ничего не создаем
+    if document.lines.is_empty() {
+        tracing::warn!(
+            "OZON FBO Posting {} has no lines, skipping P904 projection",
+            document.header.document_no
+        );
+        return Ok(entries);
+    }
+
+    // Определяем дату для проекции (delivered_at или updated_at_source или created_at)
+    let date = document
+        .state
+        .delivered_at
+        .map(|dt| dt.to_rfc3339())
+        .or_else(|| document.state.updated_at_source.map(|dt| dt.to_rfc3339()))
+        .or_else(|| document.state.created_at.map(|dt| dt.to_rfc3339()))
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+    for line in &document.lines {
+        // customer_in берём из amount_line
+        let customer_in = line.amount_line.unwrap_or(0.0);
+
+        // Найти/создать a007_marketplace_product
+        let marketplace_product_ref =
+            crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+                crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                    marketplace_ref: document.header.marketplace_id.clone(),
+                    connection_mp_ref: document.header.connection_id.clone(),
+                    marketplace_sku: line.offer_id.clone(),
+                    barcode: line.barcode.clone(),
+                    title: line.name.clone(),
+                },
+            )
+            .await?;
+
+        // Получить nomenclature_ref из a007
+        let nomenclature_ref = if let Some(product) =
+            crate::domain::a007_marketplace_product::service::get_by_id(marketplace_product_ref)
+                .await?
+        {
+            product.nomenclature_ref.unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let entry = Model {
+            id: Uuid::new_v4().to_string(),
+            registrator_ref: document_id.to_string(),
+            registrator_type: "OZON_FBO".to_string(),
+            date: date.clone(),
+            connection_mp_ref: document.header.connection_id.clone(),
+            nomenclature_ref,
+            marketplace_product_ref: marketplace_product_ref.to_string(),
+
+            // Sums - заполняем только customer_in
+            customer_in,
+            customer_out: 0.0,
+            coinvest_in: 0.0,
+            commission_out: 0.0,
+            acquiring_out: 0.0,
+            penalty_out: 0.0,
+            logistics_out: 0.0,
+            seller_out: 0.0,
+            price_full: line.price_list.unwrap_or(0.0) * line.qty as f64,
+            price_list: line.price_list.unwrap_or(0.0),
+            price_return: 0.0,
+            commission_percent: 0.0,
+            coinvest_persent: 0.0,
+            total: customer_in,
+            cost: None,
+
+            document_no: document.header.document_no.clone(),
+            article: line.offer_id.clone(),
+            posted_at: now.clone(),
+        };
+        entries.push(entry);
+    }
+
+    tracing::info!(
+        "Created {} P904 entries from OZON FBO Posting {}",
+        entries.len(),
+        document.header.document_no
+    );
+
+    Ok(entries)
+}
+
+/// Конвертировать OZON Returns в записи Sales Data (P904)
+/// Возвраты формируют проекции с отрицательным customer_out
+pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> Result<Vec<Model>> {
+    let mut entries = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    // Дата возврата
+    let date = document
+        .return_date
+        .and_hms_opt(0, 0, 0)
+        .unwrap_or_else(|| chrono::Utc::now().naive_utc())
+        .and_utc()
+        .to_rfc3339();
+
+    // Сумма возврата (с минусом)
+    let return_amount = document.price * document.quantity as f64;
+    let customer_out = -return_amount;
+
+    // Найти/создать a007_marketplace_product
+    let marketplace_product_ref =
+        crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+            crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                marketplace_ref: document.marketplace_id.clone(),
+                connection_mp_ref: document.connection_id.clone(),
+                marketplace_sku: document.sku.clone(),
+                barcode: None,
+                title: document.product_name.clone(),
+            },
+        )
+        .await?;
+
+    // Получить nomenclature_ref из a007
+    let nomenclature_ref = if let Some(product) =
+        crate::domain::a007_marketplace_product::service::get_by_id(marketplace_product_ref).await?
+    {
+        product.nomenclature_ref.unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let entry = Model {
+        id: Uuid::new_v4().to_string(),
+        registrator_ref: document_id.to_string(),
+        registrator_type: "OZON_Returns".to_string(),
+        date,
+        connection_mp_ref: document.connection_id.clone(),
+        nomenclature_ref,
+        marketplace_product_ref: marketplace_product_ref.to_string(),
+
+        // Sums - заполняем только customer_out (с минусом - возврат денег покупателю)
+        customer_in: 0.0,
+        customer_out,
+        coinvest_in: 0.0,
+        commission_out: 0.0,
+        acquiring_out: 0.0,
+        penalty_out: 0.0,
+        logistics_out: 0.0,
+        seller_out: 0.0,
+        price_full: 0.0,
+        price_list: document.price,
+        price_return: return_amount,
+        commission_percent: 0.0,
+        coinvest_persent: 0.0,
+        total: customer_out,
+        cost: None,
+
+        document_no: document.return_id.clone(),
+        article: document.sku.clone(),
+        posted_at: now,
+    };
+    entries.push(entry);
+
+    tracing::info!(
+        "Created {} P904 entries from OZON Return {} (qty: {})",
+        entries.len(),
+        document.return_id,
+        document.quantity
     );
 
     Ok(entries)

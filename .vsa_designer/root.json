@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768543380",
+  "generated_at_utc": "unix:1768943168",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -8,40 +8,40 @@
   ],
   "totals": {
     "backend": {
-      "files": 210,
-      "lines": 36959
+      "files": 225,
+      "lines": 39316
     },
     "contracts": {
-      "files": 109,
-      "lines": 8767
+      "files": 121,
+      "lines": 11744
     },
     "frontend": {
-      "files": 259,
-      "lines": 48371
+      "files": 289,
+      "lines": 51605
     },
     "total": {
-      "files": 578,
-      "lines": 94097
+      "files": 635,
+      "lines": 102665
     }
   },
   "aggregates": {
-    "count": 17,
+    "count": 20,
     "totals": {
       "backend": {
-        "files": 58,
-        "lines": 7722
+        "files": 67,
+        "lines": 9062
       },
       "contracts": {
-        "files": 42,
-        "lines": 5579
+        "files": 54,
+        "lines": 8551
       },
       "frontend": {
-        "files": 111,
-        "lines": 27891
+        "files": 140,
+        "lines": 30929
       },
       "total": {
-        "files": 211,
-        "lines": 41192
+        "files": 261,
+        "lines": 48542
       }
     },
     "items": [
@@ -133,11 +133,11 @@
           },
           "frontend": {
             "files": 17,
-            "lines": 3127
+            "lines": 3131
           },
           "total": {
             "files": 24,
-            "lines": 4137
+            "lines": 4141
           }
         }
       },
@@ -245,7 +245,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 337
+            "lines": 333
           },
           "contracts": {
             "files": 2,
@@ -257,7 +257,7 @@
           },
           "total": {
             "files": 10,
-            "lines": 2411
+            "lines": 2407
           }
         }
       },
@@ -269,7 +269,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 367
+            "lines": 363
           },
           "contracts": {
             "files": 2,
@@ -281,7 +281,7 @@
           },
           "total": {
             "files": 10,
-            "lines": 2477
+            "lines": 2473
           }
         }
       },
@@ -293,7 +293,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 329
+            "lines": 325
           },
           "contracts": {
             "files": 2,
@@ -305,7 +305,7 @@
           },
           "total": {
             "files": 10,
-            "lines": 2430
+            "lines": 2426
           }
         }
       },
@@ -317,7 +317,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 662
+            "lines": 660
           },
           "contracts": {
             "files": 2,
@@ -325,11 +325,11 @@
           },
           "frontend": {
             "files": 14,
-            "lines": 3268
+            "lines": 3266
           },
           "total": {
             "files": 20,
-            "lines": 4219
+            "lines": 4215
           }
         }
       },
@@ -341,7 +341,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 1104
+            "lines": 1100
           },
           "contracts": {
             "files": 2,
@@ -353,7 +353,7 @@
           },
           "total": {
             "files": 12,
-            "lines": 4995
+            "lines": 4991
           }
         }
       },
@@ -420,12 +420,84 @@
             "lines": 323
           },
           "frontend": {
-            "files": 5,
-            "lines": 1784
+            "files": 12,
+            "lines": 2106
           },
           "total": {
-            "files": 11,
-            "lines": 2569
+            "files": 18,
+            "lines": 2891
+          }
+        }
+      },
+      {
+        "name": "a017_llm_agent",
+        "backend_path": "crates/backend/src\\domain\\a017_llm_agent",
+        "contracts_path": "crates/contracts/src\\domain\\a017_llm_agent",
+        "frontend_path": "crates/frontend/src\\domain\\a017_llm_agent",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 395
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 952
+          },
+          "frontend": {
+            "files": 7,
+            "lines": 970
+          },
+          "total": {
+            "files": 14,
+            "lines": 2317
+          }
+        }
+      },
+      {
+        "name": "a018_llm_chat",
+        "backend_path": "crates/backend/src\\domain\\a018_llm_chat",
+        "contracts_path": "crates/contracts/src\\domain\\a018_llm_chat",
+        "frontend_path": "crates/frontend/src\\domain\\a018_llm_chat",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 570
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 866
+          },
+          "frontend": {
+            "files": 8,
+            "lines": 1078
+          },
+          "total": {
+            "files": 15,
+            "lines": 2514
+          }
+        }
+      },
+      {
+        "name": "a019_llm_artifact",
+        "backend_path": "crates/backend/src\\domain\\a019_llm_artifact",
+        "contracts_path": "crates/contracts/src\\domain\\a019_llm_artifact",
+        "frontend_path": "crates/frontend/src\\domain\\a019_llm_artifact",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 393
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 1154
+          },
+          "frontend": {
+            "files": 7,
+            "lines": 666
+          },
+          "total": {
+            "files": 14,
+            "lines": 2213
           }
         }
       },
@@ -647,19 +719,19 @@
     "totals": {
       "backend": {
         "files": 24,
-        "lines": 4398
+        "lines": 4519
       },
       "contracts": {
         "files": 10,
-        "lines": 554
+        "lines": 556
       },
       "frontend": {
-        "files": 27,
-        "lines": 6120
+        "files": 28,
+        "lines": 6370
       },
       "total": {
-        "files": 61,
-        "lines": 11072
+        "files": 62,
+        "lines": 11445
       }
     },
     "items": [
@@ -671,19 +743,19 @@
         "counts": {
           "backend": {
             "files": 5,
-            "lines": 1063
+            "lines": 1168
           },
           "contracts": {
             "files": 2,
-            "lines": 135
+            "lines": 137
           },
           "frontend": {
-            "files": 4,
-            "lines": 957
+            "files": 5,
+            "lines": 1207
           },
           "total": {
-            "files": 11,
-            "lines": 2155
+            "files": 12,
+            "lines": 2512
           }
         }
       },
@@ -813,7 +885,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 488
+            "lines": 504
           },
           "contracts": {
             "files": 0,
@@ -825,7 +897,7 @@
           },
           "total": {
             "files": 8,
-            "lines": 1082
+            "lines": 1098
           }
         }
       }

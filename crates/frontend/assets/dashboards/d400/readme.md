@@ -138,11 +138,12 @@ Renders the dashboard into the specified container.
 - **Scoped Styles**: All CSS scoped to `#bolt-root`, won't affect parent page
 - **Number Formatting**: Automatic thousand separators and 2 decimal places
 - **Hierarchical Display**: Shows totals (level 0) and organization details (level 1)
-- **Percentage Calculations**: Displays percentages for level-1 rows relative to their group total
+- **Percentage Columns**: Separate columns for percentages (8 value columns total: WB, WB%, OZON, OZON%, YM, YM%, Итого, Итого%)
+- **100% Base**: All percentages calculated from total revenue (top-right cell in revenue section)
 - **Column Sorting**: Click any column header to sort by that column (ascending/descending)
 - **Period Selector**: Optional dropdown to switch between different reporting periods
 - **Grouped Indicators**: Automatically groups rows by indicator_id
-- **Visual Distinction**: Returns displayed in red, totals highlighted in blue
+- **Visual Distinction**: Returns displayed in red, totals highlighted in blue, percentages in muted colors
 - **Responsive**: Horizontal scroll for narrow viewports
 - **Interactive**: Smooth transitions, hover states, and visual feedback
 - **Fallbacks**: Handles missing data gracefully

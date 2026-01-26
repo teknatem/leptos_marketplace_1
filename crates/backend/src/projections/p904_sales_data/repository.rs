@@ -36,6 +36,8 @@ pub struct Model {
     pub commission_percent: f64,
     pub coinvest_persent: f64,
     pub total: f64,
+    #[sea_orm(nullable)]
+    pub cost: Option<f64>,
 
     // Info fields
     pub document_no: String,
@@ -75,6 +77,7 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
         commission_percent: Set(entry.commission_percent),
         coinvest_persent: Set(entry.coinvest_persent),
         total: Set(entry.total),
+        cost: Set(entry.cost),
         document_no: Set(entry.document_no.clone()),
         article: Set(entry.article.clone()),
         posted_at: Set(entry.posted_at.clone()),
@@ -158,6 +161,7 @@ pub async fn list_with_filters(
             p904.commission_percent,
             p904.coinvest_persent,
             p904.total,
+            p904.cost,
             p904.document_no,
             p904.article,
             p904.posted_at,
@@ -219,6 +223,7 @@ pub async fn list_with_filters(
         commission_percent: f64,
         coinvest_persent: f64,
         total: f64,
+        cost: Option<f64>,
         document_no: String,
         article: String,
         posted_at: String,
@@ -254,6 +259,7 @@ pub async fn list_with_filters(
                 commission_percent: r.commission_percent,
                 coinvest_persent: r.coinvest_persent,
                 total: r.total,
+                cost: r.cost,
                 document_no: r.document_no,
                 article: r.article,
                 posted_at: r.posted_at,

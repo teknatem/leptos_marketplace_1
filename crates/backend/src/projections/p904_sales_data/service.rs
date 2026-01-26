@@ -1,5 +1,8 @@
 use super::{projection_builder, repository};
 use anyhow::Result;
+use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
+use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
+use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::a014_ozon_transactions::aggregate::OzonTransactions;
@@ -94,6 +97,71 @@ pub async fn project_ym_returns(document: &YmReturn, document_id: Uuid) -> Resul
         tracing::info!(
             "Projected YM Return document {} into Sales Data P904 ({} entries)",
             document.header.return_id,
+            entries_count
+        );
+    }
+
+    Ok(())
+}
+
+/// Проецировать OZON FBS Posting в Sales Data (P904)
+/// Только документы со статусом DELIVERED формируют проекции
+pub async fn project_ozon_fbs(document: &OzonFbsPosting, document_id: Uuid) -> Result<()> {
+    let entries =
+        projection_builder::from_ozon_fbs(document, &document_id.to_string()).await?;
+
+    let entries_count = entries.len();
+    for entry in entries {
+        repository::upsert_entry(&entry).await?;
+    }
+
+    if entries_count > 0 {
+        tracing::info!(
+            "Projected OZON FBS Posting document {} into Sales Data P904 ({} entries)",
+            document.header.document_no,
+            entries_count
+        );
+    }
+
+    Ok(())
+}
+
+/// Проецировать OZON FBO Posting в Sales Data (P904)
+pub async fn project_ozon_fbo(document: &OzonFboPosting, document_id: Uuid) -> Result<()> {
+    let entries =
+        projection_builder::from_ozon_fbo(document, &document_id.to_string()).await?;
+
+    let entries_count = entries.len();
+    for entry in entries {
+        repository::upsert_entry(&entry).await?;
+    }
+
+    if entries_count > 0 {
+        tracing::info!(
+            "Projected OZON FBO Posting document {} into Sales Data P904 ({} entries)",
+            document.header.document_no,
+            entries_count
+        );
+    }
+
+    Ok(())
+}
+
+/// Проецировать OZON Returns в Sales Data (P904)
+/// Возвраты формируют проекции с отрицательным customer_out
+pub async fn project_ozon_returns(document: &OzonReturns, document_id: Uuid) -> Result<()> {
+    let entries =
+        projection_builder::from_ozon_returns(document, &document_id.to_string()).await?;
+
+    let entries_count = entries.len();
+    for entry in entries {
+        repository::upsert_entry(&entry).await?;
+    }
+
+    if entries_count > 0 {
+        tracing::info!(
+            "Projected OZON Return document {} into Sales Data P904 ({} entries)",
+            document.return_id,
             entries_count
         );
     }

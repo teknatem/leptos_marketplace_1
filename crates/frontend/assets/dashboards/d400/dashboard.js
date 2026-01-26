@@ -86,43 +86,58 @@
       thIndicator.textContent = 'Показатель';
       tr.appendChild(thIndicator);
   
+      // Create value + percentage columns for each marketplace
       marketplaces.forEach(function(marketplace) {
-        const th = document.createElement('th');
-        th.className = 'numeric sortable';
-        th.dataset.column = marketplace;
+        // Value column
+        const thValue = document.createElement('th');
+        thValue.className = 'numeric sortable';
+        thValue.dataset.column = marketplace;
   
-        const content = document.createElement('span');
-        content.textContent = marketplace;
-        th.appendChild(content);
+        const contentValue = document.createElement('span');
+        contentValue.textContent = marketplace;
+        thValue.appendChild(contentValue);
   
-        const arrow = document.createElement('span');
-        arrow.className = 'sort-arrow';
-        th.appendChild(arrow);
+        const arrowValue = document.createElement('span');
+        arrowValue.className = 'sort-arrow';
+        thValue.appendChild(arrowValue);
   
-        th.addEventListener('click', function() {
+        thValue.addEventListener('click', function() {
           onSort(marketplace);
         });
   
-        tr.appendChild(th);
+        tr.appendChild(thValue);
+  
+        // Percentage column
+        const thPercent = document.createElement('th');
+        thPercent.className = 'numeric percent-column';
+        thPercent.textContent = '%';
+        tr.appendChild(thPercent);
       });
   
+      // Total value column
       const thTotal = document.createElement('th');
       thTotal.className = 'numeric sortable';
       thTotal.dataset.column = 'total';
   
-      const content = document.createElement('span');
-      content.textContent = 'Итого';
-      thTotal.appendChild(content);
+      const contentTotal = document.createElement('span');
+      contentTotal.textContent = 'Итого';
+      thTotal.appendChild(contentTotal);
   
-      const arrow = document.createElement('span');
-      arrow.className = 'sort-arrow';
-      thTotal.appendChild(arrow);
+      const arrowTotal = document.createElement('span');
+      arrowTotal.className = 'sort-arrow';
+      thTotal.appendChild(arrowTotal);
   
       thTotal.addEventListener('click', function() {
         onSort('total');
       });
   
       tr.appendChild(thTotal);
+  
+      // Total percentage column
+      const thTotalPercent = document.createElement('th');
+      thTotalPercent.className = 'numeric percent-column';
+      thTotalPercent.textContent = '%';
+      tr.appendChild(thTotalPercent);
   
       thead.appendChild(tr);
       return thead;
@@ -163,11 +178,16 @@
       const grouped = groupByIndicator(rows);
       const indicatorIds = Object.keys(grouped);
   
+      // Find the base 100% value: total revenue from the first "revenue" indicator at level 0
+      let baseTotal = 0;
+      const revenueRows = grouped['revenue'] || [];
+      const revenueLevel0 = revenueRows.find(function(r) { return r.level === 0; });
+      if (revenueLevel0) {
+        baseTotal = getValue(revenueLevel0.values, 'total');
+      }
+  
       indicatorIds.forEach(function(indicatorId, index) {
         const indicatorRows = grouped[indicatorId];
-  
-        // Find level-0 row (total) for percentage calculations
-        const totalRow = indicatorRows.find(function(r) { return r.level === 0; });
   
         // Sort by level (0 first, then 1), then by sort column if specified
         indicatorRows.sort(function(a, b) {
@@ -190,11 +210,17 @@
           const tr = document.createElement('tr');
           tr.className = 'level-' + (row.level || 0);
           tr.dataset.indicatorId = indicatorId;
-  
+
           if (indicatorId === 'returns') {
             tr.classList.add('indicator-returns');
           }
-  
+          if (indicatorId === 'cost') {
+            tr.classList.add('indicator-cost');
+          }
+          if (indicatorId === 'result') {
+            tr.classList.add('indicator-result');
+          }
+
           const tdLabel = document.createElement('td');
           tdLabel.className = 'label';
   
@@ -206,45 +232,44 @@
   
           tr.appendChild(tdLabel);
   
+          // Add value + percentage columns for each marketplace
           marketplaces.forEach(function(marketplace) {
-            const td = document.createElement('td');
-            td.className = 'numeric';
+            // Value column
+            const tdValue = document.createElement('td');
+            tdValue.className = 'numeric';
             const value = getValue(row.values, marketplace);
-            td.innerHTML = formatNumber(value);
+            tdValue.textContent = formatNumber(value);
+            tr.appendChild(tdValue);
   
-            // Add percentage for level-1 rows
-            if (row.level === 1 && totalRow) {
-              const totalValue = getValue(totalRow.values, marketplace);
-              if (totalValue > 0) {
-                const percentage = calculatePercentage(value, totalValue);
-                const percentSpan = document.createElement('span');
-                percentSpan.className = 'percentage';
-                percentSpan.textContent = ' (' + formatPercentage(percentage) + ')';
-                td.appendChild(percentSpan);
-              }
+            // Percentage column
+            const tdPercent = document.createElement('td');
+            tdPercent.className = 'numeric percent-column';
+            if (baseTotal > 0) {
+              const percentage = calculatePercentage(value, baseTotal);
+              tdPercent.textContent = formatPercentage(percentage);
+            } else {
+              tdPercent.textContent = '0%';
             }
-  
-            tr.appendChild(td);
+            tr.appendChild(tdPercent);
           });
   
+          // Total value column
           const tdTotal = document.createElement('td');
           tdTotal.className = 'numeric';
           const totalValue = getValue(row.values, 'total');
-          tdTotal.innerHTML = formatNumber(totalValue);
-  
-          // Add percentage for level-1 rows
-          if (row.level === 1 && totalRow) {
-            const totalTotalValue = getValue(totalRow.values, 'total');
-            if (totalTotalValue > 0) {
-              const percentage = calculatePercentage(totalValue, totalTotalValue);
-              const percentSpan = document.createElement('span');
-              percentSpan.className = 'percentage';
-              percentSpan.textContent = ' (' + formatPercentage(percentage) + ')';
-              tdTotal.appendChild(percentSpan);
-            }
-          }
-  
+          tdTotal.textContent = formatNumber(totalValue);
           tr.appendChild(tdTotal);
+  
+          // Total percentage column
+          const tdTotalPercent = document.createElement('td');
+          tdTotalPercent.className = 'numeric percent-column';
+          if (baseTotal > 0) {
+            const percentage = calculatePercentage(totalValue, baseTotal);
+            tdTotalPercent.textContent = formatPercentage(percentage);
+          } else {
+            tdTotalPercent.textContent = '0%';
+          }
+          tr.appendChild(tdTotalPercent);
   
           tbody.appendChild(tr);
         });
@@ -254,7 +279,8 @@
           const separator = document.createElement('tr');
           separator.className = 'indicator-separator';
           const td = document.createElement('td');
-          td.colSpan = marketplaces.length + 2;
+          // Now we have: 1 label + (marketplaces.length * 2) + 2 total columns
+          td.colSpan = 1 + (marketplaces.length * 2) + 2;
           separator.appendChild(td);
           tbody.appendChild(separator);
         }

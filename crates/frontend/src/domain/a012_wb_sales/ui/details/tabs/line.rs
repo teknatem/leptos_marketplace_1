@@ -54,7 +54,7 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let has_finance_data = !finance_rows.is_empty();
 
             view! {
-                <div style="display: grid; grid-template-columns: 800px; gap: var(--spacing-md); align-items: start; justify-items: start;">
+                <div style="display: grid; grid-template-columns: 1200px; gap: var(--spacing-md); align-items: start; justify-items: start;">
                     // Line info card
                     <Card>
                         <h4 class="details-section__title">"Строка"</h4>

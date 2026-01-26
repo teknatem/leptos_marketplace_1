@@ -1,12 +1,13 @@
+use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
+use crate::shared::icons::icon;
+use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-
-// Import WbSalesDetail for opening linked documents
-use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbFinanceReportDto {
@@ -484,62 +485,63 @@ pub fn WbFinanceReportDetail(
     };
 
     view! {
-        <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-            <div style="padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); flex-shrink: 0;">
-                <h3 style="margin: 0;">"WB Finance Report Details"</h3>
-                <button
-                    on:click=move |_| on_close.run(())
-                    style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"
+        <div class="detail-form">
+            <div class="modal-header">
+                <h3 class="modal-title">"WB Finance Report Details"</h3>
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    on_click=move |_| on_close.run(())
                 >
-                    "Close"
-                </button>
+                    <span>{vec![icon("x").into_view()]}</span>
+                    <span>" Закрыть"</span>
+                </Button>
             </div>
 
-            <div style="padding: 16px; overflow-y: auto; flex: 1;">
+            <div class="detail-form-content">
             {move || {
                 if loading.get() {
-                    view! { <p>"Loading..."</p> }.into_any()
+                    view! { <p class="text-muted">"Загрузка..."</p> }.into_any()
                 } else if let Some(err) = error.get() {
-                    view! { <p style="color: red;">"Error: " {err}</p> }.into_any()
+                    view! {
+                        <div class="warning-box warning-box--error">
+                            <span class="warning-box__icon">"⚠"</span>
+                            <span class="warning-box__text">{err}</span>
+                        </div>
+                    }
+                        .into_any()
                 } else if data.get().is_some() {
                     view! {
                         <div>
                             // Tabs and Export button
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid var(--border-color);">
-                                <div style="display: flex; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+                                <div class="detail-tabs">
                                     <button
-                                        on:click=move |_| set_active_tab.set("fields")
-                                        style=move || {
-                                            if active_tab.get() == "fields" {
-                                                "padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-bottom: 3px solid var(--primary-color); cursor: pointer; font-weight: bold;"
-                                            } else {
-                                                "padding: 8px 16px; background: transparent; color: var(--text-color); border: none; cursor: pointer;"
-                                            }
+                                        class=move || if active_tab.get() == "fields" {
+                                            "detail-tabs__item detail-tabs__item--active"
+                                        } else {
+                                            "detail-tabs__item"
                                         }
+                                        on:click=move |_| set_active_tab.set("fields")
                                     >
                                         "Fields"
                                     </button>
                                     <button
-                                        on:click=move |_| set_active_tab.set("json")
-                                        style=move || {
-                                            if active_tab.get() == "json" {
-                                                "padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-bottom: 3px solid var(--primary-color); cursor: pointer; font-weight: bold;"
-                                            } else {
-                                                "padding: 8px 16px; background: transparent; color: var(--text-color); border: none; cursor: pointer;"
-                                            }
+                                        class=move || if active_tab.get() == "json" {
+                                            "detail-tabs__item detail-tabs__item--active"
+                                        } else {
+                                            "detail-tabs__item"
                                         }
+                                        on:click=move |_| set_active_tab.set("json")
                                     >
                                         "Raw JSON"
                                     </button>
                                     <button
-                                        on:click=move |_| set_active_tab.set("links")
-                                        style=move || {
-                                            if active_tab.get() == "links" {
-                                                "padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-bottom: 3px solid var(--primary-color); cursor: pointer; font-weight: bold;"
-                                            } else {
-                                                "padding: 8px 16px; background: transparent; color: var(--text-color); border: none; cursor: pointer;"
-                                            }
+                                        class=move || if active_tab.get() == "links" {
+                                            "detail-tabs__item detail-tabs__item--active"
+                                        } else {
+                                            "detail-tabs__item"
                                         }
+                                        on:click=move |_| set_active_tab.set("links")
                                     >
                                         "Links"
                                     </button>
@@ -547,13 +549,13 @@ pub fn WbFinanceReportDetail(
                                 {
                                     let export_excel = export_to_excel.clone();
                                     view! {
-                                        <button
-                                            on:click=move |_| export_excel()
-                                            style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-bottom: 2px;"
-                                            title="Экспорт таблицы в Excel"
+                                        <Button
+                                            appearance=ButtonAppearance::Primary
+                                            on_click=move |_| export_excel()
                                         >
-                                            "📥 Export to Excel"
-                                        </button>
+                                            <span>{vec![icon("download").into_view()]}</span>
+                                            <span>" Export Excel"</span>
+                                        </Button>
                                     }
                                 }
                             </div>
@@ -562,61 +564,56 @@ pub fn WbFinanceReportDetail(
                             {move || {
                                 if active_tab.get() == "fields" {
                                     let field_rows = get_field_rows();
-                                    let current_sort = sort_by.get();
-                                    let is_desc = sort_desc.get();
-                                    let sort_indicator = move |col: &str| {
-                                        if current_sort == col {
-                                            if is_desc { " ↓" } else { " ↑" }
-                                        } else {
-                                            ""
-                                        }
-                                    };
                                     view! {
-                                        <div style="max-height: calc(100vh - 200px); overflow-y: auto;">
-                                            <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
-                                                <thead style="position: sticky; top: 0; z-index: 10; background: var(--secondary-bg-color);">
-                                                    <tr style="border-bottom: 2px solid var(--border-color);">
-                                                        <th
-                                                            on:click=move |_| handle_column_sort("description")
-                                                            style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color); width: 40%;"
-                                                        >
-                                                            "Описание" {sort_indicator("description")}
-                                                        </th>
-                                                        <th
-                                                            on:click=move |_| handle_column_sort("field_id")
-                                                            style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color); width: 25%;"
-                                                        >
-                                                            "Идентификатор" {sort_indicator("field_id")}
-                                                        </th>
-                                                        <th
-                                                            on:click=move |_| handle_column_sort("value")
-                                                            style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color); width: 35%;"
-                                                        >
-                                                            "Значение" {sort_indicator("value")}
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <For
-                                                        each=move || field_rows.clone()
-                                                        key=|row| row.field_id.clone()
-                                                        children=move |row: FieldRow| {
+                                        <div style="width: 100%; overflow-x: auto;">
+                                            <Table attr:style="width: 100%;">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHeaderCell resizable=true min_width=300.0>
+                                                            "Описание"
+                                                            <span
+                                                                class={move || get_sort_class("description", &sort_by.get())}
+                                                                on:click=move |_| handle_column_sort("description")
+                                                            >
+                                                                {move || get_sort_indicator("description", &sort_by.get(), !sort_desc.get())}
+                                                            </span>
+                                                        </TableHeaderCell>
+                                                        <TableHeaderCell resizable=true min_width=200.0>
+                                                            "Идентификатор"
+                                                            <span
+                                                                class={move || get_sort_class("field_id", &sort_by.get())}
+                                                                on:click=move |_| handle_column_sort("field_id")
+                                                            >
+                                                                {move || get_sort_indicator("field_id", &sort_by.get(), !sort_desc.get())}
+                                                            </span>
+                                                        </TableHeaderCell>
+                                                        <TableHeaderCell resizable=true min_width=200.0>
+                                                            "Значение"
+                                                            <span
+                                                                class={move || get_sort_class("value", &sort_by.get())}
+                                                                on:click=move |_| handle_column_sort("value")
+                                                            >
+                                                                {move || get_sort_indicator("value", &sort_by.get(), !sort_desc.get())}
+                                                            </span>
+                                                        </TableHeaderCell>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {field_rows
+                                                        .into_iter()
+                                                        .map(|row| {
                                                             view! {
-                                                                <tr style="border-bottom: 1px solid var(--border-color);">
-                                                                    <td style="padding: 6px 8px;">{row.description}</td>
-                                                                    <td style="padding: 6px 8px; font-family: monospace; color: #666;">
-                                                                        {row.field_id}
-                                                                    </td>
-                                                                    <td style="padding: 6px 8px; font-weight: 500;">
-                                                                        {row.value}
-                                                                    </td>
-                                                                </tr>
+                                                                <TableRow>
+                                                                    <TableCell><TableCellLayout>{row.description}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>{row.field_id}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>{row.value}</TableCellLayout></TableCell>
+                                                                </TableRow>
                                                             }
-                                                        }
-                                                    />
-
-                                                </tbody>
-                                            </table>
+                                                            .into_view()
+                                                        })
+                                                        .collect_view()}
+                                                </TableBody>
+                                            </Table>
                                         </div>
                                     }
                                         .into_any()
@@ -632,8 +629,8 @@ pub fn WbFinanceReportDetail(
                                         })
                                         .unwrap_or_else(|| "No JSON data available".to_string());
                                     view! {
-                                        <div style="max-height: calc(100vh - 200px); overflow-y: auto;">
-                                            <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: var(--font-size-sm); font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">
+                                        <div>
+                                            <pre class="json-viewer__content">
                                                 {json_text}
                                             </pre>
                                         </div>
@@ -641,13 +638,19 @@ pub fn WbFinanceReportDetail(
                                         .into_any()
                                 } else if active_tab.get() == "links" {
                                     if links_loading.get() {
-                                        view! { <p>"Loading linked sales..."</p> }.into_any()
+                                        view! { <p class="text-muted">"Загрузка связанных документов..."</p> }.into_any()
                                     } else if let Some(err) = links_error.get() {
-                                        view! { <p style="color: red;">"Error loading links: " {err}</p> }.into_any()
+                                        view! {
+                                            <div class="warning-box warning-box--error">
+                                                <span class="warning-box__icon">"⚠"</span>
+                                                <span class="warning-box__text">"Error loading links: " {err}</span>
+                                            </div>
+                                        }
+                                            .into_any()
                                     } else {
                                         let sales = linked_sales.get();
                                         if sales.is_empty() {
-                                            view! { <p>"No linked sales documents found for this SRID."</p> }.into_any()
+                                            view! { <p class="text-muted">"Нет связанных документов продаж для данного SRID."</p> }.into_any()
                                         } else {
                                             let total_qty: f64 = sales.iter().map(|s| s.line.qty).sum();
                                             let total_total_price: f64 = sales.iter().filter_map(|s| s.line.total_price).sum();
@@ -657,72 +660,57 @@ pub fn WbFinanceReportDetail(
 
                                             view! {
                                                 <div>
-                                                    <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; display: flex; gap: 24px;">
-                                                        <span>"Found: " {sales.len()} " documents"</span>
-                                                        <span>"Total Qty: " {format!("{:.2}", total_qty)}</span>
-                                                        <span>"Total Price: " {format!("{:.2}", total_total_price)}</span>
-                                                        <span>"Payment: " {format!("{:.2}", total_payment)}</span>
-                                                        <span>"Amount: " {format!("{:.2}", total_amount)}</span>
-                                                        <span>"Finished: " {format!("{:.2}", total_finished)}</span>
+                                                    <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); font-weight: 600;">
+                                                        <span>"Найдено: " {sales.len()} " документов"</span>
+                                                        <span>"Total Qty: " {format_number(total_qty)}</span>
+                                                        <span>"Total Price: " {format_number(total_total_price)}</span>
+                                                        <span>"Payment: " {format_number(total_payment)}</span>
+                                                        <span>"Amount: " {format_number(total_amount)}</span>
+                                                        <span>"Finished: " {format_number(total_finished)}</span>
                                                     </div>
 
-                                                    <div style="max-height: calc(100vh - 280px); overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px;">
-                                                        <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
-                                                            <thead style="position: sticky; top: 0; z-index: 10; background: var(--secondary-bg-color);">
-                                                                <tr style="border-bottom: 2px solid var(--border-color);">
-                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Date"</th>
-                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Document No"</th>
-                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"NM ID"</th>
-                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Supplier Article"</th>
-                                                                    <th style="padding: 8px; text-align: left; background: var(--secondary-bg-color);">"Name"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Qty"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Total Price"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Payment"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Price Effective"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Amount Line"</th>
-                                                                    <th style="padding: 8px; text-align: right; background: var(--secondary-bg-color);">"Finished Price"</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                <For
-                                                                    each=move || sales.clone()
-                                                                    key=|sale| sale.id.clone()
-                                                                    children=move |sale: WbSalesLink| {
+                                                    <div style="width: 100%; overflow-x: auto;">
+                                                        <Table attr:style="width: 100%;">
+                                                            <TableHeader>
+                                                                <TableRow>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Date"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=120.0>"Document No"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=80.0>"NM ID"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=120.0>"Supplier Article"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=200.0>"Name"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=70.0>"Qty"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Total Price"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Payment"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Price Effective"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Amount Line"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=true min_width=100.0>"Finished Price"</TableHeaderCell>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {sales
+                                                                    .into_iter()
+                                                                    .map(|sale| {
                                                                         let sale_id = sale.id.clone();
                                                                         view! {
-                                                                            <tr
-                                                                                on:click=move |_| {
-                                                                                    set_selected_sale_id.set(Some(sale_id.clone()))
-                                                                                }
-                                                                                style="border-bottom: 1px solid var(--border-color); cursor: pointer; hover:background: var(--hover-bg-color);"
-                                                                            >
-                                                                                <td style="padding: 6px 8px;">{sale.state.sale_dt.clone()}</td>
-                                                                                <td style="padding: 6px 8px; font-size: 11px;">{sale.header.document_no.clone()}</td>
-                                                                                <td style="padding: 6px 8px;">{sale.line.nm_id}</td>
-                                                                                <td style="padding: 6px 8px;">{sale.line.supplier_article.clone()}</td>
-                                                                                <td style="padding: 6px 8px;">{sale.line.name.clone()}</td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">{format!("{:.2}", sale.line.qty)}</td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">
-                                                                                    {sale.line.total_price.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
-                                                                                </td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">
-                                                                                    {sale.line.payment_sale_amount.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
-                                                                                </td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">
-                                                                                    {sale.line.price_effective.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
-                                                                                </td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">
-                                                                                    {sale.line.amount_line.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
-                                                                                </td>
-                                                                                <td style="padding: 6px 8px; text-align: right;">
-                                                                                    {sale.line.finished_price.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string())}
-                                                                                </td>
-                                                                            </tr>
+                                                                            <TableRow on:click=move |_| set_selected_sale_id.set(Some(sale_id.clone()))>
+                                                                                <TableCell><TableCellLayout>{sale.state.sale_dt}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout>{sale.header.document_no}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout>{sale.line.nm_id}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout truncate=true>{sale.line.supplier_article}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout truncate=true>{sale.line.name}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{format_number(sale.line.qty)}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.total_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.payment_sale_amount.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.price_effective.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.amount_line.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.finished_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                            </TableRow>
                                                                         }
-                                                                    }
-                                                                />
-                                                            </tbody>
-                                                        </table>
+                                                                        .into_view()
+                                                                    })
+                                                                    .collect_view()}
+                                                            </TableBody>
+                                                        </Table>
                                                     </div>
                                                 </div>
                                             }.into_any()
@@ -746,8 +734,8 @@ pub fn WbFinanceReportDetail(
             {move || {
                 if let Some(sale_id) = selected_sale_id.get() {
                     view! {
-                        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
-                            <div style="background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 1200px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+                        <div class="modal-overlay" style="z-index: 2000;">
+                            <div class="modal modal-content-wide">
                                 <WbSalesDetail
                                     id=sale_id.clone()
                                     on_close=move || set_selected_sale_id.set(None)

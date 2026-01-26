@@ -32,6 +32,9 @@ pub struct WbSalesDetailsVm {
 
     pub marketplace_product_info: RwSignal<Option<MarketplaceProductInfo>>,
     pub nomenclature_info: RwSignal<Option<NomenclatureInfo>>,
+    pub connection_info: RwSignal<Option<ConnectionInfo>>,
+    pub organization_info: RwSignal<Option<OrganizationInfo>>,
+    pub marketplace_info: RwSignal<Option<MarketplaceInfo>>,
 
     // === UI State ===
     pub active_tab: RwSignal<&'static str>,
@@ -62,6 +65,9 @@ impl WbSalesDetailsVm {
 
             marketplace_product_info: RwSignal::new(None),
             nomenclature_info: RwSignal::new(None),
+            connection_info: RwSignal::new(None),
+            organization_info: RwSignal::new(None),
+            marketplace_info: RwSignal::new(None),
 
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
@@ -129,9 +135,16 @@ impl WbSalesDetailsVm {
         spawn_local(async move {
             match fetch_by_id(&id).await {
                 Ok(data) => {
+                    // Set sale first (needed for finance_reports loading)
+                    vm.sale.set(Some(data.clone()));
+                    
                     // Load related data (marketplace product, nomenclature)
                     vm.load_related_data(&data);
-                    vm.sale.set(Some(data));
+                    
+                    // Load data for badges immediately (projections and finance reports)
+                    vm.load_projections();
+                    vm.load_finance_reports();
+                    
                     vm.loading.set(false);
                 }
                 Err(e) => {
@@ -169,6 +182,33 @@ impl WbSalesDetailsVm {
         } else {
             self.nomenclature_info.set(None);
         }
+
+        // Load connection info
+        let conn_id = data.header.connection_id.clone();
+        let conn_info = self.connection_info;
+        spawn_local(async move {
+            if let Ok(info) = fetch_connection(&conn_id).await {
+                conn_info.set(Some(info));
+            }
+        });
+
+        // Load organization info
+        let org_id = data.header.organization_id.clone();
+        let org_info = self.organization_info;
+        spawn_local(async move {
+            if let Ok(info) = fetch_organization(&org_id).await {
+                org_info.set(Some(info));
+            }
+        });
+
+        // Load marketplace info
+        let mp_id = data.header.marketplace_id.clone();
+        let mp_info = self.marketplace_info;
+        spawn_local(async move {
+            if let Ok(info) = fetch_marketplace(&mp_id).await {
+                mp_info.set(Some(info));
+            }
+        });
     }
 
     /// Load raw JSON (lazy, for "json" tab)

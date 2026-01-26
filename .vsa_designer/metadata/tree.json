@@ -193,6 +193,30 @@
                       "children": []
                     },
                     {
+                      "name": "crates/backend/src/api/handlers/a017_llm_agent.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a018_llm_chat.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/api/handlers/a019_llm_artifact.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
                       "name": "crates/backend/src/api/handlers/d400_monthly_summary.rs",
                       "kind": "file",
                       "origins": [
@@ -3277,6 +3301,62 @@
                       "children": []
                     },
                     {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/tabs/general.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/tabs/json.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/tabs/lines.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/tabs/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a016_ym_returns/ui/details/tabs/projections.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
                       "name": "crates/frontend/src/domain/a016_ym_returns/ui/list/mod.rs",
                       "kind": "file",
                       "origins": [
@@ -3303,6 +3383,3809 @@
                   ]
                 }
               ]
+            },
+            {
+              "name": "a017_llm_agent",
+              "kind": "domain_unit",
+              "origins": [
+                "backend",
+                "contracts",
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "entity",
+                  "kind": "entity",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "$schema: ../../../schemas/metadata.schema.json",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "schema_version: 1.0",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_type: aggregate",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_name: LlmAgent",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_index: a017",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "collection_name: llm_agent",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "table_name: a017_llm_agent",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "kind": "ui",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "element_name: Агент LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "element_name_en: LLM Agent",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name: Агенты LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name_en: LLM Agents",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "icon: robot",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ai",
+                  "kind": "ai",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "description: Настройки подключения к провайдерам LLM (OpenAI, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и систем…",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "questions (4)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "Какие LLM агенты настроены?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как добавить OpenAI агента?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Какие параметры можно настроить для агента?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как изменить температуру модели?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "related (2)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "a018_llm_chat",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "a019_llm_artifact",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fields (13)",
+                  "kind": "fields",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "id: LlmAgentId",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "code: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Код",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Code",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 50",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "description: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Наименование",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Name",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 255",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.min_length: 3",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "comment: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Комментарий",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Comment",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 1000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "provider_type: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Провайдер",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Provider",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "api_endpoint: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: API Endpoint",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: API Endpoint",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 500",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.pattern: ^https?://.+",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "api_key: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: API Ключ",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: API Key",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 500",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "model_name: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Модель",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Model",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 100",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "available_models: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Доступные модели",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Available Models",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "temperature: f64",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Temperature",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Temperature",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "max_tokens: i32",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Max Tokens",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Max Tokens",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "system_prompt: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Системный промпт",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: System Prompt",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 5000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_primary: bool",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Основной",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Primary",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend",
+                    "contracts",
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/domain/a017_llm_agent/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a017_llm_agent/repository.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a017_llm_agent/service.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a017_llm_agent/aggregate.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a017_llm_agent/metadata.json",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a017_llm_agent/metadata_gen.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a017_llm_agent/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/details/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/details/view.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/details/view_model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/list/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a017_llm_agent/ui/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ],
+              "data": {
+                "$schema": "../../../schemas/metadata.schema.json",
+                "ai": {
+                  "description": "Настройки подключения к провайдерам LLM (OpenAI, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и системный промпт. Используется для создания чатов и выполнения запросов к языковым моделям.",
+                  "questions": [
+                    "Какие LLM агенты настроены?",
+                    "Как добавить OpenAI агента?",
+                    "Какие параметры можно настроить для агента?",
+                    "Как изменить температуру модели?"
+                  ],
+                  "related": [
+                    "a018_llm_chat",
+                    "a019_llm_artifact"
+                  ]
+                },
+                "collection_name": "llm_agent",
+                "entity_index": "a017",
+                "entity_name": "LlmAgent",
+                "entity_type": "aggregate",
+                "fields": [
+                  {
+                    "field_type": "primitive",
+                    "name": "id",
+                    "rust_type": "LlmAgentId",
+                    "source": "base",
+                    "ui": {
+                      "label": "ID",
+                      "label_en": "ID",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "code",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 150,
+                      "hint": "Уникальный код агента",
+                      "label": "Код",
+                      "label_en": "Code",
+                      "placeholder": "GPT4O-MAIN",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 50,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "description",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 250,
+                      "hint": "Описательное название агента",
+                      "label": "Наименование",
+                      "label_en": "Name",
+                      "placeholder": "GPT-4o основной агент",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 255,
+                      "min_length": 3,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "comment",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "hint": "Произвольный комментарий",
+                      "label": "Комментарий",
+                      "label_en": "Comment",
+                      "placeholder": "Используется для анализа продаж",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "textarea"
+                    },
+                    "validation": {
+                      "max_length": 1000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Поддерживаемые провайдеры: OpenAI (GPT-4, GPT-4o), Anthropic (Claude), Ollama (локальные модели)",
+                    "field_type": "primitive",
+                    "name": "provider_type",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 120,
+                      "hint": "Тип провайдера LLM",
+                      "label": "Провайдер",
+                      "label_en": "Provider",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "select"
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "OpenAI: https://api.openai.com/v1, Anthropic: https://api.anthropic.com, Ollama: http://localhost:11434",
+                    "field_type": "primitive",
+                    "name": "api_endpoint",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 300,
+                      "hint": "URL эндпоинта API провайдера",
+                      "label": "API Endpoint",
+                      "label_en": "API Endpoint",
+                      "placeholder": "https://api.openai.com/v1",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "custom_error": "URL должен начинаться с http:// или https://",
+                      "max_length": 500,
+                      "pattern": "^https?://.+",
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Хранится в зашифрованном виде. Для OpenAI формат: sk-...",
+                    "field_type": "primitive",
+                    "name": "api_key",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "API ключ для аутентификации",
+                      "label": "API Ключ",
+                      "label_en": "API Key",
+                      "placeholder": "sk-...",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "password"
+                    },
+                    "validation": {
+                      "max_length": 500,
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral",
+                    "field_type": "primitive",
+                    "name": "model_name",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 150,
+                      "hint": "Название модели",
+                      "label": "Модель",
+                      "label_en": "Model",
+                      "placeholder": "gpt-4o",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 100,
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "JSON массив объектов с полями: id, created, owned_by. Загружается из /v1/models API провайдера.",
+                    "field_type": "primitive",
+                    "name": "available_models",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "JSON список моделей из API",
+                      "label": "Доступные модели",
+                      "label_en": "Available Models",
+                      "visible_in_form": false,
+                      "visible_in_list": false,
+                      "widget": "textarea"
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "0.0 - детерминированные ответы, 1.0 - сбалансированно, 2.0 - максимально креативно",
+                    "field_type": "primitive",
+                    "name": "temperature",
+                    "rust_type": "f64",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "Креативность ответов (0.0-2.0)",
+                      "label": "Temperature",
+                      "label_en": "Temperature",
+                      "placeholder": "0.7",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max": 2.0,
+                      "min": 0.0,
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "GPT-4o поддерживает до 128k токенов, GPT-3.5 - до 16k",
+                    "field_type": "primitive",
+                    "name": "max_tokens",
+                    "rust_type": "i32",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "Максимальная длина ответа",
+                      "label": "Max Tokens",
+                      "label_en": "Max Tokens",
+                      "placeholder": "4096",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max": 128000,
+                      "min": 256,
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Определяет роль и поведение агента. Например: 'Ты эксперт по SQL и аналитике маркетплейсов. Отвечай кратко и точно.'",
+                    "field_type": "primitive",
+                    "name": "system_prompt",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "Базовая инструкция для агента",
+                      "label": "Системный промпт",
+                      "label_en": "System Prompt",
+                      "placeholder": "Ты аналитик данных маркетплейсов...",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "textarea"
+                    },
+                    "validation": {
+                      "max_length": 5000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Только один агент может быть основным. При установке флага автоматически снимается с других агентов.",
+                    "field_type": "primitive",
+                    "name": "is_primary",
+                    "rust_type": "bool",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 100,
+                      "hint": "Использовать по умолчанию",
+                      "label": "Основной",
+                      "label_en": "Primary",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "checkbox"
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  }
+                ],
+                "schema_version": "1.0",
+                "table_name": "a017_llm_agent",
+                "ui": {
+                  "element_name": "Агент LLM",
+                  "element_name_en": "LLM Agent",
+                  "icon": "robot",
+                  "list_name": "Агенты LLM",
+                  "list_name_en": "LLM Agents"
+                }
+              }
+            },
+            {
+              "name": "a018_llm_chat",
+              "kind": "domain_unit",
+              "origins": [
+                "backend",
+                "contracts",
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "entity",
+                  "kind": "entity",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "$schema: ../../../schemas/metadata.schema.json",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "schema_version: 1.0",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_type: aggregate",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_name: LlmChat",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_index: a018",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "collection_name: llm_chat",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "table_name: a018_llm_chat",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "kind": "ui",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "element_name: Чат LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "element_name_en: LLM Chat",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name: Чаты LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name_en: LLM Chats",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "icon: message-square",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ai",
+                  "kind": "ai",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "description: Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат …",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "questions (4)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "Какие чаты существуют?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как создать новый чат?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как посмотреть историю сообщений чата?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Какой агент используется в чате?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "related (2)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "a017_llm_agent",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "a019_llm_artifact",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fields (10)",
+                  "kind": "fields",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "id: LlmChatId",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "code: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Код",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Code",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 50",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "description: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Наименование",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Name",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 500",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.min_length: 3",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "comment: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Комментарий",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Comment",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 1000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "agent_id: LlmAgentId",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: reference",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: custom",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Агент LLM",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: LLM Agent",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "model_name: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: custom",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Модель по умолчанию",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Default Model",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 100",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "created_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Создан",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Created",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "updated_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Обновлён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Updated",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_deleted: bool",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Удалён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Deleted",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "version: i32",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Версия",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Version",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend",
+                    "contracts",
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/domain/a018_llm_chat/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a018_llm_chat/repository.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a018_llm_chat/service.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a018_llm_chat/aggregate.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a018_llm_chat/metadata.json",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a018_llm_chat/metadata_gen.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a018_llm_chat/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/details/artifact_card.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/details/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/details/view.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/details/view_model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/list/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a018_llm_chat/ui/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ],
+              "data": {
+                "$schema": "../../../schemas/metadata.schema.json",
+                "ai": {
+                  "description": "Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат связан с конкретным агентом (a017_llm_agent).",
+                  "questions": [
+                    "Какие чаты существуют?",
+                    "Как создать новый чат?",
+                    "Как посмотреть историю сообщений чата?",
+                    "Какой агент используется в чате?"
+                  ],
+                  "related": [
+                    "a017_llm_agent",
+                    "a019_llm_artifact"
+                  ]
+                },
+                "collection_name": "llm_chat",
+                "entity_index": "a018",
+                "entity_name": "LlmChat",
+                "entity_type": "aggregate",
+                "fields": [
+                  {
+                    "field_type": "primitive",
+                    "name": "id",
+                    "rust_type": "LlmChatId",
+                    "source": "base",
+                    "ui": {
+                      "label": "ID",
+                      "label_en": "ID",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "code",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 150,
+                      "hint": "Уникальный код чата",
+                      "label": "Код",
+                      "label_en": "Code",
+                      "placeholder": "CHAT-001",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 50,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "description",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 300,
+                      "hint": "Описательное название чата",
+                      "label": "Наименование",
+                      "label_en": "Name",
+                      "placeholder": "Анализ продаж за январь",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 500,
+                      "min_length": 3,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "comment",
+                    "rust_type": "Option<String>",
+                    "source": "base",
+                    "ui": {
+                      "hint": "Произвольный комментарий",
+                      "input_type": "textarea",
+                      "label": "Комментарий",
+                      "label_en": "Comment",
+                      "placeholder": "Дополнительная информация",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max_length": 1000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Ссылка на агента LLM (a017_llm_agent), который используется для генерации ответов в этом чате",
+                    "field_type": "reference",
+                    "name": "agent_id",
+                    "reference": {
+                      "display_field": "description",
+                      "entity": "a017_llm_agent"
+                    },
+                    "rust_type": "LlmAgentId",
+                    "source": "custom",
+                    "ui": {
+                      "column_width": 200,
+                      "hint": "Какой агент используется для этого чата",
+                      "input_type": "select",
+                      "label": "Агент LLM",
+                      "label_en": "LLM Agent",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Название модели LLM (например, gpt-4o, gpt-4-turbo), которая будет использоваться для генерации ответов, если не переопределена в конкретном сообщении",
+                    "field_type": "primitive",
+                    "name": "model_name",
+                    "rust_type": "String",
+                    "source": "custom",
+                    "ui": {
+                      "column_width": 150,
+                      "hint": "Модель LLM, используемая по умолчанию для сообщений этого чата",
+                      "label": "Модель по умолчанию",
+                      "label_en": "Default Model",
+                      "placeholder": "gpt-4o",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 100,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "created_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "column_width": 180,
+                      "format": "datetime",
+                      "label": "Создан",
+                      "label_en": "Created",
+                      "visible_in_form": false,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "updated_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "format": "datetime",
+                      "label": "Обновлён",
+                      "label_en": "Updated",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "is_deleted",
+                    "rust_type": "bool",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Удалён",
+                      "label_en": "Deleted",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "version",
+                    "rust_type": "i32",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Версия",
+                      "label_en": "Version",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  }
+                ],
+                "schema_version": "1.0",
+                "table_name": "a018_llm_chat",
+                "ui": {
+                  "element_name": "Чат LLM",
+                  "element_name_en": "LLM Chat",
+                  "icon": "message-square",
+                  "list_name": "Чаты LLM",
+                  "list_name_en": "LLM Chats"
+                }
+              }
+            },
+            {
+              "name": "a019_llm_artifact",
+              "kind": "domain_unit",
+              "origins": [
+                "backend",
+                "contracts",
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "entity",
+                  "kind": "entity",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "$schema: ../../../schemas/metadata.schema.json",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "schema_version: 1.0",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_type: aggregate",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_name: LlmArtifact",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_index: a019",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "collection_name: llm_artifact",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "table_name: a019_llm_artifact",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "kind": "ui",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "element_name: Артефакт LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "element_name_en: LLM Artifact",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name: Артефакты LLM",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name_en: LLM Artifacts",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "icon: file-code",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ai",
+                  "kind": "ai",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "description: SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, соде…",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "questions (4)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "Какие артефакты созданы в чате?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как создать новый SQL артефакт?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как посмотреть историю артефактов?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Какой агент создал артефакт?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "related (2)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "a017_llm_agent",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "a018_llm_chat",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fields (17)",
+                  "kind": "fields",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "id: LlmArtifactId",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "code: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Код",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Code",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 50",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "description: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Наименование",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Name",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 500",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.min_length: 3",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "comment: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Комментарий",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Comment",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 2000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "chat_id: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Чат",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Chat",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "agent_id: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Агент LLM",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: LLM Agent",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "artifact_type: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Тип артефакта",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Artifact Type",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "status: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Статус",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Status",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "sql_query: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: SQL Запрос",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: SQL Query",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 50000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.min_length: 10",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "query_params: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Параметры запроса",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Query Parameters",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 10000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "visualization_config: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Конфигурация визуализации",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Visualization Config",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 10000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "last_executed_at: Option<DateTime<Utc>>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Последнее выполнение",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Last Executed",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "execution_count: i32",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Кол-во выполнений",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Execution Count",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "created_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Создан",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Created",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "updated_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Обновлён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Updated",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_deleted: bool",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Удалён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Deleted",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "version: i32",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Версия",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Version",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend",
+                    "contracts",
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/domain/a019_llm_artifact/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a019_llm_artifact/repository.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a019_llm_artifact/service.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a019_llm_artifact/aggregate.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a019_llm_artifact/metadata.json",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a019_llm_artifact/metadata_gen.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a019_llm_artifact/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/details/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/details/view.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/details/view_model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/list/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a019_llm_artifact/ui/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ],
+              "data": {
+                "$schema": "../../../schemas/metadata.schema.json",
+                "ai": {
+                  "description": "SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, содержит SQL запрос, параметры и конфигурацию визуализации.",
+                  "questions": [
+                    "Какие артефакты созданы в чате?",
+                    "Как создать новый SQL артефакт?",
+                    "Как посмотреть историю артефактов?",
+                    "Какой агент создал артефакт?"
+                  ],
+                  "related": [
+                    "a017_llm_agent",
+                    "a018_llm_chat"
+                  ]
+                },
+                "collection_name": "llm_artifact",
+                "entity_index": "a019",
+                "entity_name": "LlmArtifact",
+                "entity_type": "aggregate",
+                "fields": [
+                  {
+                    "field_type": "primitive",
+                    "name": "id",
+                    "rust_type": "LlmArtifactId",
+                    "source": "base",
+                    "ui": {
+                      "label": "ID",
+                      "label_en": "ID",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "code",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 150,
+                      "hint": "Уникальный код артефакта",
+                      "label": "Код",
+                      "label_en": "Code",
+                      "placeholder": "ARTIFACT-001",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 50,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "description",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 300,
+                      "hint": "Краткое описательное название артефакта",
+                      "label": "Наименование",
+                      "label_en": "Name",
+                      "placeholder": "Отчет по продажам WB за январь",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 500,
+                      "min_length": 3,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "comment",
+                    "rust_type": "Option<String>",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 250,
+                      "hint": "Подробное описание, отличия, примечания",
+                      "input_type": "textarea",
+                      "label": "Комментарий",
+                      "label_en": "Comment",
+                      "placeholder": "Версия с группировкой по категориям и фильтром по сумме > 10000",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "max_length": 2000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Ссылка на чат LLM (a018_llm_chat), в котором был создан этот артефакт",
+                    "field_type": "primitive",
+                    "name": "chat_id",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 200,
+                      "hint": "Чат, в котором был создан артефакт",
+                      "input_type": "select",
+                      "label": "Чат",
+                      "label_en": "Chat",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Ссылка на агента LLM (a017_llm_agent), который создал этот артефакт",
+                    "field_type": "primitive",
+                    "name": "agent_id",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 200,
+                      "hint": "Агент, который создал артефакт",
+                      "input_type": "select",
+                      "label": "Агент LLM",
+                      "label_en": "LLM Agent",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Тип артефакта. sql_query - SQL запрос для получения данных",
+                    "field_type": "primitive",
+                    "name": "artifact_type",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 120,
+                      "hint": "Тип артефакта (SQL запрос, отчет, дашборд и т.д.)",
+                      "input_type": "select",
+                      "label": "Тип артефакта",
+                      "label_en": "Artifact Type",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Статус артефакта: draft (черновик), active (используется), deprecated (устарел), failed (ошибка)",
+                    "field_type": "primitive",
+                    "name": "status",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 120,
+                      "hint": "Статус артефакта",
+                      "input_type": "select",
+                      "label": "Статус",
+                      "label_en": "Status",
+                      "visible_in_form": true,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "SQL запрос, который будет выполняться для получения данных. Может содержать параметры в формате {{parameter_name}}",
+                    "field_type": "primitive",
+                    "name": "sql_query",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "SQL запрос для получения данных",
+                      "input_type": "textarea",
+                      "label": "SQL Запрос",
+                      "label_en": "SQL Query",
+                      "placeholder": "SELECT * FROM orders WHERE ...",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max_length": 50000,
+                      "min_length": 10,
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "JSON объект с параметрами для подстановки в SQL запрос. Например: {\"start_date\": \"2024-01-01\", \"marketplace_id\": \"WB\"}",
+                    "field_type": "primitive",
+                    "name": "query_params",
+                    "rust_type": "Option<String>",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "JSON с параметрами для подстановки в SQL",
+                      "input_type": "textarea",
+                      "label": "Параметры запроса",
+                      "label_en": "Query Parameters",
+                      "placeholder": "{\"date_from\": \"2024-01-01\", \"date_to\": \"2024-01-31\"}",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max_length": 10000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "JSON конфигурация для визуализации результатов SQL запроса. Определяет тип графика, оси, цвета и т.д.",
+                    "field_type": "primitive",
+                    "name": "visualization_config",
+                    "rust_type": "Option<String>",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "JSON конфигурация для визуализации результатов",
+                      "input_type": "textarea",
+                      "label": "Конфигурация визуализации",
+                      "label_en": "Visualization Config",
+                      "placeholder": "{\"chart_type\": \"bar\", \"x_axis\": \"date\", \"y_axis\": \"revenue\"}",
+                      "visible_in_form": true,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "max_length": 10000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Дата и время последнего выполнения SQL запроса",
+                    "field_type": "primitive",
+                    "name": "last_executed_at",
+                    "rust_type": "Option<DateTime<Utc>>",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 180,
+                      "format": "datetime",
+                      "label": "Последнее выполнение",
+                      "label_en": "Last Executed",
+                      "visible_in_form": false,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Количество раз, которое SQL запрос был выполнен",
+                    "field_type": "primitive",
+                    "name": "execution_count",
+                    "rust_type": "i32",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 120,
+                      "label": "Кол-во выполнений",
+                      "label_en": "Execution Count",
+                      "visible_in_form": false,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "min": 0,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "created_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "column_width": 180,
+                      "format": "datetime",
+                      "label": "Создан",
+                      "label_en": "Created",
+                      "visible_in_form": false,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "updated_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "format": "datetime",
+                      "label": "Обновлён",
+                      "label_en": "Updated",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "is_deleted",
+                    "rust_type": "bool",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Удалён",
+                      "label_en": "Deleted",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "version",
+                    "rust_type": "i32",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Версия",
+                      "label_en": "Version",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  }
+                ],
+                "schema_version": "1.0",
+                "table_name": "a019_llm_artifact",
+                "ui": {
+                  "element_name": "Артефакт LLM",
+                  "element_name_en": "LLM Artifact",
+                  "icon": "file-code",
+                  "list_name": "Артефакты LLM",
+                  "list_name_en": "LLM Artifacts"
+                }
+              }
             },
             {
               "name": "common",
@@ -3980,6 +7863,14 @@
                     },
                     {
                       "name": "crates/frontend/src/projections/p900_mp_sales_register/ui/list/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/projections/p900_mp_sales_register/ui/list/state.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"
@@ -4978,6 +8869,48 @@
                       "kind": "file",
                       "origins": [
                         "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "llm",
+              "kind": "domain_unit",
+              "origins": [
+                "backend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/shared/llm/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/shared/llm/openai_provider.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/shared/llm/types.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
                       ],
                       "children": []
                     }

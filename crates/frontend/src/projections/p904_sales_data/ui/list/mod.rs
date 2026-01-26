@@ -4,42 +4,13 @@ use crate::shared::components::month_selector::MonthSelector;
 use crate::shared::list_utils::format_number;
 use chrono::Datelike;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::projections::p904_sales_data::dto::SalesDataDto;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SalesDataDto {
-    pub id: String,
-    pub registrator_ref: String,
-    pub registrator_type: String,
-    pub date: String,
-    pub connection_mp_ref: String,
-    pub nomenclature_ref: String,
-    pub marketplace_product_ref: String,
-    pub customer_in: f64,
-    pub customer_out: f64,
-    pub coinvest_in: f64,
-    pub commission_out: f64,
-    pub acquiring_out: f64,
-    pub penalty_out: f64,
-    pub logistics_out: f64,
-    pub seller_out: f64,
-    pub price_full: f64,
-    pub price_list: f64,
-    pub price_return: f64,
-    pub commission_percent: f64,
-    pub coinvest_persent: f64,
-    pub total: f64,
-    pub document_no: String,
-    pub article: String,
-    pub posted_at: String,
-    pub connection_mp_name: Option<String>,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 enum SortColumn {

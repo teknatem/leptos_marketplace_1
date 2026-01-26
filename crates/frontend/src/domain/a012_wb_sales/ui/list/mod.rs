@@ -229,6 +229,9 @@ pub fn WbSalesList() -> impl IntoView {
     // State for save settings notification
     let (save_notification, set_save_notification) = signal(None::<String>);
 
+    // Derived signal for selected items count (for button reactivity)
+    let selected_count = Signal::derive(move || state.with(|s| s.selected_ids.len()));
+
     const FORM_KEY: &str = "a012_wb_sales";
 
     let load_sales = move || {
@@ -365,6 +368,12 @@ pub fn WbSalesList() -> impl IntoView {
                                 if !org_id.is_empty() {
                                     s.selected_organization_id = Some(org_id.to_string());
                                 }
+                            }
+                            if let Some(show_op) = settings.get("show_operation_date").and_then(|v| v.as_bool()) {
+                                s.show_operation_date = show_op;
+                            }
+                            if let Some(show_mp) = settings.get("show_marketplace_article").and_then(|v| v.as_bool()) {
+                                s.show_marketplace_article = show_mp;
                             }
                         });
                         log!("Loaded saved settings for A012");
@@ -669,6 +678,8 @@ pub fn WbSalesList() -> impl IntoView {
             "date_from": state.with(|s| s.date_from.clone()),
             "date_to": state.with(|s| s.date_to.clone()),
             "selected_organization_id": state.with(|s| s.selected_organization_id.clone()).unwrap_or_default(),
+            "show_operation_date": state.with(|s| s.show_operation_date),
+            "show_marketplace_article": state.with(|s| s.show_marketplace_article),
         });
 
         spawn_local(async move {
@@ -712,6 +723,12 @@ pub fn WbSalesList() -> impl IntoView {
                             } else {
                                 s.selected_organization_id = None;
                             }
+                        }
+                        if let Some(show_op) = settings.get("show_operation_date").and_then(|v| v.as_bool()) {
+                            s.show_operation_date = show_op;
+                        }
+                        if let Some(show_mp) = settings.get("show_marketplace_article").and_then(|v| v.as_bool()) {
+                            s.show_marketplace_article = show_mp;
                         }
                     });
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
@@ -766,18 +783,18 @@ pub fn WbSalesList() -> impl IntoView {
                         <UiButton
                             variant="primary".to_string()
                             on_click=Callback::new(post_selected)
-                            disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
+                            disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
                         >
                             {icon("check")}
-                            {move || format!("Post ({})", state.get().selected_ids.len())}
+                            {move || format!("Post ({})", selected_count.get())}
                         </UiButton>
                         <UiButton
                             variant="secondary".to_string()
                             on_click=Callback::new(unpost_selected)
-                            disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
+                            disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
                         >
                             {icon("x")}
-                            {move || format!("Unpost ({})", state.get().selected_ids.len())}
+                            {move || format!("Unpost ({})", selected_count.get())}
                         </UiButton>
                         <UiButton
                             variant="secondary".to_string()
@@ -787,7 +804,7 @@ pub fn WbSalesList() -> impl IntoView {
                                     log!("Failed to export: {}", e);
                                 }
                             })
-                            disabled=loading.get() || state.get().sales.is_empty()
+                            disabled=Signal::derive(move || loading.get() || state.get().sales.is_empty())
                         >
                             {icon("download")}
                             "Excel"
@@ -931,6 +948,36 @@ pub fn WbSalesList() -> impl IntoView {
                                     <Input value=search_srid placeholder="Document №" />
                                 </Flex>
                             </div>
+
+                            <div style="width: 200px; padding-left: 20px; border-left: 1px solid var(--colorNeutralStroke2);">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Колонки:"</Label>
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                            <input
+                                                type="checkbox"
+                                                style="cursor: pointer;"
+                                                prop:checked=move || state.with(|s| s.show_operation_date)
+                                                on:change=move |_| {
+                                                    state.update(|s| s.show_operation_date = !s.show_operation_date);
+                                                }
+                                            />
+                                            <span style="font-size: 13px;">"Операция"</span>
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                            <input
+                                                type="checkbox"
+                                                style="cursor: pointer;"
+                                                prop:checked=move || state.with(|s| s.show_marketplace_article)
+                                                on:change=move |_| {
+                                                    state.update(|s| s.show_marketplace_article = !s.show_marketplace_article);
+                                                }
+                                            />
+                                            <span style="font-size: 13px;">"Арт. МП"</span>
+                                        </label>
+                                    </div>
+                                </Flex>
+                            </div>
                         </Flex>
                     </div>
                 </div>
@@ -1006,7 +1053,7 @@ pub fn WbSalesList() -> impl IntoView {
                                     <thaw::Button
                                         appearance=ButtonAppearance::Subtle
                                         on_click=move |_| state.update(|s| s.selected_ids.clear())
-                                        disabled=state.get().selected_ids.is_empty() || posting_in_progress.get()
+                                        disabled=selected_count == 0 || posting_in_progress.get()
                                     >
                                         {icon("x")}
                                         "Clear"
@@ -1044,8 +1091,6 @@ pub fn WbSalesList() -> impl IntoView {
                                 </div>
                             }.into_any();
                         }
-
-                        let items = get_items();
 
                         view! {
                             // Only horizontal scrolling here; vertical scrolling is handled by `.page`
@@ -1090,7 +1135,12 @@ pub fn WbSalesList() -> impl IntoView {
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=85.0 class="resizable">
+                                        <TableHeaderCell
+                                            resizable=false
+                                            min_width=85.0
+                                            class="resizable"
+                                            attr:style=move || if state.with(|s| s.show_operation_date) { "" } else { "display: none;" }
+                                        >
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("operation_date")>
                                                 "Операция"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "operation_date"))>
@@ -1114,7 +1164,12 @@ pub fn WbSalesList() -> impl IntoView {
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                        <TableHeaderCell
+                                            resizable=false
+                                            min_width=90.0
+                                            class="resizable"
+                                            attr:style=move || if state.with(|s| s.show_marketplace_article) { "" } else { "display: none;" }
+                                        >
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("marketplace_article")>
                                                 "Арт. МП"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "marketplace_article"))>
@@ -1190,30 +1245,33 @@ pub fn WbSalesList() -> impl IntoView {
                                     </TableHeader>
 
                                     <TableBody>
-                                        {items.into_iter().map(|item| {
-                                            let id = item.id.clone();
-                                            let doc_no = item.document_no.clone();
-                                            let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
-                                            let date = format_date(&item.sale_date);
-                                            let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
-                                            let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
-                                            let supplier_art = item.supplier_article;
-                                            let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
-                                            let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
-                                            let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
-                                            let name = item.name;
-                                            let qty = format!("{:.0}", item.qty);
-                                            let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                            let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                            let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                            let event = item.event_type;
+                                        <For
+                                            each=move || state.with(|s| s.sales.clone())
+                                            key=|item| item.id.clone()
+                                            children=move |item| {
+                                                let id = item.id.clone();
+                                                let doc_no = item.document_no.clone();
+                                                let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
+                                                let date = format_date(&item.sale_date);
+                                                let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
+                                                let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
+                                                let supplier_art = item.supplier_article;
+                                                let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
+                                                let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
+                                                let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
+                                                let name = item.name;
+                                                let qty = format!("{:.0}", item.qty);
+                                                let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                                let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                                let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                                let event = item.event_type;
 
-                                            let id_check = id.clone();
-                                            let id_toggle = id.clone();
-                                            let id_for_open = id.clone();
-                                            let doc_for_open = doc_no.clone();
+                                                let id_check = id.clone();
+                                                let id_toggle = id.clone();
+                                                let id_for_open = id.clone();
+                                                let doc_for_open = doc_no.clone();
 
-                                            view! {
+                                                view! {
                                                 <TableRow>
                                                     <TableCell class="fixed-checkbox-column">
                                                         <input
@@ -1240,10 +1298,14 @@ pub fn WbSalesList() -> impl IntoView {
                                                     </TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{sale_id}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout>{date}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{op_date}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style=move || if state.with(|s| s.show_operation_date) { "" } else { "display: none;" }>
+                                                        <TableCellLayout>{op_date}</TableCellLayout>
+                                                    </TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{org_name}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{supplier_art}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout truncate=true>{mp_art}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style=move || if state.with(|s| s.show_marketplace_article) { "" } else { "display: none;" }>
+                                                        <TableCellLayout truncate=true>{mp_art}</TableCellLayout>
+                                                    </TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{nom_art}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{nom_code}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{name}</TableCellLayout></TableCell>
@@ -1254,7 +1316,8 @@ pub fn WbSalesList() -> impl IntoView {
                                                     <TableCell><TableCellLayout>{event}</TableCellLayout></TableCell>
                                                 </TableRow>
                                             }
-                                        }).collect::<Vec<_>>()}
+                                            }
+                                        />
                                     </TableBody>
                                 </Table>
                             </div>

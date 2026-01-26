@@ -63,6 +63,7 @@ impl MarketplaceDetailsViewModel {
                 logo_path: aggregate.logo_path,
                 marketplace_type: aggregate.marketplace_type,
                 comment: aggregate.base.comment,
+                acquiring_fee_pro: aggregate.acquiring_fee_pro,
             };
             form.set(dto);
         });

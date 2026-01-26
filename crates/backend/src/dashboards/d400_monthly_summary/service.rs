@@ -46,6 +46,30 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     );
     rows.extend(returns_rows);
 
+    // === COST (Себестоимость) ===
+    let cost_data = repository::get_cost_by_marketplace_and_org(&date_from, &date_to).await?;
+    let cost_rows = build_indicator_rows(
+        &cost_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_cost)).collect::<Vec<_>>(),
+        "cost",
+        "Себестоимость",
+        &marketplaces,
+        year,
+        month,
+    );
+    rows.extend(cost_rows);
+
+    // === RESULT (Результат) ===
+    // Calculate: revenue + returns + cost for each marketplace/org
+    let result_rows = build_result_rows(
+        &revenue_data,
+        &returns_data,
+        &cost_data,
+        &marketplaces,
+        year,
+        month,
+    );
+    rows.extend(result_rows);
+
     Ok(MonthlySummaryResponse {
         period,
         rows,
@@ -135,6 +159,139 @@ fn build_indicator_rows(
         let org_row = IndicatorRow {
             indicator_id: indicator_id.to_string(),
             indicator_name: indicator_name.to_string(),
+            group_name: Some(org_name.clone()),
+            level: 1,
+            values: org_values,
+            drilldown_filter: DrilldownFilter::for_organization(year, month, &org_name),
+        };
+        rows.push(org_row);
+    }
+
+    rows
+}
+
+/// Build result indicator rows by combining revenue, returns, and cost
+fn build_result_rows(
+    revenue_data: &[repository::RevenueAggregation],
+    returns_data: &[repository::ReturnsAggregation],
+    cost_data: &[repository::CostAggregation],
+    marketplaces: &[String],
+    year: i32,
+    month: u32,
+) -> Vec<IndicatorRow> {
+    let mut rows = Vec::new();
+
+    // Build maps for easy lookup
+    let mut revenue_map: HashMap<(String, String), f64> = HashMap::new();
+    let mut returns_map: HashMap<(String, String), f64> = HashMap::new();
+    let mut cost_map: HashMap<(String, String), f64> = HashMap::new();
+    let mut all_orgs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Populate revenue map
+    for r in revenue_data {
+        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        if let Some(org) = &r.organization_name {
+            if !org.is_empty() {
+                all_orgs.insert(org.clone());
+                revenue_map.insert((org.clone(), mp), r.total_revenue);
+            }
+        }
+    }
+
+    // Populate returns map
+    for r in returns_data {
+        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        if let Some(org) = &r.organization_name {
+            if !org.is_empty() {
+                all_orgs.insert(org.clone());
+                returns_map.insert((org.clone(), mp), r.total_returns);
+            }
+        }
+    }
+
+    // Populate cost map
+    for r in cost_data {
+        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        if let Some(org) = &r.organization_name {
+            if !org.is_empty() {
+                all_orgs.insert(org.clone());
+                cost_map.insert((org.clone(), mp), r.total_cost);
+            }
+        }
+    }
+
+    // Calculate totals by marketplace
+    let mut mp_totals: HashMap<String, f64> = HashMap::new();
+    let mut grand_total = 0.0;
+
+    for mp in marketplaces {
+        let mut mp_total = 0.0;
+        
+        // Sum revenue for this marketplace
+        for r in revenue_data {
+            if r.marketplace_code.as_ref() == Some(mp) {
+                mp_total += r.total_revenue;
+            }
+        }
+        
+        // Add returns for this marketplace
+        for r in returns_data {
+            if r.marketplace_code.as_ref() == Some(mp) {
+                mp_total += r.total_returns;
+            }
+        }
+        
+        // Add cost for this marketplace
+        for c in cost_data {
+            if c.marketplace_code.as_ref() == Some(mp) {
+                mp_total += c.total_cost;
+            }
+        }
+        
+        mp_totals.insert(mp.clone(), mp_total);
+        grand_total += mp_total;
+    }
+
+    // Build total row (level 0)
+    let mut total_values: HashMap<String, f64> = HashMap::new();
+    for mp in marketplaces {
+        total_values.insert(mp.clone(), *mp_totals.get(mp).unwrap_or(&0.0));
+    }
+    total_values.insert("total".to_string(), grand_total);
+
+    let total_row = IndicatorRow {
+        indicator_id: "result".to_string(),
+        indicator_name: "Результат".to_string(),
+        group_name: None,
+        level: 0,
+        values: total_values,
+        drilldown_filter: DrilldownFilter::for_month(year, month),
+    };
+    rows.push(total_row);
+
+    // Build organization breakdown rows
+    let mut org_names: Vec<String> = all_orgs.into_iter().collect();
+    org_names.sort();
+
+    for org_name in org_names {
+        let mut org_values: HashMap<String, f64> = HashMap::new();
+        let mut org_total = 0.0;
+
+        for mp in marketplaces {
+            let key = (org_name.clone(), mp.clone());
+            let revenue = *revenue_map.get(&key).unwrap_or(&0.0);
+            let returns = *returns_map.get(&key).unwrap_or(&0.0);
+            let cost = *cost_map.get(&key).unwrap_or(&0.0);
+            let result = revenue + returns + cost;
+            
+            org_values.insert(mp.clone(), result);
+            org_total += result;
+        }
+        org_values.insert("total".to_string(), org_total);
+
+        let org_row = IndicatorRow {
+            indicator_id: "result".to_string(),
+            indicator_name: "Результат".to_string(),
             group_name: Some(org_name.clone()),
             level: 1,
             values: org_values,

@@ -1864,6 +1864,34 @@ th.resizable {
   flex-shrink: 0;
 }
 
+/* JSON Syntax Highlighting */
+.json-key {
+  color: var(--color-brand-primary);
+  font-weight: 500;
+}
+
+.json-string {
+  color: var(--color-success);
+}
+
+.json-number {
+  color: var(--color-info);
+}
+
+.json-boolean {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.json-null {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.json-punctuation {
+  color: var(--color-text-secondary);
+}
+
 /* ============================================
    Excel Importer (small CSS helpers)
    ============================================ */

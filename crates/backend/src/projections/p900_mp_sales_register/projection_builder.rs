@@ -208,7 +208,14 @@ pub async fn from_wb_sales(
     let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
 
     // Получить себестоимость из p906_nomenclature_prices
-    let cost = get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?;
+    let mut cost = get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?;
+
+    // Если это возврат (price_effective <= 0), то себестоимость записывается с минусом
+    if let Some(price_eff) = document.line.price_effective {
+        if price_eff <= 0.0 {
+            cost = cost.map(|c| -c);
+        }
+    }
 
     Ok(SalesRegisterEntry {
         // NK

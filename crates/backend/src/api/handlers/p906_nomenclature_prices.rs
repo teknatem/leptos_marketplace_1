@@ -1,6 +1,7 @@
 use axum::{extract::Query, http::StatusCode, Json};
 use serde::Deserialize;
 
+use crate::projections::p906_nomenclature_prices::excel_import;
 use crate::projections::p906_nomenclature_prices::repository::PriceWithNomenclature;
 use crate::projections::p906_nomenclature_prices::service;
 
@@ -87,3 +88,23 @@ pub async fn get_periods() -> Result<Json<Vec<String>>, StatusCode> {
     }
 }
 
+/// POST /api/p906/import-excel
+/// Импортирует данные цен из Excel файла
+pub async fn import_excel(
+    Json(excel_data): Json<excel_import::ExcelData>,
+) -> Result<Json<contracts::projections::p906_nomenclature_prices::excel::ImportResult>, StatusCode>
+{
+    tracing::info!(
+        "Received Excel import request with {} rows",
+        excel_data.metadata.row_count
+    );
+
+    // Импортируем данные из ExcelData
+    let result = match excel_import::import_prices_from_excel_data(excel_data).await {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!("Excel import error: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };    Ok(Json(result))
+}

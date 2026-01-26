@@ -1,7 +1,9 @@
+use crate::domain::common::{
+    AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
+};
+use crate::enums::marketplace_type::MarketplaceType;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::domain::common::{AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin};
-use crate::enums::marketplace_type::MarketplaceType;
 
 // ============================================================================
 // ID Type
@@ -55,6 +57,9 @@ pub struct Marketplace {
 
     #[serde(rename = "marketplaceType")]
     pub marketplace_type: Option<MarketplaceType>,
+
+    #[serde(rename = "acquiringFeePro")]
+    pub acquiring_fee_pro: f64,
 }
 
 impl Marketplace {
@@ -66,12 +71,9 @@ impl Marketplace {
         logo_path: Option<String>,
         marketplace_type: Option<MarketplaceType>,
         comment: Option<String>,
+        acquiring_fee_pro: f64,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            MarketplaceId::new_v4(),
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(MarketplaceId::new_v4(), code, description);
         base.comment = comment;
 
         Self {
@@ -79,6 +81,7 @@ impl Marketplace {
             url,
             logo_path,
             marketplace_type,
+            acquiring_fee_pro,
         }
     }
 
@@ -91,12 +94,9 @@ impl Marketplace {
         logo_path: Option<String>,
         marketplace_type: Option<MarketplaceType>,
         comment: Option<String>,
+        acquiring_fee_pro: f64,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            id,
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(id, code, description);
         base.comment = comment;
 
         Self {
@@ -104,6 +104,7 @@ impl Marketplace {
             url,
             logo_path,
             marketplace_type,
+            acquiring_fee_pro,
         }
     }
 
@@ -125,6 +126,7 @@ impl Marketplace {
         self.url = dto.url.clone();
         self.logo_path = dto.logo_path.clone();
         self.marketplace_type = dto.marketplace_type;
+        self.acquiring_fee_pro = dto.acquiring_fee_pro;
     }
 
     /// Валидация данных
@@ -221,4 +223,6 @@ pub struct MarketplaceDto {
     #[serde(rename = "marketplaceType")]
     pub marketplace_type: Option<MarketplaceType>,
     pub comment: Option<String>,
+    #[serde(rename = "acquiringFeePro")]
+    pub acquiring_fee_pro: f64,
 }

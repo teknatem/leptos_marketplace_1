@@ -75,7 +75,7 @@ td:first-child {
 /* Override Thaw Card default width for details forms */
 .thaw-card {
   width: 100% !important;
-  max-width: 700px !important;
+  max-width: 100% !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
   overflow: visible !important;
@@ -84,4 +84,10 @@ td:first-child {
 
 .thaw-card[role="group"] {
   background-color: transparent !important;
+}
+
+/* Выравнивание содержимого по правому краю для числовых ячеек */
+.text-right,
+.text-right .thaw-table-cell-layout__content {
+  justify-content: flex-end !important;
 }

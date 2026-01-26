@@ -7,7 +7,7 @@
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
-use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, ProjectionsTab};
+use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, PlanFactTab, ProjectionsTab};
 use super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -228,6 +228,26 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                 "Общие"
             </Button>
 
+            // Plan/Fact tab
+            <Button
+                appearance=Signal::derive({
+                    let active_tab = active_tab;
+                    move || if active_tab.get() == "planfact" {
+                        ButtonAppearance::Primary
+                    } else {
+                        ButtonAppearance::Subtle
+                    }
+                })
+                size=ButtonSize::Small
+                on_click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("planfact")
+                }
+            >
+                {tab_icon("trending-up")}
+                "План/Факт"
+            </Button>
+
             // Line tab
             <Button
                 appearance=Signal::derive({
@@ -245,7 +265,7 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                 }
             >
                 {tab_icon("list")}
-                "Строка"
+                "Подробно"
             </Button>
 
             // JSON tab
@@ -344,6 +364,7 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
 fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let vm_general = vm.clone();
+    let vm_planfact = vm.clone();
     let vm_line = vm.clone();
     let vm_json = vm.clone();
     let vm_links = vm.clone();
@@ -352,6 +373,7 @@ fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
     view! {
         {move || match active_tab.get() {
             "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            "planfact" => view! { <PlanFactTab vm=vm_planfact.clone() /> }.into_any(),
             "line" => view! { <LineTab vm=vm_line.clone() /> }.into_any(),
             "json" => view! { <JsonTab vm=vm_json.clone() /> }.into_any(),
             "links" => view! { <LinksTab vm=vm_links.clone() /> }.into_any(),

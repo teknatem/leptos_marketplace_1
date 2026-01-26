@@ -20,6 +20,14 @@ pub struct ReturnsAggregation {
     pub total_returns: f64,
 }
 
+/// Cost aggregation result from SQL query
+#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
+pub struct CostAggregation {
+    pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
+    pub organization_name: Option<String>, // Directly from conn.organization
+    pub total_cost: f64,
+}
+
 /// Get revenue aggregated by marketplace type and organization for a given month
 pub async fn get_revenue_by_marketplace_and_org(
     date_from: &str,
@@ -92,6 +100,44 @@ pub async fn get_returns_by_marketplace_and_org(
     );
 
     let results = ReturnsAggregation::find_by_statement(stmt).all(db).await?;
+
+    Ok(results)
+}
+
+/// Get cost aggregated by marketplace type and organization for a given month
+pub async fn get_cost_by_marketplace_and_org(
+    date_from: &str,
+    date_to: &str,
+) -> Result<Vec<CostAggregation>> {
+    let db = get_connection();
+
+    let sql = r#"
+        SELECT 
+            CASE mp.marketplace_type
+                WHEN 'mp-wb' THEN 'WB'
+                WHEN 'mp-ozon' THEN 'OZON'
+                WHEN 'mp-ym' THEN 'YM'
+                WHEN 'mp-kuper' THEN 'KUPER'
+                WHEN 'mp-lemana' THEN 'LEMANA'
+                ELSE mp.marketplace_type
+            END AS marketplace_code,
+            conn.organization AS organization_name,
+            -CAST(COALESCE(SUM(p904.cost), 0) AS REAL) AS total_cost
+        FROM p904_sales_data p904
+        LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
+        LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
+        WHERE p904.date >= ? AND p904.date <= ?
+        GROUP BY mp.marketplace_type, conn.organization
+        ORDER BY marketplace_code, organization_name
+    "#;
+
+    let stmt = Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        sql,
+        [date_from.into(), date_to.into()],
+    );
+
+    let results = CostAggregation::find_by_statement(stmt).all(db).await?;
 
     Ok(results)
 }

@@ -12,6 +12,9 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Автозаполнение ссылок на marketplace_product и nomenclature
     super::service::auto_fill_references(&mut document).await?;
 
+    // Расчёт финансовых полей (план/факт) на основе данных P903
+    super::service::calculate_financial_fields(&mut document).await?;
+
     // Установить флаг is_posted
     document.is_posted = true;
     document.base.metadata.is_posted = document.is_posted;
