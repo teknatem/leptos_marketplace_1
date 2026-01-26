@@ -24,6 +24,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             items: vec![
                 ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
                 ("d401_metadata_dashboard", "Метаданные", "layout-dashboard"),
+                ("d401_wb_finance", "Финансы WB", "dollar-sign"),
             ],
             admin_only: false,
         },

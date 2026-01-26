@@ -28,8 +28,9 @@ pub mod p904_sales_data;
 pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
 
-// Dashboard handlers (d400)
+// Dashboard handlers (d400-d401)
 pub mod d400_monthly_summary;
+pub mod d401_wb_finance;
 
 // UseCase handlers
 pub mod usecases;
