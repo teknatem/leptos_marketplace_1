@@ -1,4 +1,4 @@
-use contracts::shared::pivot::{
+use contracts::shared::universal_dashboard::{
     DashboardConfig, DeleteDashboardConfigResponse, DistinctValuesResponse,
     ExecuteDashboardRequest, ExecuteDashboardResponse, GenerateSqlResponse, GetSchemaResponse,
     ListDashboardConfigsResponse, ListSchemasResponse, SaveDashboardConfigRequest,

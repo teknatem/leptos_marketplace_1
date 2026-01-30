@@ -42,6 +42,7 @@ use crate::projections::p904_sales_data::ui::list::SalesDataList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
+use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
 use crate::system::tasks::ui::list::ScheduledTaskList;
@@ -295,10 +296,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // a018: LLM Chat
         "a018_llm_chat" => view! { <LlmChatList /> }.into_any(),
         k if k.starts_with("a018_llm_chat_detail_") => {
-            let id = k
-                .strip_prefix("a018_llm_chat_detail_")
-                .unwrap()
-                .to_string();
+            let id = k.strip_prefix("a018_llm_chat_detail_").unwrap().to_string();
             log!("✅ Creating LlmChatDetails with id: {}", id);
             view! {
                 <LlmChatDetails
@@ -433,8 +431,20 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             view! { <MetadataDashboard /> }.into_any()
         }
         "d401_wb_finance" => {
-            log!("✅ Creating D401WbFinanceDashboard");
+            log!("✅ Creating D401WbFinanceDashboard (legacy)");
             view! { <D401WbFinanceDashboard /> }.into_any()
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Features (new pivot system)
+        // ═══════════════════════════════════════════════════════════════════
+        "universal_dashboard" => {
+            log!("✅ Creating UniversalDashboard");
+            view! { <UniversalDashboard /> }.into_any()
+        }
+        "schema_browser" => {
+            log!("✅ Creating SchemaBrowser");
+            view! { <SchemaBrowser /> }.into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

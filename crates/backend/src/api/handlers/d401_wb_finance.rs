@@ -3,11 +3,11 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use contracts::shared::pivot::{
+use contracts::shared::universal_dashboard::{
     DeleteDashboardConfigResponse, DistinctValuesResponse, ExecuteDashboardRequest,
     ExecuteDashboardResponse, GenerateSqlResponse, GetSchemaResponse,
     ListDashboardConfigsResponse, ListSchemasResponse, SaveDashboardConfigRequest,
-    SaveDashboardConfigResponse, SavedDashboardConfig, SchemaInfo, UpdateDashboardConfigRequest,
+    SaveDashboardConfigResponse, SavedDashboardConfig, UpdateDashboardConfigRequest,
 };
 
 use crate::dashboards::d401_wb_finance::{schema::P903_SCHEMA, service};
@@ -65,10 +65,9 @@ pub async fn generate_sql(
 pub async fn list_schemas() -> Result<Json<ListSchemasResponse>, StatusCode> {
     tracing::info!("D401 Dashboard: Listing available schemas");
 
-    let schemas = vec![SchemaInfo {
-        id: P903_SCHEMA.id.to_string(),
-        name: P903_SCHEMA.name.to_string(),
-    }];
+    // Use schema registry for listing
+    use crate::shared::universal_dashboard::get_registry;
+    let schemas = get_registry().list_all();
 
     Ok(Json(ListSchemasResponse { schemas }))
 }
@@ -80,10 +79,10 @@ pub async fn get_schema(
 ) -> Result<Json<GetSchemaResponse>, StatusCode> {
     tracing::info!("D401 Dashboard: Getting schema: {}", id);
 
-    if id == P903_SCHEMA.id {
-        Ok(Json(GetSchemaResponse {
-            schema: (&P903_SCHEMA).into(),
-        }))
+    use crate::shared::universal_dashboard::get_registry;
+    
+    if let Some(schema) = get_registry().get_schema(&id) {
+        Ok(Json(GetSchemaResponse { schema }))
     } else {
         tracing::warn!("D401 Dashboard: Schema not found: {}", id);
         Err(StatusCode::NOT_FOUND)
@@ -201,29 +200,99 @@ pub async fn get_distinct_values(
     Path((schema_id, field_id)): Path<(String, String)>,
 ) -> Result<Json<DistinctValuesResponse>, StatusCode> {
     tracing::info!(
-        "D401 Dashboard: Getting distinct values for field {} in schema {}",
+        "Pivot: Getting distinct values for field {} in schema {}",
         field_id,
         schema_id
     );
 
-    // Validate schema
-    if schema_id != P903_SCHEMA.id {
-        tracing::warn!("D401 Dashboard: Schema not found: {}", schema_id);
+    use crate::shared::universal_dashboard::get_registry;
+    
+    // Validate schema exists
+    if !get_registry().has_schema(&schema_id) {
+        tracing::warn!("Pivot: Schema not found: {}", schema_id);
         return Err(StatusCode::NOT_FOUND);
     }
 
-    match service::get_distinct_values(&field_id, Some(100)).await {
+    match service::get_distinct_values(&schema_id, &field_id, Some(100)).await {
         Ok(values) => {
             tracing::info!(
-                "D401 Dashboard: Returning {} distinct values for field {}",
+                "Pivot: Returning {} distinct values for field {}",
                 values.len(),
                 field_id
             );
             Ok(Json(DistinctValuesResponse { field_id, values }))
         }
         Err(e) => {
-            tracing::error!("D401 Dashboard: Failed to get distinct values: {}", e);
+            tracing::error!("Pivot: Failed to get distinct values: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+// ============================================================================
+// Schema Validation Handlers
+// ============================================================================
+
+/// POST /api/pivot/schemas/:id/validate
+/// Validate a single schema
+pub async fn validate_schema(
+    Path(schema_id): Path<String>,
+) -> Result<Json<contracts::shared::universal_dashboard::SchemaValidationResult>, StatusCode> {
+    tracing::info!("Pivot: Validating schema: {}", schema_id);
+
+    use crate::shared::universal_dashboard::{get_registry, schema_validator};
+    use crate::shared::data::db::get_connection;
+
+    let registry = get_registry();
+    
+    let schema_info = registry.list_all()
+        .into_iter()
+        .find(|s| s.id == schema_id);
+    
+    let Some(info) = schema_info else {
+        tracing::warn!("Pivot: Schema not found for validation: {}", schema_id);
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let Some(schema) = registry.get_schema(&schema_id) else {
+        tracing::warn!("Pivot: Could not get schema details: {}", schema_id);
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let db = get_connection();
+    let result = schema_validator::validate_schema(&schema, &info, db).await;
+
+    tracing::info!(
+        "Pivot: Schema {} validation: valid={}, errors={}, time={}ms",
+        schema_id,
+        result.is_valid,
+        result.errors.len(),
+        result.execution_time_ms
+    );
+
+    Ok(Json(result))
+}
+
+/// POST /api/pivot/schemas/validate-all
+/// Validate all schemas
+pub async fn validate_all_schemas() -> Result<Json<contracts::shared::universal_dashboard::ValidateAllSchemasResponse>, StatusCode> {
+    tracing::info!("Pivot: Validating all schemas");
+
+    use crate::shared::universal_dashboard::{get_registry, schema_validator};
+    use crate::shared::data::db::get_connection;
+
+    let registry = get_registry();
+    let db = get_connection();
+    
+    let result = schema_validator::validate_all_schemas(registry, db).await;
+
+    tracing::info!(
+        "Pivot: Validated {} schemas: {} valid, {} invalid, total time {}ms",
+        result.total_schemas,
+        result.valid_count,
+        result.invalid_count,
+        result.total_time_ms
+    );
+
+    Ok(Json(result))
 }

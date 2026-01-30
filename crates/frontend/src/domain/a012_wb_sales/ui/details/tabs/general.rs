@@ -2,7 +2,6 @@
 
 use super::super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::clipboard::copy_to_clipboard;
 use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use thaw::*;
@@ -213,7 +212,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 <Card attr:style="width: 600px; margin: 0px;">
                 <h4 class="details-section__title">"Статус"</h4>
                 <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md);">
-                    <Badge 
+                    <Badge
                         appearance=BadgeAppearance::Filled
                         color=if is_fact { BadgeColor::Success } else { BadgeColor::Informative }
                     >
@@ -329,25 +328,5 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 </div>
             }.into_any()
         }}
-    }
-}
-
-/// ID field with copy button (disabled input + copy)
-#[component]
-fn IdWithCopy(value: String) -> impl IntoView {
-    let value_for_copy = value.clone();
-
-    view! {
-        <Flex gap=FlexGap::Small style="align-items: center;">
-            <Input value=RwSignal::new(value) attr:readonly=true attr:style="flex: 1;" />
-            <Button
-                appearance=ButtonAppearance::Subtle
-                shape=ButtonShape::Square
-                size=ButtonSize::Small
-                on_click=move |_| copy_to_clipboard(&value_for_copy)
-            >
-                "⧉"
-            </Button>
-        </Flex>
     }
 }

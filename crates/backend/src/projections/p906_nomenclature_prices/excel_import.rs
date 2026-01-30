@@ -33,9 +33,7 @@ pub struct ColumnMapping {
 
 /// Импортирует данные из ExcelData (принимает весь объект с фронтенда)
 /// Конвертирует HashMap в ExcelRow и вызывает основную функцию импорта
-pub async fn import_prices_from_excel_data(
-    excel_data: ExcelData,
-) -> anyhow::Result<ImportResult> {
+pub async fn import_prices_from_excel_data(excel_data: ExcelData) -> anyhow::Result<ImportResult> {
     // Конвертируем rows (HashMap) в Vec<ExcelRow>
     let rows: Vec<ExcelRow> = excel_data
         .rows
@@ -80,7 +78,11 @@ pub async fn import_prices_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<Impo
         let price: f64 = match price_str.parse() {
             Ok(p) => p,
             Err(_) => {
-                tracing::warn!("Invalid price '{}' for article '{}'", row.price, row.article);
+                tracing::warn!(
+                    "Invalid price '{}' for article '{}'",
+                    row.price,
+                    row.article
+                );
                 continue; // Пропускаем строки с невалидной ценой
             }
         };
@@ -91,7 +93,8 @@ pub async fn import_prices_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<Impo
             continue; // Пропускаем строки без артикула
         }
 
-        let found_items = a004_nomenclature::repository::find_by_article_txn(&txn, article_trimmed).await?;
+        let found_items =
+            a004_nomenclature::repository::find_by_article_txn(&txn, article_trimmed).await?;
 
         if found_items.is_empty() {
             let key = article_trimmed.to_string();
@@ -104,10 +107,10 @@ pub async fn import_prices_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<Impo
         // Создаем/обновляем запись цены для каждой найденной номенклатуры
         for item in found_items {
             let nomenclature_ref = item.base.id.value().to_string();
-            
+
             // Создаем ID для записи (уникальная комбинация period + nomenclature_ref)
             let id = format!("{}_{}", period, &nomenclature_ref);
-            
+
             let now = chrono::Utc::now();
             let entry = NomenclaturePriceEntry {
                 id,
@@ -140,7 +143,6 @@ pub async fn import_prices_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<Impo
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_parse_price() {

@@ -1,4 +1,6 @@
-use contracts::shared::pivot::{DataSourceSchema, FieldDef, FieldType};
+#![allow(deprecated)]
+
+use contracts::shared::universal_dashboard::{DataSourceSchema, FieldDef, FieldType};
 
 /// P903 WB Finance Report schema definition
 pub static P903_SCHEMA: DataSourceSchema = DataSourceSchema {
