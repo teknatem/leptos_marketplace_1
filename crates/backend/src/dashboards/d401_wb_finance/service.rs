@@ -1,30 +1,47 @@
+#![allow(deprecated)]
+
 use anyhow::Result;
-use contracts::shared::pivot::{
-    CellValue, ColumnHeader, ColumnType, DashboardConfig, DistinctValue,
-    ExecuteDashboardResponse, GenerateSqlResponse, SaveDashboardConfigRequest,
-    SavedDashboardConfig, SavedDashboardConfigSummary, UpdateDashboardConfigRequest,
+use contracts::shared::universal_dashboard::{
+    CellValue, ColumnHeader, ColumnType, DashboardConfig, DistinctValue, ExecuteDashboardResponse,
+    GenerateSqlResponse, SaveDashboardConfigRequest, SavedDashboardConfig,
+    SavedDashboardConfigSummary, UpdateDashboardConfigRequest,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::shared::pivot::{query_builder::QueryParam, QueryBuilder, RawRow, TreeBuilder};
 use crate::shared::data::db::get_connection;
+use crate::shared::universal_dashboard::{
+    get_registry, query_builder::QueryParam, QueryBuilder, RawRow, TreeBuilder,
+};
 
 use super::schema::P903_SCHEMA;
 
 /// Execute a dashboard query
 pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboardResponse> {
-    // Validate data source
-    if config.data_source != P903_SCHEMA.id {
-        return Err(anyhow::anyhow!(
-            "Unsupported data source: {}",
-            config.data_source
-        ));
-    }
+    // Use P903_SCHEMA for both legacy (p903_wb_finance_report) and new (s001_wb_finance) IDs
+    let schema = if config.data_source == P903_SCHEMA.id || config.data_source == "s001_wb_finance"
+    {
+        &P903_SCHEMA
+    } else {
+        // Try registry for other data sources
+        let registry = get_registry();
+        if registry.has_schema(&config.data_source) {
+            // Currently only P903_SCHEMA is supported for execution
+            return Err(anyhow::anyhow!(
+                "Data source '{}' is not yet supported for execution",
+                config.data_source
+            ));
+        } else {
+            return Err(anyhow::anyhow!(
+                "Unknown data source: {}",
+                config.data_source
+            ));
+        }
+    };
 
     // Build SQL query
-    let query_builder = QueryBuilder::new(&P903_SCHEMA, &config);
+    let query_builder = QueryBuilder::new(schema, &config);
     let query_result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;
@@ -32,16 +49,16 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
     // Execute query
     let db = get_connection();
     let stmt = build_statement(&query_result.sql, &query_result.params);
-    
+
     // Execute raw query and parse results manually
     let query_results = db.query_all(stmt).await?;
-    
+
     // Transform results to RawRow format
     let raw_rows: Vec<RawRow> = query_results
         .into_iter()
         .map(|query_result| {
             let mut values = HashMap::new();
-            
+
             // Parse grouping columns
             for grouping_id in config.groupings.iter() {
                 let field = P903_SCHEMA
@@ -49,52 +66,55 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
                     .iter()
                     .find(|f| f.id == grouping_id)
                     .unwrap();
-                
+
                 let value = match field.field_type {
-                    contracts::shared::pivot::FieldType::Text | 
-                    contracts::shared::pivot::FieldType::Date => {
+                    contracts::shared::universal_dashboard::FieldType::Text
+                    | contracts::shared::universal_dashboard::FieldType::Date => {
                         // For ref fields, try to use _display column first
                         if field.ref_table.is_some() {
                             let display_col = format!("{}_display", grouping_id);
-                            if let Ok(Some(display)) = query_result.try_get::<Option<String>>("", &display_col) {
+                            if let Ok(Some(display)) =
+                                query_result.try_get::<Option<String>>("", &display_col)
+                            {
                                 CellValue::Text(display)
                             } else {
-                                query_result.try_get::<Option<String>>("", grouping_id)
+                                query_result
+                                    .try_get::<Option<String>>("", grouping_id)
                                     .ok()
                                     .flatten()
                                     .map(CellValue::Text)
                                     .unwrap_or(CellValue::Null)
                             }
                         } else {
-                            query_result.try_get::<Option<String>>("", grouping_id)
+                            query_result
+                                .try_get::<Option<String>>("", grouping_id)
                                 .ok()
                                 .flatten()
                                 .map(CellValue::Text)
                                 .unwrap_or(CellValue::Null)
                         }
                     }
-                    contracts::shared::pivot::FieldType::Integer => {
-                        query_result.try_get::<Option<i64>>("", grouping_id)
-                            .ok()
-                            .flatten()
-                            .map(CellValue::Integer)
-                            .unwrap_or(CellValue::Null)
-                    }
-                    contracts::shared::pivot::FieldType::Numeric => {
-                        query_result.try_get::<Option<f64>>("", grouping_id)
-                            .ok()
-                            .flatten()
-                            .map(CellValue::Number)
-                            .unwrap_or(CellValue::Null)
-                    }
+                    contracts::shared::universal_dashboard::FieldType::Integer => query_result
+                        .try_get::<Option<i64>>("", grouping_id)
+                        .ok()
+                        .flatten()
+                        .map(CellValue::Integer)
+                        .unwrap_or(CellValue::Null),
+                    contracts::shared::universal_dashboard::FieldType::Numeric => query_result
+                        .try_get::<Option<f64>>("", grouping_id)
+                        .ok()
+                        .flatten()
+                        .map(CellValue::Number)
+                        .unwrap_or(CellValue::Null),
                 };
                 values.insert(grouping_id.clone(), value);
             }
-            
+
             // Parse aggregated columns
             for selected in &config.selected_fields {
                 if let Some(_aggregate) = &selected.aggregate {
-                    let value = query_result.try_get::<Option<f64>>("", &selected.field_id)
+                    let value = query_result
+                        .try_get::<Option<f64>>("", &selected.field_id)
                         .ok()
                         .flatten()
                         .map(CellValue::Number)
@@ -102,7 +122,7 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
                     values.insert(selected.field_id.clone(), value);
                 }
             }
-            
+
             RawRow { values }
         })
         .collect();
@@ -251,11 +271,8 @@ pub async fn get_dashboard_config(id: &str) -> Result<SavedDashboardConfig> {
         WHERE id = ?
     "#;
 
-    let stmt = Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        sql,
-        vec![id.into()],
-    );
+    let stmt =
+        Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, vec![id.into()]);
 
     let row: SavedConfigRow = SavedConfigRow::find_by_statement(stmt)
         .one(db)
@@ -330,11 +347,8 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
         WHERE id = ?
     "#;
 
-    let stmt = Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        sql,
-        vec![id.into()],
-    );
+    let stmt =
+        Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, vec![id.into()]);
 
     db.execute(stmt).await?;
     Ok(())
@@ -342,16 +356,19 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse> {
-    // Validate data source
-    if config.data_source != P903_SCHEMA.id {
+    // Validate data source - support both old and new schema IDs
+    let schema = if config.data_source == P903_SCHEMA.id || config.data_source == "s001_wb_finance"
+    {
+        &P903_SCHEMA
+    } else {
         return Err(anyhow::anyhow!(
             "Unsupported data source: {}",
             config.data_source
         ));
-    }
+    };
 
     // Build SQL query
-    let query_builder = QueryBuilder::new(&P903_SCHEMA, &config);
+    let query_builder = QueryBuilder::new(schema, &config);
     let result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;
@@ -375,24 +392,33 @@ pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse
 
 /// Get distinct values for a field
 pub async fn get_distinct_values(
+    schema_id: &str,
     field_id: &str,
     limit: Option<usize>,
 ) -> Result<Vec<DistinctValue>> {
+    // Get schema and table name from registry
+    let registry = get_registry();
+    let schema = registry
+        .get_schema(schema_id)
+        .ok_or_else(|| anyhow::anyhow!("Schema not found: {}", schema_id))?;
+    let main_table = registry
+        .get_table_name(schema_id)
+        .ok_or_else(|| anyhow::anyhow!("Table not found for schema: {}", schema_id))?;
+
     // Find field definition
-    let field = P903_SCHEMA
+    let field = schema
         .fields
         .iter()
         .find(|f| f.id == field_id)
         .ok_or_else(|| anyhow::anyhow!("Field not found: {}", field_id))?;
 
     let db = get_connection();
-    let main_table = P903_SCHEMA.id;
     let limit_clause = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
 
     // Build query based on whether field has ref_table
-    let sql = if let Some(ref_table) = field.ref_table {
+    let sql = if let Some(ref_table) = &field.ref_table {
         // Field with reference - JOIN with ref table
-        let ref_display_col = field.ref_display_column.unwrap_or("description");
+        let ref_display_col = field.ref_display_column.as_deref().unwrap_or("description");
         format!(
             "SELECT DISTINCT {}.{} as value, {}.{} as display \
              FROM {} \
@@ -487,12 +513,12 @@ fn build_statement(sql: &str, params: &[QueryParam]) -> Statement {
 }
 
 /// Get human-readable aggregate name
-fn aggregate_name(agg: &contracts::shared::pivot::AggregateFunction) -> &'static str {
+fn aggregate_name(agg: &contracts::shared::universal_dashboard::AggregateFunction) -> &'static str {
     match agg {
-        contracts::shared::pivot::AggregateFunction::Sum => "Сумма",
-        contracts::shared::pivot::AggregateFunction::Count => "Кол-во",
-        contracts::shared::pivot::AggregateFunction::Avg => "Среднее",
-        contracts::shared::pivot::AggregateFunction::Min => "Мин",
-        contracts::shared::pivot::AggregateFunction::Max => "Макс",
+        contracts::shared::universal_dashboard::AggregateFunction::Sum => "Сумма",
+        contracts::shared::universal_dashboard::AggregateFunction::Count => "Кол-во",
+        contracts::shared::universal_dashboard::AggregateFunction::Avg => "Среднее",
+        contracts::shared::universal_dashboard::AggregateFunction::Min => "Мин",
+        contracts::shared::universal_dashboard::AggregateFunction::Max => "Макс",
     }
 }

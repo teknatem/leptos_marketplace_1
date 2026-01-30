@@ -1,0 +1,136 @@
+/* Condition Editor Styles */
+
+/* Condition Display with checkbox (in table cell) */
+.condition-display-with-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.condition-checkbox {
+    cursor: pointer;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* Thaw Button overrides for condition text */
+.condition-text-btn-thaw {
+    flex: 1 !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+}
+
+/* Active condition - yellow highlight on hover */
+.condition-text-btn-active:hover {
+    background: #fef3e0 !important;
+}
+
+/* Inactive condition - gray text */
+.condition-text-btn-inactive {
+    color: #999 !important;
+    opacity: 0.7;
+}
+
+.condition-text-btn-inactive:hover {
+    background: var(--thaw-color-neutral-background-2) !important;
+}
+
+/* Delete button in modal - red with border */
+.delete-condition-btn {
+    border: 1px solid var(--thaw-color-palette-red-border-2) !important;
+    color: var(--thaw-color-palette-red-foreground-2) !important;
+}
+
+.delete-condition-btn:hover {
+    background: var(--thaw-color-palette-red-background-2) !important;
+    border-color: var(--thaw-color-palette-red-border-1) !important;
+    color: var(--thaw-color-palette-red-foreground-1) !important;
+}
+
+.delete-condition-btn:active {
+    background: var(--thaw-color-palette-red-background-3) !important;
+}
+
+/* Add button styling */
+.condition-add-btn-thaw {
+    color: #999 !important;
+}
+
+/* Condition Editor Modal */
+.condition-editor-modal {
+    min-width: 500px;
+    min-height: 300px;
+}
+
+.tab-content {
+    margin-top: 16px;
+    padding: 16px 0;
+}
+
+/* Tab Styles */
+.condition-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--thaw-color-neutral-foreground-1);
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--thaw-color-neutral-foreground-3);
+    font-style: italic;
+    margin-top: 4px;
+}
+
+/* Date Period Tab */
+.preset-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.custom-date-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+/* Range Tab */
+.range-tab .form-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.range-tab .form-group label {
+    min-width: 40px;
+}
+
+/* Contains Tab */
+.contains-tab input {
+    width: 100%;
+}
+
+/* Nullability Tab */
+.nullability-tab {
+    padding-top: 8px;
+}

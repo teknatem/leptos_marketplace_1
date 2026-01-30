@@ -1,5 +1,5 @@
 pub mod config;
-pub mod pivot;
+pub mod universal_dashboard;
 pub mod data;
 pub mod format;
 pub mod llm;

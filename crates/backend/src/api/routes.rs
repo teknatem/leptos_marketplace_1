@@ -618,7 +618,47 @@ pub fn configure_business_routes() -> Router {
             "/api/d400/periods",
             get(handlers::d400_monthly_summary::get_available_periods),
         )
-        // D401 WB Finance Dashboard
+        // Universal Dashboard API (new routes)
+        .route(
+            "/api/universal-dashboard/execute",
+            post(handlers::d401_wb_finance::execute_dashboard),
+        )
+        .route(
+            "/api/universal-dashboard/generate-sql",
+            post(handlers::d401_wb_finance::generate_sql),
+        )
+        .route(
+            "/api/universal-dashboard/schemas",
+            get(handlers::d401_wb_finance::list_schemas),
+        )
+        .route(
+            "/api/universal-dashboard/schemas/validate-all",
+            post(handlers::d401_wb_finance::validate_all_schemas),
+        )
+        .route(
+            "/api/universal-dashboard/schemas/:id",
+            get(handlers::d401_wb_finance::get_schema),
+        )
+        .route(
+            "/api/universal-dashboard/schemas/:id/validate",
+            post(handlers::d401_wb_finance::validate_schema),
+        )
+        .route(
+            "/api/universal-dashboard/schemas/:schema_id/fields/:field_id/values",
+            get(handlers::d401_wb_finance::get_distinct_values),
+        )
+        .route(
+            "/api/universal-dashboard/configs",
+            get(handlers::d401_wb_finance::list_configs)
+                .post(handlers::d401_wb_finance::save_config),
+        )
+        .route(
+            "/api/universal-dashboard/configs/:id",
+            get(handlers::d401_wb_finance::get_config)
+                .put(handlers::d401_wb_finance::update_config)
+                .delete(handlers::d401_wb_finance::delete_config),
+        )
+        // Legacy D401 routes (for backward compatibility)
         .route(
             "/api/d401/execute",
             post(handlers::d401_wb_finance::execute_dashboard),
