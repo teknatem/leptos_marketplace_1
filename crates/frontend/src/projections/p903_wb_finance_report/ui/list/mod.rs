@@ -577,7 +577,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 </div>
             </div>
 
-            <div class="page-content">
+            <div class="page__content">
                 {move || {
                     if is_loading.get() && items.get().is_empty() {
                         view! { <p class="text-muted">"Загрузка..."</p> }.into_any()

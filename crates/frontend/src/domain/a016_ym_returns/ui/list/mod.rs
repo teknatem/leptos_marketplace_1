@@ -491,19 +491,17 @@ pub fn YmReturnsList() -> impl IntoView {
 
     view! {
         <div class="page">
-            <div class="page-header">
-                <div class="page-header__content">
-                    <div class="page-header__icon">{icon("refresh")}</div>
-                    <div class="page-header__text">
-                        <h1 class="page-header__title">"Возвраты Яндекс Маркет"</h1>
-                        <div class="page-header__badge">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <div class="page__icon">{icon("refresh")}</div>
+                    <h1 class="page__title">"Возвраты Яндекс Маркет"</h1>
+                    <div class="page__badge">
                             <Badge variant="primary".to_string()>
                                 {move || state.get().total_count.to_string()}
                             </Badge>
                         </div>
-                    </div>
                 </div>
-                <div class="page-header__actions">
+                <div class="page__header-right">
                     <Button
                         variant="primary".to_string()
                         on_click=Callback::new(batch_post)
@@ -842,7 +840,7 @@ pub fn YmReturnsList() -> impl IntoView {
                 }
             }}
 
-            <div class="page-content">
+            <div class="page__content">
                 <div class="list-container">
                     <table id=TABLE_ID class="table__data table--striped">
                         <thead class="table__head">

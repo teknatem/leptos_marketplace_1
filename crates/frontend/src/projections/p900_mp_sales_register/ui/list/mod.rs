@@ -299,20 +299,18 @@ pub fn SalesRegisterList() -> impl IntoView {
 
     view! {
         <div class="page page--wide">
-            <div class="page-header">
-                <div class="page-header__content">
-                    <div class="page-header__icon">{icon("trending-up")}</div>
-                    <div class="page-header__text">
-                        <h1 class="page-header__title">"Регистр продаж (P900)"</h1>
-                        <div class="page-header__badge">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <div class="page__icon">{icon("trending-up")}</div>
+                    <h1 class="page__title">"Регистр продаж (P900)"</h1>
+                    <div class="page__badge">
                             <UiBadge variant="primary".to_string()>
                                 {move || state.get().total_count.to_string()}
                             </UiBadge>
                         </div>
-                    </div>
                 </div>
 
-                <div class="page-header__actions">
+                <div class="page__header-right">
                     <Space>
                         <UiButton
                             variant="secondary".to_string()
@@ -464,7 +462,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                 }
             }}
 
-            <div class="page-content">
+            <div class="page__content">
                 <div class="list-container">
                     {move || {
                         if loading.get() {

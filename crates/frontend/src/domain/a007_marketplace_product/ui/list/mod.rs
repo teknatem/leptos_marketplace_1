@@ -2,13 +2,12 @@ mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::ui::badge::Badge;
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
-use crate::shared::list_utils::{
-    get_sort_class, get_sort_indicator, highlight_matches,
-};
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, highlight_matches};
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use contracts::domain::common::AggregateId;
@@ -17,19 +16,11 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use crate::shared::api_utils::api_base;
 use thaw::*;
 
 impl ExcelExportable for MarketplaceProductListItemDto {
     fn headers() -> Vec<&'static str> {
-        vec![
-            "Код",
-            "Описание",
-            "Артикул",
-            "SKU",
-            "Штрихкод",
-            "1С",
-        ]
+        vec!["Код", "Описание", "Артикул", "SKU", "Штрихкод", "1С"]
     }
 
     fn to_csv_row(&self) -> Vec<String> {
@@ -39,7 +30,12 @@ impl ExcelExportable for MarketplaceProductListItemDto {
             self.article.clone(),
             self.marketplace_sku.clone(),
             self.barcode.clone().unwrap_or_else(|| "-".to_string()),
-            if self.nomenclature_ref.is_some() { "Да" } else { "Нет" }.to_string(),
+            if self.nomenclature_ref.is_some() {
+                "Да"
+            } else {
+                "Нет"
+            }
+            .to_string(),
         ]
     }
 }
@@ -287,9 +283,10 @@ pub fn MarketplaceProductList() -> impl IntoView {
         if confirmed {
             spawn_local(async move {
                 for id in ids {
-                    let _ = Request::delete(&format!("{}/api/marketplace_product/{}", api_base(), id))
-                        .send()
-                        .await;
+                    let _ =
+                        Request::delete(&format!("{}/api/marketplace_product/{}", api_base(), id))
+                            .send()
+                            .await;
                 }
                 state.update(|s| s.selected_ids.clear());
                 load_data();
@@ -300,8 +297,12 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.search.is_empty() { count += 1; }
-        if s.marketplace_ref.is_some() { count += 1; }
+        if !s.search.is_empty() {
+            count += 1;
+        }
+        if s.marketplace_ref.is_some() {
+            count += 1;
+        }
         count
     });
 
@@ -469,7 +470,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
 
             {move || error.get().map(|e| view! { <div class="warning-box" style="margin: 10px;">{e}</div> })}
 
-            <div class="page-content">
+            <div class="page__content">
                 <div class="list-container">
                     <table class="table__data table--striped">
                         <thead class="table__head">

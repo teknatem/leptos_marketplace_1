@@ -485,7 +485,7 @@ pub fn WbFinanceReportDetail(
     };
 
     view! {
-        <div class="detail-form">
+        <div class="page page--detail">
             <div class="modal-header">
                 <h3 class="modal-title">"WB Finance Report Details"</h3>
                 <Button
@@ -497,7 +497,7 @@ pub fn WbFinanceReportDetail(
                 </Button>
             </div>
 
-            <div class="detail-form-content">
+            <div class="page__content">
             {move || {
                 if loading.get() {
                     view! { <p class="text-muted">"Загрузка..."</p> }.into_any()

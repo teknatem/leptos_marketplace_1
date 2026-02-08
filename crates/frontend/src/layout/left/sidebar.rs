@@ -166,7 +166,7 @@ pub fn Sidebar() -> impl IntoView {
     let groups = get_menu_groups();
 
     view! {
-        <div class="panel-left__content">
+        <div class="app-sidebar__content">
             {groups.into_iter().filter_map(|group| {
                     let is_admin_only = group.admin_only;
 
@@ -186,8 +186,8 @@ pub fn Sidebar() -> impl IntoView {
                         <div>
                             // Parent item
                             <div
-                                class="panel-left__item"
-                                class:panel-left__item--active=move || {
+                                class="app-sidebar__item"
+                                class:app-sidebar__item--active=move || {
                                     let gid = group_id_stored.get_value();
                                     !has_children && ctx.active.get().as_ref().map(|a| a == &gid).unwrap_or(false)
                                 }
@@ -207,7 +207,7 @@ pub fn Sidebar() -> impl IntoView {
                                     }
                                 }
                             >
-                                <div class="panel-left__item-content">
+                                <div class="app-sidebar__item-content">
                                     {icon(group.icon)}
                                     <span>{group.label}</span>
                                 </div>
@@ -215,8 +215,8 @@ pub fn Sidebar() -> impl IntoView {
                                     let gid_exp = group_id_for_exp.clone();
                                     view! {
                                         <div
-                                            class="panel-left__chevron"
-                                            class:panel-left__chevron--expanded=move || expanded_groups.get().contains(&gid_exp)
+                                            class="app-sidebar__chevron"
+                                            class:app-sidebar__chevron--expanded=move || expanded_groups.get().contains(&gid_exp)
                                         >
                                             {icon("chevron-right")}
                                         </div>
@@ -230,13 +230,13 @@ pub fn Sidebar() -> impl IntoView {
                                 let items_stored = StoredValue::new(group.items.clone());
                                 view! {
                                     <Show when=move || expanded_groups.get().contains(&gid_show)>
-                                        <div class="panel-left__children">
+                                        <div class="app-sidebar__children">
                                             {items_stored.get_value().into_iter().map(|(id, label, icon_name)| {
                                                 let item_id = StoredValue::new(id.to_string());
                                                 view! {
                                                     <div
-                                                        class="panel-left__item"
-                                                        class:panel-left__item--active=move || {
+                                                        class="app-sidebar__item"
+                                                        class:app-sidebar__item--active=move || {
                                                             let iid = item_id.get_value();
                                                             ctx.active.get().as_ref().map(|a| a == &iid).unwrap_or(false)
                                                         }
@@ -245,7 +245,7 @@ pub fn Sidebar() -> impl IntoView {
                                                             ctx.open_tab(id, label);
                                                         }
                                                     >
-                                                        <div class="panel-left__item-content">
+                                                        <div class="app-sidebar__item-content">
                                                             {icon(icon_name)}
                                                             <span>{label}</span>
                                                         </div>

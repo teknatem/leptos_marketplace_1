@@ -70,8 +70,13 @@ pub fn MarketplaceProductDetails(
         move || {
             let v = barcode.get();
             untrack(move || {
-                vm.form
-                    .update(|f| f.barcode = if v.trim().is_empty() { None } else { Some(v.clone()) })
+                vm.form.update(|f| {
+                    f.barcode = if v.trim().is_empty() {
+                        None
+                    } else {
+                        Some(v.clone())
+                    }
+                })
             });
         }
     });
@@ -80,8 +85,13 @@ pub fn MarketplaceProductDetails(
         move || {
             let v = brand.get();
             untrack(move || {
-                vm.form
-                    .update(|f| f.brand = if v.trim().is_empty() { None } else { Some(v.clone()) })
+                vm.form.update(|f| {
+                    f.brand = if v.trim().is_empty() {
+                        None
+                    } else {
+                        Some(v.clone())
+                    }
+                })
             });
         }
     });
@@ -90,8 +100,13 @@ pub fn MarketplaceProductDetails(
         move || {
             let v = comment.get();
             untrack(move || {
-                vm.form
-                    .update(|f| f.comment = if v.trim().is_empty() { None } else { Some(v.clone()) })
+                vm.form.update(|f| {
+                    f.comment = if v.trim().is_empty() {
+                        None
+                    } else {
+                        Some(v.clone())
+                    }
+                })
             });
         }
     });
@@ -126,9 +141,9 @@ pub fn MarketplaceProductDetails(
     });
 
     view! {
-        <div class="detail-form">
-            <div class="detail-form-header">
-                <div class="detail-form-header-left">
+        <div class="page page--detail">
+            <div class="page__header">
+                <div class="page__header-left">
                     <h2>
                         {
                             let vm = vm_title.clone();
@@ -142,7 +157,7 @@ pub fn MarketplaceProductDetails(
                         }
                     </h2>
                 </div>
-                <div class="detail-form-header-right">
+                <div class="page__header-right">
                     <Flex gap=FlexGap::Small>
                         <Button
                             appearance=ButtonAppearance::Primary
@@ -184,7 +199,7 @@ pub fn MarketplaceProductDetails(
                 </div>
             </div>
 
-            <div class="detail-form-content">
+            <div class="page__content">
                 {
                     let vm = vm_error.clone();
                     move || vm.error.get().map(|e| view! {
@@ -204,11 +219,11 @@ pub fn MarketplaceProductDetails(
                     })
                 }
 
-                <div class="detail-form-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--space-xl);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--space-xl);">
                     <Card>
                         <Flex vertical=true gap=FlexGap::Medium>
                             <h3 style="margin: 0; font-size: var(--font-size-base); font-weight: 600;">"Основная информация"</h3>
-                            
+
                             <Flex vertical=true gap=FlexGap::Small>
                                 <Label>"Описание"</Label>
                                 <Input
@@ -269,7 +284,7 @@ pub fn MarketplaceProductDetails(
                     <Card>
                         <Flex vertical=true gap=FlexGap::Medium>
                             <h3 style="margin: 0; font-size: var(--font-size-base); font-weight: 600;">"Связь с 1С УТ"</h3>
-                            
+
                             <Flex vertical=true gap=FlexGap::Small>
                                 <Label>"Номенклатура"</Label>
                                 <Flex gap=FlexGap::Small>

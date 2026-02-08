@@ -486,7 +486,7 @@ pub fn NomenclatureList() -> impl IntoView {
                 </div>
             </div>
 
-            <div class="page-content">
+            <div class="page__content">
                 <div style="width: 100%; overflow-x: auto;">
                 <Table attr:style="width: 100%;">
                     <TableHeader>

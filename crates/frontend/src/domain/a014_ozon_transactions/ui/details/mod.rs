@@ -125,7 +125,11 @@ pub fn OzonTransactionsDetail(
                                             set_projections_loading.clone();
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
-                                            let projections_url = format!("{}/api/a014/ozon-transactions/{}/projections", api_base(), transaction_id);
+                                            let projections_url = format!(
+                                                "{}/api/a014/ozon-transactions/{}/projections",
+                                                api_base(),
+                                                transaction_id
+                                            );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
@@ -178,9 +182,9 @@ pub fn OzonTransactionsDetail(
     });
 
     view! {
-        <div class="detail-form">
-            <div class="detail-form-header">
-                <div class="detail-form-header-left">
+        <div class="page page--detail">
+            <div class="page__header">
+                <div class="page__header-left">
                     <h2>
                         {move || {
                             transaction_data.get()
@@ -200,7 +204,7 @@ pub fn OzonTransactionsDetail(
                         }}
                     </Show>
                 </div>
-                <div class="detail-form-header-right">
+                <div class="page__header-right">
                         <Show when=move || transaction_data.get().is_some()>
                             <Show
                                 when=move || !is_posted.get()
@@ -318,7 +322,7 @@ pub fn OzonTransactionsDetail(
                     </div>
                 </div>
 
-                <div class="detail-form-content">
+                <div class="page__content">
                     {move || {
                         if loading.get() {
                             view! {

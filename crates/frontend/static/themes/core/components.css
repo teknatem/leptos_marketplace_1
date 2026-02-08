@@ -1098,55 +1098,6 @@ th.resizable {
   margin: 0;
 }
 
-/* ============================================
-   Detail Forms
-   ============================================ */
-
-.detail-form {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-primary);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  min-height: 0;
-}
-
-.detail-form-header {
-  background: var(--detail-form-header-bg);
-  padding: var(--spacing-sm) var(--spacing-xl);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
-
-.detail-form-header h2 {
-  margin: 0;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--detail-form-header-text);
-}
-
-.detail-form-header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xl);
-}
-
-.detail-form-header-right {
-  display: flex;
-  gap: var(--spacing-md);
-}
-
-.detail-form-content {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-  padding: var(--spacing-sm);
-  background: var(--color-bg-primary);
-}
-
 /* Field rows */
 .field-row {
   display: grid;

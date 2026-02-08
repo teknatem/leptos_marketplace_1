@@ -216,7 +216,8 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
                                                 "{}/api/a013/raw/{}",
-                                                api_base(), raw_payload_ref
+                                                api_base(),
+                                                raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
@@ -256,7 +257,8 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
                                                 "{}/api/a013/ym-order/{}/projections",
-                                                api_base(), id
+                                                api_base(),
+                                                id
                                             );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
@@ -411,9 +413,9 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     };
 
     view! {
-        <div class="detail-form">
-            <div class="detail-form-header">
-                <div class="detail-form-header-left">
+        <div class="page page--detail">
+            <div class="page__header">
+                <div class="page__header-left">
                     <h2>
                         {move || {
                             order.get()
@@ -433,7 +435,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }}
                     </Show>
                 </div>
-                <div class="detail-form-header-right">
+                <div class="page__header-right">
                     <Show when=move || order.get().is_some()>
                         <Show
                             when=move || !is_posted.get()
@@ -471,7 +473,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                 </div>
             </div>
 
-            <div class="detail-form-content">
+            <div class="page__content">
                 {move || {
                     if loading.get() {
                         view! {

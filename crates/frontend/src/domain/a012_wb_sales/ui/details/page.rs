@@ -65,11 +65,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     let vm_content = vm.clone();
 
     view! {
-        <div class="detail-form">
+        <div class="page page--detail">
             // Header
             <Header vm=vm_header.clone() on_close=on_close />
 
-            <div class="detail-form-content">
+            <div class="page__content">
                 {move || {
                     if vm.loading.get() {
                         view! {
@@ -113,8 +113,8 @@ fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
     let sale = vm.sale;
 
     view! {
-        <div class="detail-form-header">
-            <div class="detail-form-header-left">
+        <div class="page__header">
+            <div class="page__header-left">
                 <h2>
                     {move || format!("WB Sales {}", sale_id.get())}
                 </h2>
@@ -132,7 +132,7 @@ fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
                     }}
                 </Show>
             </div>
-            <div class="detail-form-header-right">
+            <div class="page__header-right">
                 // Post/Unpost buttons
                 <PostButtons vm=vm.clone() />
 

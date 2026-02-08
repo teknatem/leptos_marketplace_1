@@ -31,11 +31,11 @@ pub fn SchemaDetails(schema_id: String, #[prop(into)] on_close: Callback<()>) ->
     let vm_schema = vm.clone();
 
     view! {
-        <div class="detail-form">
+        <div class="page page--detail">
             // Header
             <Header vm=vm_header on_close=on_close />
 
-            <div class="detail-form-content">
+            <div class="page__content">
                 {move || {
                     if vm_loading.loading.get() {
                         view! {
