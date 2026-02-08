@@ -40,7 +40,7 @@ pub fn TabsContainer(
 ) -> impl IntoView {
     view! {
         <div>
-            <div style="border-bottom: 1px solid var(--thaw-color-neutral-stroke-1); margin-bottom: 16px; padding-bottom: 4px;">
+            <div style="margin-bottom: 8px; margin-top: 8px;">
                 <Space>
                     <Button
                         appearance=move || if active_tab.get() == "result" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }

@@ -24,6 +24,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
+use crate::shared::api_utils::api_base;
+
 const TABLE_ID: &str = "a016-ym-returns-table";
 const COLUMN_WIDTHS_KEY: &str = "a016_ym_returns_column_widths";
 
@@ -148,7 +150,8 @@ pub fn YmReturnsList() -> impl IntoView {
             let sort_desc = !current_state.sort_ascending;
 
             let mut url = format!(
-                "http://localhost:3000/api/a016/ym-returns?limit={}&offset={}&sort_by={}&sort_desc={}&date_from={}&date_to={}",
+                "{}/api/a016/ym-returns?limit={}&offset={}&sort_by={}&sort_desc={}&date_from={}&date_to={}",
+                api_base(),
                 current_state.page_size,
                 offset,
                 current_state.sort_field,
@@ -387,7 +390,7 @@ pub fn YmReturnsList() -> impl IntoView {
 
         spawn_local(async move {
             let body = json!({ "ids": ids });
-            match Request::post("http://localhost:3000/api/a016/ym-returns/batch-post")
+            match Request::post(&format!("{}/api/a016/ym-returns/batch-post", api_base()))
                 .header("Content-Type", "application/json")
                 .body(body.to_string())
                 .unwrap()
@@ -416,7 +419,7 @@ pub fn YmReturnsList() -> impl IntoView {
 
         spawn_local(async move {
             let body = json!({ "ids": ids });
-            match Request::post("http://localhost:3000/api/a016/ym-returns/batch-unpost")
+            match Request::post(&format!("{}/api/a016/ym-returns/batch-unpost", api_base()))
                 .header("Content-Type", "application/json")
                 .body(body.to_string())
                 .unwrap()

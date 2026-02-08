@@ -57,6 +57,8 @@ fn field_to_pivot_def(field: &FieldMetadata, resolver: &impl RefResolver) -> Fie
         can_aggregate,
         db_column: field.name.to_string(),
         ref_display_column: ref_display,
+        source_table: None,
+        join_on_column: None,
         field_type: Some(pivot_type),
         ref_table,
     }

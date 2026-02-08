@@ -1,4 +1,5 @@
 use super::details::OzonFboPostingDetail;
+use crate::shared::api_utils::api_base;
 use crate::shared::date_utils::format_datetime;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
@@ -184,9 +185,9 @@ pub fn OzonFboPostingList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let url = "http://localhost:3000/api/a011/ozon-fbo-posting";
+            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
 
-            match Request::get(url).send().await {
+            match Request::get(&url).send().await {
                 Ok(response) => {
                     let status = response.status();
                     if status == 200 {
@@ -415,7 +416,8 @@ pub fn OzonFboPostingList() -> impl IntoView {
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
                 let url = format!(
-                    "http://localhost:3000/api/a011/ozon-fbo-posting/{}/post",
+                    "{}/api/a011/ozon-fbo-posting/{}/post",
+                    api_base(),
                     id
                 );
                 match Request::post(&url).send().await {
@@ -445,8 +447,8 @@ pub fn OzonFboPostingList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let url = "http://localhost:3000/api/a011/ozon-fbo-posting";
-            match Request::get(url).send().await {
+            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
+            match Request::get(&url).send().await {
                 Ok(response) => {
                     if response.status() == 200 {
                         if let Ok(text) = response.text().await {
@@ -548,7 +550,8 @@ pub fn OzonFboPostingList() -> impl IntoView {
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
                 let url = format!(
-                    "http://localhost:3000/api/a011/ozon-fbo-posting/{}/unpost",
+                    "{}/api/a011/ozon-fbo-posting/{}/unpost",
+                    api_base(),
                     id
                 );
                 match Request::post(&url).send().await {
@@ -578,8 +581,8 @@ pub fn OzonFboPostingList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let url = "http://localhost:3000/api/a011/ozon-fbo-posting";
-            match Request::get(url).send().await {
+            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
+            match Request::get(&url).send().await {
                 Ok(response) => {
                     if response.status() == 200 {
                         if let Ok(text) = response.text().await {

@@ -6,6 +6,8 @@ use serde_json;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
+use crate::shared::api_utils::api_base;
+
 /// API клиент для UseCase u504
 pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, String> {
     let window = window().ok_or("No window object")?;
@@ -18,7 +20,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
     opts.set_body(&JsValue::from_str(&body));
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/u504/import/start",
+        &format!("{}/api/u504/import/start", api_base()),
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;
@@ -56,10 +58,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!(
-        "http://localhost:3000/api/u504/import/{}/progress",
-        session_id
-    );
+    let url = format!("{}/api/u504/import/{}/progress", api_base(), session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -101,9 +100,11 @@ pub async fn get_connections(
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let request =
-        web_sys::Request::new_with_str_and_init("http://localhost:3000/api/connection_mp", &opts)
-            .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request = web_sys::Request::new_with_str_and_init(
+        &format!("{}/api/connection_mp", api_base()),
+        &opts,
+    )
+    .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
@@ -137,7 +138,7 @@ pub async fn get_marketplaces() -> Result<Vec<Marketplace>, String> {
     opts.set_mode(RequestMode::Cors);
 
     let request =
-        web_sys::Request::new_with_str_and_init("http://localhost:3000/api/marketplace", &opts)
+        web_sys::Request::new_with_str_and_init(&format!("{}/api/marketplace", api_base()), &opts)
             .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     request

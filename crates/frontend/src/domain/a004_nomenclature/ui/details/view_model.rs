@@ -3,7 +3,7 @@
 //! Contains all form fields as individual RwSignals for THAW two-way binding,
 //! nested data (barcodes), UI state, and commands.
 
-use super::model::{self, DimensionValuesResponse, NomenclatureBarcodeDto};
+use super::model::{self, DealerPriceDto, DimensionValuesResponse, NomenclatureBarcodeDto};
 use contracts::domain::a004_nomenclature::aggregate::NomenclatureDto;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
@@ -38,11 +38,22 @@ pub struct NomenclatureDetailsVm {
     pub dim5_sink: RwSignal<String>,
     pub dim6_size: RwSignal<String>,
 
+    // Derivative nomenclature fields
+    pub base_nomenclature_ref: RwSignal<String>,
+    pub is_derivative: RwSignal<bool>,
+    pub base_nomenclature_name: RwSignal<String>,
+    pub base_nomenclature_article: RwSignal<String>,
+
     // === Nested data (tables) ===
     pub barcodes: RwSignal<Vec<NomenclatureBarcodeDto>>,
     pub barcodes_count: RwSignal<usize>,
     pub barcodes_loaded: RwSignal<bool>,
     pub barcodes_loading: RwSignal<bool>,
+
+    pub dealer_prices: RwSignal<Vec<DealerPriceDto>>,
+    pub dealer_prices_count: RwSignal<usize>,
+    pub dealer_prices_loaded: RwSignal<bool>,
+    pub dealer_prices_loading: RwSignal<bool>,
 
     // === Reference data (dropdown options) ===
     pub dimension_options: RwSignal<Option<DimensionValuesResponse>>,
@@ -77,11 +88,22 @@ impl NomenclatureDetailsVm {
             dim5_sink: RwSignal::new(String::new()),
             dim6_size: RwSignal::new(String::new()),
 
+            // Derivative nomenclature
+            base_nomenclature_ref: RwSignal::new(String::new()),
+            is_derivative: RwSignal::new(false),
+            base_nomenclature_name: RwSignal::new(String::new()),
+            base_nomenclature_article: RwSignal::new(String::new()),
+
             // Nested data
             barcodes: RwSignal::new(Vec::new()),
             barcodes_count: RwSignal::new(0),
             barcodes_loaded: RwSignal::new(false),
             barcodes_loading: RwSignal::new(false),
+
+            dealer_prices: RwSignal::new(Vec::new()),
+            dealer_prices_count: RwSignal::new(0),
+            dealer_prices_loaded: RwSignal::new(false),
+            dealer_prices_loading: RwSignal::new(false),
 
             // Reference data
             dimension_options: RwSignal::new(None),
@@ -147,15 +169,50 @@ impl NomenclatureDetailsVm {
         this.id.set(Some(id.clone()));
 
         leptos::task::spawn_local(async move {
-            match model::fetch_by_id(id).await {
+            match model::fetch_by_id(id.clone()).await {
                 Ok(item) => {
                     this.from_aggregate(&item);
                     this.loading.set(false);
+                    // Load counts for badges immediately
+                    this.load_counts();
                 }
                 Err(e) => {
                     this.error.set(Some(e));
                     this.loading.set(false);
                 }
+            }
+        });
+    }
+
+    /// Load counts for badges (barcodes and dealer prices)
+    pub fn load_counts(&self) {
+        let Some(nom_id) = self.id.get() else {
+            return;
+        };
+
+        // Load barcodes count
+        let this_barcodes = self.clone();
+        let nom_id_barcodes = nom_id.clone();
+        leptos::task::spawn_local(async move {
+            match model::fetch_barcodes_count(nom_id_barcodes).await {
+                Ok(count) => this_barcodes.barcodes_count.set(count),
+                Err(_) => this_barcodes.barcodes_count.set(0),
+            }
+        });
+
+        // Load dealer prices count
+        let this_prices = self.clone();
+        let nom_id_prices = nom_id.clone();
+        let base_ref = this_prices.base_nomenclature_ref.get();
+        let base_ref_option = if base_ref.is_empty() {
+            None
+        } else {
+            Some(base_ref)
+        };
+        leptos::task::spawn_local(async move {
+            match model::fetch_dealer_prices_count(nom_id_prices, base_ref_option).await {
+                Ok(count) => this_prices.dealer_prices_count.set(count),
+                Err(_) => this_prices.dealer_prices_count.set(0),
             }
         });
     }
@@ -186,6 +243,44 @@ impl NomenclatureDetailsVm {
                     this.barcodes_count.set(0);
                     this.barcodes_loaded.set(true);
                     this.barcodes_loading.set(false);
+                }
+            }
+        });
+    }
+
+    /// Load dealer prices (lazy, called when dealer prices tab is activated)
+    pub fn load_dealer_prices(&self) {
+        let Some(nom_id) = self.id.get() else {
+            return;
+        };
+
+        if self.dealer_prices_loaded.get() {
+            return;
+        }
+
+        let this = self.clone();
+        this.dealer_prices_loading.set(true);
+
+        let base_ref = this.base_nomenclature_ref.get();
+        let base_ref_option = if base_ref.is_empty() {
+            None
+        } else {
+            Some(base_ref)
+        };
+
+        leptos::task::spawn_local(async move {
+            match model::fetch_dealer_prices_by_nomenclature(nom_id, base_ref_option).await {
+                Ok(data) => {
+                    this.dealer_prices_count.set(data.len());
+                    this.dealer_prices.set(data);
+                    this.dealer_prices_loaded.set(true);
+                    this.dealer_prices_loading.set(false);
+                }
+                Err(_) => {
+                    this.dealer_prices.set(Vec::new());
+                    this.dealer_prices_count.set(0);
+                    this.dealer_prices_loaded.set(true);
+                    this.dealer_prices_loading.set(false);
                 }
             }
         });
@@ -243,9 +338,18 @@ impl NomenclatureDetailsVm {
         self.dim5_sink.set(String::new());
         self.dim6_size.set(String::new());
 
+        self.base_nomenclature_ref.set(String::new());
+        self.is_derivative.set(false);
+        self.base_nomenclature_name.set(String::new());
+        self.base_nomenclature_article.set(String::new());
+
         self.barcodes.set(Vec::new());
         self.barcodes_count.set(0);
         self.barcodes_loaded.set(false);
+
+        self.dealer_prices.set(Vec::new());
+        self.dealer_prices_count.set(0);
+        self.dealer_prices_loaded.set(false);
 
         self.active_tab.set("general");
         self.error.set(None);
@@ -301,7 +405,8 @@ impl NomenclatureDetailsVm {
             dim5_sink: opt(self.dim5_sink.get()),
             dim6_size: opt(self.dim6_size.get()),
             is_assembly: None,
-            base_nomenclature_ref: None,
+            base_nomenclature_ref: opt(self.base_nomenclature_ref.get()),
+            is_derivative: None, // Вычисляется автоматически на backend
         }
     }
 
@@ -312,7 +417,8 @@ impl NomenclatureDetailsVm {
         self.description.set(item.base.description.clone());
         self.full_description.set(item.full_description.clone());
         self.article.set(item.article.clone());
-        self.comment.set(item.base.comment.clone().unwrap_or_default());
+        self.comment
+            .set(item.base.comment.clone().unwrap_or_default());
         self.is_folder.set(item.is_folder);
         self.parent_id
             .set(item.parent_id.clone().unwrap_or_default());
@@ -323,6 +429,35 @@ impl NomenclatureDetailsVm {
         self.dim4_format.set(item.dim4_format.clone());
         self.dim5_sink.set(item.dim5_sink.clone());
         self.dim6_size.set(item.dim6_size.clone());
+
+        // Derivative nomenclature fields
+        self.base_nomenclature_ref
+            .set(item.base_nomenclature_ref.clone().unwrap_or_default());
+        self.is_derivative.set(item.is_derivative);
+
+        // Load base nomenclature info if derivative
+        if item.is_derivative {
+            if let Some(ref base_ref) = item.base_nomenclature_ref {
+                let this = self.clone();
+                let base_ref_clone = base_ref.clone();
+                leptos::task::spawn_local(async move {
+                    match model::fetch_base_nomenclature_info(&base_ref_clone).await {
+                        Ok(info) => {
+                            this.base_nomenclature_name.set(info.name);
+                            this.base_nomenclature_article.set(info.article);
+                        }
+                        Err(_) => {
+                            this.base_nomenclature_name
+                                .set(format!("[{}]", base_ref_clone));
+                            this.base_nomenclature_article.set(String::new());
+                        }
+                    }
+                });
+            }
+        } else {
+            self.base_nomenclature_name.set(String::new());
+            self.base_nomenclature_article.set(String::new());
+        }
     }
 }
 

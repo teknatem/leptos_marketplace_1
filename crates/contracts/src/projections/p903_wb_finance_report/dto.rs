@@ -44,6 +44,7 @@ pub struct WbFinanceReportDto {
     // Technical fields
     pub loaded_at_utc: String,
     pub payload_version: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<String>,
 }
 
@@ -99,4 +100,3 @@ pub struct WbFinanceReportListResponse {
 pub struct WbFinanceReportDetailResponse {
     pub item: WbFinanceReportDto,
 }
-

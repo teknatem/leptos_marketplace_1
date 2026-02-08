@@ -32,6 +32,7 @@ pub struct Model {
     pub dim6_size: String,
     pub is_assembly: bool,
     pub base_nomenclature_ref: Option<String>,
+    pub is_derivative: bool,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -76,6 +77,7 @@ impl From<Model> for Nomenclature {
             dim6_size: m.dim6_size,
             is_assembly: m.is_assembly,
             base_nomenclature_ref: m.base_nomenclature_ref,
+            is_derivative: m.is_derivative,
         }
     }
 }
@@ -196,6 +198,7 @@ pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -226,6 +229,7 @@ pub async fn update(aggregate: &Nomenclature) -> anyhow::Result<()> {
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),
@@ -318,6 +322,7 @@ pub async fn update_txn<C: ConnectionTrait>(db: &C, aggregate: &Nomenclature) ->
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),

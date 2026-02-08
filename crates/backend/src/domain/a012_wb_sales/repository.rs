@@ -77,6 +77,8 @@ pub struct Model {
     pub commission_plan: Option<f64>,
     #[sea_orm(nullable)]
     pub commission_fact: Option<f64>,
+    #[sea_orm(nullable)]
+    pub dealer_price_ut: Option<f64>,
     // JSON storage
     pub header_json: String,
     pub line_json: String,
@@ -219,9 +221,12 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
 
     // УПРОЩЕННАЯ ЛОГИКА: Поиск только по sale_id (единственный уникальный ключ)
-    let sale_id = aggregate.header.sale_id.as_ref()
+    let sale_id = aggregate
+        .header
+        .sale_id
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("sale_id is required for upsert_document"))?;
-    
+
     tracing::debug!(
         "[REPOSITORY] upsert_document called with sale_id='{}', document_no='{}'",
         sale_id,
@@ -265,6 +270,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let cost_of_production = aggregate.line.cost_of_production;
     let commission_plan = aggregate.line.commission_plan;
     let commission_fact = aggregate.line.commission_fact;
+    let dealer_price_ut = aggregate.line.dealer_price_ut;
 
     if let Some(existing_doc) = existing {
         let existing_uuid = existing_doc.base.id.value();
@@ -308,6 +314,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             cost_of_production: Set(cost_of_production),
             commission_plan: Set(commission_plan),
             commission_fact: Set(commission_fact),
+            dealer_price_ut: Set(dealer_price_ut),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -330,7 +337,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             uuid,
             sale_id
         );
-        
+
         let active = ActiveModel {
             id: Set(uuid.to_string()),
             code: Set(aggregate.base.code.clone()),
@@ -366,6 +373,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             cost_of_production: Set(cost_of_production),
             commission_plan: Set(commission_plan),
             commission_fact: Set(commission_fact),
+            dealer_price_ut: Set(dealer_price_ut),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -380,7 +388,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),
         };
-        
+
         active.insert(conn()).await?;
         Ok(uuid)
     }
@@ -442,6 +450,7 @@ pub struct WbSalesListRow {
     pub cost_of_production: Option<f64>,
     pub commission_plan: Option<f64>,
     pub commission_fact: Option<f64>,
+    pub dealer_price_ut: Option<f64>,
 }
 
 /// Query parameters for list
@@ -452,6 +461,7 @@ pub struct WbSalesListQuery {
     pub organization_id: Option<String>,
     pub search_sale_id: Option<String>,
     pub search_srid: Option<String>,
+    pub search_supplier_article: Option<String>,
     pub sort_by: String,
     pub sort_desc: bool,
     pub limit: usize,
@@ -502,6 +512,14 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
             ));
         }
     }
+    if let Some(ref search_supplier_article) = query.search_supplier_article {
+        if !search_supplier_article.is_empty() {
+            conditions.push(format!(
+                "supplier_article LIKE '%{}%'",
+                search_supplier_article.replace("'", "''")
+            ));
+        }
+    }
 
     let where_clause = conditions.join(" AND ");
 
@@ -529,6 +547,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
         "product_name" => "product_name",
         "qty" => "qty",
         "amount_line" => "amount_line",
+        "dealer_price_ut" => "dealer_price_ut",
         "total_price" => "total_price",
         "finished_price" => "finished_price",
         "event_type" => "event_type",
@@ -544,7 +563,8 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
             finished_price, event_type, marketplace_product_ref, nomenclature_ref, is_posted,
             is_fact, sell_out_plan, sell_out_fact, acquiring_fee_plan, acquiring_fee_fact,
             other_fee_plan, other_fee_fact, supplier_payout_plan, supplier_payout_fact,
-            profit_plan, profit_fact, cost_of_production, commission_plan, commission_fact
+            profit_plan, profit_fact, cost_of_production, commission_plan, commission_fact,
+            dealer_price_ut
         FROM a012_wb_sales 
         WHERE {}
         ORDER BY {} {} NULLS LAST
@@ -595,6 +615,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
                 cost_of_production: row.try_get("", "cost_of_production").ok(),
                 commission_plan: row.try_get("", "commission_plan").ok(),
                 commission_fact: row.try_get("", "commission_fact").ok(),
+                dealer_price_ut: row.try_get("", "dealer_price_ut").ok(),
             })
         })
         .collect();

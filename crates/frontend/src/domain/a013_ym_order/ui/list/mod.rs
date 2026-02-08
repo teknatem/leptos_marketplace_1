@@ -17,6 +17,8 @@ use serde_json::json;
 use std::cmp::Ordering;
 use wasm_bindgen::JsCast;
 
+use crate::shared::api_utils::api_base;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub id: String,
@@ -129,8 +131,8 @@ pub fn YmOrderList() -> impl IntoView {
 
             // Build URL with pagination parameters
             let mut url = format!(
-                "http://localhost:3000/api/a013/ym-order/list?limit={}&offset={}&sort_by={}&sort_desc={}",
-                page_size, offset, sort_field, !sort_ascending
+                "{}/api/a013/ym-order/list?limit={}&offset={}&sort_by={}&sort_desc={}",
+                api_base(), page_size, offset, sort_field, !sort_ascending
             );
 
             // Add date filter if specified
@@ -374,7 +376,7 @@ pub fn YmOrderList() -> impl IntoView {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
-                let response = Request::post("http://localhost:3000/api/a013/ym-order/batch-post")
+                let response = Request::post(&format!("{}/api/a013/ym-order/batch-post", api_base()))
                     .header("Content-Type", "application/json")
                     .body(serde_json::to_string(&payload).unwrap_or_default())
                     .map(|req| req.send());
@@ -441,7 +443,7 @@ pub fn YmOrderList() -> impl IntoView {
 
                 let payload = json!({ "ids": chunk });
                 let response =
-                    Request::post("http://localhost:3000/api/a013/ym-order/batch-unpost")
+                    Request::post(&format!("{}/api/a013/ym-order/batch-unpost", api_base()))
                         .header("Content-Type", "application/json")
                         .body(serde_json::to_string(&payload).unwrap_or_default())
                         .map(|req| req.send());
@@ -1168,8 +1170,8 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let url = "http://localhost:3000/api/organization";
-    let request = WebRequest::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    let url = format!("{}/api/organization", api_base());
+    let request = WebRequest::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")

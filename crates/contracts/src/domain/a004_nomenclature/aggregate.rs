@@ -4,6 +4,9 @@ use crate::domain::common::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// Нулевой UUID, который не считается корректной ссылкой
+const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
 // ============================================================================
 // ID Type
 // ============================================================================
@@ -83,9 +86,19 @@ pub struct Nomenclature {
 
     #[serde(rename = "baseNomenclatureRef")]
     pub base_nomenclature_ref: Option<String>,
+
+    #[serde(rename = "isDerivative", default)]
+    pub is_derivative: bool,
 }
 
 impl Nomenclature {
+    /// Вычисление признака производной номенклатуры
+    pub fn compute_is_derivative(&self) -> bool {
+        self.base_nomenclature_ref
+            .as_ref()
+            .map_or(false, |s| !s.is_empty() && s != ZERO_UUID)
+    }
+
     pub fn new_for_insert(
         code: String,
         description: String,
@@ -113,6 +126,7 @@ impl Nomenclature {
             dim6_size: String::new(),
             is_assembly: false,
             base_nomenclature_ref: None,
+            is_derivative: false,
         }
     }
 
@@ -145,6 +159,7 @@ impl Nomenclature {
             dim6_size: String::new(),
             is_assembly: false,
             base_nomenclature_ref: None,
+            is_derivative: false,
         }
     }
 
@@ -181,6 +196,10 @@ impl Nomenclature {
         if dto.base_nomenclature_ref.is_some() {
             self.base_nomenclature_ref = dto.base_nomenclature_ref.clone();
         }
+
+        // Игнорируем dto.is_derivative - вычисляем автоматически на основе base_nomenclature_ref
+        // Автоматический пересчет признака производной номенклатуры
+        self.is_derivative = self.compute_is_derivative();
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -310,4 +329,6 @@ pub struct NomenclatureDto {
     pub is_assembly: Option<bool>,
     #[serde(rename = "baseNomenclatureRef")]
     pub base_nomenclature_ref: Option<String>,
+    #[serde(rename = "isDerivative", default)]
+    pub is_derivative: Option<bool>,
 }

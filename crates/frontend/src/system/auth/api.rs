@@ -3,13 +3,13 @@ use contracts::system::auth::{
 };
 use gloo_net::http::Request;
 
-const API_BASE: &str = "http://localhost:3000";
+use crate::shared::api_utils::api_base;
 
 /// Login with username and password
 pub async fn login(username: String, password: String) -> Result<LoginResponse, String> {
     let request = LoginRequest { username, password };
 
-    let response = Request::post(&format!("{}/api/system/auth/login", API_BASE))
+    let response = Request::post(&format!("{}/api/system/auth/login", api_base()))
         .json(&request)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
         .send()
@@ -30,7 +30,7 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
 pub async fn refresh_token(refresh_token: String) -> Result<RefreshResponse, String> {
     let request = RefreshRequest { refresh_token };
 
-    let response = Request::post(&format!("{}/api/system/auth/refresh", API_BASE))
+    let response = Request::post(&format!("{}/api/system/auth/refresh", api_base()))
         .json(&request)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
         .send()
@@ -51,7 +51,7 @@ pub async fn refresh_token(refresh_token: String) -> Result<RefreshResponse, Str
 pub async fn logout(refresh_token: String) -> Result<(), String> {
     let request = RefreshRequest { refresh_token };
 
-    let response = Request::post(&format!("{}/api/system/auth/logout", API_BASE))
+    let response = Request::post(&format!("{}/api/system/auth/logout", api_base()))
         .json(&request)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
         .send()
@@ -67,7 +67,7 @@ pub async fn logout(refresh_token: String) -> Result<(), String> {
 
 /// Get current user info
 pub async fn get_current_user(access_token: &str) -> Result<UserInfo, String> {
-    let response = Request::get(&format!("{}/api/system/auth/me", API_BASE))
+    let response = Request::get(&format!("{}/api/system/auth/me", api_base()))
         .header("Authorization", &format!("Bearer {}", access_token))
         .send()
         .await
@@ -88,7 +88,7 @@ pub async fn fetch_with_auth<T>(url: &str, access_token: &str) -> Result<T, Stri
 where
     T: for<'de> serde::Deserialize<'de>,
 {
-    let response = Request::get(&format!("{}{}", API_BASE, url))
+    let response = Request::get(&format!("{}{}", api_base(), url))
         .header("Authorization", &format!("Bearer {}", access_token))
         .send()
         .await

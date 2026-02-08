@@ -20,12 +20,13 @@ pub struct WbSalesState {
     pub total_pages: usize,
     // Search fields
     pub search_sale_id: String,
-    pub search_srid: String,
+    pub search_supplier_article: String,
     // Серверные итоги
     pub server_totals: Option<WbSalesTotals>,
     // Column visibility settings
     pub show_operation_date: bool,
     pub show_marketplace_article: bool,
+    pub show_total_price: bool,
 }
 
 /// Серверные итоги по датасету WB Sales
@@ -71,12 +72,13 @@ impl Default for WbSalesState {
             total_pages: 0,
             // Search defaults
             search_sale_id: String::new(),
-            search_srid: String::new(),
+            search_supplier_article: String::new(),
             // Итоги
             server_totals: None,
             // Column visibility defaults (hidden by default)
             show_operation_date: false,
             show_marketplace_article: false,
+            show_total_price: false,
         }
     }
 }

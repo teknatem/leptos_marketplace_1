@@ -4,13 +4,13 @@ use uuid::Uuid;
 
 use super::repository::NomenclaturePriceEntry;
 
-/// Ответ от HTTP API /hs/mpi_api/prices_plan
+/// Ответ от HTTP API /hs/mpi_api/prices_dealer
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PricesPlanResponse {
+pub struct PricesDealerResponse {
     /// Общее количество записей
     pub count: i32,
 
-    /// Плановые цены
+    /// Дилерские цены (УТ)
     #[serde(default)]
     pub initial: Vec<PriceItem>,
 

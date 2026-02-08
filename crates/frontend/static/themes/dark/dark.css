@@ -80,12 +80,12 @@
   --badge-neutral-border: rgba(255, 255, 255, 0.30);
 
   /* Tab Colors */
-  --tab-text: rgba(255, 255, 255, 0.50);
-  --tab-text-hover: rgba(255, 255, 255, 0.85);
+  --tab-text: rgba(255, 255, 255, 0.90);
+  --tab-text-hover: rgba(255, 255, 255, 1);
   --tab-text-active: rgba(255, 255, 255, 0.95);
   --tab-border-active: #60a5fa;
   --tab-bg: rgba(30, 41, 59, 0.15);
-  --tab-bg-hover: rgba(255, 255, 255, 0.08);
+  --tab-bg-hover: rgba(0,0,0,0.5);
   --tab-bg-active: rgba(96, 165, 250, 0.10);
   --tab-close-bg: rgba(255, 255, 255, 0.20);
   --tab-close-text: rgba(255, 255, 255, 0.70);
@@ -128,6 +128,8 @@
   /* Card Colors */
   --card-bg: rgba(30, 41, 59, 0.25);
   --card-border: rgba(255, 255, 255, 0.20);
+  --card-hover-bg: rgba(30, 41, 59, 0.40);
+  --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 
   /* Form Colors */
   --form-label-text: rgb(105, 162, 211);

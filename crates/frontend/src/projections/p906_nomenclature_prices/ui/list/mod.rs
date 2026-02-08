@@ -22,34 +22,30 @@ fn P906Header(
     on_import: Callback<()>,
 ) -> impl IntoView {
     view! {
-        <div class="page-header">
-            <div class="page-header__content">
-                <div class="page-header__icon">{vec![icon("dollar-sign").into_view()]}</div>
-                <div class="page-header__text">
-                    <h1 class="page-header__title">"Плановые цены"</h1>
-                    <div class="page-header__badge">
-                        <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                            <span>{move || total_count.get().to_string()}</span>
-                        </Badge>
-                    </div>
-                </div>
+        <div class="page__header">
+            <div class="page__header-left">
+                {icon("dollar-sign")}
+                <h1 class="page__title">"Дилерские цены (УТ)"</h1>
+                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                    <span>{move || total_count.get().to_string()}</span>
+                </Badge>
             </div>
 
-            <div class="page-header__actions">
+            <div class="page__header-right">
                 <Button
                     appearance=ButtonAppearance::Primary
                     on_click=move |_| on_import.run(())
                 >
-                    <span>{vec![icon("upload").into_view()]}</span>
-                    <span>" Импорт Excel"</span>
+                    {icon("upload")}
+                    " Импорт Excel"
                 </Button>
                 <Button
                     appearance=ButtonAppearance::Secondary
                     on_click=move |_| on_refresh.run(())
                     disabled=is_loading
                 >
-                    <span>{vec![icon("refresh").into_view()]}</span>
-                    <span>{move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}</span>
+                    {icon("refresh")}
+                    {move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}
                 </Button>
             </div>
         </div>
@@ -336,8 +332,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                     </div>
                 </div>
 
-                <div class="filter-panel__collapsible filter-panel__collapsible--expanded">
-                    <div class="filter-panel-content">
+                <div class="filter-panel-content">
                         <Flex gap=FlexGap::Small align=FlexAlign::End>
                             <div style="min-width: 240px;">
                                 <Flex vertical=true gap=FlexGap::Small>
@@ -361,7 +356,6 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                             </div>
                         </Flex>
                     </div>
-                </div>
             </div>
 
             <div class="page-content">
@@ -479,7 +473,9 @@ pub fn NomenclaturePricesList() -> impl IntoView {
 }
 
 fn encode_q(s: &str) -> String {
-    js_sys::encode_uri_component(s).as_string().unwrap_or_default()
+    js_sys::encode_uri_component(s)
+        .as_string()
+        .unwrap_or_default()
 }
 
 async fn fetch_prices(

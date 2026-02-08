@@ -53,7 +53,7 @@ pub fn SchemaPicker(
 
     view! {
         <div class="schema-picker">
-            <label class="schema-picker-label">"Схема данных"</label>
+            <label class="schema-picker-label">""</label>
             <Select value=select_value>
                 <option value="">"-- Выберите схему --"</option>
                 <For

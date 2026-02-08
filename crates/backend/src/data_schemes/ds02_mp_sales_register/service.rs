@@ -15,33 +15,51 @@ use crate::shared::universal_dashboard::{
     get_registry, query_builder::QueryParam, QueryBuilder, RawRow, TreeBuilder,
 };
 
-use super::schema::P903_SCHEMA;
+use super::schema::DS02_SCHEMA;
 
 /// Execute a dashboard query
 pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboardResponse> {
-    // Use P903_SCHEMA for both legacy (p903_wb_finance_report) and new (s001_wb_finance) IDs
-    let schema = if config.data_source == P903_SCHEMA.id || config.data_source == "s001_wb_finance"
-    {
-        &P903_SCHEMA
-    } else {
-        // Try registry for other data sources
-        let registry = get_registry();
-        if registry.has_schema(&config.data_source) {
-            // Currently only P903_SCHEMA is supported for execution
-            return Err(anyhow::anyhow!(
-                "Data source '{}' is not yet supported for execution",
-                config.data_source
-            ));
-        } else {
-            return Err(anyhow::anyhow!(
-                "Unknown data source: {}",
-                config.data_source
-            ));
+    // Support DS01 and DS02 schemas, with backward compatibility for old IDs
+    let schema = match config.data_source.as_str() {
+        "ds02_mp_sales_register" => &DS02_SCHEMA,
+        // Backward compatibility
+        "p900_sales_register" => &DS02_SCHEMA,
+        "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
+            &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
+        }
+        _ => {
+            // Try registry for other data sources
+            let registry = get_registry();
+            if registry.has_schema(&config.data_source) {
+                // Schema found but not yet supported for execution
+                return Err(anyhow::anyhow!(
+                    "Data source '{}' is registered but not yet supported for execution",
+                    config.data_source
+                ));
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Unknown data source: {}",
+                    config.data_source
+                ));
+            }
         }
     };
 
+    // Get table name from registry (with backward compatibility mapping)
+    let registry = get_registry();
+    let data_source_for_table = match config.data_source.as_str() {
+        "p900_sales_register" => "ds02_mp_sales_register",
+        "p903_wb_finance_report" | "s001_wb_finance" => "ds01_wb_finance_report",
+        _ => config.data_source.as_str(),
+    };
+    let table_name = registry
+        .get_table_name(data_source_for_table)
+        .ok_or_else(|| {
+            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+        })?;
+
     // Build SQL query
-    let query_builder = QueryBuilder::new(schema, &config);
+    let query_builder = QueryBuilder::new(schema, &config, table_name);
     let query_result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;
@@ -61,17 +79,13 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
 
             // Parse grouping columns
             for grouping_id in config.groupings.iter() {
-                let field = P903_SCHEMA
-                    .fields
-                    .iter()
-                    .find(|f| f.id == grouping_id)
-                    .unwrap();
+                let field = schema.fields.iter().find(|f| f.id == grouping_id).unwrap();
 
                 let value = match field.field_type {
                     contracts::shared::universal_dashboard::FieldType::Text
                     | contracts::shared::universal_dashboard::FieldType::Date => {
                         // For ref fields, try to use _display column first
-                        if field.ref_table.is_some() {
+                        if field.ref_table.is_some() && field.ref_display_column.is_some() {
                             let display_col = format!("{}_display", grouping_id);
                             if let Ok(Some(display)) =
                                 query_result.try_get::<Option<String>>("", &display_col)
@@ -85,6 +99,15 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
                                     .map(CellValue::Text)
                                     .unwrap_or(CellValue::Null)
                             }
+                        } else if field.ref_table.is_some() && field.ref_display_column.is_none() {
+                            // For dimension fields (ref_table but no ref_display_column)
+                            // The column comes from the joined table
+                            query_result
+                                .try_get::<Option<String>>("", grouping_id)
+                                .ok()
+                                .flatten()
+                                .map(CellValue::Text)
+                                .unwrap_or(CellValue::Null)
                         } else {
                             query_result
                                 .try_get::<Option<String>>("", grouping_id)
@@ -132,7 +155,7 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
 
     // Add grouping columns
     for grouping_id in &config.groupings {
-        let field = P903_SCHEMA
+        let field = schema
             .fields
             .iter()
             .find(|f| f.id == grouping_id)
@@ -148,7 +171,7 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
     // Add aggregated columns
     for selected in &config.selected_fields {
         if let Some(aggregate) = &selected.aggregate {
-            let field = P903_SCHEMA
+            let field = schema
                 .fields
                 .iter()
                 .find(|f| f.id == selected.field_id)
@@ -356,19 +379,37 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse> {
-    // Validate data source - support both old and new schema IDs
-    let schema = if config.data_source == P903_SCHEMA.id || config.data_source == "s001_wb_finance"
-    {
-        &P903_SCHEMA
-    } else {
-        return Err(anyhow::anyhow!(
-            "Unsupported data source: {}",
-            config.data_source
-        ));
+    // Support DS01 and DS02 schemas, with backward compatibility
+    let schema = match config.data_source.as_str() {
+        "ds02_mp_sales_register" => &DS02_SCHEMA,
+        // Backward compatibility
+        "p900_sales_register" => &DS02_SCHEMA,
+        "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
+            &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
+        }
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unsupported data source: {}",
+                config.data_source
+            ));
+        }
     };
 
+    // Get table name from registry (with backward compatibility mapping)
+    let registry = get_registry();
+    let data_source_for_table = match config.data_source.as_str() {
+        "p900_sales_register" => "ds02_mp_sales_register",
+        "p903_wb_finance_report" | "s001_wb_finance" => "ds01_wb_finance_report",
+        _ => config.data_source.as_str(),
+    };
+    let table_name = registry
+        .get_table_name(data_source_for_table)
+        .ok_or_else(|| {
+            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+        })?;
+
     // Build SQL query
-    let query_builder = QueryBuilder::new(schema, &config);
+    let query_builder = QueryBuilder::new(schema, &config, table_name);
     let result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;
@@ -473,9 +514,6 @@ pub async fn get_distinct_values(
 }
 
 // Helper structures
-
-// We cannot use FromQueryResult with dynamic columns
-// Will need to manually parse query results
 
 #[derive(Debug, Clone, FromQueryResult)]
 struct SavedConfigRow {

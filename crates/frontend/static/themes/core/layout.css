@@ -23,6 +23,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--app-main-bg);
+  min-width: 400px; /* Минимальная ширина центра, чтобы панель не перекрывала */
 }
 
 /* ============================================
@@ -31,8 +32,8 @@
 
 .top-header {
   height: var(--top-header-height);
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 0 var(--spacing-lg);
   z-index: var(--z-top-header);
@@ -158,7 +159,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding-left: 10px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-right: 10px;  
   cursor: pointer;
   transition: all var(--transition-fast);
   user-select: none;
@@ -217,10 +221,10 @@
 }
 
 /* ============================================
-   Header (Page Header)
+   Page Header (BEM)
    ============================================ */
 
-.header {
+.page__header {
   min-height: 48px;
   display: flex;
   align-items: center;
@@ -238,7 +242,7 @@
   -webkit-backdrop-filter: blur(var(--header-backdrop-blur));
 }
 
-.header__content {
+.page__header-left {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -246,7 +250,15 @@
   min-width: 0;
 }
 
-.header__icon {
+.page__header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.page__icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -256,44 +268,39 @@
   flex-shrink: 0;
 }
 
-.header__text {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-}
-
-.header__title {
-  font-size: var(--font-size-md);
+.page__title {
+  font-size: var(--font-size-lg);
   font-weight: 600;
   margin: 0;
   line-height: 1.2;
   white-space: nowrap;
+  color: var(--color-text-primary);
 }
 
-.header__badge {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.header__badge .badge {
-  font-weight: 600;
-}
-
-.header__subtitle {
-  font-size: var(--font-size-xs);
-  opacity: 0.85;
-  font-weight: 400;
+.page__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.header__actions {
+.config-picker-wrapper {
+  min-width: 200px;
+}
+
+.page__badge {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.page__badge .badge {
+  font-weight: 600;
+}
+
+.page__actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -301,13 +308,14 @@
 }
 
 /* ============================================
-   Right Panel (Resizable)
+   Right Panel (Resizable BEM)
    ============================================ */
 
-.right {
+.right-panel {
   width: var(--panel-width);
   flex-shrink: 0;
-  transition: width var(--transition-base), padding var(--transition-base);
+  flex-grow: 0;
+  transition: padding var(--transition-base);
   border-left: 1px solid var(--panel-border);
   overflow: hidden;
   position: relative;
@@ -317,19 +325,20 @@
   background: var(--panel-bg);
   backdrop-filter: blur(var(--right-backdrop-blur));
   -webkit-backdrop-filter: blur(var(--right-backdrop-blur));
+  max-width: 50vw; /* Не даём перекрыть центр */
 }
 
-.right.hidden {
+.right-panel--hidden {
   width: 0;
   border: none;
   min-width: 0;
 }
 
-.right.resizing {
+.right-panel--resizing {
   transition: none;
 }
 
-.right-resizer {
+.right-panel__resizer {
   position: absolute;
   left: 0;
   top: 0;
@@ -337,40 +346,40 @@
   width: var(--panel-resizer-width);
   cursor: col-resize;
   background: transparent;
+  z-index: 1;
+  transition: background var(--transition-fast);
 }
 
-.right-resizer:hover {
+.right-panel__resizer:hover {
   background: var(--panel-resizer-hover);
 }
 
-.resize-overlay {
-  position: fixed;
-  inset: 0;
-  cursor: col-resize;
-  z-index: var(--z-overlay);
+.right-panel--resizing .right-panel__resizer {
+  background: var(--color-primary);
+  opacity: 0.5;
 }
 
-.right-panel {
-  padding: var(--spacing-2xl);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  background: var(--color-surface);
+.right-panel__content {
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
-.right-panel h3 {
+.right-panel__content h3 {
   margin: 0 0 var(--spacing-2xl) 0;
   color: var(--color-text-primary);
   font-size: var(--font-size-h3);
   font-weight: var(--font-weight-semibold);
 }
 
-.right-panel p {
+.right-panel__content p {
   margin: 0 0 var(--spacing-lg) 0;
   color: var(--color-text-secondary);
   line-height: var(--line-height-normal);
 }
 
-.right-panel .info-item {
+.right-panel__info-item {
   background: rgba(255, 255, 255, 0.7);
   padding: var(--spacing-lg);
   margin-bottom: var(--spacing-md);
@@ -378,13 +387,13 @@
   border-left: 3px solid var(--color-primary);
 }
 
-.right-panel .info-label {
+.right-panel__info-label {
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   margin-bottom: var(--spacing-xs);
 }
 
-.right-panel .info-value {
+.right-panel__info-value {
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
@@ -473,37 +482,83 @@
 }
 
 /* ============================================
+   Tabs System (BEM)
+   ============================================ */
+
+/* Tabs container - wraps all tab pages */
+.tabs {
+  /* Theme-aware scrollbar for main page scrolling (Firefox) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
+}
+
+.tabs--dimmed {
+  /* Applied when tabs are active */
+}
+
+/* Theme-aware scrollbar (Chromium/WebKit) */
+.tabs::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.tabs::-webkit-scrollbar-track {
+  background: var(--list-scrollbar-track);
+}
+
+.tabs::-webkit-scrollbar-thumb {
+  background: var(--list-scrollbar-thumb);
+  border-radius: 10px;
+  border: 2px solid var(--list-scrollbar-track);
+}
+
+.tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--list-scrollbar-thumb-hover);
+}
+
+/* Individual tab item */
+.tabs__item {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.tabs__item--hidden {
+  display: none;
+}
+
+/* ============================================
    List Container & Pagination
    ============================================ */
 
-.page,
-.center {
+.page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   /* Theme-aware scrollbar for main page scrolling (Firefox) */
   scrollbar-width: thin;
   scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
 }
 
 /* Theme-aware scrollbar for main page scrolling (Chromium/WebKit) */
-.page::-webkit-scrollbar,
-.center::-webkit-scrollbar {
+.page::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.page::-webkit-scrollbar-track,
-.center::-webkit-scrollbar-track {
+.page::-webkit-scrollbar-track {
   background: var(--list-scrollbar-track);
 }
 
-.page::-webkit-scrollbar-thumb,
-.center::-webkit-scrollbar-thumb {
+.page::-webkit-scrollbar-thumb {
   background: var(--list-scrollbar-thumb);
   border-radius: 10px;
   border: 2px solid var(--list-scrollbar-track);
 }
 
-.page::-webkit-scrollbar-thumb:hover,
-.center::-webkit-scrollbar-thumb:hover {
+.page::-webkit-scrollbar-thumb:hover {
   background: var(--list-scrollbar-thumb-hover);
 }
 
@@ -697,75 +752,7 @@
   border-color: var(--color-primary);
 }
 
-/* ============================================
-   Page Header
-   ============================================ */
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border-bottom: 1px solid var(--color-border);
-  gap: var(--spacing-md);
-  flex-wrap: nowrap;
-  min-height: 48px;
-  overflow-x: auto;
-}
-
-.page-header__content {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex: 1;
-  min-width: 0;
-}
-
-.page-header__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-header__text {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex: 1;
-  min-width: 0;
-}
-
-.page-header__title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  margin: 0;
-  line-height: 1.2;
-  white-space: nowrap;
-  color: var(--color-text-primary);
-}
-
-.page-header__subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.page-header__badge {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.page-header__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-shrink: 0;
-  flex-wrap: nowrap;
-}
+/* Page Header section removed - now unified as .page__header above */
 
 /* ============================================
    Filter Panel
@@ -807,6 +794,18 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+}
+
+.filter-panel-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.filter-panel__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .filter-panel-content {
@@ -988,4 +987,109 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/* ============================================
+   Windows List in Right Panel
+   ============================================ */
+
+.windows-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.windows-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.windows-list__header h3 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+
+.windows-list__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: normal;
+}
+
+.windows-list__items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.windows-list__empty {
+  padding: var(--spacing-md);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.windows-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  user-select: none;
+  color: var(--color-text-primary);
+}
+
+.windows-list__item:hover {
+  background: var(--sidebar-item-hover);
+  color: var(--color-text-primary);
+}
+
+.windows-list__item--active {
+  background: var(--sidebar-item-active-bg);
+  border-left-color: var(--sidebar-item-active-border);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+
+.windows-list__item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: inherit;
+}
+
+.windows-list__item-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all var(--transition-fast);
+  color: inherit;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.windows-list__item-close:hover {
+  opacity: 1;
+  background: var(--color-error-50);
+  color: var(--color-error);
 }

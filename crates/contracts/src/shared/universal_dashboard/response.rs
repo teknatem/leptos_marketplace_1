@@ -163,8 +163,8 @@ pub struct SchemaValidationResult {
     pub errors: Vec<String>,
     /// List of warnings (non-blocking issues)
     pub warnings: Vec<String>,
-    /// Time taken to validate in milliseconds
-    pub execution_time_ms: u64,
+    /// Time taken to validate in microseconds (for precision)
+    pub execution_time_us: u64,
     /// Number of rows in the table (from test query)
     pub row_count: Option<i64>,
 }

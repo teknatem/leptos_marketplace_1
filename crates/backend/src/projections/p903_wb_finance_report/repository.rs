@@ -166,7 +166,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
     if let Some(existing_model) = existing {
         // Обновить существующую запись
         let mut active_model: ActiveModel = existing_model.into();
-        
+
         active_model.connection_mp_ref = Set(entry.connection_mp_ref.clone());
         active_model.organization_ref = Set(entry.organization_ref.clone());
         active_model.acquiring_fee = Set(entry.acquiring_fee);
@@ -265,52 +265,58 @@ pub async fn list_with_filters(
 ) -> Result<(Vec<Model>, i32)> {
     let db = get_connection();
 
-    // Построить запрос с фильтрами
-    let mut query = Entity::find();
+    // Helper function to apply filters to a query
+    let apply_filters = |mut q: sea_orm::Select<Entity>| -> sea_orm::Select<Entity> {
+        // Фильтр по дате
+        q = q
+            .filter(Column::RrDt.gte(date_from))
+            .filter(Column::RrDt.lte(date_to));
 
-    // Фильтр по дате
-    query = query
-        .filter(Column::RrDt.gte(date_from))
-        .filter(Column::RrDt.lte(date_to));
-
-    // Фильтр по nm_id
-    if let Some(nm) = nm_id {
-        query = query.filter(Column::NmId.eq(nm));
-    }
-
-    // Фильтр по sa_name (артикул продавца)
-    if let Some(ref sa) = sa_name {
-        if !sa.is_empty() {
-            query = query.filter(Column::SaName.contains(sa));
+        // Фильтр по nm_id
+        if let Some(nm) = nm_id {
+            q = q.filter(Column::NmId.eq(nm));
         }
-    }
 
-    // Фильтр по connection_mp_ref
-    if let Some(ref conn) = connection_mp_ref {
-        query = query.filter(Column::ConnectionMpRef.eq(conn));
-    }
-
-    // Фильтр по organization_ref
-    if let Some(ref org) = organization_ref {
-        query = query.filter(Column::OrganizationRef.eq(org));
-    }
-
-    // Фильтр по supplier_oper_name (тип операции)
-    if let Some(ref oper) = supplier_oper_name {
-        if !oper.is_empty() {
-            query = query.filter(Column::SupplierOperName.eq(oper));
+        // Фильтр по sa_name (артикул продавца)
+        if let Some(ref sa) = sa_name {
+            if !sa.is_empty() {
+                q = q.filter(Column::SaName.contains(sa));
+            }
         }
-    }
 
-    // Фильтр по srid (точное совпадение)
-    if let Some(ref srid_val) = srid {
-        if !srid_val.is_empty() {
-            query = query.filter(Column::Srid.eq(srid_val));
+        // Фильтр по connection_mp_ref
+        if let Some(ref conn) = connection_mp_ref {
+            q = q.filter(Column::ConnectionMpRef.eq(conn));
         }
-    }
 
-    // Подсчет общего количества записей (до пагинации)
-    let total_count = query.clone().count(db).await? as i32;
+        // Фильтр по organization_ref
+        if let Some(ref org) = organization_ref {
+            q = q.filter(Column::OrganizationRef.eq(org));
+        }
+
+        // Фильтр по supplier_oper_name (тип операции)
+        if let Some(ref oper) = supplier_oper_name {
+            if !oper.is_empty() {
+                q = q.filter(Column::SupplierOperName.eq(oper));
+            }
+        }
+
+        // Фильтр по srid (точное совпадение)
+        if let Some(ref srid_val) = srid {
+            if !srid_val.is_empty() {
+                q = q.filter(Column::Srid.eq(srid_val));
+            }
+        }
+
+        q
+    };
+
+    // Построить COUNT запрос отдельно (без клонирования основного запроса)
+    let count_query = apply_filters(Entity::find());
+    let total_count = count_query.count(db).await? as i32;
+
+    // Построить основной запрос с фильтрами
+    let mut query = apply_filters(Entity::find());
 
     // Сортировка
     query = match sort_by {
@@ -462,11 +468,7 @@ pub async fn get_by_id(rr_dt: &str, rrd_id: i64) -> Result<Option<Model>> {
 pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
     let db = get_connection();
 
-    let items = Entity::find()
-        .filter(Column::Srid.eq(srid))
-        .all(db)
-        .await?;
+    let items = Entity::find().filter(Column::Srid.eq(srid)).all(db).await?;
 
     Ok(items)
 }
-

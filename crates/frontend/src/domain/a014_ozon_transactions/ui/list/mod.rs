@@ -16,6 +16,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
+use crate::shared::api_utils::api_base;
+
 /// Форматирует дату из "2025-10-11 00:00:00" в dd.mm.yyyy
 fn format_date(date_str: &str) -> String {
     // Парсим формат "2025-10-11 00:00:00" или "2025-10-11"
@@ -177,8 +179,8 @@ pub fn OzonTransactionsList() -> impl IntoView {
             }
 
             let url = format!(
-                "http://localhost:3000/api/ozon_transactions{}",
-                query_params
+                "{}/api/ozon_transactions{}",
+                api_base(), query_params
             );
             log!("Fetching transactions with URL: {}", url);
 
@@ -390,8 +392,8 @@ pub fn OzonTransactionsList() -> impl IntoView {
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
                 let url = format!(
-                    "http://localhost:3000/api/a014/ozon-transactions/{}/post",
-                    id
+                    "{}/api/a014/ozon-transactions/{}/post",
+                    api_base(), id
                 );
                 match Request::post(&url).send().await {
                     Ok(response) => {
@@ -439,8 +441,8 @@ pub fn OzonTransactionsList() -> impl IntoView {
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
                 let url = format!(
-                    "http://localhost:3000/api/a014/ozon-transactions/{}/unpost",
-                    id
+                    "{}/api/a014/ozon-transactions/{}/unpost",
+                    api_base(), id
                 );
                 match Request::post(&url).send().await {
                     Ok(response) => {

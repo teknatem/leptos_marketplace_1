@@ -177,6 +177,38 @@ impl AggregateRoot for LlmChat {
     }
 }
 
+/// Вложение к сообщению чата
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmChatAttachment {
+    pub id: Uuid,
+    pub message_id: Uuid,
+    pub filename: String,
+    pub filepath: String,
+    pub content_type: String,
+    pub file_size: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+impl LlmChatAttachment {
+    pub fn new(
+        message_id: Uuid,
+        filename: String,
+        filepath: String,
+        content_type: String,
+        file_size: i64,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            message_id,
+            filename,
+            filepath,
+            content_type,
+            file_size,
+            created_at: Utc::now(),
+        }
+    }
+}
+
 /// Действие с артефактом
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ArtifactAction {
@@ -211,11 +243,16 @@ pub struct LlmChatMessage {
     pub tokens_used: Option<i32>,
     pub model_name: Option<String>,
     pub confidence: Option<f64>,
+    pub duration_ms: Option<i64>,
     pub created_at: DateTime<Utc>,
     
     // Связь с артефактами
     pub artifact_id: Option<LlmArtifactId>,
     pub artifact_action: Option<ArtifactAction>,
+    
+    // Вложения (загружаются отдельно при необходимости)
+    #[serde(default)]
+    pub attachments: Vec<LlmChatAttachment>,
 }
 
 impl LlmChatMessage {
@@ -229,9 +266,11 @@ impl LlmChatMessage {
             tokens_used: None,
             model_name: None,
             confidence: None,
+            duration_ms: None,
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -243,6 +282,7 @@ impl LlmChatMessage {
         tokens_used: Option<i32>,
         model_name: Option<String>,
         confidence: Option<f64>,
+        duration_ms: Option<i64>,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -252,9 +292,11 @@ impl LlmChatMessage {
             tokens_used,
             model_name,
             confidence,
+            duration_ms,
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -273,9 +315,11 @@ impl LlmChatMessage {
             tokens_used,
             model_name: None,
             confidence: None,
+            duration_ms: None,
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            attachments: Vec::new(),
         }
     }
 

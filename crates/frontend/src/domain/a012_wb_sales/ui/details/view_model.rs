@@ -40,6 +40,7 @@ pub struct WbSalesDetailsVm {
     pub active_tab: RwSignal<&'static str>,
     pub loading: RwSignal<bool>,
     pub posting: RwSignal<bool>,
+    pub refreshing_price: RwSignal<bool>,
     pub error: RwSignal<Option<String>>,
 }
 
@@ -72,6 +73,7 @@ impl WbSalesDetailsVm {
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
             posting: RwSignal::new(false),
+            refreshing_price: RwSignal::new(false),
             error: RwSignal::new(None),
         }
     }
@@ -89,6 +91,16 @@ impl WbSalesDetailsVm {
             sale.get()
                 .map(|s| s.header.document_no.clone())
                 .unwrap_or_default()
+        })
+    }
+
+    /// Get sale ID for display
+    pub fn sale_id(&self) -> Signal<String> {
+        let sale = self.sale;
+        Signal::derive(move || {
+            sale.get()
+                .and_then(|s| s.header.sale_id.clone())
+                .unwrap_or_else(|| "—".to_string())
         })
     }
 
@@ -137,14 +149,14 @@ impl WbSalesDetailsVm {
                 Ok(data) => {
                     // Set sale first (needed for finance_reports loading)
                     vm.sale.set(Some(data.clone()));
-                    
+
                     // Load related data (marketplace product, nomenclature)
                     vm.load_related_data(&data);
-                    
+
                     // Load data for badges immediately (projections and finance reports)
                     vm.load_projections();
                     vm.load_finance_reports();
-                    
+
                     vm.loading.set(false);
                 }
                 Err(e) => {
@@ -363,6 +375,30 @@ impl WbSalesDetailsVm {
                 self.projections.set(Some(proj));
             }
         }
+    }
+
+    /// Refresh dealer price
+    pub fn refresh_dealer_price(&self) {
+        let Some(id) = self.id.get() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.refreshing_price.set(true);
+
+        spawn_local(async move {
+            match refresh_dealer_price(&id).await {
+                Ok(()) => {
+                    // Reload document data
+                    vm.reload().await;
+                    leptos::logging::log!("Dealer price refreshed successfully");
+                }
+                Err(e) => {
+                    leptos::logging::log!("Error refreshing dealer price: {}", e);
+                }
+            }
+            vm.refreshing_price.set(false);
+        });
     }
 }
 

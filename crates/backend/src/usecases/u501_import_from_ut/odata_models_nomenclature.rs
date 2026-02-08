@@ -101,6 +101,8 @@ impl UtNomenclatureOData {
         // Применить новые поля
         agg.is_assembly = self.is_assembly.unwrap_or(false);
         agg.base_nomenclature_ref = base_nomenclature_ref;
+        // Используем метод compute_is_derivative вместо дублирования логики
+        agg.is_derivative = agg.compute_is_derivative();
         // Применить признак удаления из источника
         agg.base.metadata.is_deleted = self.deletion_mark;
         Ok(agg)
@@ -127,5 +129,3 @@ impl UtNomenclatureOData {
 pub struct UtNomenclatureListResponse {
     pub value: Vec<UtNomenclatureOData>,
 }
-
-

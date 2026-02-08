@@ -83,28 +83,20 @@ pub struct SearchBySridQuery {
 pub async fn search_by_srid(
     Query(query): Query<SearchBySridQuery>,
 ) -> Result<Json<Vec<WbFinanceReportDto>>, axum::http::StatusCode> {
-    let items = repository::search_by_srid(&query.srid)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to search finance report by srid: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let items = repository::search_by_srid(&query.srid).await.map_err(|e| {
+        tracing::error!("Failed to search finance report by srid: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let dtos: Vec<WbFinanceReportDto> = items.into_iter().map(model_to_dto).collect();
 
     Ok(Json(dtos))
 }
 
-/// Преобразование Model в DTO
+/// Преобразование Model в DTO для списка (без extra для экономии трафика)
 fn model_to_dto(model: repository::Model) -> WbFinanceReportDto {
-    use chrono::DateTime;
-
-    // Форматирование loaded_at_utc из RFC3339 в "YYYY-MM-DD HH:MM:SS"
-    let loaded_at_formatted = DateTime::parse_from_rfc3339(&model.loaded_at_utc)
-        .ok()
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-        .unwrap_or_else(|| model.loaded_at_utc.clone());
-
+    // Убрано форматирование даты для оптимизации - отправляем как есть
+    // Поле extra не включаем в список - оно может содержать большой JSON (~3KB на запись)
     WbFinanceReportDto {
         rr_dt: model.rr_dt,
         rrd_id: model.rrd_id,
@@ -138,9 +130,8 @@ fn model_to_dto(model: repository::Model) -> WbFinanceReportDto {
         ppvz_kvw_prc_base: model.ppvz_kvw_prc_base,
         srv_dbs: model.srv_dbs,
         srid: model.srid,
-        loaded_at_utc: loaded_at_formatted,
+        loaded_at_utc: model.loaded_at_utc,
         payload_version: model.payload_version,
-        extra: model.extra,
+        extra: None, // Исключаем из списка для экономии трафика (60MB -> ~5MB)
     }
 }
-

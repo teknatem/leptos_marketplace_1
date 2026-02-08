@@ -26,12 +26,21 @@ pub enum QueryParam {
 pub struct QueryBuilder<'a> {
     schema: &'a DataSourceSchema,
     config: &'a DashboardConfig,
+    table_name: String,
 }
 
 impl<'a> QueryBuilder<'a> {
     /// Create a new query builder
-    pub fn new(schema: &'a DataSourceSchema, config: &'a DashboardConfig) -> Self {
-        Self { schema, config }
+    pub fn new(
+        schema: &'a DataSourceSchema,
+        config: &'a DashboardConfig,
+        table_name: String,
+    ) -> Self {
+        Self {
+            schema,
+            config,
+            table_name,
+        }
     }
 
     /// Check if a field is enabled (in enabled_fields list or list is empty = all enabled)
@@ -85,7 +94,7 @@ impl<'a> QueryBuilder<'a> {
     /// Build SELECT clause with grouping and aggregated columns
     fn build_select_clause(&self) -> Result<String, String> {
         let mut columns = Vec::new();
-        let main_table = self.schema.id;
+        let main_table = self.table_name.as_str();
 
         // Add grouping columns (only if enabled)
         for grouping_field_id in &self.config.groupings {
@@ -94,9 +103,12 @@ impl<'a> QueryBuilder<'a> {
             }
             let field = self.find_field(grouping_field_id)?;
 
+            // Determine source table (use source_table if specified, otherwise main_table)
+            let source_table = field.source_table.unwrap_or(main_table);
+
             // For ref fields, select both UUID and display name
             if field.ref_table.is_some() {
-                columns.push(format!("{}.{}", main_table, field.db_column));
+                columns.push(format!("{}.{}", source_table, field.db_column));
                 if let Some(ref_table) = field.ref_table {
                     if let Some(ref_display_col) = field.ref_display_column {
                         columns.push(format!(
@@ -106,7 +118,7 @@ impl<'a> QueryBuilder<'a> {
                     }
                 }
             } else {
-                columns.push(format!("{}.{}", main_table, field.db_column));
+                columns.push(format!("{}.{}", source_table, field.db_column));
             }
         }
 
@@ -118,9 +130,12 @@ impl<'a> QueryBuilder<'a> {
             if !self.config.groupings.contains(display_field_id) {
                 let field = self.find_field(display_field_id)?;
 
+                // Determine source table (use source_table if specified, otherwise main_table)
+                let source_table = field.source_table.unwrap_or(main_table);
+
                 // For ref fields, select both UUID and display name
                 if field.ref_table.is_some() {
-                    columns.push(format!("{}.{}", main_table, field.db_column));
+                    columns.push(format!("{}.{}", source_table, field.db_column));
                     if let Some(ref_table) = field.ref_table {
                         if let Some(ref_display_col) = field.ref_display_column {
                             columns.push(format!(
@@ -132,7 +147,7 @@ impl<'a> QueryBuilder<'a> {
                 } else {
                     columns.push(format!(
                         "{}.{} AS {}",
-                        main_table, field.db_column, display_field_id
+                        source_table, field.db_column, display_field_id
                     ));
                 }
             }
@@ -145,12 +160,15 @@ impl<'a> QueryBuilder<'a> {
             }
             let field = self.find_field(&selected_field.field_id)?;
 
+            // Determine source table (use source_table if specified, otherwise main_table)
+            let source_table = field.source_table.unwrap_or(main_table);
+
             if let Some(aggregate) = &selected_field.aggregate {
                 // Aggregated field
                 let agg_expr = format!(
                     "{}({}.{}) AS {}",
                     aggregate.to_sql(),
-                    main_table,
+                    source_table,
                     field.db_column,
                     field.id
                 );
@@ -159,7 +177,7 @@ impl<'a> QueryBuilder<'a> {
                 // Non-aggregated, non-grouping field - add as-is
                 columns.push(format!(
                     "{}.{} AS {}",
-                    main_table, field.db_column, field.id
+                    source_table, field.db_column, field.id
                 ));
             }
         }
@@ -173,13 +191,13 @@ impl<'a> QueryBuilder<'a> {
 
     /// Build FROM clause
     fn build_from_clause(&self) -> String {
-        self.schema.id.to_string()
+        self.table_name.clone()
     }
 
     /// Build JOIN clause for reference fields
     fn build_join_clause(&self) -> Result<String, String> {
         let mut joins = Vec::new();
-        let main_table = self.schema.id;
+        let main_table = self.table_name.as_str();
 
         // Collect all fields that need JOINs (from groupings, only if enabled)
         for grouping_field_id in &self.config.groupings {
@@ -188,10 +206,25 @@ impl<'a> QueryBuilder<'a> {
             }
             let field = self.find_field(grouping_field_id)?;
 
-            if let Some(ref_table) = field.ref_table {
+            // Handle source_table JOINs (for fields from other tables)
+            if let (Some(source_table), Some(join_on_column)) =
+                (field.source_table, field.join_on_column)
+            {
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
-                    ref_table, main_table, field.db_column, ref_table
+                    source_table, main_table, join_on_column, source_table
+                );
+                if !joins.contains(&join) {
+                    joins.push(join);
+                }
+            }
+
+            // Handle ref_table JOINs (for reference fields)
+            if let Some(ref_table) = field.ref_table {
+                let source_table_name = field.source_table.unwrap_or(main_table);
+                let join = format!(
+                    "LEFT JOIN {} ON {}.{} = {}.id",
+                    ref_table, source_table_name, field.db_column, ref_table
                 );
                 if !joins.contains(&join) {
                     joins.push(join);
@@ -206,10 +239,25 @@ impl<'a> QueryBuilder<'a> {
             }
             let field = self.find_field(display_field_id)?;
 
-            if let Some(ref_table) = field.ref_table {
+            // Handle source_table JOINs (for fields from other tables)
+            if let (Some(source_table), Some(join_on_column)) =
+                (field.source_table, field.join_on_column)
+            {
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
-                    ref_table, main_table, field.db_column, ref_table
+                    source_table, main_table, join_on_column, source_table
+                );
+                if !joins.contains(&join) {
+                    joins.push(join);
+                }
+            }
+
+            // Handle ref_table JOINs (for reference fields)
+            if let Some(ref_table) = field.ref_table {
+                let source_table_name = field.source_table.unwrap_or(main_table);
+                let join = format!(
+                    "LEFT JOIN {} ON {}.{} = {}.id",
+                    ref_table, source_table_name, field.db_column, ref_table
                 );
                 if !joins.contains(&join) {
                     joins.push(join);
@@ -225,7 +273,7 @@ impl<'a> QueryBuilder<'a> {
         let mut conditions = Vec::new();
         let mut params = Vec::new();
 
-        let main_table = self.schema.id;
+        let main_table = self.table_name.as_str();
 
         // Date range filters
         if let Some(date_from) = &self.config.filters.date_from {
@@ -237,7 +285,8 @@ impl<'a> QueryBuilder<'a> {
                 .find(|f| f.field_type == FieldType::Date)
                 .ok_or("No date field found in schema")?;
 
-            conditions.push(format!("{}.{} >= ?", main_table, date_field.db_column));
+            let source_table = date_field.source_table.unwrap_or(main_table);
+            conditions.push(format!("{}.{} >= ?", source_table, date_field.db_column));
             params.push(QueryParam::Text(date_from.clone()));
         }
 
@@ -249,7 +298,8 @@ impl<'a> QueryBuilder<'a> {
                 .find(|f| f.field_type == FieldType::Date)
                 .ok_or("No date field found in schema")?;
 
-            conditions.push(format!("{}.{} <= ?", main_table, date_field.db_column));
+            let source_table = date_field.source_table.unwrap_or(main_table);
+            conditions.push(format!("{}.{} <= ?", source_table, date_field.db_column));
             params.push(QueryParam::Text(date_to.clone()));
         }
 
@@ -260,10 +310,11 @@ impl<'a> QueryBuilder<'a> {
             }
 
             let field = self.find_field(field_id)?;
+            let source_table = field.source_table.unwrap_or(main_table);
             let placeholders: Vec<_> = (0..values.len()).map(|_| "?").collect();
             conditions.push(format!(
                 "{}.{} IN ({})",
-                main_table,
+                source_table,
                 field.db_column,
                 placeholders.join(", ")
             ));
@@ -353,7 +404,7 @@ impl<'a> QueryBuilder<'a> {
         }
 
         let mut columns = Vec::new();
-        let main_table = self.schema.id;
+        let main_table = self.table_name.as_str();
 
         // Add grouping columns (only if enabled)
         for grouping_field_id in &self.config.groupings {
@@ -361,7 +412,8 @@ impl<'a> QueryBuilder<'a> {
                 continue;
             }
             let field = self.find_field(grouping_field_id)?;
-            columns.push(format!("{}.{}", main_table, field.db_column));
+            let source_table = field.source_table.unwrap_or(main_table);
+            columns.push(format!("{}.{}", source_table, field.db_column));
 
             // Also group by display column for ref fields
             if field.ref_table.is_some() {
@@ -403,7 +455,7 @@ impl<'a> QueryBuilder<'a> {
         }
 
         let mut columns = Vec::new();
-        let main_table = self.schema.id;
+        let main_table = self.table_name.as_str();
 
         for grouping_field_id in &self.config.groupings {
             if !self.is_field_enabled(grouping_field_id) {
@@ -411,16 +463,24 @@ impl<'a> QueryBuilder<'a> {
             }
             let field = self.find_field(grouping_field_id)?;
 
-            // Order by display column for ref fields, otherwise by the field itself
-            if let Some(ref_table) = field.ref_table {
+            // Determine the correct table prefix for ORDER BY
+            let table_prefix = if let Some(ref_table) = field.ref_table {
+                // For reference fields, order by display column
                 if let Some(ref_display_col) = field.ref_display_column {
                     columns.push(format!("{}.{}", ref_table, ref_display_col));
+                    continue;
                 } else {
-                    columns.push(format!("{}.{}", main_table, field.db_column));
+                    main_table
                 }
+            } else if let Some(source_table) = field.source_table {
+                // For fields from joined tables (e.g., dim1_category from a004_nomenclature)
+                source_table
             } else {
-                columns.push(format!("{}.{}", main_table, field.db_column));
-            }
+                // For fields from main table
+                main_table
+            };
+
+            columns.push(format!("{}.{}", table_prefix, field.db_column));
         }
 
         Ok(columns.join(", "))
@@ -719,6 +779,8 @@ mod tests {
                     db_column: "date",
                     ref_table: None,
                     ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
                 },
                 FieldDef {
                     id: "amount",
@@ -729,6 +791,8 @@ mod tests {
                     db_column: "amount",
                     ref_table: None,
                     ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
                 },
             ],
         };
@@ -746,7 +810,7 @@ mod tests {
             filters: DashboardFilters::default(),
         };
 
-        let builder = QueryBuilder::new(&schema, &config);
+        let builder = QueryBuilder::new(&schema, &config, "test_table".to_string());
         let result = builder.build().unwrap();
 
         assert!(result.sql.contains("SELECT test_table.date"));

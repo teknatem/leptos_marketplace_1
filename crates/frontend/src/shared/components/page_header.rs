@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
-/// PageHeader component - reusable header for list pages
+/// PageHeader component - reusable header for list pages (BEM)
 ///
-/// Mimics the structure from bolt-mpi-ui-redesign Header.tsx
+/// Uses unified .page__header structure with BEM naming
 #[component]
 pub fn PageHeader(
     /// Page title (required)
@@ -17,16 +17,14 @@ pub fn PageHeader(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <div class="page-header">
-            <div class="page-header__content">
-                <div class="page-header__text">
-                    <h1 class="page-header__title">{title}</h1>
-                    {move || subtitle.get().map(|s| view! {
-                        <div class="page-header__subtitle">{s}</div>
-                    })}
-                </div>
+        <div class="page__header">
+            <div class="page__header-left">
+                <h1 class="page__title">{title}</h1>
+                {move || subtitle.get().map(|s| view! {
+                    <div class="page__subtitle">{s}</div>
+                })}
             </div>
-            <div class="page-header__actions">
+            <div class="page__header-right">
                 {children()}
             </div>
         </div>

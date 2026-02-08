@@ -83,7 +83,7 @@ pub struct WbSalesLine {
     pub spp: Option<f64>,
     /// Итоговая цена для клиента (finishedPrice из WB API)
     pub finished_price: Option<f64>,
-    
+
     // Финансовые показатели (план/факт)
     /// Флаг: факт или план
     pub is_fact: Option<bool>,
@@ -113,6 +113,8 @@ pub struct WbSalesLine {
     pub commission_plan: Option<f64>,
     /// Комиссия (факт)
     pub commission_fact: Option<f64>,
+    /// Дилерская цена из УТ (из p906_nomenclature_prices)
+    pub dealer_price_ut: Option<f64>,
 }
 
 /// Статусы и временные метки

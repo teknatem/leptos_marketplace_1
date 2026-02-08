@@ -18,23 +18,25 @@ pub fn SqlViewer(
 
                     view! {
                         <div class="sql-content">
-                            <div class="sql-header-actions">
+                            <Flex vertical=false gap=FlexGap::Large>
                                 <Button
                                     size=ButtonSize::Small
                                     appearance=ButtonAppearance::Secondary
                                     on_click=move |_| {
                                         if let Some(window) = web_sys::window() {
                                             let nav = window.navigator().clipboard();
-                                            let _ = nav.write_text(&sql_text);
+                                            // Generate formatted SQL and convert to plain text
+                                            let formatted_sql = highlight_sql(&sql_text);
+                                            let plain_text_sql = html_to_plain_text(&formatted_sql);
+                                            let _ = nav.write_text(&plain_text_sql);
                                         }
                                     }
                                 >
                                     "📋 Копировать"
                                 </Button>
-                            </div>
+                            </Flex>
 
                             <div class="sql-query-section">
-                                <h3 class="sql-section-title">"SQL запрос"</h3>
                                 <div class="sql-query" inner_html=highlight_sql(&sql_for_highlight)></div>
                             </div>
 
@@ -368,4 +370,32 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// Convert HTML formatted SQL to plain text with line breaks preserved
+fn html_to_plain_text(html: &str) -> String {
+    let result = html
+        .replace("<br/>", "\n")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+
+    // Remove HTML tags (for highlighting spans)
+    let mut clean = String::new();
+    let mut in_tag = false;
+
+    for ch in result.chars() {
+        if ch == '<' {
+            in_tag = true;
+        } else if ch == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            clean.push(ch);
+        }
+    }
+
+    clean
 }

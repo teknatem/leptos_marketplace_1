@@ -10,6 +10,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
+use crate::shared::api_utils::api_base;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub id: String,
@@ -602,8 +604,8 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let url = "http://localhost:3000/api/organization";
-    let request = WebRequest::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    let url = format!("{}/api/organization", api_base());
+    let request = WebRequest::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")

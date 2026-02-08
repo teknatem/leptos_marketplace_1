@@ -3,102 +3,15 @@ mod state;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
+use contracts::projections::p903_wb_finance_report::dto::{
+    WbFinanceReportDto, WbFinanceReportListResponse,
+};
 use leptos::logging::log;
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
 use state::{create_state, persist_state};
 use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-
-#[component]
-fn P903Header(
-    #[prop(into)] total_count: Signal<usize>,
-    #[prop(into)] is_loading: Signal<bool>,
-    on_refresh: Callback<()>,
-    on_export: Callback<()>,
-) -> impl IntoView {
-    view! {
-        <div class="page-header">
-            <div class="page-header__content">
-                <div class="page-header__icon">{vec![icon("dollar-sign").into_view()]}</div>
-                <div class="page-header__text">
-                    <h1 class="page-header__title">"WB Finance Report (P903)"</h1>
-                    <div class="page-header__badge">
-                        <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                            <span>{move || total_count.get().to_string()}</span>
-                        </Badge>
-                    </div>
-                </div>
-            </div>
-
-            <div class="page-header__actions">
-                <Button
-                    appearance=ButtonAppearance::Primary
-                    on_click=move |_| on_export.run(())
-                    disabled=move || total_count.get() == 0
-                >
-                    <span>{vec![icon("download").into_view()]}</span>
-                    <span>" Export Excel"</span>
-                </Button>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    on_click=move |_| on_refresh.run(())
-                    disabled=is_loading
-                >
-                    <span>{vec![icon("refresh").into_view()]}</span>
-                    <span>{move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}</span>
-                </Button>
-            </div>
-        </div>
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbFinanceReportDto {
-    pub rr_dt: String,
-    pub rrd_id: i64,
-    pub connection_mp_ref: String,
-    pub organization_ref: String,
-    pub acquiring_fee: Option<f64>,
-    pub acquiring_percent: Option<f64>,
-    pub additional_payment: Option<f64>,
-    pub bonus_type_name: Option<String>,
-    pub commission_percent: Option<f64>,
-    pub delivery_amount: Option<f64>,
-    pub delivery_rub: Option<f64>,
-    pub nm_id: Option<i64>,
-    pub penalty: Option<f64>,
-    pub ppvz_vw: Option<f64>,
-    pub ppvz_vw_nds: Option<f64>,
-    pub ppvz_sales_commission: Option<f64>,
-    pub quantity: Option<i32>,
-    pub rebill_logistic_cost: Option<f64>,
-    pub retail_amount: Option<f64>,
-    pub retail_price: Option<f64>,
-    pub retail_price_withdisc_rub: Option<f64>,
-    pub return_amount: Option<f64>,
-    pub sa_name: Option<String>,
-    pub storage_fee: Option<f64>,
-    pub subject_name: Option<String>,
-    pub supplier_oper_name: Option<String>,
-    pub cashback_amount: Option<f64>,
-    pub ppvz_for_pay: Option<f64>,
-    pub ppvz_kvw_prc: Option<f64>,
-    pub ppvz_kvw_prc_base: Option<f64>,
-    pub srv_dbs: Option<i32>,
-    pub srid: Option<String>,
-    pub loaded_at_utc: String,
-    pub payload_version: i32,
-    pub extra: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbFinanceReportListResponse {
-    pub items: Vec<WbFinanceReportDto>,
-    pub total_count: i32,
-    pub has_more: bool,
-}
 
 #[derive(Debug, Clone)]
 struct SelectedReport {
@@ -132,7 +45,7 @@ async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    
+
     let connections: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
 
     let mut result = Vec::new();
@@ -181,34 +94,41 @@ pub fn WbFinanceReportList() -> impl IntoView {
         });
     });
 
-    // Sync local RwSignals with global state
+    // Sync local RwSignals with global state and persist immediately
     Effect::new(move |_| {
         let from = date_from.get();
         state.update(|s| s.date_from = from);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let to = date_to.get();
         state.update(|s| s.date_to = to);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let nm = nm_id_filter.get();
         state.update(|s| s.nm_id_filter = nm);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let sa = sa_name_filter.get();
         state.update(|s| s.sa_name_filter = sa);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let conn = connection_filter.get();
         state.update(|s| s.connection_filter = conn);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let op = operation_filter.get();
         state.update(|s| s.operation_filter = op);
+        persist_state(state);
     });
     Effect::new(move |_| {
         let srid = srid_filter.get();
         state.update(|s| s.srid_filter = srid);
+        persist_state(state);
     });
 
     let load = move || {
@@ -323,6 +243,49 @@ pub fn WbFinanceReportList() -> impl IntoView {
             .map(|(_, name)| name.clone())
             .unwrap_or_else(|| connection_id.to_string())
     };
+
+    // Memoized totals calculation
+    let totals = Memo::new(move |_| {
+        let data = items.get();
+        let items_count = data.len();
+        let total_qty: i32 = data.iter().map(|item| item.quantity.unwrap_or(0)).sum();
+        let total_retail: f64 = data
+            .iter()
+            .map(|item| item.retail_amount.unwrap_or(0.0))
+            .sum();
+        let total_price_withdisc: f64 = data
+            .iter()
+            .map(|item| item.retail_price_withdisc_rub.unwrap_or(0.0))
+            .sum();
+        let total_sales_comm: f64 = data
+            .iter()
+            .map(|item| item.ppvz_sales_commission.unwrap_or(0.0))
+            .sum();
+        let total_acquiring: f64 = data
+            .iter()
+            .map(|item| item.acquiring_fee.unwrap_or(0.0))
+            .sum();
+        let total_logistics: f64 = data
+            .iter()
+            .map(|item| item.rebill_logistic_cost.unwrap_or(0.0))
+            .sum();
+        let total_penalty: f64 = data.iter().map(|item| item.penalty.unwrap_or(0.0)).sum();
+        let total_storage: f64 = data
+            .iter()
+            .map(|item| item.storage_fee.unwrap_or(0.0))
+            .sum();
+        (
+            items_count,
+            total_qty,
+            total_retail,
+            total_price_withdisc,
+            total_sales_comm,
+            total_acquiring,
+            total_logistics,
+            total_penalty,
+            total_storage,
+        )
+    });
 
     // Экспорт в Excel
     let export_to_excel = move || {
@@ -442,13 +405,33 @@ pub fn WbFinanceReportList() -> impl IntoView {
     };
 
     view! {
-        <div class="page page--wide">
-            <P903Header
-                total_count=Signal::derive(move || state.get().total_count)
-                is_loading=Signal::derive(move || is_loading.get())
-                on_refresh=Callback::new(move |_| load())
-                on_export=Callback::new(move |_| export_to_excel())
-            />
+        <div class="page">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"WB Finance Report (P903)"</h1>
+                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                        {move || state.get().total_count.to_string()}
+                    </Badge>
+                </div>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=move |_| load()
+                        disabled=is_loading
+                    >
+                        {icon("refresh")}
+                        {move || if is_loading.get() { " Загрузка..." } else { " Применить фильтры" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| export_to_excel()
+                        disabled=move || state.get().total_count == 0
+                    >
+                        {icon("download")}
+                        " Export Excel"
+                    </Button>
+                </div>
+            </div>
 
             {move || {
                 if let Some(e) = error.get() {
@@ -479,7 +462,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                             page_size=Signal::derive(move || state.get().page_size)
                             on_page_change=Callback::new(go_to_page)
                             on_page_size_change=Callback::new(change_page_size)
-                            page_size_options=vec![100, 500, 1000, 5000, 10000]
+                            page_size_options=vec![100, 500, 1000, 5000, 10000, 100000]
                         />
                     </div>
 
@@ -502,7 +485,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                         prop:value=move || date_from.get()
                                         on:input=move |ev| {
                                             date_from.set(event_target_value(&ev));
-                                            load();
                                         }
                                     />
                                 </Flex>
@@ -517,7 +499,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                         prop:value=move || date_to.get()
                                         on:input=move |ev| {
                                             date_to.set(event_target_value(&ev));
-                                            load();
                                         }
                                     />
                                 </Flex>
@@ -529,7 +510,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                     <Input
                                         value=nm_id_filter
                                         placeholder="NM ID..."
-                                        on:input=move |_| load()
                                     />
                                 </Flex>
                             </div>
@@ -540,7 +520,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                     <Input
                                         value=sa_name_filter
                                         placeholder="Артикул продавца..."
-                                        on:input=move |_| load()
                                     />
                                 </Flex>
                             </div>
@@ -550,7 +529,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                     <Label>"Кабинет:"</Label>
                                     <Select
                                         value=connection_filter
-                                        on:change=move |_| load()
                                     >
                                         <option value="">"Все"</option>
                                         <For
@@ -571,7 +549,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                     <Label>"Операция:"</Label>
                                     <Select
                                         value=operation_filter
-                                        on:change=move |_| load()
                                     >
                                         <option value="">"Все"</option>
                                         <option value="Продажа">"Продажа"</option>
@@ -592,7 +569,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                     <Input
                                         value=srid_filter
                                         placeholder="SRID..."
-                                        on:input=move |_| load()
                                     />
                                 </Flex>
                             </div>
@@ -610,16 +586,8 @@ pub fn WbFinanceReportList() -> impl IntoView {
                         if data.is_empty() {
                             view! { <p class="text-muted">"Нет данных"</p> }.into_any()
                         } else {
-                            // Расчет итогов
-                            let items_count = data.len();
-                            let total_qty: i32 = data.iter().map(|item| item.quantity.unwrap_or(0)).sum();
-                            let total_retail: f64 = data.iter().map(|item| item.retail_amount.unwrap_or(0.0)).sum();
-                            let total_price_withdisc: f64 = data.iter().map(|item| item.retail_price_withdisc_rub.unwrap_or(0.0)).sum();
-                            let total_sales_comm: f64 = data.iter().map(|item| item.ppvz_sales_commission.unwrap_or(0.0)).sum();
-                            let total_acquiring: f64 = data.iter().map(|item| item.acquiring_fee.unwrap_or(0.0)).sum();
-                            let total_logistics: f64 = data.iter().map(|item| item.rebill_logistic_cost.unwrap_or(0.0)).sum();
-                            let total_penalty: f64 = data.iter().map(|item| item.penalty.unwrap_or(0.0)).sum();
-                            let total_storage: f64 = data.iter().map(|item| item.storage_fee.unwrap_or(0.0)).sum();
+                            // Get memoized totals
+                            let (items_count, total_qty, total_retail, total_price_withdisc, total_sales_comm, total_acquiring, total_logistics, total_penalty, total_storage) = totals.get();
 
                             view! {
                                 <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm);">
@@ -857,7 +825,9 @@ pub fn WbFinanceReportList() -> impl IntoView {
 }
 
 fn encode_q(s: &str) -> String {
-    js_sys::encode_uri_component(s).as_string().unwrap_or_default()
+    js_sys::encode_uri_component(s)
+        .as_string()
+        .unwrap_or_default()
 }
 
 async fn fetch_finance_report(
@@ -898,10 +868,16 @@ async fn fetch_finance_report(
         url.push_str(&format!("&sa_name={}", encode_q(sa_name.trim())));
     }
     if !connection.trim().is_empty() {
-        url.push_str(&format!("&connection_mp_ref={}", encode_q(connection.trim())));
+        url.push_str(&format!(
+            "&connection_mp_ref={}",
+            encode_q(connection.trim())
+        ));
     }
     if !operation.trim().is_empty() {
-        url.push_str(&format!("&supplier_oper_name={}", encode_q(operation.trim())));
+        url.push_str(&format!(
+            "&supplier_oper_name={}",
+            encode_q(operation.trim())
+        ));
     }
     if !srid.trim().is_empty() {
         url.push_str(&format!("&srid={}", encode_q(srid.trim())));
@@ -925,6 +901,7 @@ async fn fetch_finance_report(
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: WbFinanceReportListResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let data: WbFinanceReportListResponse =
+        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }

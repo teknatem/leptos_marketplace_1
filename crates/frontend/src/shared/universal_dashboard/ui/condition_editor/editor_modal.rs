@@ -34,6 +34,9 @@ pub fn ConditionEditorModal(
     // Check if we're editing an existing condition (must be done before existing_condition is moved)
     let has_existing_condition = existing_condition.is_some();
 
+    // Store existing condition in signal for later use
+    let existing_condition_signal = StoredValue::new(existing_condition.clone());
+
     // Active tab
     let active_tab = RwSignal::new(EditorTab::Comparison);
     let selected_tab_value = RwSignal::new("Comparison".to_string());
@@ -181,8 +184,13 @@ pub fn ConditionEditorModal(
     let handle_save = move |_| {
         if let Some(f) = field.get() {
             if let Some(def) = build_condition() {
-                let condition = FilterCondition::new(f.id.clone(), f.get_value_type(), def)
+                let mut condition = FilterCondition::new(f.id.clone(), f.get_value_type(), def)
                     .with_field_name(&f.name);
+
+                // Preserve ID and active state if editing existing condition
+                if let Some(ref existing) = existing_condition_signal.get_value() {
+                    condition = condition.with_preserved_state(existing);
+                }
 
                 on_save.run(condition);
                 open.set(false);

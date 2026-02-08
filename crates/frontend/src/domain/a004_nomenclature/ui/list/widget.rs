@@ -1,19 +1,18 @@
-use super::super::details::NomenclatureDetails;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::excel_importer::{ColumnDef, DataType, ExcelImporter};
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
-use crate::shared::modal_stack::ModalStackService;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
-use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use serde::Deserialize;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use thaw::*;
 use wasm_bindgen::JsCast;
 
@@ -56,7 +55,9 @@ async fn fetch_nomenclature_paginated(
     let q_trimmed = q.trim();
     if q_trimmed.len() >= 3 {
         // NOTE: simplest encoding to avoid pulling extra deps
-        let encoded = js_sys::encode_uri_component(q_trimmed).as_string().unwrap_or_default();
+        let encoded = js_sys::encode_uri_component(q_trimmed)
+            .as_string()
+            .unwrap_or_default();
         url.push_str(&format!("&q={}", encoded));
     }
 
@@ -114,6 +115,8 @@ impl ExcelExportable for Nomenclature {
 
 #[component]
 pub fn NomenclatureList() -> impl IntoView {
+    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
+        .expect("AppGlobalContext context not found");
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let state = create_state();
@@ -129,9 +132,6 @@ pub fn NomenclatureList() -> impl IntoView {
     // Сортировка
     let sort_field = RwSignal::new(state.get_untracked().sort_field.clone());
     let sort_ascending = RwSignal::new(state.get_untracked().sort_ascending);
-
-    let _tabs_store = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext context not found");
 
     // Определение колонок для Excel импорта
     let excel_columns = vec![
@@ -218,7 +218,7 @@ pub fn NomenclatureList() -> impl IntoView {
     // Initial load - only once
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
-        load();
+            load();
         }
     });
 
@@ -305,11 +305,7 @@ pub fn NomenclatureList() -> impl IntoView {
     };
 
     let toggle_select_all_on_page = move |checked: bool| {
-        let page_ids: Vec<String> = items
-            .get()
-            .iter()
-            .map(|i| i.base.id.as_string())
-            .collect();
+        let page_ids: Vec<String> = items.get().iter().map(|i| i.base.id.as_string()).collect();
 
         state.update(|s| {
             if checked {
@@ -325,11 +321,7 @@ pub fn NomenclatureList() -> impl IntoView {
     };
 
     let all_on_page_selected = Signal::derive(move || {
-        let page_ids: Vec<String> = items
-            .get()
-            .iter()
-            .map(|i| i.base.id.as_string())
-            .collect();
+        let page_ids: Vec<String> = items.get().iter().map(|i| i.base.id.as_string()).collect();
         if page_ids.is_empty() {
             return false;
         }
@@ -371,35 +363,12 @@ pub fn NomenclatureList() -> impl IntoView {
         })
     };
 
-    // Open details via centralized modal stack
-    let open_details_modal = {
-        let load = load.clone();
-        move |id: Option<String>| {
-            let id_val = id.clone();
-            modal_stack.push_with_frame(
-                Some("max-width: min(1400px, 95vw); width: min(1400px, 95vw);".to_string()),
-                Some("nomenclature-modal".to_string()),
-                move |handle| {
-                    view! {
-                        <NomenclatureDetails
-                            id=id_val.clone()
-                            on_saved=Callback::new({
-                                let handle = handle.clone();
-                                let load = load.clone();
-                                move |_| {
-                                    handle.close();
-                                    load();
-                                }
-                            })
-                            on_cancel=Callback::new({
-                                let handle = handle.clone();
-                                move |_| handle.close()
-                            })
-                        />
-                    }
-                    .into_any()
-                },
-            );
+    // Open details in tab
+    let open_details_tab = {
+        let tabs_store = tabs_store;
+        move |id: String| {
+            let title = format!("Номенклатура {}", id.chars().take(8).collect::<String>());
+            tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", id), &title);
         }
     };
 
@@ -437,45 +406,37 @@ pub fn NomenclatureList() -> impl IntoView {
 
     view! {
         <div class="page page--wide">
-            <div class="page-header">
-                <div class="page-header__content">
-                    <div class="page-header__icon">{icon("table")}</div>
-                    <div class="page-header__text">
-                        <h1 class="page-header__title">"Номенклатура"</h1>
-                        <div class="page-header__badge">
-                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                                {move || state.get().total_count.to_string()}
-                            </Badge>
-                        </div>
-                    </div>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Номенклатура"</h1>
+                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                        {move || state.get().total_count.to_string()}
+                    </Badge>
                 </div>
-
-                <div class="page-header__actions">
-                    <Space>
-                        <Button
-                            appearance=ButtonAppearance::Secondary
-                            on_click=move |_| load()
-                            disabled=is_loading.get()
-                        >
-                            {icon("refresh")}
-                            {move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}
-                        </Button>
-                        <Button appearance=ButtonAppearance::Primary on_click=move |_| open_excel_importer.run(())>
-                            {icon("upload")}
-                            " Импорт"
-                        </Button>
-                        <Button appearance=ButtonAppearance::Secondary on_click=move |_| handle_excel_export()>
-                            {icon("download")}
-                            " Excel (страница)"
-                        </Button>
-                    </Space>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| load()
+                        disabled=is_loading.get()
+                    >
+                        {icon("refresh")}
+                        {move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}
+                    </Button>
+                    <Button appearance=ButtonAppearance::Primary on_click=move |_| open_excel_importer.run(())>
+                        {icon("upload")}
+                        " Импорт"
+                    </Button>
+                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| handle_excel_export()>
+                        {icon("download")}
+                        " Excel (страница)"
+                    </Button>
                 </div>
             </div>
 
             {move || error.get().map(|e| view! {
-                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);">
-                    <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                <div class="warning-box warning-box--error">
+                    <span class="warning-box__icon">"⚠"</span>
+                    <span class="warning-box__text">{e}</span>
                 </div>
             })}
 
@@ -498,7 +459,7 @@ pub fn NomenclatureList() -> impl IntoView {
                     </div>
 
                     <div class="filter-panel-header__right">
-                        <span style="font-size: 12px; color: var(--color-text-secondary);">
+                        <span class="filter-panel__count">
                             {"Выбрано: "}{move || state.get().selected_ids.len()}
                     </span>
                 </div>
@@ -533,7 +494,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=false class="fixed-checkbox-column">
                                         <input
                                             type="checkbox"
-                                            style="cursor: pointer;"
+                                            class="table__checkbox"
                                     prop:checked=move || all_on_page_selected.get()
                                     on:change=move |ev| {
                                         toggle_select_all_on_page(event_target_checked(&ev));
@@ -544,8 +505,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=120.0>
                                 "Артикул"
                                 <span
-                                    class={move || get_sort_class("article", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("article", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -569,8 +529,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=220.0>
                                 "Наименование"
                                 <span
-                                    class={move || get_sort_class("description", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("description", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -594,8 +553,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=140.0>
                                 "Категория"
                                 <span
-                                    class={move || get_sort_class("dim1_category", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim1_category", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -619,8 +577,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=140.0>
                                 "Линейка"
                                 <span
-                                    class={move || get_sort_class("dim2_line", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim2_line", &sort_field.get()))}
                                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -644,8 +601,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=160.0>
                                 "Модель"
                                 <span
-                                    class={move || get_sort_class("dim3_model", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim3_model", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -669,8 +625,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=120.0>
                                 "Формат"
                                 <span
-                                    class={move || get_sort_class("dim4_format", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim4_format", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -694,8 +649,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=140.0>
                                 "Раковина"
                                 <span
-                                    class={move || get_sort_class("dim5_sink", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim5_sink", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -719,8 +673,7 @@ pub fn NomenclatureList() -> impl IntoView {
                             <TableHeaderCell resizable=true min_width=120.0>
                                 "Размер"
                                 <span
-                                    class={move || get_sort_class("dim6_size", &sort_field.get())}
-                                    style="cursor: pointer; margin-left: 6px;"
+                                    class={move || format!("table__header-sort-indicator {}", get_sort_class("dim6_size", &sort_field.get()))}
                                     on:click=move |e| {
                                         e.stop_propagation();
                                         state.update(|s| {
@@ -751,7 +704,7 @@ pub fn NomenclatureList() -> impl IntoView {
                                     <TableRow>
                                         <TableCell attr:colspan="9">
                                             <TableCellLayout>
-                                                <span style="color: var(--color-text-tertiary);">"Нет данных"</span>
+                                                <span class="table__cell--muted">"Нет данных"</span>
                                             </TableCellLayout>
                                         </TableCell>
                                     </TableRow>
@@ -767,10 +720,10 @@ pub fn NomenclatureList() -> impl IntoView {
 
                                 view! {
                                     <TableRow>
-                                        <TableCell class="fixed-checkbox-column">
+                                        <TableCell class="fixed-checkbox-column" on:click=|e| e.stop_propagation()>
                                                         <input
                                                             type="checkbox"
-                                                            style="cursor: pointer;"
+                                                            class="table__checkbox"
                                                 prop:checked=move || state.get().selected_ids.contains(&id_for_checkbox)
                                                 on:change=move |ev| {
                                                     toggle_select(id_for_checkbox2.clone(), event_target_checked(&ev));
@@ -785,7 +738,7 @@ pub fn NomenclatureList() -> impl IntoView {
                                                     style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        open_details_modal(Some(id_for_open_article.clone()));
+                                                        open_details_tab(id_for_open_article.clone());
                                                     }
                                                 >
                                                     {row.article}
@@ -800,7 +753,7 @@ pub fn NomenclatureList() -> impl IntoView {
                                                     style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        open_details_modal(Some(id_for_open_desc.clone()));
+                                                        open_details_tab(id_for_open_desc.clone());
                                                     }
                                                 >
                                                     {row.base.description}

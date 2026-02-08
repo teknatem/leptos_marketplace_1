@@ -15,7 +15,7 @@ use contracts::shared::universal_dashboard::{
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use thaw::{Button, ButtonAppearance, Select};
+use thaw::{Button, ButtonAppearance, Flex, FlexGap, Select};
 
 use super::SaveConfigDialog;
 use super::SchemaPicker;
@@ -90,11 +90,31 @@ pub fn UniversalDashboard(
 
     // Load schema when selection changes
     Effect::new(move |_| {
-        if let Some(schema_id) = selected_schema_id.get() {
+        let schema_id_opt = selected_schema_id.get();
+        log!(
+            "[UniversalDashboard] Schema selection changed: {:?}",
+            schema_id_opt
+        );
+
+        if let Some(schema_id) = schema_id_opt {
+            let schema_id_for_schema = schema_id.clone();
+            let schema_id_for_configs = schema_id.clone();
+
             spawn_local(async move {
+                log!(
+                    "[UniversalDashboard] Loading schema: {}",
+                    schema_id_for_schema
+                );
+
                 // Load schema definition
-                match api::get_schema(&schema_id).await {
+                match api::get_schema(&schema_id_for_schema).await {
                     Ok(resp) => {
+                        log!(
+                            "[UniversalDashboard] Schema loaded: {} with {} fields",
+                            schema_id_for_schema,
+                            resp.schema.fields.len()
+                        );
+
                         // Initialize enabled_fields with all field IDs by default
                         let all_field_ids =
                             resp.schema.fields.iter().map(|f| f.id.clone()).collect();
@@ -102,7 +122,7 @@ pub fn UniversalDashboard(
                         set_schema.set(Some(resp.schema.clone()));
                         // Reset config for new schema
                         set_config.set(DashboardConfig {
-                            data_source: schema_id.clone(),
+                            data_source: schema_id_for_schema.clone(),
                             selected_fields: vec![],
                             groupings: vec![],
                             display_fields: vec![],
@@ -117,16 +137,34 @@ pub fn UniversalDashboard(
                         current_config_name.set(None);
                         selected_config_picker.set(String::new());
                     }
-                    Err(e) => log!("Failed to load schema: {}", e),
+                    Err(e) => log!("[UniversalDashboard] Failed to load schema: {}", e),
                 }
 
                 // Load saved configs for this schema
-                match api::list_configs(Some(&schema_id)).await {
-                    Ok(resp) => set_saved_configs.set(resp.configs),
-                    Err(e) => log!("Failed to load configs: {}", e),
+                log!(
+                    "[UniversalDashboard] Loading configs for schema: {}",
+                    schema_id_for_configs
+                );
+                match api::list_configs(Some(&schema_id_for_configs)).await {
+                    Ok(resp) => {
+                        log!(
+                            "[UniversalDashboard] Loaded {} configs for schema: {}",
+                            resp.configs.len(),
+                            schema_id_for_configs
+                        );
+                        set_saved_configs.set(resp.configs);
+                    }
+                    Err(e) => {
+                        log!(
+                            "[UniversalDashboard] Failed to load configs for schema {}: {}",
+                            schema_id_for_configs,
+                            e
+                        );
+                    }
                 }
             });
         } else {
+            log!("[UniversalDashboard] No schema selected, clearing state");
             set_schema.set(None);
             set_saved_configs.set(vec![]);
         }
@@ -240,6 +278,7 @@ pub fn UniversalDashboard(
         let mut current_config = config.get();
 
         // Filter config to only include enabled fields
+        // NOTE: Conditions are preserved even for disabled fields
         if !current_config.enabled_fields.is_empty() {
             current_config
                 .groupings
@@ -250,10 +289,7 @@ pub fn UniversalDashboard(
             current_config
                 .selected_fields
                 .retain(|sf| current_config.enabled_fields.contains(&sf.field_id));
-            current_config
-                .filters
-                .conditions
-                .retain(|c| current_config.enabled_fields.contains(&c.field_id));
+            // Do NOT filter conditions - they should be preserved even if field is disabled
         }
 
         let schema_id = selected_schema_id.get();
@@ -291,6 +327,7 @@ pub fn UniversalDashboard(
             let mut current_config = config.get();
 
             // Filter config to only include enabled fields
+            // NOTE: Conditions are preserved even for disabled fields
             if !current_config.enabled_fields.is_empty() {
                 current_config
                     .groupings
@@ -301,10 +338,7 @@ pub fn UniversalDashboard(
                 current_config
                     .selected_fields
                     .retain(|sf| current_config.enabled_fields.contains(&sf.field_id));
-                current_config
-                    .filters
-                .conditions
-                .retain(|c| current_config.enabled_fields.contains(&c.field_id));
+                // Do NOT filter conditions - they should be preserved even if field is disabled
             }
 
             let schema_id = selected_schema_id.get();
@@ -342,24 +376,22 @@ pub fn UniversalDashboard(
     let display_subtitle = subtitle.clone();
 
     view! {
-        <div class="universal-dashboard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
-                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                    <h1 style="margin: 0; font-size: 24px;">{display_title}</h1>
+        <div class="page">
+            <div class="page__header">
+                <div class="page__header-left" style="display: flex; flex-direction: row; gap: 32px;">
+                    <h1 class="page__title">{display_title}</h1>
                     {display_subtitle.as_ref().map(|s| view! {
-                        <small class="text-muted">{s.clone()}</small>
+                        <p class="page__subtitle">{s.clone()}</p>
                     })}
                     <Show when=move || !fixed_schema>
-                        <div>
-                            <SchemaPicker
-                                schemas=schemas
-                                selected=selected_schema_id
-                                on_change=on_schema_change
-                            />
-                        </div>
+                        <SchemaPicker
+                            schemas=schemas
+                            selected=selected_schema_id
+                            on_change=on_schema_change
+                        />
                     </Show>
                     <Show when=move || !saved_configs.get().is_empty() && selected_schema_id.get().is_some()>
-                        <div style="min-width: 200px;">
+                        <div class="config-picker-wrapper">
                             <Select value=selected_config_picker>
                                 <option value="">"-- Выбрать настройку --"</option>
                                 <For
@@ -377,18 +409,20 @@ pub fn UniversalDashboard(
                         </div>
                     </Show>
                 </div>
-                <Show when=move || selected_schema_id.get().is_some()>
-                    <Button
-                        appearance=ButtonAppearance::Primary
-                        on_click=move |_| execute_query(())
-                        disabled=move || {
-                            config.get().selected_fields.is_empty()
-                                && config.get().groupings.is_empty()
-                        }
-                    >
-                        " Обновить"
-                    </Button>
-                </Show>
+                <div class="page__header-right">
+                    <Show when=move || selected_schema_id.get().is_some()>
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            on_click=move |_| execute_query(())
+                            disabled=move || {
+                                config.get().selected_fields.is_empty()
+                                    && config.get().groupings.is_empty()
+                            }
+                        >
+                            "Обновить"
+                        </Button>
+                    </Show>
+                </div>
             </div>
 
             // Tabs + Content
@@ -416,7 +450,7 @@ pub fn UniversalDashboard(
                         />
                     }.into_any()
                 } else {
-                    view! { <div></div> }.into_any()
+                    ().into_any()
                 }
             }}
 

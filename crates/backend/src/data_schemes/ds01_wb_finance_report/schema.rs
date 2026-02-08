@@ -1,4 +1,4 @@
-//! S001 WB Finance Report - Custom schema for Wildberries financial data
+//! DS01 WB Finance Report - Custom schema for Wildberries financial data
 //!
 //! This schema provides access to p903_wb_finance_report projection
 //! with all financial metrics for WB sales analysis.
@@ -7,9 +7,9 @@
 
 use contracts::shared::universal_dashboard::{DataSourceSchema, FieldDef, FieldType};
 
-/// S001 WB Finance Report schema definition
-pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
-    id: "s001_wb_finance",
+/// DS01 WB Finance Report schema definition
+pub static DS01_SCHEMA: DataSourceSchema = DataSourceSchema {
+    id: "ds01_wb_finance_report",
     name: "Финансовый отчёт WB",
     fields: &[
         // === Grouping fields ===
@@ -22,6 +22,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "rr_dt",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "nm_id",
@@ -32,6 +34,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "nm_id",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "sa_name",
@@ -42,6 +46,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "sa_name",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "subject_name",
@@ -52,6 +58,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "subject_name",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "supplier_oper_name",
@@ -62,6 +70,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "supplier_oper_name",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "bonus_type_name",
@@ -72,6 +82,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "bonus_type_name",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "connection_mp_ref",
@@ -82,6 +94,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "connection_mp_ref",
             ref_table: Some("a006_connection_mp"),
             ref_display_column: Some("description"),
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "organization_ref",
@@ -92,6 +106,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "organization_ref",
             ref_table: Some("a002_organization"),
             ref_display_column: Some("description"),
+            source_table: None,
+            join_on_column: None,
         },
         // === Numeric fields (can aggregate) ===
         FieldDef {
@@ -103,6 +119,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "retail_amount",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "retail_price",
@@ -113,6 +131,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "retail_price",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "quantity",
@@ -123,6 +143,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "quantity",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "ppvz_for_pay",
@@ -133,6 +155,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "ppvz_for_pay",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "commission_percent",
@@ -143,6 +167,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "commission_percent",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "delivery_rub",
@@ -153,6 +179,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "delivery_rub",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "storage_fee",
@@ -163,6 +191,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "storage_fee",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "penalty",
@@ -173,6 +203,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "penalty",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "acquiring_fee",
@@ -183,6 +215,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "acquiring_fee",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "return_amount",
@@ -193,6 +227,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "return_amount",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "ppvz_sales_commission",
@@ -203,6 +239,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "ppvz_sales_commission",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "additional_payment",
@@ -213,6 +251,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "additional_payment",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "cashback_amount",
@@ -223,6 +263,8 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "cashback_amount",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
         FieldDef {
             id: "rebill_logistic_cost",
@@ -233,9 +275,11 @@ pub static S001_WB_FINANCE_SCHEMA: DataSourceSchema = DataSourceSchema {
             db_column: "rebill_logistic_cost",
             ref_table: None,
             ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
         },
     ],
 };
 
 /// Table name for this schema
-pub const S001_TABLE_NAME: &str = "p903_wb_finance_report";
+pub const DS01_TABLE_NAME: &str = "p903_wb_finance_report";

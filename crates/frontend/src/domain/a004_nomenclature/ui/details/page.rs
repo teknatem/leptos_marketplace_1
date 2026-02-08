@@ -7,8 +7,9 @@
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
-use super::tabs::{BarcodesTab, DimensionsTab, GeneralTab};
+use super::tabs::{BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab};
 use super::view_model::NomenclatureDetailsVm;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use thaw::*;
@@ -41,6 +42,16 @@ pub fn NomenclatureDetails(
         }
     });
 
+    // Lazy loading for dealer prices tab
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "dealer_prices" && !vm.dealer_prices_loaded.get() {
+                vm.load_dealer_prices();
+            }
+        }
+    });
+
     // Clone for closures
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
@@ -57,6 +68,9 @@ pub fn NomenclatureDetails(
 
                 // Tab bar
                 <TabBar vm=vm_tabs.clone() />
+
+                // Derivative warning (between tabs and content)
+                <DerivativeWarning vm=vm.clone() />
 
                 // Tab content
                 <div style="height: 60vh; overflow-y: auto; overflow-x: hidden;">
@@ -129,12 +143,71 @@ fn ErrorDisplay(vm: NomenclatureDetailsVm) -> impl IntoView {
     }
 }
 
+/// Derivative warning component - displays warning when this is a derivative nomenclature
+#[component]
+fn DerivativeWarning(vm: NomenclatureDetailsVm) -> impl IntoView {
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+
+    view! {
+        <Show when=move || vm.is_derivative.get()>
+            <div style="width: 100%; margin-bottom: var(--spacing-md);">
+                <MessageBar intent=MessageBarIntent::Warning>
+                    <div style="display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap;">
+                        <span>"Это производная позиция от:"</span>
+                        {move || {
+                            let article = vm.base_nomenclature_article.get();
+                            let name = vm.base_nomenclature_name.get();
+                            let base_id = vm.base_nomenclature_ref.get();
+
+                            if !article.is_empty() || !name.is_empty() {
+                                let display_article = if article.is_empty() { "—".to_string() } else { article.clone() };
+                                let title = if article.is_empty() {
+                                    format!("Номенклатура {}", name)
+                                } else {
+                                    format!("Номенклатура {}", article)
+                                };
+
+                                view! {
+                                    <Button
+                                        appearance=ButtonAppearance::Transparent
+                                        size=ButtonSize::Small
+                                        on_click={
+                                            let tabs_store = tabs_store;
+                                            let base_id = base_id.clone();
+                                            let title = title.clone();
+                                            move |_| {
+                                                if !base_id.is_empty() {
+                                                    tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", base_id), &title);
+                                                }
+                                            }
+                                        }
+                                        attr:style="color: var(--color-primary); text-decoration: underline; padding: 0; min-height: auto; font-weight: 600;"
+                                    >
+                                        {display_article}
+                                    </Button>
+                                    <span>{name}</span>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <span>{base_id}</span>
+                                }.into_any()
+                            }
+                        }}
+                    </div>
+                </MessageBar>
+            </div>
+        </Show>
+    }
+}
+
 /// Tab bar component using THAW buttons for better visual clarity
 #[component]
 fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let is_edit_mode = vm.is_edit_mode();
     let barcodes_count = vm.barcodes_count;
+    let dealer_prices_count = vm.dealer_prices_count;
 
     // Helper to create tab button content with proper icon spacing
     let tab_icon = |name: &str| {
@@ -221,6 +294,41 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
                     {move || barcodes_count.get().to_string()}
                 </Badge>
             </Button>
+
+            // Dealer prices tab (disabled for new records)
+            <Button
+                appearance=Signal::derive({
+                    let active_tab = active_tab;
+                    move || if active_tab.get() == "dealer_prices" {
+                        ButtonAppearance::Primary
+                    } else {
+                        ButtonAppearance::Subtle
+                    }
+                })
+                size=ButtonSize::Small
+                on_click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("dealer_prices")
+                }
+                disabled=Signal::derive(move || !is_edit_mode.get())
+            >
+                {tab_icon("dollar-sign")}
+                "Дилерские цены"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "dealer_prices" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || dealer_prices_count.get().to_string()}
+                </Badge>
+            </Button>
         </Flex>
     }
 }
@@ -232,6 +340,7 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
     let vm_general = vm.clone();
     let vm_dimensions = vm.clone();
     let vm_barcodes = vm.clone();
+    let vm_dealer_prices = vm.clone();
 
     view! {
         {move || match active_tab.get() {
@@ -249,6 +358,11 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
             "barcodes" => view! {
                 <div style="height: 100%; overflow-y: auto;">
                     <BarcodesTab vm=vm_barcodes.clone() />
+                </div>
+            }.into_any(),
+            "dealer_prices" => view! {
+                <div style="height: 100%; overflow-y: auto;">
+                    <DealerPricesTab vm=vm_dealer_prices.clone() />
                 </div>
             }.into_any(),
             _ => view! {

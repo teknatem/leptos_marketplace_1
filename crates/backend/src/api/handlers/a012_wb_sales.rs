@@ -214,6 +214,7 @@ pub struct WbSalesListItemDto {
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
+    pub dealer_price_ut: Option<f64>,
 }
 
 /// Серверные итоги по датасету WB Sales
@@ -250,6 +251,8 @@ pub struct ListSalesQuery {
     pub search_sale_id: Option<String>,
     /// Search by srid (document_no)
     pub search_srid: Option<String>,
+    /// Search by supplier_article
+    pub search_supplier_article: Option<String>,
 }
 
 /// Handler для получения списка Wildberries Sales с пагинацией
@@ -275,6 +278,7 @@ pub async fn list_sales(
         organization_id: query.organization_id.clone(),
         search_sale_id: query.search_sale_id.clone(),
         search_srid: query.search_srid.clone(),
+        search_supplier_article: query.search_supplier_article.clone(),
         sort_by: sort_by.clone(),
         sort_desc,
         limit: page_size,
@@ -355,6 +359,7 @@ pub async fn list_sales(
                 nomenclature_code: non_empty(nomenclature_code),
                 nomenclature_article: non_empty(nomenclature_article),
                 operation_date,
+                dealer_price_ut: row.dealer_price_ut,
             }
         })
         .collect();
@@ -673,14 +678,13 @@ pub async fn migrate_fill_sale_id() -> Result<Json<serde_json::Value>, axum::htt
 pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    // Получаем данные из проекций p900 и p904 (WB Sales использует только эти)
-    let p900_items =
-        crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get p900 projections: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    // Получаем данные из проекций p900 и p904 (WB Sales используется только эти)
+    let p900_items = crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p900 projections: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
         .await
@@ -696,4 +700,20 @@ pub async fn get_projections(
     });
 
     Ok(Json(result))
+}
+
+/// Handler для обновления dealer_price_ut
+pub async fn refresh_dealer_price(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a012_wb_sales::service::refresh_dealer_price(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to refresh dealer price: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({"success": true})))
 }

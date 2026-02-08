@@ -7,9 +7,7 @@ use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::components::ui::button::Button as UiButton;
 use crate::shared::icons::icon;
-use crate::shared::list_utils::{
-    format_number, get_sort_class, get_sort_indicator, Sortable,
-};
+use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -22,6 +20,8 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+
+use crate::shared::api_utils::api_base;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -93,6 +93,7 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
             .get("operation_date")
             .and_then(|a| a.as_str())
             .map(|s| s.to_string()),
+        dealer_price_ut: v.get("dealer_price_ut").and_then(|a| a.as_f64()),
     });
 
     if result.is_none() {
@@ -123,6 +124,7 @@ pub struct WbSalesDto {
     pub nomenclature_code: Option<String>,
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
+    pub dealer_price_ut: Option<f64>,
 }
 
 impl Sortable for WbSalesDto {
@@ -201,6 +203,12 @@ impl Sortable for WbSalesDto {
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             },
+            "dealer_price_ut" => match (&self.dealer_price_ut, &other.dealer_price_ut) {
+                (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             _ => Ordering::Equal,
         }
     }
@@ -247,13 +255,13 @@ pub fn WbSalesList() -> impl IntoView {
             let sort_field = state.with(|s| s.sort_field.clone());
             let sort_ascending = state.with(|s| s.sort_ascending);
             let search_sale_id = state.with(|s| s.search_sale_id.clone());
-            let search_srid = state.with(|s| s.search_srid.clone());
+            let search_supplier_article = state.with(|s| s.search_supplier_article.clone());
             let offset = page * page_size;
 
             // Build URL with pagination parameters
             let mut url = format!(
-                "http://localhost:3000/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset={}&sort_by={}&sort_desc={}",
-                date_from_val, date_to_val, page_size, offset, sort_field, !sort_ascending
+                "{}/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset={}&sort_by={}&sort_desc={}",
+                api_base(), date_from_val, date_to_val, page_size, offset, sort_field, !sort_ascending
             );
 
             // Add organization filter if selected
@@ -265,8 +273,11 @@ pub fn WbSalesList() -> impl IntoView {
             if !search_sale_id.is_empty() {
                 url.push_str(&format!("&search_sale_id={}", search_sale_id));
             }
-            if !search_srid.is_empty() {
-                url.push_str(&format!("&search_srid={}", search_srid));
+            if !search_supplier_article.is_empty() {
+                url.push_str(&format!(
+                    "&search_supplier_article={}",
+                    search_supplier_article
+                ));
             }
 
             log!("Loading WB sales with URL: {}", url);
@@ -369,11 +380,22 @@ pub fn WbSalesList() -> impl IntoView {
                                     s.selected_organization_id = Some(org_id.to_string());
                                 }
                             }
-                            if let Some(show_op) = settings.get("show_operation_date").and_then(|v| v.as_bool()) {
+                            if let Some(show_op) = settings
+                                .get("show_operation_date")
+                                .and_then(|v| v.as_bool())
+                            {
                                 s.show_operation_date = show_op;
                             }
-                            if let Some(show_mp) = settings.get("show_marketplace_article").and_then(|v| v.as_bool()) {
+                            if let Some(show_mp) = settings
+                                .get("show_marketplace_article")
+                                .and_then(|v| v.as_bool())
+                            {
                                 s.show_marketplace_article = show_mp;
+                            }
+                            if let Some(show_tp) =
+                                settings.get("show_total_price").and_then(|v| v.as_bool())
+                            {
+                                s.show_total_price = show_tp;
                             }
                         });
                         log!("Loaded saved settings for A012");
@@ -396,7 +418,8 @@ pub fn WbSalesList() -> impl IntoView {
 
     // Thaw inputs: keep local RwSignal, sync -> state (one-way)
     let search_sale_id = RwSignal::new(state.get_untracked().search_sale_id.clone());
-    let search_srid = RwSignal::new(state.get_untracked().search_srid.clone());
+    let search_supplier_article =
+        RwSignal::new(state.get_untracked().search_supplier_article.clone());
     let selected_org_id = RwSignal::new(
         state
             .get_untracked()
@@ -416,10 +439,10 @@ pub fn WbSalesList() -> impl IntoView {
     });
 
     Effect::new(move || {
-        let v = search_srid.get();
+        let v = search_supplier_article.get();
         untrack(move || {
             state.update(|s| {
-                s.search_srid = v;
+                s.search_supplier_article = v;
                 s.page = 0;
             });
         });
@@ -451,7 +474,7 @@ pub fn WbSalesList() -> impl IntoView {
         if !s.search_sale_id.is_empty() {
             count += 1;
         }
-        if !s.search_srid.is_empty() {
+        if !s.search_supplier_article.is_empty() {
             count += 1;
         }
         count
@@ -559,7 +582,7 @@ pub fn WbSalesList() -> impl IntoView {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
-                let response = Request::post("http://localhost:3000/api/a012/wb-sales/batch-post")
+                let response = Request::post(&format!("{}/api/a012/wb-sales/batch-post", api_base()))
                     .header("Content-Type", "application/json")
                     .body(serde_json::to_string(&payload).unwrap_or_default())
                     .map(|req| req.send());
@@ -626,7 +649,7 @@ pub fn WbSalesList() -> impl IntoView {
 
                 let payload = json!({ "ids": chunk });
                 let response =
-                    Request::post("http://localhost:3000/api/a012/wb-sales/batch-unpost")
+                    Request::post(&format!("{}/api/a012/wb-sales/batch-unpost", api_base()))
                         .header("Content-Type", "application/json")
                         .body(serde_json::to_string(&payload).unwrap_or_default())
                         .map(|req| req.send());
@@ -680,6 +703,7 @@ pub fn WbSalesList() -> impl IntoView {
             "selected_organization_id": state.with(|s| s.selected_organization_id.clone()).unwrap_or_default(),
             "show_operation_date": state.with(|s| s.show_operation_date),
             "show_marketplace_article": state.with(|s| s.show_marketplace_article),
+            "show_total_price": state.with(|s| s.show_total_price),
         });
 
         spawn_local(async move {
@@ -724,11 +748,22 @@ pub fn WbSalesList() -> impl IntoView {
                                 s.selected_organization_id = None;
                             }
                         }
-                        if let Some(show_op) = settings.get("show_operation_date").and_then(|v| v.as_bool()) {
+                        if let Some(show_op) = settings
+                            .get("show_operation_date")
+                            .and_then(|v| v.as_bool())
+                        {
                             s.show_operation_date = show_op;
                         }
-                        if let Some(show_mp) = settings.get("show_marketplace_article").and_then(|v| v.as_bool()) {
+                        if let Some(show_mp) = settings
+                            .get("show_marketplace_article")
+                            .and_then(|v| v.as_bool())
+                        {
                             s.show_marketplace_article = show_mp;
+                        }
+                        if let Some(show_tp) =
+                            settings.get("show_total_price").and_then(|v| v.as_bool())
+                        {
+                            s.show_total_price = show_tp;
                         }
                     });
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
@@ -756,29 +791,24 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Открыть детальный просмотр
-    let open_detail = move |id: String, document_no: String| {
+    let open_detail = move |id: String, sale_id: String| {
         tabs_store.open_tab(
             &format!("a012_wb_sales_detail_{}", id),
-            &format!("WB Sales {}", document_no),
+            &format!("WB Sales {}", sale_id),
         );
     };
 
     view! {
-        <div class="page page--wide">
-            <div class="page-header">
-                <div class="page-header__content">
-                    <div class="page-header__icon">{icon("trending-up")}</div>
-                    <div class="page-header__text">
-                        <h1 class="page-header__title">"Продажи Wildberries"</h1>
-                        <div class="page-header__badge">
-                            <UiBadge variant="primary".to_string()>
-                                {move || state.get().total_count.to_string()}
-                            </UiBadge>
-                        </div>
-                    </div>
+        <div class="page">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Продажи Wildberries"</h1>
+                    <UiBadge variant="primary".to_string()>
+                        {move || state.get().total_count.to_string()}
+                    </UiBadge>
                 </div>
 
-                <div class="page-header__actions">
+                <div class="page__header-right">
                     <Space>
                         <UiButton
                             variant="primary".to_string()
@@ -942,10 +972,10 @@ pub fn WbSalesList() -> impl IntoView {
                                 </Flex>
                             </div>
 
-                            <div style="width: 150px;">
+                            <div style="width: 120px;">
                                 <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"SRID:"</Label>
-                                    <Input value=search_srid placeholder="Document №" />
+                                    <Label>"Артикул:"</Label>
+                                    <Input value=search_supplier_article placeholder="ТВИЗШ70-445" />
                                 </Flex>
                             </div>
 
@@ -974,6 +1004,17 @@ pub fn WbSalesList() -> impl IntoView {
                                                 }
                                             />
                                             <span style="font-size: 13px;">"Арт. МП"</span>
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                            <input
+                                                type="checkbox"
+                                                style="cursor: pointer;"
+                                                prop:checked=move || state.with(|s| s.show_total_price)
+                                                on:change=move |_| {
+                                                    state.update(|s| s.show_total_price = !s.show_total_price);
+                                                }
+                                            />
+                                            <span style="font-size: 13px;">"Полная"</span>
                                         </label>
                                     </div>
                                 </Flex>
@@ -1024,16 +1065,16 @@ pub fn WbSalesList() -> impl IntoView {
 
                     let background_style = if is_processing {
                         if progress_percent == 0 {
-                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
+                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 16px; padding: 0px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
                                 .to_string()
                         } else {
                             format!(
-                                "background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);",
+                                "background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 16px; padding: 0px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);",
                                 progress_percent, progress_percent
                             )
                         }
                     } else {
-                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
+                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 16px; padding: 0px 12px; margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);"
                             .to_string()
                     };
 
@@ -1041,7 +1082,7 @@ pub fn WbSalesList() -> impl IntoView {
                         <div style=background_style>
                             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                                 <span style="font-weight: 600; color: #2e7d32; font-size: 0.875rem;">
-                                    "Выделено: " {sel_count} " строк"
+                                    "Выделено: " {sel_count} " стр."
                                 </span>
                                 <span style="font-size: 0.875rem; color: #424242;">
                                     "Кол-во: " {format_number(sel_qty)} " | "
@@ -1101,24 +1142,12 @@ pub fn WbSalesList() -> impl IntoView {
                                             <TableHeaderCell resizable=false class="fixed-checkbox-column">
                                                 <input
                                                     type="checkbox"
-                                                    style="cursor: pointer;"
+                                                    class="table__checkbox"
                                                     on:change=toggle_all
                                                     prop:checked=move || all_selected()
                                                 />
                                             </TableHeaderCell>
 
-                                        <TableHeaderCell resizable=false min_width=130.0 class="resizable">
-                                            <div
-                                                class="table__sortable-header"
-                                                style="cursor: pointer;"
-                                                on:click=move |_| toggle_sort("document_no")
-                                            >
-                                                "SRID"
-                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
-                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "document_no", s.sort_ascending))}
-                                                </span>
-                                            </div>
-                                        </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=140.0 class="resizable">
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("sale_id")>
                                                 "Sale ID"
@@ -1177,14 +1206,6 @@ pub fn WbSalesList() -> impl IntoView {
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("nomenclature_article")>
-                                                "Арт. 1С"
-                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "nomenclature_article"))>
-                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "nomenclature_article", s.sort_ascending))}
-                                                </span>
-                                            </div>
-                                        </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=70.0 class="resizable">
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("nomenclature_code")>
                                                 "Код"
@@ -1202,7 +1223,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=55.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("qty")>
+                                            <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("qty")>
                                                 "Кол"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "qty"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "qty", s.sort_ascending))}
@@ -1210,15 +1231,28 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=90.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("amount_line")>
+                                            <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("amount_line")>
                                                 "К выплате"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "amount_line"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "amount_line", s.sort_ascending))}
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=80.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_price")>
+                                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                            <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("dealer_price_ut")>
+                                                "Дил. цена УТ"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "dealer_price_ut"))>
+                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "dealer_price_ut", s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+                                        <TableHeaderCell
+                                            resizable=false
+                                            min_width=80.0
+                                            class="resizable"
+                                            attr:style=move || if state.with(|s| s.show_total_price) { "" } else { "display: none;" }
+                                        >
+                                            <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("total_price")>
                                                 "Полная"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_price"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "total_price", s.sort_ascending))}
@@ -1226,18 +1260,10 @@ pub fn WbSalesList() -> impl IntoView {
                                             </div>
                                         </TableHeaderCell>
                                         <TableHeaderCell resizable=false min_width=70.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("finished_price")>
+                                            <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("finished_price")>
                                                 "Итог"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "finished_price"))>
                                                     {move || state.with(|s| get_sort_indicator(&s.sort_field, "finished_price", s.sort_ascending))}
-                                                </span>
-                                            </div>
-                                        </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=70.0 class="resizable">
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("event_type")>
-                                                "Тип"
-                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "event_type"))>
-                                                    {move || state.with(|s| get_sort_indicator(&s.sort_field, "event_type", s.sort_ascending))}
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
@@ -1250,26 +1276,24 @@ pub fn WbSalesList() -> impl IntoView {
                                             key=|item| item.id.clone()
                                             children=move |item| {
                                                 let id = item.id.clone();
-                                                let doc_no = item.document_no.clone();
                                                 let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
                                                 let date = format_date(&item.sale_date);
                                                 let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
                                                 let org_name = item.organization_name.clone().unwrap_or_else(|| "—".to_string());
                                                 let supplier_art = item.supplier_article;
                                                 let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
-                                                let nom_art = item.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
                                                 let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
                                                 let name = item.name;
                                                 let qty = format!("{:.0}", item.qty);
                                                 let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                                let dealer_price = item.dealer_price_ut.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
                                                 let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
                                                 let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                                let event = item.event_type;
 
                                                 let id_check = id.clone();
                                                 let id_toggle = id.clone();
                                                 let id_for_open = id.clone();
-                                                let doc_for_open = doc_no.clone();
+                                                let sale_id_for_title = sale_id.clone();
 
                                                 view! {
                                                 <TableRow>
@@ -1289,14 +1313,13 @@ pub fn WbSalesList() -> impl IntoView {
                                                                 style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                                 on:click=move |e| {
                                                                     e.prevent_default();
-                                                                    open_detail(id_for_open.clone(), doc_for_open.clone());
+                                                                    open_detail(id_for_open.clone(), sale_id_for_title.clone());
                                                                 }
                                                             >
-                                                                {doc_no}
+                                                                {sale_id}
                                                             </a>
                                                         </TableCellLayout>
                                                     </TableCell>
-                                                    <TableCell><TableCellLayout truncate=true>{sale_id}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout>{date}</TableCellLayout></TableCell>
                                                     <TableCell attr:style=move || if state.with(|s| s.show_operation_date) { "" } else { "display: none;" }>
                                                         <TableCellLayout>{op_date}</TableCellLayout>
@@ -1306,14 +1329,15 @@ pub fn WbSalesList() -> impl IntoView {
                                                     <TableCell attr:style=move || if state.with(|s| s.show_marketplace_article) { "" } else { "display: none;" }>
                                                         <TableCellLayout truncate=true>{mp_art}</TableCellLayout>
                                                     </TableCell>
-                                                    <TableCell><TableCellLayout truncate=true>{nom_art}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{nom_code}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{name}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{qty}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{amount}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{total}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{finished}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{event}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{qty}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{amount}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{dealer_price}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style=move || if state.with(|s| s.show_total_price) { "" } else { "display: none;" }>
+                                                        <TableCellLayout attr:style="text-align: right;">{total}</TableCellLayout>
+                                                    </TableCell>
+                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{finished}</TableCellLayout></TableCell>
                                                 </TableRow>
                                             }
                                             }
@@ -1423,8 +1447,8 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let url = "http://localhost:3000/api/organization";
-    let request = WebRequest::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    let url = format!("{}/api/organization", api_base());
+    let request = WebRequest::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")
@@ -1454,7 +1478,7 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
     let mut csv = String::from("\u{FEFF}");
 
     // Заголовок с точкой с запятой как разделитель
-    csv.push_str("Document №;Дата продажи;Дата операции;Организация;Артикул;Артикул МП;Артикул 1С;Код 1С;Название;Количество;К выплате;Полная цена;Итоговая цена;Тип\n");
+    csv.push_str("Document №;Дата продажи;Дата операции;Организация;Артикул;Артикул МП;Артикул 1С;Код 1С;Название;Количество;К выплате;Дил. цена УТ;Полная цена;Итоговая цена\n");
 
     for sale in data {
         let sale_date = format_date(&sale.sale_date);
@@ -1490,6 +1514,10 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
             .amount_line
             .map(|a| format!("{:.2}", a).replace(".", ","))
             .unwrap_or_else(|| "—".to_string());
+        let dealer_price_str = sale
+            .dealer_price_ut
+            .map(|a| format!("{:.2}", a).replace(".", ","))
+            .unwrap_or_else(|| "—".to_string());
         let total_price_str = sale
             .total_price
             .map(|a| format!("{:.2}", a).replace(".", ","))
@@ -1500,7 +1528,7 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
             .unwrap_or_else(|| "—".to_string());
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{}\n",
             sale.document_no.replace('\"', "\"\""),
             sale_date,
             operation_date.replace('\"', "\"\""),
@@ -1512,9 +1540,9 @@ fn export_to_csv(data: &[WbSalesDto]) -> Result<(), String> {
             sale.name.replace('\"', "\"\""),
             qty_str,
             amount_str,
+            dealer_price_str,
             total_price_str,
-            finished_price_str,
-            sale.event_type.replace('\"', "\"\"")
+            finished_price_str
         ));
     }
 
