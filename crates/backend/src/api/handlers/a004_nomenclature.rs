@@ -94,7 +94,13 @@ pub async fn get_by_id(
 /// POST /api/nomenclature
 pub async fn upsert(
     Json(dto): Json<contracts::domain::a004_nomenclature::aggregate::NomenclatureDto>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    tracing::debug!(
+        "Received nomenclature upsert: id={:?}, description={}",
+        dto.id,
+        dto.description
+    );
+
     let result = if dto.id.is_some() {
         a004_nomenclature::service::update(dto)
             .await
@@ -105,8 +111,18 @@ pub async fn upsert(
             .map(|id| id.to_string())
     };
     match result {
-        Ok(id) => Ok(Json(json!({"id": id}))),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(id) => {
+            tracing::debug!("Nomenclature saved successfully: {}", id);
+            Ok(Json(json!({"id": id})))
+        }
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            tracing::error!("Failed to save nomenclature: {}", error_msg);
+            Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"error": error_msg})),
+            ))
+        }
     }
 }
 

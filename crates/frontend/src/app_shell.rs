@@ -30,29 +30,27 @@ fn MainLayout() -> impl IntoView {
             left=|| view! { <Sidebar /> }.into_any()
             center=move || {
                 view! {
-                    <div class="tab-content">
-                        <For
-                            each=move || {
-                                let tabs = tabs_store.opened.get();
-                                log!("📋 <For> each triggered. Tabs count: {}", tabs.len());
-                                for (i, tab) in tabs.iter().enumerate() {
-                                    log!("  {}. key='{}', title='{}'", i+1, tab.key, tab.title);
-                                }
-                                tabs
+                    <For
+                        each=move || {
+                            let tabs = tabs_store.opened.get();
+                            log!("📋 <For> each triggered. Tabs count: {}", tabs.len());
+                            for (i, tab) in tabs.iter().enumerate() {
+                                log!("  {}. key='{}', title='{}'", i+1, tab.key, tab.title);
                             }
-                            key=|tab| {
-                                let key = tab.key.clone();
-                                log!("🔑 <For> key function called for: '{}'", key);
-                                key
+                            tabs
+                        }
+                        key=|tab| {
+                            let key = tab.key.clone();
+                            log!("🔑 <For> key function called for: '{}'", key);
+                            key
+                        }
+                        children=move |tab: TabData| {
+                            log!("👶 <For> children function called for: '{}'", tab.key);
+                            view! {
+                                <TabPage tab=tab tabs_store=tabs_store />
                             }
-                            children=move |tab: TabData| {
-                                log!("👶 <For> children function called for: '{}'", tab.key);
-                                view! {
-                                    <TabPage tab=tab tabs_store=tabs_store />
-                                }
-                            }
-                        />
-                    </div>
+                        }
+                    />
                 }.into_any()
             }
             right=|| view! { <RightPanel /> }.into_any()

@@ -312,11 +312,11 @@ pub fn ImportWidget() -> impl IntoView {
                                     prop:checked=move || import_p906.get()
                                     on:change=move |ev| { set_import_p906.set(event_target_checked(&ev)); }
                                 />
-                                <label class="form__checkbox-label">"p906_prices - Плановые цены номенклатуры"</label>
+                                <label class="form__checkbox-label">"p906_prices - Дилерские цены номенклатуры (УТ)"</label>
                             </div>
                         </div>
                         <div class="code-box">
-                            "HTTP: /hs/mpi_api/prices_plan"
+                            "HTTP: /hs/mpi_api/prices_dealer"
                         </div>
                     </div>
 

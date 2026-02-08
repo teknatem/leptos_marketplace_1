@@ -7,15 +7,12 @@
 //! - Theme selector
 //! - Notifications and settings buttons
 
-mod windows_dropdown;
-
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::theme::ThemeSelect;
 use crate::system::auth::context::{do_logout, use_auth};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use windows_dropdown::WindowsDropdown;
 
 /// TopHeader component - main application top bar.
 ///
@@ -54,11 +51,6 @@ pub fn TopHeader() -> impl IntoView {
                 <span class="top-header__title">"Integrator"</span>
             </div>
 
-            // Center section - windows dropdown
-            <div class="top-header__center">
-                <WindowsDropdown />
-            </div>
-
             // Right section - actions
             <div class="top-header__actions">
                 // Left panel toggle
@@ -95,6 +87,21 @@ pub fn TopHeader() -> impl IntoView {
                 // Settings
                 <button class="top-header__icon-button" title="Настройки">
                     {icon("settings")}
+                </button>
+
+                // DOM Inspector
+                <button 
+                    class="top-header__icon-button" 
+                    on:click=move |_| {
+                        // Захватываем DOM ДО открытия вкладки
+                        if let Some(tree) = crate::shared::dom_validator::tree_builder::build_dom_tree() {
+                            crate::shared::dom_validator::set_dom_snapshot(&tree);
+                            ctx.open_tab("dom_inspector", "DOM Inspector");
+                        }
+                    }
+                    title="DOM Inspector"
+                >
+                    {icon("code")}
                 </button>
 
                 // Theme selector

@@ -37,7 +37,12 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         move || {
             if let Some(sale_data) = vm.sale.get() {
                 let tab_key = format!("a012_wb_sales_detail_{}", stored_id.get_value());
-                let tab_title = format!("WB Sales {}", sale_data.header.document_no);
+                let sale_id = sale_data
+                    .header
+                    .sale_id
+                    .clone()
+                    .unwrap_or_else(|| "—".to_string());
+                let tab_title = format!("WB Sales {}", sale_id);
                 tabs_store.update_tab_title(&tab_key, &tab_title);
             }
         }
@@ -104,14 +109,14 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 #[component]
 fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
     let is_posted = vm.is_posted();
-    let document_no = vm.document_no();
+    let sale_id = vm.sale_id();
     let sale = vm.sale;
 
     view! {
         <div class="detail-form-header">
             <div class="detail-form-header-left">
                 <h2>
-                    {move || format!("WB Sales #{}", document_no.get())}
+                    {move || format!("WB Sales {}", sale_id.get())}
                 </h2>
                 <Show when=move || sale.get().is_some()>
                     {move || {

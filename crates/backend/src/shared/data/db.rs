@@ -8,14 +8,63 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     // Load configuration from config.toml
     let cfg = config::load_config()?;
 
+    println!("========================================");
+    println!("  DATABASE INITIALIZATION DIAGNOSTICS");
+    println!("========================================\n");
+
     // Get database path from configuration
     let absolute_path = config::get_database_path(&cfg)?;
+    println!("✓ Database path resolved: {}", absolute_path.display());
 
-    tracing::info!("Database path: {}", absolute_path.display());
+    // Check if database file already exists
+    if absolute_path.exists() {
+        match std::fs::metadata(&absolute_path) {
+            Ok(metadata) => {
+                println!("✓ Existing database file found");
+                println!("  Size: {} bytes", metadata.len());
+                println!("  Read-only: {}", metadata.permissions().readonly());
+            }
+            Err(e) => {
+                println!("✗ ERROR: Cannot access database file: {}", e);
+            }
+        }
+    } else {
+        println!("ℹ Database file does not exist yet (will be created)");
+    }
 
     // Create parent directory if it doesn't exist
     if let Some(parent) = absolute_path.parent() {
-        std::fs::create_dir_all(parent)?;
+        println!("\nChecking parent directory: {}", parent.display());
+
+        if parent.exists() {
+            println!("✓ Parent directory exists");
+        } else {
+            println!("ℹ Parent directory does not exist, creating...");
+            match std::fs::create_dir_all(parent) {
+                Ok(_) => println!("✓ Parent directory created successfully"),
+                Err(e) => {
+                    println!("✗ ERROR: Cannot create directory: {}", e);
+                    println!("  Error kind: {:?}", e.kind());
+                    println!("  Possible causes:");
+                    println!("  - Insufficient permissions");
+                    println!("  - Invalid path");
+                    println!("  - Disk is full or read-only\n");
+                    return Err(anyhow::anyhow!("Cannot create database directory: {}", e));
+                }
+            }
+        }
+
+        // Check write permissions
+        match std::fs::metadata(parent) {
+            Ok(metadata) => {
+                if metadata.permissions().readonly() {
+                    println!("✗ WARNING: Parent directory is read-only!");
+                }
+            }
+            Err(e) => {
+                println!("✗ ERROR: Cannot check directory permissions: {}", e);
+            }
+        }
     }
 
     // Normalize path separators and ensure proper URL form on Windows
@@ -24,8 +73,29 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     let prefix = if needs_leading_slash { "/" } else { "" };
     let db_url = format!("sqlite://{}{}?mode=rwc", prefix, normalized);
 
+    println!("\n✓ Database URL: {}", db_url);
+    println!("\nConnecting to database...");
+
+    tracing::info!("Database path: {}", absolute_path.display());
     tracing::info!("Connecting to database: {}", db_url);
-    let conn = Database::connect(&db_url).await?;
+
+    let conn = match Database::connect(&db_url).await {
+        Ok(c) => {
+            println!("✓ Successfully connected to database!");
+            println!("========================================\n");
+            c
+        }
+        Err(e) => {
+            println!("✗ ERROR: Failed to connect to database: {}", e);
+            println!("\nPossible causes:");
+            println!("  - Database file is locked by another process");
+            println!("  - Corrupted database file");
+            println!("  - Insufficient permissions");
+            println!("  - Invalid SQLite database format\n");
+            println!("========================================\n");
+            return Err(anyhow::anyhow!("Database connection failed: {}", e));
+        }
+    };
 
     // Ensure required tables exist (minimal schema bootstrap)
     // First, check if old table exists and migrate it
@@ -278,6 +348,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 dim6_size TEXT NOT NULL DEFAULT '',
                 is_assembly INTEGER NOT NULL DEFAULT 0,
                 base_nomenclature_ref TEXT,
+                is_derivative INTEGER NOT NULL DEFAULT 0,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -306,6 +377,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         let mut has_dim6_size = false;
         let mut has_is_assembly = false;
         let mut has_base_nomenclature_ref = false;
+        let mut has_is_derivative = false;
 
         for row in cols {
             let name: String = row.try_get("", "name").unwrap_or_default();
@@ -319,6 +391,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 "dim6_size" => has_dim6_size = true,
                 "is_assembly" => has_is_assembly = true,
                 "base_nomenclature_ref" => has_base_nomenclature_ref = true,
+                "is_derivative" => has_is_derivative = true,
                 _ => {}
             }
         }
@@ -411,7 +484,24 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             ))
             .await?;
         }
+
+        if !has_is_derivative {
+            tracing::info!("Adding is_derivative column to a004_nomenclature");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a004_nomenclature ADD COLUMN is_derivative INTEGER NOT NULL DEFAULT 0;".to_string(),
+            ))
+            .await?;
+        }
     }
+
+    // Create index for is_derivative if not exists
+    tracing::info!("Ensuring index on a004_nomenclature.is_derivative");
+    conn.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        "CREATE INDEX IF NOT EXISTS idx_a004_nomenclature_is_derivative ON a004_nomenclature(is_derivative);".to_string(),
+    ))
+    .await?;
 
     // a005_marketplace
     let check_marketplace_table = r#"
@@ -489,7 +579,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             tracing::info!("Adding acquiring_fee_pro column to a005_marketplace");
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "ALTER TABLE a005_marketplace ADD COLUMN acquiring_fee_pro REAL DEFAULT 0.0;".to_string(),
+                "ALTER TABLE a005_marketplace ADD COLUMN acquiring_fee_pro REAL DEFAULT 0.0;"
+                    .to_string(),
             ))
             .await?;
         }
@@ -2066,6 +2157,48 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         ))
         .await?;
 
+        // Additional indexes for frequently filtered columns
+        let create_p903_idx4 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_organization_ref
+            ON p903_wb_finance_report (organization_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx4.to_string(),
+        ))
+        .await?;
+
+        let create_p903_idx5 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_supplier_oper_name
+            ON p903_wb_finance_report (supplier_oper_name);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx5.to_string(),
+        ))
+        .await?;
+
+        let create_p903_idx6 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_srid
+            ON p903_wb_finance_report (srid);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx6.to_string(),
+        ))
+        .await?;
+
+        // Composite index for common filter combination (date + organization)
+        let create_p903_idx7 = r#"
+            CREATE INDEX IF NOT EXISTS idx_p903_rr_dt_org
+            ON p903_wb_finance_report (rr_dt, organization_ref);
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_p903_idx7.to_string(),
+        ))
+        .await?;
+
         tracing::info!("Created p903_wb_finance_report table with indexes");
     } else {
         // РњРёРіСЂР°С†РёСЏ: РґРѕР±Р°РІРёС‚СЊ РїРѕР»Рµ ppvz_sales_commission РµСЃР»Рё РµРіРѕ РЅРµС‚
@@ -2420,7 +2553,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     let check_dashboard_configs = conn
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_dashboard_configs';".to_string(),
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sys_dashboard_configs';"
+                .to_string(),
         ))
         .await?;
 
@@ -2446,6 +2580,40 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         .await?;
         tracing::info!("sys_dashboard_configs table created successfully");
     }
+
+    // ============================================================
+    // Migrate dashboard configs schema_id
+    // ============================================================
+    tracing::info!("Migrating dashboard configs schema IDs");
+
+    let migrations = vec![
+        ("s001_wb_finance", "ds01_wb_finance_report"),
+        ("p903_wb_finance_report", "ds01_wb_finance_report"),
+        ("p900_sales_register", "ds02_mp_sales_register"),
+    ];
+
+    for (old_id, new_id) in migrations {
+        // Update data_source column
+        let sql_data_source = format!(
+            "UPDATE sys_dashboard_configs SET data_source = '{}' WHERE data_source = '{}'",
+            new_id, old_id
+        );
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql_data_source,
+        ))
+        .await?;
+
+        // Update data_source inside config_json
+        let sql_json = format!(
+            "UPDATE sys_dashboard_configs SET config_json = REPLACE(config_json, '\"data_source\":\"{}\"', '\"data_source\":\"{}\"') WHERE config_json LIKE '%\"data_source\":\"{}\"%%'",
+            old_id, new_id, old_id
+        );
+        conn.execute(Statement::from_string(DatabaseBackend::Sqlite, sql_json))
+            .await?;
+    }
+
+    tracing::info!("Dashboard configs schema IDs migration completed");
 
     // ============================================================
     // System: Tasks (Scheduled Tasks)

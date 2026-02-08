@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::modal_stack::ModalStackService;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,7 +148,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             if let Some(nom_ref) = line.nomenclature_ref.clone() {
                 let line_id = line.line_id.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    let url = format!("http://localhost:3000/api/nomenclature/{}", nom_ref);
+                    let url = format!("{}/api/nomenclature/{}", api_base(), nom_ref);
                     if let Ok(response) = Request::get(&url).send().await {
                         if response.status() == 200 {
                             if let Ok(text) = response.text().await {
@@ -183,7 +184,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a013/ym-order/{}", id);
+            let url = format!("{}/api/a013/ym-order/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -214,8 +215,8 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
-                                                "http://localhost:3000/api/a013/raw/{}",
-                                                raw_payload_ref
+                                                "{}/api/a013/raw/{}",
+                                                api_base(), raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
@@ -254,8 +255,8 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
-                                                "http://localhost:3000/api/a013/ym-order/{}/projections",
-                                                id
+                                                "{}/api/a013/ym-order/{}/projections",
+                                                api_base(), id
                                             );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
@@ -313,14 +314,14 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         let id = id_stored.get_value();
         set_posting.set(true);
         wasm_bindgen_futures::spawn_local(async move {
-            let url = format!("http://localhost:3000/api/a013/ym-order/{}/post", id);
+            let url = format!("{}/api/a013/ym-order/{}/post", api_base(), id);
             match Request::post(&url).send().await {
                 Ok(resp) => {
                     if resp.status() == 200 {
                         log!("Document posted successfully");
                         // Перезагрузить документ
                         set_loading.set(true);
-                        let reload_url = format!("http://localhost:3000/api/a013/ym-order/{}", id);
+                        let reload_url = format!("{}/api/a013/ym-order/{}", api_base(), id);
                         if let Ok(response) = Request::get(&reload_url).send().await {
                             if response.status() == 200 {
                                 if let Ok(text) = response.text().await {
@@ -334,7 +335,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }
                         // Перезагрузить проекции
                         let projections_url =
-                            format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                            format!("{}/api/a013/ym-order/{}/projections", api_base(), id);
                         if let Ok(resp) = Request::get(&projections_url).send().await {
                             if resp.status() == 200 {
                                 if let Ok(text) = resp.text().await {
@@ -363,14 +364,14 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         let id = id_stored.get_value();
         set_posting.set(true);
         wasm_bindgen_futures::spawn_local(async move {
-            let url = format!("http://localhost:3000/api/a013/ym-order/{}/unpost", id);
+            let url = format!("{}/api/a013/ym-order/{}/unpost", api_base(), id);
             match Request::post(&url).send().await {
                 Ok(resp) => {
                     if resp.status() == 200 {
                         log!("Document unposted successfully");
                         // Перезагрузить документ
                         set_loading.set(true);
-                        let reload_url = format!("http://localhost:3000/api/a013/ym-order/{}", id);
+                        let reload_url = format!("{}/api/a013/ym-order/{}", api_base(), id);
                         if let Ok(response) = Request::get(&reload_url).send().await {
                             if response.status() == 200 {
                                 if let Ok(text) = response.text().await {
@@ -384,7 +385,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }
                         // Перезагрузить проекции (после unpost должны быть пустые)
                         let projections_url =
-                            format!("http://localhost:3000/api/a013/ym-order/{}/projections", id);
+                            format!("{}/api/a013/ym-order/{}/projections", api_base(), id);
                         if let Ok(resp) = Request::get(&projections_url).send().await {
                             if resp.status() == 200 {
                                 if let Ok(text) = resp.text().await {

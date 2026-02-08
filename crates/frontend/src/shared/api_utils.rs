@@ -22,10 +22,22 @@ pub fn api_base() -> String {
     };
     let location = window.location();
     let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-    let hostname = location
-        .hostname()
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("{}//{}:3000", protocol, hostname)
+
+    // Используем host (включает порт), а не hostname + :3000
+    // Это работает когда backend и frontend на одном порту
+    let host = location
+        .host()
+        .unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+
+    // Если host уже содержит порт, используем как есть
+    // Иначе добавляем :3000
+    let full_host = if host.contains(':') {
+        host
+    } else {
+        format!("{}:3000", host)
+    };
+
+    format!("{}//{}", protocol, full_host)
 }
 
 /// Build a full API URL from a path

@@ -242,6 +242,10 @@ pub fn configure_business_routes() -> Router {
             get(handlers::a012_wb_sales::get_projections),
         )
         .route(
+            "/api/a012/wb-sales/:id/refresh-dealer-price",
+            post(handlers::a012_wb_sales::refresh_dealer_price),
+        )
+        .route(
             "/api/a012/wb-sales/migrate-sale-id",
             post(handlers::a012_wb_sales::migrate_fill_sale_id),
         )
@@ -422,14 +426,16 @@ pub fn configure_business_routes() -> Router {
         )
         .route(
             "/api/a018-llm-chat/:id/messages",
-            get(handlers::a018_llm_chat::get_messages)
-                .post(handlers::a018_llm_chat::send_message),
+            get(handlers::a018_llm_chat::get_messages).post(handlers::a018_llm_chat::send_message),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/upload",
+            post(handlers::a018_llm_chat::upload_attachment),
         )
         // A019 LLM Artifact handlers
         .route(
             "/api/a019-llm-artifact",
-            get(handlers::a019_llm_artifact::list_all)
-                .post(handlers::a019_llm_artifact::upsert),
+            get(handlers::a019_llm_artifact::list_all).post(handlers::a019_llm_artifact::upsert),
         )
         .route(
             "/api/a019-llm-artifact/list",
@@ -441,8 +447,7 @@ pub fn configure_business_routes() -> Router {
         )
         .route(
             "/api/a019-llm-artifact/:id",
-            get(handlers::a019_llm_artifact::get_by_id)
-                .delete(handlers::a019_llm_artifact::delete),
+            get(handlers::a019_llm_artifact::get_by_id).delete(handlers::a019_llm_artifact::delete),
         )
         // ========================================
         // USECASES (U501-U506)
@@ -618,76 +623,172 @@ pub fn configure_business_routes() -> Router {
             "/api/d400/periods",
             get(handlers::d400_monthly_summary::get_available_periods),
         )
-        // Universal Dashboard API (new routes)
+        // Universal Dashboard API (main routes)
         .route(
             "/api/universal-dashboard/execute",
-            post(handlers::d401_wb_finance::execute_dashboard),
+            post(handlers::ds01_wb_finance_report::execute_dashboard),
         )
         .route(
             "/api/universal-dashboard/generate-sql",
-            post(handlers::d401_wb_finance::generate_sql),
+            post(handlers::ds01_wb_finance_report::generate_sql),
         )
         .route(
             "/api/universal-dashboard/schemas",
-            get(handlers::d401_wb_finance::list_schemas),
+            get(handlers::ds01_wb_finance_report::list_schemas),
         )
         .route(
             "/api/universal-dashboard/schemas/validate-all",
-            post(handlers::d401_wb_finance::validate_all_schemas),
+            post(handlers::ds01_wb_finance_report::validate_all_schemas),
         )
         .route(
             "/api/universal-dashboard/schemas/:id",
-            get(handlers::d401_wb_finance::get_schema),
+            get(handlers::ds01_wb_finance_report::get_schema),
         )
         .route(
             "/api/universal-dashboard/schemas/:id/validate",
-            post(handlers::d401_wb_finance::validate_schema),
+            post(handlers::ds01_wb_finance_report::validate_schema),
         )
         .route(
             "/api/universal-dashboard/schemas/:schema_id/fields/:field_id/values",
-            get(handlers::d401_wb_finance::get_distinct_values),
+            get(handlers::ds01_wb_finance_report::get_distinct_values),
         )
         .route(
             "/api/universal-dashboard/configs",
-            get(handlers::d401_wb_finance::list_configs)
-                .post(handlers::d401_wb_finance::save_config),
+            get(handlers::ds01_wb_finance_report::list_configs)
+                .post(handlers::ds01_wb_finance_report::save_config),
         )
         .route(
             "/api/universal-dashboard/configs/:id",
-            get(handlers::d401_wb_finance::get_config)
-                .put(handlers::d401_wb_finance::update_config)
-                .delete(handlers::d401_wb_finance::delete_config),
+            get(handlers::ds01_wb_finance_report::get_config)
+                .put(handlers::ds01_wb_finance_report::update_config)
+                .delete(handlers::ds01_wb_finance_report::delete_config),
+        )
+        // DS01 WB Finance Report routes
+        .route(
+            "/api/ds01/execute",
+            post(handlers::ds01_wb_finance_report::execute_dashboard),
+        )
+        .route(
+            "/api/ds01/generate-sql",
+            post(handlers::ds01_wb_finance_report::generate_sql),
+        )
+        .route(
+            "/api/ds01/schemas",
+            get(handlers::ds01_wb_finance_report::list_schemas),
+        )
+        .route(
+            "/api/ds01/schemas/:id",
+            get(handlers::ds01_wb_finance_report::get_schema),
+        )
+        .route(
+            "/api/ds01/schemas/:schema_id/fields/:field_id/values",
+            get(handlers::ds01_wb_finance_report::get_distinct_values),
+        )
+        .route(
+            "/api/ds01/configs",
+            get(handlers::ds01_wb_finance_report::list_configs)
+                .post(handlers::ds01_wb_finance_report::save_config),
+        )
+        .route(
+            "/api/ds01/configs/:id",
+            get(handlers::ds01_wb_finance_report::get_config)
+                .put(handlers::ds01_wb_finance_report::update_config)
+                .delete(handlers::ds01_wb_finance_report::delete_config),
         )
         // Legacy D401 routes (for backward compatibility)
         .route(
             "/api/d401/execute",
-            post(handlers::d401_wb_finance::execute_dashboard),
+            post(handlers::ds01_wb_finance_report::execute_dashboard),
         )
         .route(
             "/api/d401/generate-sql",
-            post(handlers::d401_wb_finance::generate_sql),
+            post(handlers::ds01_wb_finance_report::generate_sql),
         )
         .route(
             "/api/d401/schemas",
-            get(handlers::d401_wb_finance::list_schemas),
+            get(handlers::ds01_wb_finance_report::list_schemas),
         )
         .route(
             "/api/d401/schemas/:id",
-            get(handlers::d401_wb_finance::get_schema),
+            get(handlers::ds01_wb_finance_report::get_schema),
         )
         .route(
             "/api/d401/schemas/:schema_id/fields/:field_id/values",
-            get(handlers::d401_wb_finance::get_distinct_values),
+            get(handlers::ds01_wb_finance_report::get_distinct_values),
         )
         .route(
             "/api/d401/configs",
-            get(handlers::d401_wb_finance::list_configs)
-                .post(handlers::d401_wb_finance::save_config),
+            get(handlers::ds01_wb_finance_report::list_configs)
+                .post(handlers::ds01_wb_finance_report::save_config),
         )
         .route(
             "/api/d401/configs/:id",
-            get(handlers::d401_wb_finance::get_config)
-                .put(handlers::d401_wb_finance::update_config)
-                .delete(handlers::d401_wb_finance::delete_config),
+            get(handlers::ds01_wb_finance_report::get_config)
+                .put(handlers::ds01_wb_finance_report::update_config)
+                .delete(handlers::ds01_wb_finance_report::delete_config),
+        )
+        // DS02 Sales Register routes
+        .route(
+            "/api/ds02/execute",
+            post(handlers::ds02_mp_sales_register::execute_dashboard),
+        )
+        .route(
+            "/api/ds02/generate-sql",
+            post(handlers::ds02_mp_sales_register::generate_sql),
+        )
+        .route(
+            "/api/ds02/schemas",
+            get(handlers::ds02_mp_sales_register::list_schemas),
+        )
+        .route(
+            "/api/ds02/schemas/:id",
+            get(handlers::ds02_mp_sales_register::get_schema),
+        )
+        .route(
+            "/api/ds02/schemas/:schema_id/fields/:field_id/values",
+            get(handlers::ds02_mp_sales_register::get_distinct_values),
+        )
+        .route(
+            "/api/ds02/configs",
+            get(handlers::ds02_mp_sales_register::list_configs)
+                .post(handlers::ds02_mp_sales_register::save_config),
+        )
+        .route(
+            "/api/ds02/configs/:id",
+            get(handlers::ds02_mp_sales_register::get_config)
+                .put(handlers::ds02_mp_sales_register::update_config)
+                .delete(handlers::ds02_mp_sales_register::delete_config),
+        )
+        // Legacy D402 routes (for backward compatibility)
+        .route(
+            "/api/dashboards/d402/execute",
+            post(handlers::ds02_mp_sales_register::execute_dashboard),
+        )
+        .route(
+            "/api/dashboards/d402/generate-sql",
+            post(handlers::ds02_mp_sales_register::generate_sql),
+        )
+        .route(
+            "/api/dashboards/d402/schemas",
+            get(handlers::ds02_mp_sales_register::list_schemas),
+        )
+        .route(
+            "/api/dashboards/d402/schemas/:id",
+            get(handlers::ds02_mp_sales_register::get_schema),
+        )
+        .route(
+            "/api/dashboards/d402/schemas/:schema_id/fields/:field_id/values",
+            get(handlers::ds02_mp_sales_register::get_distinct_values),
+        )
+        .route(
+            "/api/dashboards/d402/configs",
+            get(handlers::ds02_mp_sales_register::list_configs)
+                .post(handlers::ds02_mp_sales_register::save_config),
+        )
+        .route(
+            "/api/dashboards/d402/configs/:id",
+            get(handlers::ds02_mp_sales_register::get_config)
+                .put(handlers::ds02_mp_sales_register::update_config)
+                .delete(handlers::ds02_mp_sales_register::delete_config),
         )
 }

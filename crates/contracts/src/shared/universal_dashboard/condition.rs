@@ -62,6 +62,13 @@ impl FilterCondition {
         self.sql_fragment = Some(sql_fragment);
         self
     }
+
+    /// Preserve ID and active state from existing condition (for updates)
+    pub fn with_preserved_state(mut self, existing: &FilterCondition) -> Self {
+        self.id = existing.id.clone();
+        self.active = existing.active;
+        self
+    }
 }
 
 /// Condition definition - describes what kind of filter this is

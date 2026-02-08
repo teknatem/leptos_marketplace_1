@@ -3,6 +3,8 @@ use serde_json;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{window, RequestInit, RequestMode, Response};
 
+use crate::shared::api_utils::api_base;
+
 /// API клиент для UseCase u505
 pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, String> {
     let window = window().ok_or("No window object")?;
@@ -15,7 +17,7 @@ pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, Stri
     opts.set_body(&JsValue::from_str(&body));
 
     let request = web_sys::Request::new_with_str_and_init(
-        "http://localhost:3000/api/u505/match/start",
+        &format!("{}/api/u505/match/start", api_base()),
         &opts,
     )
     .map_err(|e| format!("Failed to create request: {:?}", e))?;
@@ -53,10 +55,7 @@ pub async fn start_matching(request: MatchRequest) -> Result<MatchResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<MatchProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!(
-        "http://localhost:3000/api/u505/match/{}/progress",
-        session_id
-    );
+    let url = format!("{}/api/u505/match/{}/progress", api_base(), session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");

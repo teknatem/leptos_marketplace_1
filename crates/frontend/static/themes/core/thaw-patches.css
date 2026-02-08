@@ -1,21 +1,43 @@
-/* Применяется к ячейке заголовка и обычным ячейкам */
-.fixed-checkbox-column,
-td:first-child {
+/* Универсальный класс для фиксации ширины 40px */
+.width-40px,
+.thaw-table-cell.width-40px,
+.thaw-table-header-cell.width-40px {
   width: 40px !important;
   min-width: 40px !important;
   max-width: 40px !important;
-  padding: 0 8px;
-  /* отступы, чтобы они не раздували ячейку */
+  flex: 0 0 40px !important; /* Для flex-контейнеров */
+}
+
+/* Фиксированная колонка 40px для чекбоксов (включает центрирование) */
+.fixed-checkbox-column,
+.thaw-table-cell.fixed-checkbox-column,
+.thaw-table-header-cell.fixed-checkbox-column {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  flex: 0 0 40px !important; /* Для flex-контейнеров */
+  padding: 0 !important;
+  text-align: center !important;
+}
+
+/* Стилизация чекбокса в таблице */
+.fixed-checkbox-column .table__checkbox {
+  margin: 0 !important;
+  cursor: pointer;
 }
 
 /* Темы */
 [data-theme="dark"] .thaw-config-provider,
 [data-theme="forest"] .thaw-config-provider {
   --fontFamilyBase: "Roboto", sans-serif;
+  --fontSizeBase200: 13px;
+  --fontSizeBase300: 13px;
 }
 
 [data-theme="light"] .thaw-config-provider {
   --fontFamilyBase: "Roboto", sans-serif;
+  --fontSizeBase200: 13px;
+  --fontSizeBase300: 13px;
 }
 
 .thaw-table-row {
@@ -25,6 +47,30 @@ td:first-child {
 .thaw-table-cell,
 .thaw-table-header-cell {
   height: 36px !important;
+  font-size: var(--font-size-base) !important;
+}
+
+/* Унификация размера шрифта для контента внутри ячеек Thaw */
+.thaw-table-cell-layout__content {
+  font-size: var(--font-size-base) !important;
+}
+
+/* Более специфичные селекторы для гарантии применения */
+.thaw-table .thaw-table-cell,
+.thaw-table .thaw-table-header-cell {
+  font-size: var(--font-size-base) !important;
+}
+
+.thaw-table .thaw-table-cell-layout__content {
+  font-size: var(--font-size-base) !important;
+}
+
+/* Для вложенных элементов (ссылки, span) */
+.thaw-table-cell a,
+.thaw-table-cell span,
+.thaw-table-cell-layout__content a,
+.thaw-table-cell-layout__content span {
+  font-size: var(--font-size-base) !important;
 }
 
 /* THAW Input/Textarea placeholder styling - italic and lighter */
@@ -77,9 +123,18 @@ td:first-child {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-  margin: 0 !important;
+  margin: 1px !important;
+  background-color: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  transition: background-color var(--transition-fast),
+              box-shadow var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.thaw-card:hover:not([role="group"]) {
+  background-color: var(--card-hover-bg) !important;
+  box-shadow: var(--card-hover-shadow);
+  transform: translateY(-1px);
 }
 
 .thaw-card[role="group"] {

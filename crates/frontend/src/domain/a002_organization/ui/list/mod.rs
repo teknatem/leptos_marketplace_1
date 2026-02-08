@@ -1,12 +1,12 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
 use crate::shared::api_utils::api_base;
-use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a002_organization::aggregate::Organization;
 use leptos::prelude::*;
 use std::collections::HashSet;
 use std::rc::Rc;
+use thaw::*;
 
 #[derive(Clone, Debug)]
 pub struct OrganizationRow {
@@ -172,93 +172,110 @@ pub fn OrganizationList() -> impl IntoView {
     view! {
         <div class="page">
             // Page header with title and action buttons
-            <div class="header">
-                <div class="header__content">
-                    <h1 class="header__title">{"Организации"}</h1>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">{"Организации"}</h1>
                 </div>
-                <div class="header__actions">
-                    <button class="button button--primary" on:click=move |_| handle_create_new()>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=move |_| handle_create_new()
+                    >
                         {icon("plus")}
-                        {"Новая организация"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| fetch()>
+                        " Новая организация"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| fetch()
+                    >
                         {icon("refresh")}
-                        {"Обновить"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
+                        " Обновить"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| delete_selected()
+                        disabled=Signal::derive(move || selected.get().is_empty())
+                    >
                         {icon("delete")}
-                        {move || format!("Удалить ({})", selected.get().len())}
-                    </button>
+                        {move || format!(" Удалить ({})", selected.get().len())}
+                    </Button>
                 </div>
             </div>
 
                     {move || error.get().map(|e| view! {
-                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100);">
-                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                            <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                        <div class="warning-box warning-box--error">
+                            <span class="warning-box__icon">"⚠"</span>
+                            <span class="warning-box__text">{e}</span>
                         </div>
                     })}
 
-                    <div class="table">
-                        <table class="table__data table--striped">
-                            <thead class="table__head">
-                                <tr>
-                                    <th class="table__header-cell table__header-cell--checkbox">
-                                        <input
-                                            type="checkbox"
-                                            class="table__checkbox"
-                                            on:change=move |ev| {
-                                                let checked = event_target_checked(&ev);
-                                                let current_items = items.get();
-                                                if checked {
-                                                    set_selected.update(|s| {
-                                                        for item in current_items.iter() {
-                                                            s.insert(item.id.clone());
-                                                        }
-                                                    });
-                                                } else {
-                                                    set_selected.set(HashSet::new());
-                                                }
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHeaderCell resizable=false class="fixed-checkbox-column">
+                                    <input
+                                        type="checkbox"
+                                        class="table__checkbox"
+                                        prop:checked=move || {
+                                            let current = items.get();
+                                            let sel = selected.get();
+                                            !current.is_empty() && current.iter().all(|item| sel.contains(&item.id))
+                                        }
+                                        on:change=move |ev| {
+                                            let checked = event_target_checked(&ev);
+                                            let current_items = items.get();
+                                            if checked {
+                                                set_selected.update(|s| {
+                                                    for item in current_items.iter() {
+                                                        s.insert(item.id.clone());
+                                                    }
+                                                });
+                                            } else {
+                                                set_selected.set(HashSet::new());
                                             }
-                                        />
-                                    </th>
-                                    <th class="table__header-cell">{"Код"}</th>
-                                    <th class="table__header-cell">{"Наименование"}</th>
-                                    <th class="table__header-cell">{"ИНН"}</th>
-                                    <th class="table__header-cell">{"КПП"}</th>
-                                    <th class="table__header-cell">{"Комментарий"}</th>
-                                    <th class="table__header-cell">{"Создано"}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {move || items.get().into_iter().map(|row| {
-                                    let id = row.id.clone();
-                                    let id_for_click = id.clone();
-                                    let id_for_checkbox = id.clone();
-                                    let id_for_toggle = id.clone();
-                                    let is_selected = selected.get().contains(&id);
-                                    view! {
-                                        <tr
-                                            class="table__row"
-                                            class:table__row--selected=is_selected
-                                            on:click=move |_| handle_edit(id_for_click.clone())
-                                        >
-                                            <TableCheckbox
-                                                checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
-                                                on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
+                                        }
+                                    />
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=200.0>{"Наименование"}</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=120.0>{"ИНН"}</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=100.0>{"КПП"}</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=150.0>{"Комментарий"}</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=150.0>{"Создано"}</TableHeaderCell>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {move || items.get().into_iter().map(|row| {
+                                let id = row.id.clone();
+                                let id_for_click = id.clone();
+                                let id_for_checkbox = id.clone();
+                                let id_for_toggle = id.clone();
+                                let is_selected = selected.get().contains(&id);
+                                view! {
+                                    <TableRow
+                                        class:table__row--selected=is_selected
+                                        on:click=move |_| handle_edit(id_for_click.clone())
+                                    >
+                                        <TableCell class="fixed-checkbox-column" on:click=|e| e.stop_propagation()>
+                                            <input
+                                                type="checkbox"
+                                                class="table__checkbox"
+                                                prop:checked=move || selected.get().contains(&id_for_checkbox)
+                                                on:change=move |ev| {
+                                                    let checked = event_target_checked(&ev);
+                                                    toggle_select(id_for_toggle.clone(), checked);
+                                                }
                                             />
-                                            <td class="table__cell">{row.code}</td>
-                                            <td class="table__cell">{row.description}</td>
-                                            <td class="table__cell">{row.inn}</td>
-                                            <td class="table__cell">{row.kpp}</td>
-                                            <td class="table__cell">{row.comment}</td>
-                                            <td class="table__cell">{row.created_at}</td>
-                                        </tr>
-                                    }
-                                }).collect_view()}
-                            </tbody>
-                        </table>
-                    </div>
+                                        </TableCell>
+                                        <TableCell><TableCellLayout>{row.description}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout>{row.inn}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout>{row.kpp}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout>{row.comment}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout>{row.created_at}</TableCellLayout></TableCell>
+                                    </TableRow>
+                                }
+                            }).collect_view()}
+                        </TableBody>
+                    </Table>
 
                     <Show when=move || show_modal.get()>
                         {move || {

@@ -32,5 +32,7 @@ pub use ui::SchemaBrowser;
 pub use ui::UniversalDashboard;
 pub use ui::{
     ConfigPanel, PivotTable, SaveConfigDialog, SavedConfigsList, SchemaPicker, SettingsTable,
-    SqlViewer,
 };
+
+// Re-export SqlViewer from shared components
+pub use crate::shared::components::sql_viewer::SqlViewer;

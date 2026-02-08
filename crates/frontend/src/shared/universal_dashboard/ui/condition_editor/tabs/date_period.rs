@@ -2,6 +2,69 @@ use contracts::shared::universal_dashboard::{ConditionDef, DatePreset};
 use leptos::prelude::*;
 use thaw::*;
 
+/// Calculate the last day of the month for a given date string (YYYY-MM-DD)
+fn calculate_end_of_month(date_str: &str) -> Option<String> {
+    // Parse date string (format: YYYY-MM-DD)
+    let parts: Vec<&str> = date_str.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let year: i32 = parts[0].parse().ok()?;
+    let month: u32 = parts[1].parse().ok()?;
+
+    if month < 1 || month > 12 {
+        return None;
+    }
+
+    // Calculate last day of month
+    let last_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            // Leap year check
+            if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return None,
+    };
+
+    Some(format!("{:04}-{:02}-{:02}", year, month, last_day))
+}
+
+/// Single preset button component
+#[component]
+fn PresetButton(
+    /// The preset value
+    preset_value: DatePreset,
+    /// Currently selected preset
+    #[prop(into)]
+    selected_preset: Signal<Option<DatePreset>>,
+    /// Callback when clicked
+    on_select: Callback<DatePreset>,
+) -> impl IntoView {
+    let appearance = Memo::new(move |_| {
+        if selected_preset.get() == Some(preset_value) {
+            ButtonAppearance::Primary
+        } else {
+            ButtonAppearance::Secondary
+        }
+    });
+
+    view! {
+        <Button
+            appearance=appearance
+            size=ButtonSize::Small
+            on_click=move |_| on_select.run(preset_value)
+        >
+            {preset_value.display_name()}
+        </Button>
+    }
+}
+
 /// Tab for date period conditions with presets
 #[component]
 pub fn DatePeriodTab(
@@ -13,7 +76,7 @@ pub fn DatePeriodTab(
     to_date: RwSignal<String>,
 ) -> impl IntoView {
     let use_preset = RwSignal::new(preset.get_untracked().is_some());
-    
+
     // Radio group value (for thaw RadioGroup API)
     let radio_value = RwSignal::new(if use_preset.get_untracked() {
         "preset".to_string()
@@ -42,6 +105,46 @@ pub fn DatePeriodTab(
         current
     });
 
+    let on_preset_select = Callback::new(move |p: DatePreset| {
+        preset.set(Some(p));
+    });
+
+    // Auto-fill end date with end of month when start date is selected
+    Effect::new(move |prev: Option<String>| {
+        let current_from = from_date.get();
+
+        // Skip first run
+        if prev.is_none() {
+            return current_from.clone();
+        }
+
+        // Only process if from_date changed and has value
+        if Some(&current_from) != prev.as_ref() && !current_from.is_empty() {
+            // Only auto-fill if to_date is empty
+            if to_date.get_untracked().is_empty() {
+                if let Some(end_of_month) = calculate_end_of_month(&current_from) {
+                    to_date.set(end_of_month);
+                }
+            }
+        }
+
+        current_from
+    });
+
+    // Create preset buttons statically to avoid disposal issues
+    let preset_buttons_view = DatePreset::all()
+        .iter()
+        .map(|&p| {
+            view! {
+                <PresetButton
+                    preset_value=p
+                    selected_preset=preset.read_only()
+                    on_select=on_preset_select
+                />
+            }
+        })
+        .collect_view();
+
     view! {
         <div class="condition-tab date-period-tab">
             <div class="form-group">
@@ -51,55 +154,38 @@ pub fn DatePeriodTab(
                 </RadioGroup>
             </div>
 
-            {move || {
-                if use_preset.get() {
-                    view! {
-                        <div class="preset-buttons">
-                            <For
-                                each=|| DatePreset::all().to_vec()
-                                key=|p| format!("{:?}", p)
-                                children=move |p: DatePreset| {
-                                    let is_selected = move || preset.get() == Some(p);
-                                    view! {
-                                        <Button
-                                            appearance=move || {
-                                                if is_selected() {
-                                                    ButtonAppearance::Primary
-                                                } else {
-                                                    ButtonAppearance::Secondary
-                                                }
-                                            }
-                                            size=ButtonSize::Small
-                                            on_click=move |_| preset.set(Some(p))
-                                        >
-                                            {p.display_name()}
-                                        </Button>
-                                    }
-                                }
-                            />
-                        </div>
-                    }.into_any()
-                } else {
-                    view! {
-                        <div class="custom-date-inputs">
-                            <div class="form-group">
-                                <label>"С:"</label>
-                                <Input
-                                    value=from_date
-                                    placeholder="ГГГГ-ММ-ДД"
-                                />
-                            </div>
-                            <div class="form-group">
-                                <label>"По:"</label>
-                                <Input
-                                    value=to_date
-                                    placeholder="ГГГГ-ММ-ДД"
-                                />
-                            </div>
-                        </div>
-                    }.into_any()
-                }
-            }}
+            <div class="preset-buttons" style:display=move || {
+                if use_preset.get() { "flex" } else { "none" }
+            }>
+                {preset_buttons_view}
+            </div>
+
+            <div class="custom-date-inputs" style:display=move || {
+                if use_preset.get() { "none" } else { "block" }
+            }>
+                <div class="form-group">
+                    <label>"С:"</label>
+                    <input
+                        type="date"
+                        prop:value=move || from_date.get()
+                        on:input=move |ev| {
+                            from_date.set(event_target_value(&ev));
+                        }
+                        style="width: 100%; padding: 6px; border: 1px solid var(--thaw-color-neutral-stroke-1); border-radius: 4px;"
+                    />
+                </div>
+                <div class="form-group">
+                    <label>"По:"</label>
+                    <input
+                        type="date"
+                        prop:value=move || to_date.get()
+                        on:input=move |ev| {
+                            to_date.set(event_target_value(&ev));
+                        }
+                        style="width: 100%; padding: 6px; border: 1px solid var(--thaw-color-neutral-stroke-1); border-radius: 4px;"
+                    />
+                </div>
+            </div>
         </div>
     }
 }

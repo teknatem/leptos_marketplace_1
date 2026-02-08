@@ -9,6 +9,7 @@ use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::api_utils::api_base;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,8 +146,8 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
             let mp_ref_clone = mp_ref.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let url = format!(
-                    "http://localhost:3000/api/marketplace_product/{}",
-                    mp_ref_clone
+                    "{}/api/marketplace_product/{}",
+                    api_base(), mp_ref_clone
                 );
                 if let Ok(response) = Request::get(&url).send().await {
                     if response.status() == 200 {
@@ -177,7 +178,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
         if let Some(ref nom_ref) = data.nomenclature_ref {
             let nom_ref_clone = nom_ref.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let url = format!("http://localhost:3000/api/nomenclature/{}", nom_ref_clone);
+                let url = format!("{}/api/nomenclature/{}", api_base(), nom_ref_clone);
                 if let Ok(response) = Request::get(&url).send().await {
                     if response.status() == 200 {
                         if let Ok(text) = response.text().await {
@@ -211,7 +212,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a015/wb-orders/{}", id);
+            let url = format!("{}/api/a015/wb-orders/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -235,8 +236,8 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
-                                                "http://localhost:3000/api/a015/raw/{}",
-                                                raw_payload_ref
+                                                "{}/api/a015/raw/{}",
+                                                api_base(), raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
@@ -402,13 +403,13 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
                                             wasm_bindgen_futures::spawn_local(async move {
-                                                let url = format!("http://localhost:3000/api/a015/wb-orders/{}/unpost", doc_id);
+                                                let url = format!("{}/api/a015/wb-orders/{}/unpost", api_base(), doc_id);
                                                 match Request::post(&url).send().await {
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document unposted successfully");
                                                             // Перезагрузить только данные документа
-                                                            let reload_url = format!("http://localhost:3000/api/a015/wb-orders/{}", doc_id);
+                                                            let reload_url = format!("{}/api/a015/wb-orders/{}", api_base(), doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
                                                                     if let Ok(data) = serde_json::from_str::<WbOrderDetailDto>(&text) {
@@ -444,13 +445,13 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                             let doc_id = stored_id.get_value();
                                             set_posting.set(true);
                                             wasm_bindgen_futures::spawn_local(async move {
-                                                let url = format!("http://localhost:3000/api/a015/wb-orders/{}/post", doc_id);
+                                                let url = format!("{}/api/a015/wb-orders/{}/post", api_base(), doc_id);
                                                 match Request::post(&url).send().await {
                                                     Ok(response) => {
                                                         if response.status() == 200 {
                                                             log!("Document posted successfully");
                                                             // Перезагрузить только данные документа
-                                                            let reload_url = format!("http://localhost:3000/api/a015/wb-orders/{}", doc_id);
+                                                            let reload_url = format!("{}/api/a015/wb-orders/{}", api_base(), doc_id);
                                                             if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                 if let Ok(text) = resp.text().await {
                                                                     if let Ok(data) = serde_json::from_str::<WbOrderDetailDto>(&text) {

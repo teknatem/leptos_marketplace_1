@@ -1,6 +1,6 @@
 use chrono::Utc;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
-use contracts::domain::a018_llm_chat::aggregate::{ArtifactAction, ChatRole, LlmChat, LlmChatId, LlmChatMessage, LlmChatListItem};
+use contracts::domain::a018_llm_chat::aggregate::{ArtifactAction, ChatRole, LlmChat, LlmChatAttachment, LlmChatId, LlmChatMessage, LlmChatListItem};
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -50,9 +50,33 @@ mod message {
         pub tokens_used: Option<i32>,
         pub model_name: Option<String>,
         pub confidence: Option<f64>,
+        pub duration_ms: Option<i64>,
         pub created_at: String,
         pub artifact_id: Option<String>,
         pub artifact_action: Option<String>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod attachment {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "a018_llm_chat_attachment")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub message_id: String,
+        pub filename: String,
+        pub filepath: String,
+        pub content_type: String,
+        pub file_size: i64,
+        pub created_at: String,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -113,9 +137,31 @@ impl From<message::Model> for LlmChatMessage {
             tokens_used: m.tokens_used,
             model_name: m.model_name,
             confidence: m.confidence,
+            duration_ms: m.duration_ms,
             created_at,
             artifact_id,
             artifact_action,
+            attachments: Vec::new(), // Загружаются отдельно при необходимости
+        }
+    }
+}
+
+impl From<attachment::Model> for LlmChatAttachment {
+    fn from(m: attachment::Model) -> Self {
+        let id = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
+        let message_id = Uuid::parse_str(&m.message_id).unwrap_or_else(|_| Uuid::new_v4());
+        let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        LlmChatAttachment {
+            id,
+            message_id,
+            filename: m.filename,
+            filepath: m.filepath,
+            content_type: m.content_type,
+            file_size: m.file_size,
+            created_at,
         }
     }
 }
@@ -306,11 +352,58 @@ pub async fn insert_message(db: &DatabaseConnection, message: &LlmChatMessage) -
         tokens_used: Set(message.tokens_used),
         model_name: Set(message.model_name.clone()),
         confidence: Set(message.confidence),
+        duration_ms: Set(message.duration_ms),
         created_at: Set(message.created_at.to_rfc3339()),
         artifact_id: Set(message.artifact_id.map(|id| id.as_string())),
         artifact_action: Set(message.artifact_action.as_ref().map(|a| a.as_str().to_string())),
     };
 
     active_model.insert(db).await?;
+    Ok(())
+}
+
+// ============================================================================
+// Attachment Repository Functions
+// ============================================================================
+
+/// Найти все вложения для сообщения
+pub async fn find_attachments_by_message_id(
+    db: &DatabaseConnection,
+    message_id: &Uuid,
+) -> Result<Vec<LlmChatAttachment>, DbErr> {
+    let models = attachment::Entity::find()
+        .filter(attachment::Column::MessageId.eq(message_id.to_string()))
+        .order_by_asc(attachment::Column::CreatedAt)
+        .all(db)
+        .await?;
+
+    Ok(models.into_iter().map(|m| m.into()).collect())
+}
+
+/// Вставить вложение
+pub async fn insert_attachment(db: &DatabaseConnection, attachment: &LlmChatAttachment) -> Result<(), DbErr> {
+    let active_model = attachment::ActiveModel {
+        id: Set(attachment.id.to_string()),
+        message_id: Set(attachment.message_id.to_string()),
+        filename: Set(attachment.filename.clone()),
+        filepath: Set(attachment.filepath.clone()),
+        content_type: Set(attachment.content_type.clone()),
+        file_size: Set(attachment.file_size),
+        created_at: Set(attachment.created_at.to_rfc3339()),
+    };
+
+    active_model.insert(db).await?;
+    Ok(())
+}
+
+/// Удалить все вложения сообщения
+pub async fn delete_attachments_by_message_id(
+    db: &DatabaseConnection,
+    message_id: &Uuid,
+) -> Result<(), DbErr> {
+    attachment::Entity::delete_many()
+        .filter(attachment::Column::MessageId.eq(message_id.to_string()))
+        .exec(db)
+        .await?;
     Ok(())
 }

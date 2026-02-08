@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 // Import posting detail components
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
 use crate::domain::a011_ozon_fbo_posting::ui::details::OzonFboPostingDetail;
+use crate::shared::api_utils::api_base;
 use crate::shared::date_utils::format_datetime_space as format_datetime;
 
 // DTO структуры для детального представления
@@ -104,7 +105,7 @@ pub fn OzonTransactionsDetail(
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/ozon_transactions/{}", id);
+            let url = format!("{}/api/ozon_transactions/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -124,7 +125,7 @@ pub fn OzonTransactionsDetail(
                                             set_projections_loading.clone();
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
-                                            let projections_url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/projections", transaction_id);
+                                            let projections_url = format!("{}/api/a014/ozon-transactions/{}/projections", api_base(), transaction_id);
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
                                                     if resp.status() == 200 {
@@ -211,13 +212,13 @@ pub fn OzonTransactionsDetail(
                                                 let doc_id = stored_id.get_value();
                                                 set_posting.set(true);
                                                 wasm_bindgen_futures::spawn_local(async move {
-                                                    let url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/unpost", doc_id);
+                                                    let url = format!("{}/api/a014/ozon-transactions/{}/unpost", api_base(), doc_id);
                                                     match Request::post(&url).send().await {
                                                         Ok(response) => {
                                                             if response.status() == 200 {
                                                                 log!("Transaction unposted successfully");
                                                                 // Reload transaction data
-                                                                let reload_url = format!("http://localhost:3000/api/ozon_transactions/{}", doc_id);
+                                                                let reload_url = format!("{}/api/ozon_transactions/{}", api_base(), doc_id);
                                                                 if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                     if let Ok(text) = resp.text().await {
                                                                         if let Ok(data) = serde_json::from_str::<OzonTransactionsDetailDto>(&text) {
@@ -227,7 +228,7 @@ pub fn OzonTransactionsDetail(
                                                                     }
                                                                 }
                                                                 // Reload projections
-                                                                let projections_url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/projections", doc_id);
+                                                                let projections_url = format!("{}/api/a014/ozon-transactions/{}/projections", api_base(), doc_id);
                                                                 if let Ok(resp) = Request::get(&projections_url).send().await {
                                                                     if resp.status() == 200 {
                                                                         if let Ok(text) = resp.text().await {
@@ -263,13 +264,13 @@ pub fn OzonTransactionsDetail(
                                                 let doc_id = stored_id.get_value();
                                                 set_posting.set(true);
                                                 wasm_bindgen_futures::spawn_local(async move {
-                                                    let url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/post", doc_id);
+                                                    let url = format!("{}/api/a014/ozon-transactions/{}/post", api_base(), doc_id);
                                                     match Request::post(&url).send().await {
                                                         Ok(response) => {
                                                             if response.status() == 200 {
                                                                 log!("Transaction posted successfully");
                                                                 // Reload transaction data
-                                                                let reload_url = format!("http://localhost:3000/api/ozon_transactions/{}", doc_id);
+                                                                let reload_url = format!("{}/api/ozon_transactions/{}", api_base(), doc_id);
                                                                 if let Ok(resp) = Request::get(&reload_url).send().await {
                                                                     if let Ok(text) = resp.text().await {
                                                                         if let Ok(data) = serde_json::from_str::<OzonTransactionsDetailDto>(&text) {
@@ -279,7 +280,7 @@ pub fn OzonTransactionsDetail(
                                                                     }
                                                                 }
                                                                 // Reload projections
-                                                                let projections_url = format!("http://localhost:3000/api/a014/ozon-transactions/{}/projections", doc_id);
+                                                                let projections_url = format!("{}/api/a014/ozon-transactions/{}/projections", api_base(), doc_id);
                                                                 if let Ok(resp) = Request::get(&projections_url).send().await {
                                                                     if resp.status() == 200 {
                                                                         if let Ok(text) = resp.text().await {

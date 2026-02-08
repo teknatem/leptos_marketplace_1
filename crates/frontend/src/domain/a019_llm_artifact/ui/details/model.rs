@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifact;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ pub struct LlmArtifactDto {
 }
 
 pub async fn fetch_artifact(id: &str) -> Result<LlmArtifact, String> {
-    let url = format!("http://localhost:3000/api/a019-llm-artifact/{}", id);
+    let url = format!("{}/api/a019-llm-artifact/{}", api_base(), id);
 
     let response = Request::get(&url)
         .send()
@@ -37,11 +38,11 @@ pub async fn fetch_artifact(id: &str) -> Result<LlmArtifact, String> {
 }
 
 pub async fn update_artifact(dto: LlmArtifactDto) -> Result<(), String> {
-    let url = "http://localhost:3000/api/a019-llm-artifact";
+    let url = format!("{}/api/a019-llm-artifact", api_base());
 
     let body = serde_json::to_string(&dto).map_err(|e| format!("Failed to serialize: {}", e))?;
 
-    let response = Request::post(url)
+    let response = Request::post(&url)
         .header("Content-Type", "application/json")
         .body(body)
         .map_err(|e| format!("Failed to build request: {}", e))?

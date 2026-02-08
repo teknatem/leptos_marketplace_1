@@ -90,6 +90,7 @@ pub async fn process_sale_row(
         cost_of_production: None,
         commission_plan: None,
         commission_fact: None,
+        dealer_price_ut: None,
     };
 
     // Парсим даты

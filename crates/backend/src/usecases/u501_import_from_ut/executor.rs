@@ -1,12 +1,10 @@
 use super::{
-    progress_tracker::ProgressTracker, 
-    ut_odata_client::UtODataClient,
-    odata_models_organization::*,
-    odata_models_counterparty::*,
-    odata_models_nomenclature::*,
+    odata_models_counterparty::*, odata_models_nomenclature::*, odata_models_organization::*,
+    progress_tracker::ProgressTracker, ut_odata_client::UtODataClient,
 };
 use crate::domain::{a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature};
 use anyhow::Result;
+use contracts::domain::common::AggregateId;
 use contracts::usecases::u501_import_from_ut::{
     progress::ImportStatus,
     request::ImportRequest,
@@ -648,10 +646,60 @@ impl ImportExecutor {
         Ok(())
     }
 
-    async fn process_nomenclature(
-        &self,
-        odata: &UtNomenclatureOData,
-    ) -> Result<bool> {
+    /// Копировать измерения из базовой номенклатуры в производную
+    async fn copy_dimensions_from_base(
+        derivative: &mut contracts::domain::a004_nomenclature::aggregate::Nomenclature,
+    ) -> Result<()> {
+        // Проверяем что это производная номенклатура
+        if !derivative.is_derivative {
+            return Ok(());
+        }
+
+        // Получаем ссылку на базовую номенклатуру
+        let Some(ref base_ref) = derivative.base_nomenclature_ref else {
+            return Ok(());
+        };
+
+        // Парсим UUID базовой номенклатуры
+        let base_uuid = match uuid::Uuid::parse_str(base_ref) {
+            Ok(uuid) => uuid,
+            Err(e) => {
+                tracing::warn!(
+                    "Invalid base_nomenclature_ref UUID: {}, error: {}",
+                    base_ref,
+                    e
+                );
+                return Ok(());
+            }
+        };
+
+        // Загружаем базовую номенклатуру
+        let base_nomenclature = match a004_nomenclature::repository::get_by_id(base_uuid).await? {
+            Some(base) => base,
+            None => {
+                tracing::warn!("Base nomenclature not found: {}", base_ref);
+                return Ok(());
+            }
+        };
+
+        // Копируем измерения
+        derivative.dim1_category = base_nomenclature.dim1_category.clone();
+        derivative.dim2_line = base_nomenclature.dim2_line.clone();
+        derivative.dim3_model = base_nomenclature.dim3_model.clone();
+        derivative.dim4_format = base_nomenclature.dim4_format.clone();
+        derivative.dim5_sink = base_nomenclature.dim5_sink.clone();
+        derivative.dim6_size = base_nomenclature.dim6_size.clone();
+
+        tracing::debug!(
+            "Copied dimensions from base {} to derivative {}",
+            base_ref,
+            derivative.base.id.as_string()
+        );
+
+        Ok(())
+    }
+
+    async fn process_nomenclature(&self, odata: &UtNomenclatureOData) -> Result<bool> {
         use uuid::Uuid;
 
         let existing = if !odata.ref_key.is_empty() {
@@ -693,7 +741,13 @@ impl ImportExecutor {
                 .as_ref()
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .map(|u| u.to_string());
+            // Используем метод compute_is_derivative
+            existing_item.is_derivative = existing_item.compute_is_derivative();
             existing_item.base.metadata.is_deleted = odata.deletion_mark;
+
+            // Копируем измерения из базовой номенклатуры, если это производная
+            Self::copy_dimensions_from_base(&mut existing_item).await?;
+
             existing_item.before_write();
 
             a004_nomenclature::repository::update(&existing_item).await?;
@@ -705,6 +759,10 @@ impl ImportExecutor {
                 odata.description
             );
             let mut new_item = odata.to_aggregate().map_err(|e| anyhow::anyhow!(e))?;
+
+            // Копируем измерения из базовой номенклатуры, если это производная
+            Self::copy_dimensions_from_base(&mut new_item).await?;
+
             new_item.before_write();
 
             match a004_nomenclature::repository::insert(&new_item).await {
@@ -729,10 +787,7 @@ impl ImportExecutor {
         }
     }
 
-    async fn process_counterparty(
-        &self,
-        odata: &UtCounterpartyOData,
-    ) -> Result<bool> {
+    async fn process_counterparty(&self, odata: &UtCounterpartyOData) -> Result<bool> {
         use uuid::Uuid;
 
         let existing = if !odata.ref_key.is_empty() {
@@ -774,10 +829,7 @@ impl ImportExecutor {
     }
 
     /// Обработать одну организацию (upsert)
-    async fn process_organization(
-        &self,
-        odata_org: &UtOrganizationOData,
-    ) -> Result<bool> {
+    async fn process_organization(&self, odata_org: &UtOrganizationOData) -> Result<bool> {
         use uuid::Uuid;
 
         tracing::debug!(
@@ -1047,7 +1099,7 @@ impl ImportExecutor {
         }
     }
 
-    /// Импорт цен номенклатуры из HTTP API /hs/mpi_api/prices_plan
+    /// Импорт цен номенклатуры из HTTP API /hs/mpi_api/prices_dealer
     async fn import_nomenclature_prices(
         &self,
         session_id: &str,
@@ -1056,7 +1108,7 @@ impl ImportExecutor {
         _period_to: &str,
     ) -> Result<()> {
         use crate::projections::p906_nomenclature_prices::repository;
-        use crate::projections::p906_nomenclature_prices::u501_import::PricesPlanResponse;
+        use crate::projections::p906_nomenclature_prices::u501_import::PricesDealerResponse;
 
         tracing::info!("Importing nomenclature prices for session: {}", session_id);
 
@@ -1070,7 +1122,7 @@ impl ImportExecutor {
         } else {
             base_url
         };
-        let api_url = format!("{}/hs/mpi_api/prices_plan", trade_base);
+        let api_url = format!("{}/hs/mpi_api/prices_dealer", trade_base);
 
         tracing::info!("Fetching prices from: {}", api_url);
 
@@ -1080,7 +1132,10 @@ impl ImportExecutor {
         tracing::info!("Deleted {} old price records", deleted_count);
 
         // Делаем HTTP запрос
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .no_proxy() // Отключаем системный прокси для прямого подключения к 1С
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to create HTTP client: {}", e))?;
         let response = client
             .get(&api_url)
             .basic_auth(&connection.login, Some(&connection.password))
@@ -1095,7 +1150,7 @@ impl ImportExecutor {
             return Err(anyhow::anyhow!("HTTP error {}: {}", status, body));
         }
 
-        let prices_data: PricesPlanResponse = response
+        let prices_data: PricesDealerResponse = response
             .json()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {}", e))?;
@@ -1114,7 +1169,7 @@ impl ImportExecutor {
 
         // Обрабатываем initial записи
         tracing::info!(
-            "Processing {} initial records...",
+            "Processing {} dealer price records...",
             prices_data.initial.len()
         );
         for (i, item) in prices_data.initial.iter().enumerate() {

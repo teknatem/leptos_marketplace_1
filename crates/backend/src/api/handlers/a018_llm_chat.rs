@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, Multipart},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -126,6 +126,31 @@ pub async fn send_message(
         Ok(msg) => Ok(Json(msg)),
         Err(e) => {
             tracing::error!("Failed to send LLM message: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct UploadResponse {
+    pub id: String,
+    pub filename: String,
+    pub file_size: i64,
+}
+
+/// POST /api/a018-llm-chat/:id/upload
+pub async fn upload_attachment(
+    Path(chat_id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<UploadResponse>, axum::http::StatusCode> {
+    match a018_llm_chat::service::upload_attachment(&chat_id, &mut multipart).await {
+        Ok(attachment) => Ok(Json(UploadResponse {
+            id: attachment.id.to_string(),
+            filename: attachment.filename,
+            file_size: attachment.file_size,
+        })),
+        Err(e) => {
+            tracing::error!("Failed to upload attachment: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

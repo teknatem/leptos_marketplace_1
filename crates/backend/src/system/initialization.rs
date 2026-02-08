@@ -5,10 +5,55 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 pub async fn apply_auth_migration() -> Result<()> {
     use crate::shared::data::db::get_connection;
 
-    // Read migration file (check both current dir and parent dir for workspace root)
-    let migration_sql = std::fs::read_to_string("migrate_auth_system.sql")
-        .or_else(|_| std::fs::read_to_string("../../migrate_auth_system.sql"))
-        .context("Failed to read migrate_auth_system.sql. Make sure it's in the project root.")?;
+    // Try to find migration file in multiple locations
+    let mut migration_paths = Vec::new();
+
+    // 1. Next to executable (production)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            migration_paths.push(exe_dir.join("migrate_auth_system.sql"));
+        }
+    }
+
+    // 2. Current directory (development)
+    migration_paths.push(std::path::PathBuf::from("migrate_auth_system.sql"));
+
+    // 3. Project root (when running from target/)
+    migration_paths.push(std::path::PathBuf::from("../../migrate_auth_system.sql"));
+
+    // Try to read migration file from any of these locations
+    let migration_sql = {
+        let mut found = None;
+        for path in &migration_paths {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                tracing::info!("Found migration file: {}", path.display());
+                found = Some(content);
+                break;
+            }
+        }
+
+        match found {
+            Some(content) => content,
+            None => {
+                // Migration file not found - just warn and continue
+                println!("\n⚠  WARNING: Migration file not found!");
+                println!("   Searched in:");
+                for path in &migration_paths {
+                    println!("   - {}", path.display());
+                }
+                println!("\n   This is OK if database is already migrated.");
+                println!("   If you need to run migrations, place 'migrate_auth_system.sql'");
+                println!("   next to the executable.\n");
+
+                tracing::warn!(
+                    "Migration file 'migrate_auth_system.sql' not found, skipping migration"
+                );
+                tracing::warn!("This is normal if the database is already up to date");
+
+                return Ok(()); // Continue without error
+            }
+        }
+    };
 
     let conn = get_connection();
 
@@ -23,19 +68,29 @@ pub async fn apply_auth_migration() -> Result<()> {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         let trimmed = cleaned.trim();
         if !trimmed.is_empty() {
             // Log the statement for debugging (first 100 chars)
-            let preview = trimmed.chars().take(100).collect::<String>().replace('\n', " ");
+            let preview = trimmed
+                .chars()
+                .take(100)
+                .collect::<String>()
+                .replace('\n', " ");
             tracing::info!("Executing migration statement #{}: {}...", idx, preview);
-            
+
             conn.execute(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 format!("{};", trimmed),
             ))
             .await
-            .with_context(|| format!("Failed to execute statement #{}: {}", idx, trimmed.lines().take(3).collect::<Vec<_>>().join(" ")))?;
+            .with_context(|| {
+                format!(
+                    "Failed to execute statement #{}: {}",
+                    idx,
+                    trimmed.lines().take(3).collect::<Vec<_>>().join(" ")
+                )
+            })?;
         }
     }
 

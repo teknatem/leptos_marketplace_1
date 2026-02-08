@@ -76,6 +76,12 @@ pub struct FieldDef {
     pub ref_table: Option<&'static str>,
     /// Reference display column (e.g., "description")
     pub ref_display_column: Option<&'static str>,
+    /// Source table for the field (if different from main table)
+    /// Example: Some("a004_nomenclature") for dimension fields
+    pub source_table: Option<&'static str>,
+    /// Column in main table to join on (e.g., "nomenclature_ref")
+    /// Used when source_table is specified
+    pub join_on_column: Option<&'static str>,
 }
 
 #[allow(deprecated)]
@@ -104,6 +110,12 @@ pub struct FieldDefOwned {
     pub db_column: String,
     /// Reference display column (for Ref types)
     pub ref_display_column: Option<String>,
+    /// Source table for the field (if different from main table)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_table: Option<String>,
+    /// Column in main table to join on
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub join_on_column: Option<String>,
 
     // Deprecated fields (kept for backward compatibility with old APIs)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,6 +143,8 @@ impl From<&FieldDef> for FieldDefOwned {
             can_aggregate: field.can_aggregate,
             db_column: field.db_column.to_string(),
             ref_display_column: field.ref_display_column.map(|s| s.to_string()),
+            source_table: field.source_table.map(|s| s.to_string()),
+            join_on_column: field.join_on_column.map(|s| s.to_string()),
             // For backward compatibility
             field_type: Some(field.field_type),
             ref_table: field.ref_table.map(|s| s.to_string()),

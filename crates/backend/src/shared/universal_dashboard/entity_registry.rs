@@ -6,10 +6,13 @@
 use std::collections::HashMap;
 
 use contracts::shared::metadata::{EntityMetadataInfo, FieldMetadata};
-use contracts::shared::universal_dashboard::{DataSourceSchema, DataSourceSchemaOwned, SchemaInfo, SchemaSource};
+use contracts::shared::universal_dashboard::{
+    DataSourceSchema, DataSourceSchemaOwned, SchemaInfo, SchemaSource,
+};
 
 use super::metadata_converter::{metadata_to_pivot_schema, RefResolver};
-use super::schemas;
+use crate::data_schemes::ds01_wb_finance_report::schema::{DS01_SCHEMA, DS01_TABLE_NAME};
+use crate::data_schemes::ds02_mp_sales_register::schema::{DS02_SCHEMA, DS02_TABLE_NAME};
 
 /// Information about a registered entity with metadata
 pub struct RegisteredEntity {
@@ -40,10 +43,8 @@ impl SchemaRegistry {
         };
 
         // Register custom schemas
-        registry.register_custom_schema(
-            &schemas::S001_WB_FINANCE_SCHEMA,
-            schemas::s001_wb_finance::S001_TABLE_NAME,
-        );
+        registry.register_custom_schema(&DS01_SCHEMA, DS01_TABLE_NAME);
+        registry.register_custom_schema(&DS02_SCHEMA, DS02_TABLE_NAME);
 
         // Register auto schemas from metadata
         // Currently only a001, a017, a018, a019 have metadata
@@ -53,7 +54,11 @@ impl SchemaRegistry {
     }
 
     /// Register custom schema
-    fn register_custom_schema(&mut self, schema: &'static DataSourceSchema, table_name: &'static str) {
+    fn register_custom_schema(
+        &mut self,
+        schema: &'static DataSourceSchema,
+        table_name: &'static str,
+    ) {
         self.custom_schemas.insert(
             schema.id.to_string(),
             CustomSchemaEntry { schema, table_name },
@@ -203,31 +208,32 @@ mod tests {
     #[test]
     fn test_registry_has_custom_schema() {
         let registry = SchemaRegistry::new();
-        assert!(registry.has_schema("s001_wb_finance"));
+        assert!(registry.has_schema("ds01_wb_finance_report"));
+        assert!(registry.has_schema("ds02_mp_sales_register"));
     }
 
     #[test]
     fn test_registry_list_schemas() {
         let registry = SchemaRegistry::new();
         let schemas = registry.list_all();
-        
+
         // Should have at least the custom schema
         assert!(!schemas.is_empty());
-        
-        // Find s001
-        let s001 = schemas.iter().find(|s| s.id == "s001_wb_finance");
-        assert!(s001.is_some());
-        assert_eq!(s001.unwrap().source, SchemaSource::Custom);
+
+        // Find ds01
+        let ds01 = schemas.iter().find(|s| s.id == "ds01_wb_finance_report");
+        assert!(ds01.is_some());
+        assert_eq!(ds01.unwrap().source, SchemaSource::Custom);
     }
 
     #[test]
     fn test_get_custom_schema() {
         let registry = SchemaRegistry::new();
-        let schema = registry.get_schema("s001_wb_finance");
-        
+        let schema = registry.get_schema("ds01_wb_finance_report");
+
         assert!(schema.is_some());
         let schema = schema.unwrap();
-        assert_eq!(schema.id, "s001_wb_finance");
+        assert_eq!(schema.id, "ds01_wb_finance_report");
         assert!(!schema.fields.is_empty());
     }
 }

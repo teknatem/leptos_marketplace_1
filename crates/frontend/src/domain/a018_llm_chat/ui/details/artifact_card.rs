@@ -1,4 +1,5 @@
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifact;
 use gloo_net::http::Request;
@@ -7,7 +8,7 @@ use leptos::prelude::*;
 use thaw::*;
 
 async fn fetch_artifact(id: &str) -> Result<LlmArtifact, String> {
-    let url = format!("http://localhost:3000/api/a019-llm-artifact/{}", id);
+    let url = format!("{}/api/a019-llm-artifact/{}", api_base(), id);
 
     let response = Request::get(&url)
         .send()

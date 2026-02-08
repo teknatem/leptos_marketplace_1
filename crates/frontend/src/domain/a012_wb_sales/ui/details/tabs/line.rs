@@ -9,6 +9,7 @@ use thaw::*;
 pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
     view! {
         {move || {
+            let vm = vm.clone();
             let Some(sale_data) = vm.sale.get() else {
                 return view! { <div>"Нет данных"</div> }.into_any();
             };
@@ -82,6 +83,38 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <div class="form__group">
                                 <label class="form__label">"Кол-во"</label>
                                 <Input value=RwSignal::new(qty) attr:readonly=true />
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Дилерская цена УТ"</label>
+                                <Flex gap=FlexGap::Small style="align-items: center;">
+                                    <Input
+                                        value=RwSignal::new(
+                                            line.dealer_price_ut
+                                                .map(|p| format!("{:.2}", p))
+                                                .unwrap_or_else(|| "—".to_string())
+                                        )
+                                        attr:readonly=true
+                                        attr:style="flex: 1;"
+                                    />
+                                    <Button
+                                        appearance=ButtonAppearance::Secondary
+                                        size=ButtonSize::Small
+                                        on_click={
+                                            let vm = vm.clone();
+                                            move |_| vm.refresh_dealer_price()
+                                        }
+                                        disabled=Signal::derive({
+                                            let vm = vm.clone();
+                                            move || vm.refreshing_price.get()
+                                        })
+                                        attr:title="Обновить дилерскую цену из p906_nomenclature_prices"
+                                    >
+                                        {
+                                            let vm = vm.clone();
+                                            move || if vm.refreshing_price.get() { "..." } else { "↻" }
+                                        }
+                                    </Button>
+                                </Flex>
                             </div>
                         </div>
                     </Card>

@@ -45,7 +45,41 @@ impl TreeBuilder {
         }
 
         // Build hierarchical structure
-        self.build_recursive(&rows, 0)
+        let mut result = self.build_recursive(&rows, 0);
+
+        // Add grand total row at the beginning if there are aggregated columns
+        if !self.aggregated_columns.is_empty() && !rows.is_empty() {
+            let grand_totals = self.calculate_grand_totals(&rows);
+
+            // Create grand total row values
+            let mut grand_total_values = HashMap::new();
+
+            // Add "ИТОГО" label to first grouping column
+            if let Some(first_grouping_col) = self.grouping_columns.first() {
+                grand_total_values.insert(
+                    first_grouping_col.clone(),
+                    CellValue::Text("ИТОГО".to_string()),
+                );
+            }
+
+            // Add grand totals for all aggregated columns
+            for (col_id, total_value) in grand_totals {
+                grand_total_values.insert(col_id, total_value);
+            }
+
+            // Create grand total pivot row
+            let grand_total_row = PivotRow {
+                level: 0,
+                values: grand_total_values,
+                is_total: true,
+                children: vec![],
+            };
+
+            // Insert at the beginning
+            result.insert(0, grand_total_row);
+        }
+
+        result
     }
 
     /// Recursively build tree at current level
@@ -86,7 +120,11 @@ impl TreeBuilder {
             // Add grouping column value
             group_values.insert(
                 grouping_col.clone(),
-                group_rows[0].values.get(grouping_col).cloned().unwrap_or(CellValue::Null),
+                group_rows[0]
+                    .values
+                    .get(grouping_col)
+                    .cloned()
+                    .unwrap_or(CellValue::Null),
             );
 
             // Calculate subtotals for aggregated columns
@@ -201,28 +239,34 @@ mod tests {
         let rows = vec![
             RawRow {
                 values: HashMap::from([
-                    ("date".to_string(), CellValue::Text("2024-01-01".to_string())),
+                    (
+                        "date".to_string(),
+                        CellValue::Text("2024-01-01".to_string()),
+                    ),
                     ("amount".to_string(), CellValue::Number(100.0)),
                 ]),
             },
             RawRow {
                 values: HashMap::from([
-                    ("date".to_string(), CellValue::Text("2024-01-01".to_string())),
+                    (
+                        "date".to_string(),
+                        CellValue::Text("2024-01-01".to_string()),
+                    ),
                     ("amount".to_string(), CellValue::Number(200.0)),
                 ]),
             },
             RawRow {
                 values: HashMap::from([
-                    ("date".to_string(), CellValue::Text("2024-01-02".to_string())),
+                    (
+                        "date".to_string(),
+                        CellValue::Text("2024-01-02".to_string()),
+                    ),
                     ("amount".to_string(), CellValue::Number(150.0)),
                 ]),
             },
         ];
 
-        let builder = TreeBuilder::new(
-            vec!["date".to_string()],
-            vec!["amount".to_string()],
-        );
+        let builder = TreeBuilder::new(vec!["date".to_string()], vec!["amount".to_string()]);
 
         let result = builder.build(rows);
 

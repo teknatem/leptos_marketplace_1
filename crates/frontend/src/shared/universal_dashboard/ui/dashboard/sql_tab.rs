@@ -1,6 +1,6 @@
 //! SQL Tab - displays generated SQL query
 
-use crate::shared::universal_dashboard::ui::SqlViewer;
+use crate::shared::components::sql_viewer::SqlViewer;
 use contracts::shared::universal_dashboard::GenerateSqlResponse;
 use leptos::prelude::*;
 use thaw::Card;

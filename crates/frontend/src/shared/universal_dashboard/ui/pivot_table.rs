@@ -53,11 +53,12 @@ pub fn PivotTable(
                                             let col_id_for_check = col_id.clone();
                                             let col_id_for_set = col_id.clone();
                                             let col_name = col.name.clone();
+                                            let col_type = col.column_type;
 
                                             view! {
                                                 <TableHeaderCell>
                                                     <div
-                                                        style="cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px;"
+                                                        style=format!("cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px;")
                                                         on:click=move |_| {
                                                             if sort_column.get().as_ref() == Some(&col_id_for_check) {
                                                                 sort_ascending.update(|a| *a = !*a);
@@ -107,8 +108,18 @@ fn render_pivot_row_thaw(row: &PivotRow, columns: &[ColumnHeader]) -> impl IntoV
         .map(|col| (col.id.clone(), col.name.clone(), col.column_type))
         .collect();
 
+    // Determine if this is a grand total row (level 0 and is_total)
+    let row_is_grand_total = row_level == 0 && row_is_total;
+
+    // Apply background color for grand total rows
+    let row_style = if row_is_grand_total {
+        "background-color: var(--thaw-color-neutral-background-2);"
+    } else {
+        ""
+    };
+
     let main_row = view! {
-        <TableRow>
+        <TableRow attr:style=row_style>
             {columns_vec
                 .into_iter()
                 .map(|(col_id, _col_name, col_type)| {
@@ -120,19 +131,28 @@ fn render_pivot_row_thaw(row: &PivotRow, columns: &[ColumnHeader]) -> impl IntoV
                     // Determine if this is a numeric cell
                     let is_numeric = matches!(cell_value, Some(CellValue::Number(_) | CellValue::Integer(_)));
 
+                    // Also check if column type is Aggregated (numeric aggregate)
+                    let is_numeric_column = col_type == ColumnType::Aggregated || is_numeric;
+
                     let indent_style = if col_type == ColumnType::Grouping {
                         format!("padding-left: {}px;", row_level * 20)
                     } else {
                         String::new()
                     };
                     let weight = if row_is_total { "font-weight: 600;" } else { "" };
-                    let align = if is_numeric { "text-align: right;" } else { "" };
-                    let style = format!("{}{}{}", indent_style, weight, align);
+                    let span_style = format!("{}{}", indent_style, weight);
+
+                    // Style for TableCell to align content to the right
+                    let cell_style = if is_numeric_column {
+                        "justify-content: flex-end;"
+                    } else {
+                        ""
+                    };
 
                     view! {
                         <TableCell>
-                            <TableCellLayout>
-                                <span style=style>{value}</span>
+                            <TableCellLayout attr:style=cell_style>
+                                <span style=span_style>{value}</span>
                             </TableCellLayout>
                         </TableCell>
                     }

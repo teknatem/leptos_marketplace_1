@@ -58,11 +58,14 @@
    --list-scrollbar-thumb: rgba(0, 0, 0, 0.18);
    --list-scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
 
-   /* Layout Dimensions */
-   --sidebar-width: 260px;
-   --top-header-height: 36px;
-   --panel-width: 260px;
-   --panel-resizer-width: 6px;
+  /* Layout Dimensions */
+  --sidebar-width: 260px;
+  --top-header-height: 36px;
+  --panel-width: 260px;
+  --panel-resizer-width: 8px;
+
+  /* Table Column Dimensions */
+  --table-checkbox-column-width: 40px;
 
    /* Spacing Scale (unified) */
    --spacing-xs: 4px;

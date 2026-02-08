@@ -583,9 +583,11 @@ pub fn NomenclatureTree() -> impl IntoView {
 
     view! {
         <div class="content">
-            <div class="header" style="margin-bottom: 8px; flex-shrink: 0;">
-                <h2 style="margin: 0;">{list_name}</h2>
-                <div class="header__actions" style="display: flex; align-items: center; gap: 8px;">
+            <div class="page__header" style="margin-bottom: 8px; flex-shrink: 0;">
+                <div class="page__header-left">
+                    <h2 class="page__title" style="margin: 0;">{list_name}</h2>
+                </div>
+                <div class="page__header-right" style="display: flex; align-items: center; gap: 8px;">
                     <div style="position: relative; display: inline-flex; align-items: center;">
                         <input
                             type="text"

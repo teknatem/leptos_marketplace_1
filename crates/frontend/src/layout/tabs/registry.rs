@@ -418,6 +418,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating ThawTestPage");
             view! { <ThawTestPage /> }.into_any()
         }
+        "dom_inspector" => {
+            log!("✅ Creating DomValidatorPage");
+            view! { <crate::shared::dom_validator::page::DomValidatorPage /> }.into_any()
+        }
 
         // ═══════════════════════════════════════════════════════════════════
         // Dashboards (d400-d401)
@@ -445,6 +449,21 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "schema_browser" => {
             log!("✅ Creating SchemaBrowser");
             view! { <SchemaBrowser /> }.into_any()
+        }
+
+        // Schema Details
+        k if k.starts_with("schema_details_") => {
+            let schema_id = k.strip_prefix("schema_details_").unwrap().to_string();
+            log!("✅ Creating SchemaDetails for schema: {}", schema_id);
+            view! {
+                <crate::shared::universal_dashboard::ui::schema_details::SchemaDetails
+                    schema_id=schema_id
+                    on_close=Callback::new(move |_| {
+                        tabs_store.close_tab(&key_for_close);
+                    })
+                />
+            }
+            .into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

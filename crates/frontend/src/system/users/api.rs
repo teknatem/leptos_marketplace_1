@@ -1,9 +1,8 @@
 use contracts::system::users::{ChangePasswordDto, CreateUserDto, UpdateUserDto, User};
 use gloo_net::http::Request;
 
+use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
-
-const API_BASE: &str = "http://localhost:3000";
 
 fn get_auth_header() -> Option<String> {
     storage::get_access_token().map(|token| format!("Bearer {}", token))
@@ -13,7 +12,7 @@ fn get_auth_header() -> Option<String> {
 pub async fn fetch_users() -> Result<Vec<User>, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::get(&format!("{}/api/system/users", API_BASE))
+    let response = Request::get(&format!("{}/api/system/users", api_base()))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -33,7 +32,7 @@ pub async fn fetch_users() -> Result<Vec<User>, String> {
 pub async fn create_user(dto: CreateUserDto) -> Result<String, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::post(&format!("{}/api/system/users", API_BASE))
+    let response = Request::post(&format!("{}/api/system/users", api_base()))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -57,7 +56,7 @@ pub async fn create_user(dto: CreateUserDto) -> Result<String, String> {
 pub async fn update_user(dto: UpdateUserDto) -> Result<(), String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::put(&format!("{}/api/system/users/{}", API_BASE, dto.id))
+    let response = Request::put(&format!("{}/api/system/users/{}", api_base(), dto.id))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -76,7 +75,7 @@ pub async fn update_user(dto: UpdateUserDto) -> Result<(), String> {
 pub async fn delete_user(id: &str) -> Result<(), String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::delete(&format!("{}/api/system/users/{}", API_BASE, id))
+    let response = Request::delete(&format!("{}/api/system/users/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -95,7 +94,7 @@ pub async fn change_password(dto: ChangePasswordDto) -> Result<(), String> {
 
     let response = Request::post(&format!(
         "{}/api/system/users/{}/change-password",
-        API_BASE, dto.user_id
+        api_base(), dto.user_id
     ))
     .header("Authorization", &auth_header)
     .json(&dto)

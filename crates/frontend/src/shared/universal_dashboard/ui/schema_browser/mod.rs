@@ -1,12 +1,14 @@
 //! Schema browser - view and test pivot schemas
 
+use contracts::shared::universal_dashboard::{SchemaInfo, SchemaSource, SchemaValidationResult};
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::logging::log;
-use contracts::shared::universal_dashboard::{
-    SchemaInfo, SchemaSource, SchemaValidationResult, ValidateAllSchemasResponse,
-};
+use std::collections::HashMap;
+use thaw::*;
 
+use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::page_header::PageHeader;
 use crate::shared::universal_dashboard::api;
 
 // ============================================================================
@@ -20,8 +22,7 @@ pub fn SchemaBrowser() -> impl IntoView {
     let (schemas, set_schemas) = signal(Vec::<SchemaInfo>::new());
     let (validating, set_validating) = signal(None::<String>);
     let (validating_all, set_validating_all) = signal(false);
-    let (single_result, set_single_result) = signal(None::<SchemaValidationResult>);
-    let (all_results, set_all_results) = signal(None::<ValidateAllSchemasResponse>);
+    let (test_results, set_test_results) = signal(HashMap::<String, SchemaValidationResult>::new());
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
 
@@ -45,13 +46,14 @@ pub fn SchemaBrowser() -> impl IntoView {
     // Validate single schema
     let on_validate = Callback::new(move |schema_id: String| {
         set_validating.set(Some(schema_id.clone()));
-        set_single_result.set(None);
-        set_all_results.set(None);
 
         spawn_local(async move {
             match api::validate_schema(&schema_id).await {
                 Ok(result) => {
-                    set_single_result.set(Some(result));
+                    let id = result.schema_id.clone();
+                    set_test_results.update(|results| {
+                        results.insert(id, result);
+                    });
                 }
                 Err(e) => {
                     log!("Failed to validate schema: {}", e);
@@ -65,13 +67,16 @@ pub fn SchemaBrowser() -> impl IntoView {
     // Validate all schemas
     let on_validate_all = Callback::new(move |_: ()| {
         set_validating_all.set(true);
-        set_single_result.set(None);
-        set_all_results.set(None);
 
         spawn_local(async move {
             match api::validate_all_schemas().await {
-                Ok(result) => {
-                    set_all_results.set(Some(result));
+                Ok(response) => {
+                    set_test_results.update(|results| {
+                        for result in response.results {
+                            let id = result.schema_id.clone();
+                            results.insert(id, result);
+                        }
+                    });
                 }
                 Err(e) => {
                     log!("Failed to validate all schemas: {}", e);
@@ -83,47 +88,42 @@ pub fn SchemaBrowser() -> impl IntoView {
     });
 
     view! {
-        <div class="schema-browser">
-            <div class="schema-browser-header">
-                <h1>"Схемы данных"</h1>
-                <p class="text-muted">
-                    "Просмотр и тестирование схем для сводных таблиц"
-                </p>
+        <div class="page">
+            <PageHeader title="Схемы данных" subtitle="Просмотр и тестирование схем для сводных таблиц">
+                <Button
+                    appearance=ButtonAppearance::Primary
+                    on_click=move |_| on_validate_all.run(())
+                    disabled=move || validating_all.get()
+                    loading=move || validating_all.get()
+                >
+                    {move || if validating_all.get() { "Тестирование..." } else { "Тестировать все" }}
+                </Button>
+            </PageHeader>
+
+            <div class="page__content">
+                <Show
+                    when=move || !loading.get()
+                    fallback=|| view! {
+                        <Flex gap=FlexGap::Small style="align-items: center; padding: var(--spacing-4xl); justify-content: center;">
+                            <Spinner />
+                            <span>"Загрузка схем..."</span>
+                        </Flex>
+                    }
+                >
+                    {move || error.get().map(|e| view! {
+                        <div style="padding: var(--spacing-md); background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: var(--radius-sm); color: var(--color-error); margin-bottom: var(--spacing-md);">
+                            <strong>"Ошибка: "</strong>{e}
+                        </div>
+                    })}
+
+                    <SchemaList
+                        schemas=schemas
+                        on_validate=on_validate
+                        test_results=test_results
+                        validating=validating
+                    />
+                </Show>
             </div>
-
-            <Show
-                when=move || !loading.get()
-                fallback=|| view! {
-                    <div class="loading-state">
-                        <div class="spinner"></div>
-                        <p>"Загрузка схем..."</p>
-                    </div>
-                }
-            >
-                {move || error.get().map(|e| view! {
-                    <div class="error-banner">
-                        <p>{e}</p>
-                    </div>
-                })}
-
-                <div class="schema-browser-content">
-                    <div class="schema-browser-main">
-                        <SchemaList
-                            schemas=schemas
-                            on_validate=on_validate
-                            on_validate_all=on_validate_all
-                            validating=validating
-                            validating_all=validating_all
-                        />
-                    </div>
-                    <div class="schema-browser-side">
-                        <ValidationPanel
-                            single_result=single_result
-                            all_results=all_results
-                        />
-                    </div>
-                </div>
-            </Show>
         </div>
     }
 }
@@ -136,176 +136,190 @@ pub fn SchemaBrowser() -> impl IntoView {
 fn SchemaList(
     #[prop(into)] schemas: Signal<Vec<SchemaInfo>>,
     on_validate: Callback<String>,
-    on_validate_all: Callback<()>,
+    #[prop(into)] test_results: Signal<HashMap<String, SchemaValidationResult>>,
     #[prop(into)] validating: Signal<Option<String>>,
-    #[prop(into)] validating_all: Signal<bool>,
 ) -> impl IntoView {
+    let ctx =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+
     view! {
-        <div class="schema-list">
-            <div class="schema-list-header">
-                <h2>"Схемы данных"</h2>
-                <button
-                    class="btn btn-primary"
-                    on:click=move |_| on_validate_all.run(())
-                    disabled=move || validating_all.get()
-                >
-                    {move || if validating_all.get() { "Тестирование..." } else { "Тестировать все" }}
-                </button>
-            </div>
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHeaderCell>"ID"</TableHeaderCell>
+                    <TableHeaderCell>"Название"</TableHeaderCell>
+                    <TableHeaderCell>"Источник"</TableHeaderCell>
+                    <TableHeaderCell>"Таблица"</TableHeaderCell>
+                    <TableHeaderCell>"Результат теста"</TableHeaderCell>
+                    <TableHeaderCell>"Действия"</TableHeaderCell>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {move || {
+                    schemas.get().into_iter().map(|schema| {
+                        let id_for_btn = schema.id.clone();
+                        let id_for_check = schema.id.clone();
+                        let id_for_text = schema.id.clone();
+                        let id_for_result = schema.id.clone();
+                        let id_for_click = schema.id.clone();
+                        let name_for_click = schema.name.clone();
 
-            <table class="schema-table">
-                <thead>
-                    <tr>
-                        <th>"ID"</th>
-                        <th>"Название"</th>
-                        <th>"Источник"</th>
-                        <th>"Таблица"</th>
-                        <th>"Действия"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {move || {
-                        schemas.get().into_iter().map(|schema| {
-                            let id_for_btn = schema.id.clone();
-                            let id_for_check = schema.id.clone();
-                            let id_for_text = schema.id.clone();
+                        view! {
+                            <TableRow>
+                                <TableCell>
+                                    <span style="font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                        {schema.id.clone()}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    <a
+                                        href="#"
+                                        style="color: var(--color-primary); text-decoration: none; font-weight: 500; cursor: pointer;"
+                                        on:click=move |ev| {
+                                            ev.prevent_default();
+                                            let tab_key = format!("schema_details_{}", id_for_click);
+                                            let tab_title = format!("Schema: {}", name_for_click);
+                                            ctx.open_tab(&tab_key, &tab_title);
+                                        }
+                                    >
+                                        {schema.name.clone()}
+                                    </a>
+                                </TableCell>
+                                <TableCell>
+                                    <Badge
+                                        appearance=match schema.source {
+                                            SchemaSource::Custom => BadgeAppearance::Filled,
+                                            SchemaSource::Auto => BadgeAppearance::Tint,
+                                        }
+                                        color=match schema.source {
+                                            SchemaSource::Custom => BadgeColor::Brand,
+                                            SchemaSource::Auto => BadgeColor::Informative,
+                                        }
+                                    >
+                                        {match schema.source {
+                                            SchemaSource::Custom => "Кастомная",
+                                            SchemaSource::Auto => "Авто",
+                                        }}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <span style="font-family: var(--font-mono); font-size: var(--font-size-sm);">
+                                        {schema.table_name.clone()}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    {move || {
+                                        test_results.get().get(&id_for_result).cloned().map(|result| {
+                                            let is_valid = result.is_valid;
+                                            let time_ms = result.execution_time_us as f64 / 1000.0;
+                                            let row_count = result.row_count;
 
-                            view! {
-                                <tr>
-                                    <td class="schema-id">{schema.id.clone()}</td>
-                                    <td>{schema.name.clone()}</td>
-                                    <td>
-                                        <span class=match schema.source {
-                                            SchemaSource::Custom => "badge badge-custom",
-                                            SchemaSource::Auto => "badge badge-auto",
-                                        }>
-                                            {match schema.source {
-                                                SchemaSource::Custom => "Кастомная",
-                                                SchemaSource::Auto => "Авто",
-                                            }}
-                                        </span>
-                                    </td>
-                                    <td class="schema-table-name">{schema.table_name.clone()}</td>
-                                    <td>
-                                        <button
-                                            class="btn btn-sm btn-outline"
-                                            on:click=move |_| on_validate.run(id_for_btn.clone())
-                                            disabled=move || validating.get().as_ref() == Some(&id_for_check)
-                                        >
-                                            {move || {
-                                                if validating.get().as_ref() == Some(&id_for_text) {
-                                                    "..."
-                                                } else {
-                                                    "Тест"
-                                                }
-                                            }}
-                                        </button>
-                                    </td>
-                                </tr>
-                            }
-                        }).collect_view()
-                    }}
-                </tbody>
-            </table>
-        </div>
+                                            view! {
+                                                <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                                                    <span style=format!(
+                                                        "font-size: 18px; font-weight: bold; color: {};",
+                                                        if is_valid { "var(--color-success)" } else { "var(--color-error)" }
+                                                    )>
+                                                        {if is_valid { "✓" } else { "✗" }}
+                                                    </span>
+                                                    <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+                                                        {format!("{:.2}мс", time_ms)}
+                                                    </span>
+                                                    {row_count.map(|count| view! {
+                                                        <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+                                                            {format!("{} строк", count)}
+                                                        </span>
+                                                    })}
+                                                </Flex>
+                                            }
+                                        })
+                                    }}
+                                </TableCell>
+                                <TableCell>
+                                    <Button
+                                        appearance=ButtonAppearance::Subtle
+                                        size=ButtonSize::Small
+                                        on_click=move |_| on_validate.run(id_for_btn.clone())
+                                        disabled=move || validating.get().as_ref() == Some(&id_for_check)
+                                        loading=move || validating.get().as_ref() == Some(&id_for_text)
+                                    >
+                                        "Тест"
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        }
+                    }).collect_view()
+                }}
+            </TableBody>
+        </Table>
     }
 }
 
 // ============================================================================
-// ValidationPanel - Display validation results
+// ValidationCard - Single validation result card (used in schema details)
 // ============================================================================
 
+/// Reusable validation card component for displaying test results
 #[component]
-fn ValidationPanel(
-    #[prop(into)] single_result: Signal<Option<SchemaValidationResult>>,
-    #[prop(into)] all_results: Signal<Option<ValidateAllSchemasResponse>>,
-) -> impl IntoView {
-    view! {
-        <div class="validation-panel">
-            {move || {
-                single_result.get().map(|result| {
-                    view! {
-                        <div class="validation-result single-result">
-                            <h3>"Результат: " <span class="schema-name">{result.schema_name.clone()}</span></h3>
-                            <ValidationCard result=result />
-                        </div>
-                    }
-                })
-            }}
-
-            {move || {
-                all_results.get().map(|response| {
-                    view! {
-                        <div class="validation-result all-results">
-                            <h3>"Результаты тестирования всех схем"</h3>
-                            <div class="validation-summary">
-                                <span class="summary-item">"Всего: " <strong>{response.total_schemas}</strong></span>
-                                <span class="summary-item valid">"Валидных: " <strong>{response.valid_count}</strong></span>
-                                <span class="summary-item invalid">"С ошибками: " <strong>{response.invalid_count}</strong></span>
-                                <span class="summary-item time">"Время: " <strong>{response.total_time_ms}"мс"</strong></span>
-                            </div>
-                            <div class="validation-results-list">
-                                {response.results.into_iter().map(|r| {
-                                    view! { <ValidationCard result=r /> }
-                                }).collect_view()}
-                            </div>
-                        </div>
-                    }
-                })
-            }}
-
-            {move || {
-                (single_result.get().is_none() && all_results.get().is_none()).then(|| view! {
-                    <div class="validation-empty">
-                        <p>"Нажмите \"Тест\" для проверки схемы"</p>
-                    </div>
-                })
-            }}
-        </div>
-    }
-}
-
-// ============================================================================
-// ValidationCard - Single validation result card
-// ============================================================================
-
-#[component]
-fn ValidationCard(result: SchemaValidationResult) -> impl IntoView {
-    let status_class = if result.is_valid { "status-valid" } else { "status-invalid" };
+pub fn ValidationCard(result: SchemaValidationResult) -> impl IntoView {
     let has_warnings = !result.warnings.is_empty();
 
     view! {
-        <div class=format!("validation-card {}", status_class)>
-            <div class="card-header">
-                <span class="card-title">{result.schema_id.clone()}</span>
-                <span class="card-status">{if result.is_valid { "OK" } else { "ОШИБКА" }}</span>
-            </div>
-            <div class="card-body">
-                <div class="card-meta">
-                    <span class="meta-item">"Время: " {result.execution_time_ms}"мс"</span>
+        <div style="margin-bottom: var(--spacing-md); padding: var(--spacing-lg); border: 1px solid var(--color-neutral-200); border-radius: var(--radius-md); background: var(--color-bg-container);">
+            <Flex vertical=true gap=FlexGap::Medium>
+                // Header
+                <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                    <span style="font-weight: 600; font-size: var(--font-size-lg);">
+                        {result.schema_id.clone()}
+                    </span>
+                    <Badge
+                        appearance=BadgeAppearance::Filled
+                        color=if result.is_valid { BadgeColor::Success } else { BadgeColor::Danger }
+                    >
+                        {if result.is_valid { "OK" } else { "ОШИБКА" }}
+                    </Badge>
+                </Flex>
+
+                // Meta information
+                <Flex gap=FlexGap::Large>
+                    <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+                        "Время: " <strong>{format!("{:.2}мс", result.execution_time_us as f64 / 1000.0)}</strong>
+                    </span>
                     {result.row_count.map(|count| view! {
-                        <span class="meta-item">"Строк: " {count}</span>
+                        <span style="color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+                            "Строк: " <strong>{count}</strong>
+                        </span>
                     })}
-                </div>
+                </Flex>
 
+                // Errors
                 {(!result.errors.is_empty()).then(|| view! {
-                    <div class="card-errors">
-                        <strong>"Ошибки:"</strong>
-                        <ul>
-                            {result.errors.iter().map(|e| view! { <li class="error-item">{e.clone()}</li> }).collect_view()}
+                    <div>
+                        <div style="font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-error);">
+                            "Ошибки:"
+                        </div>
+                        <ul style="margin: 0; padding-left: var(--spacing-lg); color: var(--color-error);">
+                            {result.errors.iter().map(|e| view! {
+                                <li style="margin-bottom: var(--spacing-xs);">{e.clone()}</li>
+                            }).collect_view()}
                         </ul>
                     </div>
                 })}
 
+                // Warnings
                 {has_warnings.then(|| view! {
-                    <div class="card-warnings">
-                        <strong>"Предупреждения:"</strong>
-                        <ul>
-                            {result.warnings.iter().map(|w| view! { <li class="warning-item">{w.clone()}</li> }).collect_view()}
+                    <div>
+                        <div style="font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-warning);">
+                            "Предупреждения:"
+                        </div>
+                        <ul style="margin: 0; padding-left: var(--spacing-lg); color: var(--color-warning);">
+                            {result.warnings.iter().map(|w| view! {
+                                <li style="margin-bottom: var(--spacing-xs);">{w.clone()}</li>
+                            }).collect_view()}
                         </ul>
                     </div>
                 })}
-            </div>
+            </Flex>
         </div>
     }
 }

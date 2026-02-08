@@ -1,4 +1,5 @@
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -21,9 +22,9 @@ pub struct LlmArtifactListItem {
 }
 
 async fn fetch_artifacts() -> Result<Vec<LlmArtifactListItem>, String> {
-    let url = "http://localhost:3000/api/a019-llm-artifact";
+    let url = format!("{}/api/a019-llm-artifact", api_base());
 
-    let response = Request::get(url)
+    let response = Request::get(&url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch: {}", e))?;
@@ -42,7 +43,7 @@ async fn fetch_artifacts() -> Result<Vec<LlmArtifactListItem>, String> {
 }
 
 async fn delete_artifact(id: &str) -> Result<(), String> {
-    let url = format!("http://localhost:3000/api/a019-llm-artifact/{}", id);
+    let url = format!("{}/api/a019-llm-artifact/{}", api_base(), id);
 
     let response = Request::delete(&url)
         .send()

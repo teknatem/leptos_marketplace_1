@@ -7,7 +7,10 @@ use uuid::Uuid;
 
 /// Создание нового подключения к 1C
 pub async fn create(dto: Connection1CDatabaseDto) -> anyhow::Result<Uuid> {
-    let code = dto.code.clone().unwrap_or_else(|| format!("CON-{}", Uuid::new_v4()));
+    let code = dto
+        .code
+        .clone()
+        .unwrap_or_else(|| format!("CON-{}", Uuid::new_v4()));
     let mut aggregate = Connection1CDatabase::new_for_insert(
         code,
         dto.description,
@@ -154,6 +157,7 @@ pub async fn test_connection(dto: Connection1CDatabaseDto) -> anyhow::Result<Con
     // Попытка подключения к 1C OData
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
+        .no_proxy() // Отключаем системный прокси для прямого подключения к 1С
         .build()?;
 
     let response = client

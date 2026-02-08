@@ -13,6 +13,7 @@ impl UtODataClient {
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120)) // Увеличен таймаут до 120 секунд для больших запросов
+                .no_proxy() // Отключаем системный прокси для прямого подключения к 1С
                 .build()
                 .expect("Failed to create HTTP client"),
         }

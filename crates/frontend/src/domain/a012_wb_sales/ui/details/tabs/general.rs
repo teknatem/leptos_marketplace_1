@@ -42,48 +42,6 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let mp_ref = sale_data.marketplace_product_ref.clone();
             let nom_ref = sale_data.nomenclature_ref.clone();
 
-            // Open marketplace product handler
-            let open_mp = {
-                let tabs_store = tabs_store;
-                let mp_ref = mp_ref.clone();
-                let mp_info = vm.marketplace_product_info;
-                move |_| {
-                    let Some(mp_id) = mp_ref.clone() else { return; };
-                    let title = mp_info
-                        .get()
-                        .map(|info| {
-                            if info.article.trim().is_empty() {
-                                format!("Товар МП {}", info.description)
-                            } else {
-                                format!("Товар МП {}", info.article)
-                            }
-                        })
-                        .unwrap_or_else(|| "Товар МП".to_string());
-                    tabs_store.open_tab(&format!("a007_marketplace_product_detail_{}", mp_id), &title);
-                }
-            };
-
-            // Open nomenclature handler
-            let open_nom = {
-                let tabs_store = tabs_store;
-                let nom_ref = nom_ref.clone();
-                let nom_info = vm.nomenclature_info;
-                move |_| {
-                    let Some(nom_id) = nom_ref.clone() else { return; };
-                    let title = nom_info
-                        .get()
-                        .map(|info| {
-                            if info.article.trim().is_empty() {
-                                format!("Номенклатура {}", info.description)
-                            } else {
-                                format!("Номенклатура {}", info.article)
-                            }
-                        })
-                        .unwrap_or_else(|| "Номенклатура".to_string());
-                    tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", nom_id), &title);
-                }
-            };
-
             // Check if refs exist for disabling buttons
             let has_mp_ref = mp_ref.is_some();
             let has_nom_ref = nom_ref.is_some();
@@ -123,59 +81,125 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                         <h4 class="details-section__title">"Номенклатура"</h4>
                         <div class="form__group">
                             <label class="form__label">"Товар маркетплейса"</label>
-                            <Button
-                                appearance=ButtonAppearance::Subtle
-                                size=ButtonSize::Small
-                                on_click=open_mp
-                                disabled=Signal::derive(move || !has_mp_ref)
-                            >
-                                {move || {
-                                    vm.marketplace_product_info
-                                        .get()
-                                        .map(|i| {
-                                            if i.description.trim().is_empty() {
-                                                if i.article.trim().is_empty() {
-                                                    "Открыть".to_string()
-                                                } else {
-                                                    format!("арт. {}", i.article)
+                            <div style="padding: 8px 0; text-align: left;">
+                                {
+                                    let mp_ref_click = mp_ref.clone();
+                                    view! {
+                                        <Show
+                                            when=move || has_mp_ref
+                                            fallback=|| view! { <span style="color: var(--color-text-secondary);">"—"</span> }
+                                        >
+                                            <a
+                                                href="#"
+                                                on:click={
+                                                    let mp_ref_inner = mp_ref_click.clone();
+                                                    move |ev: web_sys::MouseEvent| {
+                                                        ev.prevent_default();
+                                                        if let Some(ref mp_id) = mp_ref_inner {
+                                                            let title = vm
+                                                                .marketplace_product_info
+                                                                .get()
+                                                                .map(|info| {
+                                                                    if info.article.trim().is_empty() {
+                                                                        format!("Товар МП {}", info.description)
+                                                                    } else {
+                                                                        format!("Товар МП {}", info.article)
+                                                                    }
+                                                                })
+                                                                .unwrap_or_else(|| "Товар МП".to_string());
+                                                            tabs_store.open_tab(
+                                                                &format!("a007_marketplace_product_detail_{}", mp_id),
+                                                                &title,
+                                                            );
+                                                        }
+                                                    }
                                                 }
-                                            } else if i.article.trim().is_empty() {
-                                                i.description
-                                            } else {
-                                                format!("{} (арт. {})", i.description, i.article)
-                                            }
-                                        })
-                                        .unwrap_or_else(|| "Открыть".to_string())
-                                }}
-                            </Button>
+                                                style="color: #0078d4; text-decoration: underline; cursor: pointer; font-weight: 500;"
+                                            >
+                                                {move || {
+                                                    vm.marketplace_product_info
+                                                        .get()
+                                                        .map(|i| {
+                                                            if i.description.trim().is_empty() {
+                                                                if i.article.trim().is_empty() {
+                                                                    "Открыть".to_string()
+                                                                } else {
+                                                                    format!("арт. {}", i.article)
+                                                                }
+                                                            } else if i.article.trim().is_empty() {
+                                                                i.description
+                                                            } else {
+                                                                format!("{} (арт. {})", i.description, i.article)
+                                                            }
+                                                        })
+                                                        .unwrap_or_else(|| "Открыть".to_string())
+                                                }}
+                                            </a>
+                                        </Show>
+                                    }
+                                }
+                            </div>
                         </div>
                         <div class="form__group">
                             <label class="form__label">"Номенклатура 1С"</label>
-                            <Button
-                                appearance=ButtonAppearance::Subtle
-                                size=ButtonSize::Small
-                                on_click=open_nom
-                                disabled=Signal::derive(move || !has_nom_ref)
-                            >
-                                {move || {
-                                    vm.nomenclature_info
-                                        .get()
-                                        .map(|i| {
-                                            if i.description.trim().is_empty() {
-                                                if i.article.trim().is_empty() {
-                                                    "Открыть".to_string()
-                                                } else {
-                                                    format!("арт. {}", i.article)
+                            <div style="padding: 8px 0; text-align: left;">
+                                {
+                                    let nom_ref_click = nom_ref.clone();
+                                    view! {
+                                        <Show
+                                            when=move || has_nom_ref
+                                            fallback=|| view! { <span style="color: var(--color-text-secondary);">"—"</span> }
+                                        >
+                                            <a
+                                                href="#"
+                                                on:click={
+                                                    let nom_ref_inner = nom_ref_click.clone();
+                                                    move |ev: web_sys::MouseEvent| {
+                                                        ev.prevent_default();
+                                                        if let Some(ref nom_id) = nom_ref_inner {
+                                                            let title = vm
+                                                                .nomenclature_info
+                                                                .get()
+                                                                .map(|info| {
+                                                                    if info.article.trim().is_empty() {
+                                                                        format!("Номенклатура {}", info.description)
+                                                                    } else {
+                                                                        format!("Номенклатура {}", info.article)
+                                                                    }
+                                                                })
+                                                                .unwrap_or_else(|| "Номенклатура".to_string());
+                                                            tabs_store.open_tab(
+                                                                &format!("a004_nomenclature_detail_{}", nom_id),
+                                                                &title,
+                                                            );
+                                                        }
+                                                    }
                                                 }
-                                            } else if i.article.trim().is_empty() {
-                                                i.description
-                                            } else {
-                                                format!("{} (арт. {})", i.description, i.article)
-                                            }
-                                        })
-                                        .unwrap_or_else(|| "Открыть".to_string())
-                                }}
-                            </Button>
+                                                style="color: #0078d4; text-decoration: underline; cursor: pointer; font-weight: 500;"
+                                            >
+                                                {move || {
+                                                    vm.nomenclature_info
+                                                        .get()
+                                                        .map(|i| {
+                                                            if i.description.trim().is_empty() {
+                                                                if i.article.trim().is_empty() {
+                                                                    "Открыть".to_string()
+                                                                } else {
+                                                                    format!("арт. {}", i.article)
+                                                                }
+                                                            } else if i.article.trim().is_empty() {
+                                                                i.description
+                                                            } else {
+                                                                format!("{} (арт. {})", i.description, i.article)
+                                                            }
+                                                        })
+                                                        .unwrap_or_else(|| "Открыть".to_string())
+                                                }}
+                                            </a>
+                                        </Show>
+                                    }
+                                }
+                            </div>
                         </div>
 
                     </Card>

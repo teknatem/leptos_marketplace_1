@@ -6,9 +6,8 @@ use contracts::system::tasks::response::{
 };
 use contracts::system::tasks::progress::TaskProgressResponse;
 use gloo_net::http::Request;
+use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
-
-const API_BASE: &str = "http://localhost:3000";
 
 fn get_auth_header() -> Option<String> {
     storage::get_access_token().map(|token| format!("Bearer {}", token))
@@ -18,7 +17,7 @@ fn get_auth_header() -> Option<String> {
 pub async fn fetch_scheduled_tasks() -> Result<Vec<ScheduledTaskResponse>, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::get(&format!("{}/api/sys/scheduled_tasks", API_BASE))
+    let response = Request::get(&format!("{}/api/sys/scheduled_tasks", api_base()))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -40,7 +39,7 @@ pub async fn fetch_scheduled_tasks() -> Result<Vec<ScheduledTaskResponse>, Strin
 pub async fn get_scheduled_task(id: &str) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::get(&format!("{}/api/sys/scheduled_tasks/{}", API_BASE, id))
+    let response = Request::get(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -60,7 +59,7 @@ pub async fn get_scheduled_task(id: &str) -> Result<ScheduledTaskResponse, Strin
 pub async fn create_scheduled_task(dto: CreateScheduledTaskDto) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::post(&format!("{}/api/sys/scheduled_tasks", API_BASE))
+    let response = Request::post(&format!("{}/api/sys/scheduled_tasks", api_base()))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -82,7 +81,7 @@ pub async fn create_scheduled_task(dto: CreateScheduledTaskDto) -> Result<Schedu
 pub async fn update_scheduled_task(id: &str, dto: UpdateScheduledTaskDto) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::put(&format!("{}/api/sys/scheduled_tasks/{}", API_BASE, id))
+    let response = Request::put(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -104,7 +103,7 @@ pub async fn update_scheduled_task(id: &str, dto: UpdateScheduledTaskDto) -> Res
 pub async fn delete_scheduled_task(id: &str) -> Result<(), String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::delete(&format!("{}/api/sys/scheduled_tasks/{}", API_BASE, id))
+    let response = Request::delete(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -122,7 +121,7 @@ pub async fn toggle_scheduled_task_enabled(id: &str, is_enabled: bool) -> Result
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
     let dto = ToggleScheduledTaskEnabledDto { is_enabled };
 
-    let response = Request::post(&format!("{}/api/sys/scheduled_tasks/{}/toggle_enabled", API_BASE, id))
+    let response = Request::post(&format!("{}/api/sys/scheduled_tasks/{}/toggle_enabled", api_base(), id))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -146,7 +145,7 @@ pub async fn get_task_progress(task_id: &str, session_id: &str) -> Result<TaskPr
 
     let response = Request::get(&format!(
         "{}/api/sys/scheduled_tasks/{}/progress/{}",
-        API_BASE, task_id, session_id
+        api_base(), task_id, session_id
     ))
     .header("Authorization", &auth_header)
     .send()
@@ -169,7 +168,7 @@ pub async fn get_task_log(task_id: &str, session_id: &str) -> Result<String, Str
 
     let response = Request::get(&format!(
         "{}/api/sys/scheduled_tasks/{}/log/{}",
-        API_BASE, task_id, session_id
+        api_base(), task_id, session_id
     ))
     .header("Authorization", &auth_header)
     .send()

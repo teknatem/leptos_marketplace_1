@@ -81,12 +81,12 @@
   --badge-neutral-border: #e0e0e0;
 
   /* Tab Colors */
-  --tab-text: #757575;
-  --tab-text-hover: #424242;
+  --tab-text: rgba(255, 255, 255, 0.70);
+  --tab-text-hover: #ffffff;
   --tab-text-active: #2e7d32;
   --tab-border-active: #43a047;
-  --tab-bg: rgba(255, 255, 255, 0.8);
-  --tab-bg-hover: rgba(76, 175, 80, 0.08);
+  --tab-bg: rgba(255, 255, 255, 0.5);
+  --tab-bg-hover: rgba(8, 53, 9, 0.5);
   --tab-bg-active: rgba(76, 175, 80, 0.15);
   --tab-close-bg: #bdbdbd;
   --tab-close-text: #616161;
@@ -111,7 +111,7 @@
   --sidebar-border: rgba(76, 175, 80, 0.3);
 
   /* Header Colors */
-  --header-bg: rgba(0, 0, 0, 0.15);
+  --header-bg: rgba(4, 84, 4, 0.30);
   --header-text: #ffffff;
   --header-border: rgba(255, 255, 255, 0.15);
 
@@ -129,6 +129,8 @@
   /* Card Colors */
   --card-bg: rgba(255, 255, 255, 0.85);
   --card-border: rgba(165, 214, 167, 0.4);
+  --card-hover-bg: rgba(255, 255, 255, 0.95);
+  --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
 
   /* Form Colors */
   --form-label-text: #ffffff;

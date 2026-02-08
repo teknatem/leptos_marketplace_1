@@ -3,9 +3,7 @@ mod state;
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::pagination_controls::PaginationControls;
-use crate::shared::components::table_checkbox::TableCheckbox;
 use crate::shared::components::ui::badge::Badge;
-use crate::shared::components::ui::button::Button;
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{
@@ -19,6 +17,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use crate::shared::api_utils::api_base;
 use thaw::*;
 
 impl ExcelExportable for MarketplaceProductListItemDto {
@@ -107,7 +106,8 @@ pub fn MarketplaceProductList() -> impl IntoView {
         spawn_local(async move {
             let offset = current_state.page * current_state.page_size;
             let mut url = format!(
-                "http://localhost:3000/api/a007/marketplace-product?limit={}&offset={}&sort_by={}&sort_desc={}",
+                "{}/api/a007/marketplace-product?limit={}&offset={}&sort_by={}&sort_desc={}",
+                api_base(),
                 current_state.page_size,
                 offset,
                 current_state.sort_field,
@@ -156,7 +156,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
 
     let fetch_marketplaces = move || {
         spawn_local(async move {
-            match Request::get("http://localhost:3000/api/marketplace")
+            match Request::get(&format!("{}/api/marketplace", api_base()))
                 .send()
                 .await
             {
@@ -287,7 +287,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         if confirmed {
             spawn_local(async move {
                 for id in ids {
-                    let _ = Request::delete(&format!("http://localhost:3000/api/marketplace_product/{}", id))
+                    let _ = Request::delete(&format!("{}/api/marketplace_product/{}", api_base(), id))
                         .send()
                         .await;
                 }
@@ -326,48 +326,43 @@ pub fn MarketplaceProductList() -> impl IntoView {
 
     view! {
         <div class="page">
-            <div class="page-header">
-                <div class="page-header__content">
-                    <div class="page-header__icon">{icon("package")}</div>
-                    <div class="page-header__text">
-                        <h1 class="page-header__title">"Товары маркетплейсов"</h1>
-                        <div class="page-header__badge">
-                            <Badge variant="primary".to_string()>
-                                {move || state.get().total_count.to_string()}
-                            </Badge>
-                        </div>
-                    </div>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Товары маркетплейсов"</h1>
+                    <Badge variant="primary".to_string()>
+                        {move || state.get().total_count.to_string()}
+                    </Badge>
                 </div>
-                <div class="page-header__actions">
-                    <Button
-                        variant="primary".to_string()
-                        on_click=Callback::new(handle_create_new)
+                <div class="page__header-right">
+                    <thaw::Button
+                        appearance=ButtonAppearance::Primary
+                        on_click=move |_| handle_create_new(())
                     >
                         {icon("plus")}
-                        "Создать"
-                    </Button>
-                    <Button
-                        variant="secondary".to_string()
-                        on_click=Callback::new(handle_export)
+                        " Создать"
+                    </thaw::Button>
+                    <thaw::Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| handle_export(())
                     >
                         {icon("excel")}
-                        "Excel"
-                    </Button>
-                    <Button
-                        variant="secondary".to_string()
-                        on_click=Callback::new(delete_selected)
-                        disabled=state.get().selected_ids.is_empty()
+                        " Excel"
+                    </thaw::Button>
+                    <thaw::Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| delete_selected(())
+                        disabled=Signal::derive(move || state.get().selected_ids.is_empty())
                     >
                         {icon("delete")}
-                        {move || format!("Удалить ({})", state.get().selected_ids.len())}
-                    </Button>
-                    <Button
-                        variant="secondary".to_string()
-                        on_click=Callback::new(move |_| load_data())
+                        {move || format!(" Удалить ({})", state.get().selected_ids.len())}
+                    </thaw::Button>
+                    <thaw::Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| load_data()
                     >
                         {icon("refresh")}
-                        "Обновить"
-                    </Button>
+                        " Обновить"
+                    </thaw::Button>
                 </div>
             </div>
 
@@ -527,13 +522,17 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                             class="table__row"
                                             class:table__row--selected=is_selected
                                         >
-                                            <TableCheckbox
-                                                checked=Signal::derive(move || state.get().selected_ids.contains(&id_for_checkbox))
-                                                on_change=Callback::new({
-                                                    let id = id.clone();
-                                                    move |_| toggle_select(id.clone())
-                                                })
-                                            />
+                                            <td class="table__cell table__cell--checkbox" on:click=|e| e.stop_propagation()>
+                                                <input
+                                                    type="checkbox"
+                                                    class="table__checkbox"
+                                                    prop:checked=move || state.get().selected_ids.contains(&id_for_checkbox)
+                                                    on:change={
+                                                        let id = id.clone();
+                                                        move |_| toggle_select(id.clone())
+                                                    }
+                                                />
+                                            </td>
                                             <td class="table__cell" style="cursor: pointer; color: var(--color-primary); font-weight: 600;" on:click={
                                                 let id = id_for_click.clone();
                                                 move |_| open_detail(id.clone())

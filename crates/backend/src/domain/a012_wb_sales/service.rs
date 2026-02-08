@@ -179,6 +179,78 @@ pub async fn auto_fill_references(document: &mut WbSales) -> Result<()> {
     Ok(())
 }
 
+/// Автозаполнение dealer_price_ut из p906_nomenclature_prices
+/// Логика:
+/// 1. Ищем цену по nomenclature_ref
+/// 2. Если не найдено и есть base_nomenclature_ref, ищем по нему
+pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
+    const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
+    // Проверяем наличие nomenclature_ref
+    let Some(ref nom_ref) = document.nomenclature_ref else {
+        document.line.dealer_price_ut = None;
+        return Ok(());
+    };
+
+    // Получаем дату продажи в формате строки
+    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+
+    // 1. Пытаемся найти цену по основной номенклатуре
+    let mut price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
+        nom_ref, &sale_date,
+    )
+    .await
+    .unwrap_or_else(|e| {
+        tracing::warn!("Failed to get dealer price for {}: {}", nom_ref, e);
+        None
+    });
+
+    // 2. Если цена не найдена, пробуем найти по base_nomenclature_ref
+    if price.is_none() {
+        // Получаем данные номенклатуры чтобы узнать base_nomenclature_ref
+        if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
+            if let Ok(Some(nomenclature)) =
+                crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
+            {
+                if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
+                    // Проверяем что base_ref не пустой и не zero uuid
+                    if !base_ref.is_empty() && base_ref != ZERO_UUID {
+                        price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
+                            base_ref,
+                            &sale_date,
+                        )
+                        .await
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Failed to get dealer price for base_nomenclature {}: {}", base_ref, e);
+                            None
+                        });
+
+                        if price.is_some() {
+                            tracing::info!(
+                                "Filled dealer_price_ut = {:?} for document {} (from base_nomenclature: {})",
+                                price,
+                                document.base.id.as_string(),
+                                base_ref
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        tracing::info!(
+            "Filled dealer_price_ut = {:?} for document {} (from nomenclature: {})",
+            price,
+            document.base.id.as_string(),
+            nom_ref
+        );
+    }
+
+    document.line.dealer_price_ut = price;
+
+    Ok(())
+}
+
 pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> Result<Uuid> {
     let raw_ref = crate::shared::data::raw_storage::save_raw_json(
         "WB",
@@ -193,6 +265,9 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
 
     // Автозаполнение ссылок
     auto_fill_references(&mut document).await?;
+
+    // Заполнение dealer_price_ut
+    fill_dealer_price(&mut document).await?;
 
     document
         .validate()
@@ -240,4 +315,26 @@ pub async fn list_all() -> Result<Vec<WbSales>> {
 
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
+}
+
+/// Обновить dealer_price_ut для существующего документа
+pub async fn refresh_dealer_price(id: Uuid) -> Result<()> {
+    // Получаем документ
+    let mut document = get_by_id(id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    // Обновляем dealer_price_ut
+    fill_dealer_price(&mut document).await?;
+
+    // Сохраняем обратно в базу
+    repository::upsert_document(&document).await?;
+
+    tracing::info!(
+        "Refreshed dealer_price_ut for document {}: {:?}",
+        id,
+        document.line.dealer_price_ut
+    );
+
+    Ok(())
 }

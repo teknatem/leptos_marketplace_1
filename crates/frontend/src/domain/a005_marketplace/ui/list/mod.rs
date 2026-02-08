@@ -203,9 +203,11 @@ pub fn MarketplaceList() -> impl IntoView {
 
     view! {
         <div class="content">
-            <div class="header">
-                <h2>{"Маркетплейсы"}</h2>
-                <div class="header__actions">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h2 class="page__title">{"Маркетплейсы"}</h2>
+                </div>
+                <div class="page__header-right">
                     <button class="button button--primary" on:click=move |_| handle_create_new()>
                         {icon("plus")}
                         {"Новый маркетплейс"}

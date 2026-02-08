@@ -24,7 +24,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             items: vec![
                 ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
                 ("d401_metadata_dashboard", "Метаданные", "layout-dashboard"),
-                ("universal_dashboard", "Универсальный дашборд", "table-pivot"),
+                (
+                    "universal_dashboard",
+                    "Универсальный дашборд",
+                    "table-pivot",
+                ),
                 ("schema_browser", "Схемы данных", "database-cog"),
             ],
             admin_only: false,
@@ -112,7 +116,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "WB Commission History",
                     "percent",
                 ),
-                ("p906_nomenclature_prices", "Плановые цены", "dollar-sign"),
+                (
+                    "p906_nomenclature_prices",
+                    "Дилерские цены (УТ)",
+                    "dollar-sign",
+                ),
             ],
             admin_only: false,
         },
@@ -232,7 +240,7 @@ pub fn Sidebar() -> impl IntoView {
                                                             let iid = item_id.get_value();
                                                             ctx.active.get().as_ref().map(|a| a == &iid).unwrap_or(false)
                                                         }
-                                                        style:padding-left="28px"
+                                                        style:padding-left="10px"
                                                         on:click=move |_| {
                                                             ctx.open_tab(id, label);
                                                         }

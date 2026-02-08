@@ -11,8 +11,8 @@ use thaw::*;
 pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
         <Card>
+        <h4 class="details-section__title">"Основные поля"</h4>
         <div class="details-section">
-            <h4 class="details-section__title">"Основные поля"</h4>
             <div class="details-grid--3col">
                 // Description (required)
                 <div class="form__group" style="grid-column: 1 / -1;">
@@ -51,9 +51,29 @@ pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                 </div>
 
                 // Flags
-                <div class="details-flags" style="grid-column: 1 / -1;">
+                <div class="details-flags" style="grid-column: 1 / 2;">
                     <Checkbox checked=vm.is_folder label="Это папка" />
                 </div>
+
+                // Is derivative (readonly checkbox)
+                <div class="details-flags" style="grid-column: 2 / -1;">
+                    <Checkbox
+                        checked=vm.is_derivative
+                        attr:disabled = true
+                        label="Производная позиция"
+                    />
+                </div>
+
+                // Base nomenclature reference (readonly)
+                <div class="form__group" style="grid-column: 1 / -1;">
+                    <label class="form__label">"Базовая номенклатура (UUID)"</label>
+                    <Input
+                        value=vm.base_nomenclature_ref
+                        disabled=true
+                        placeholder="Не задано"
+                    />
+                </div>
+
             </div>
         </div>
         </Card>

@@ -1,0 +1,37 @@
+# Marketplace Integrator Configuration
+# This file configures database path and other settings
+#
+# IMPORTANT: Place this file next to backend.exe and rename it to config.toml
+
+[database]
+# Database file path
+# 
+# WINDOWS USERS: Use forward slashes (/) instead of backslashes (\)
+# Windows accepts both types of slashes, but TOML requires special
+# handling for backslashes in double-quoted strings.
+#
+# ✓ CORRECT (forward slashes):
+# path = "C:/Users/username/Desktop/MPI/data/app.db"
+#
+# ✓ ALSO CORRECT (relative path):
+# path = "data/app.db"
+#
+# ✓ ALSO CORRECT (double backslashes):
+# path = "C:\\Users\\username\\Desktop\\MPI\\data\\app.db"
+#
+# ✓ ALSO CORRECT (single quotes for literal string):
+# path = 'C:\Users\username\Desktop\MPI\data\app.db'
+#
+# ❌ WRONG (will cause parse error):
+# path = "C:\Users\username\Desktop\MPI\data\app.db"
+
+# Example 1: Relative path (database next to exe)
+path = "data/app.db"
+
+# Example 2: Absolute path on Windows
+# path = "C:/Users/udv/Desktop/MPI/data/app.db"
+
+# Example 3: Absolute path on Linux/Mac
+# path = "/var/lib/marketplace/app.db"
+
+# The directory will be created automatically if it doesn't exist

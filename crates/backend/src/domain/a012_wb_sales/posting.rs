@@ -12,6 +12,9 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Автозаполнение ссылок на marketplace_product и nomenclature
     super::service::auto_fill_references(&mut document).await?;
 
+    // Заполнение dealer_price_ut из p906_nomenclature_prices
+    super::service::fill_dealer_price(&mut document).await?;
+
     // Расчёт финансовых полей (план/факт) на основе данных P903
     super::service::calculate_financial_fields(&mut document).await?;
 

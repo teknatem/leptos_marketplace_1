@@ -6,6 +6,8 @@ use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 
+use crate::shared::api_utils::api_base;
+
 #[component]
 pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (return_data, set_return_data) = signal::<Option<YmReturnDetailDto>>(None);
@@ -31,7 +33,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a016/ym-returns/{}", id);
+            let url = format!("{}/api/a016/ym-returns/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -50,8 +52,8 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                         // Async load raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
-                                                "http://localhost:3000/api/a016/raw/{}",
-                                                raw_payload_ref
+                                                "{}/api/a016/raw/{}",
+                                                api_base(), raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
@@ -86,8 +88,8 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
-                                                "http://localhost:3000/api/a016/ym-returns/{}/projections",
-                                                return_id
+                                                "{}/api/a016/ym-returns/{}/projections",
+                                                api_base(), return_id
                                             );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {

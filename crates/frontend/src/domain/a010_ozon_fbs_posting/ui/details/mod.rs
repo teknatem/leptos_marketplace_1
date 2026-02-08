@@ -1,4 +1,5 @@
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
+use crate::shared::api_utils::api_base;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -152,7 +153,7 @@ pub fn OzonFbsPostingDetail(
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/a010/ozon-fbs-posting/{}", id);
+            let url = format!("{}/api/a010/ozon-fbs-posting/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -174,7 +175,8 @@ pub fn OzonFbsPostingDetail(
                                         // Асинхронная загрузка raw JSON
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
-                                                "http://localhost:3000/api/a010/raw/{}",
+                                                "{}/api/a010/raw/{}",
+                                                api_base(),
                                                 raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
@@ -217,7 +219,8 @@ pub fn OzonFbsPostingDetail(
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
-                                                "http://localhost:3000/api/projections/p900/{}",
+                                                "{}/api/projections/p900/{}",
+                                                api_base(),
                                                 posting_id
                                             );
                                             match Request::get(&projections_url).send().await {
@@ -250,7 +253,7 @@ pub fn OzonFbsPostingDetail(
                                             // URL-кодируем posting_number для корректной передачи в URL
                                             let encoded_posting_number =
                                                 urlencoding::encode(&document_no);
-                                            let transactions_url = format!("http://localhost:3000/api/ozon_transactions/by-posting/{}", encoded_posting_number);
+                                            let transactions_url = format!("{}/api/ozon_transactions/by-posting/{}", api_base(), encoded_posting_number);
                                             log!("Loading transactions for posting_number: {} (encoded: {})", document_no, encoded_posting_number);
                                             log!("Request URL: {}", transactions_url);
 

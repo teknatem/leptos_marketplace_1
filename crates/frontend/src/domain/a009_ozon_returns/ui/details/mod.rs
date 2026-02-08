@@ -1,3 +1,4 @@
+use crate::shared::api_utils::api_base;
 use crate::shared::date_utils::format_datetime;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -104,7 +105,7 @@ pub fn OzonReturnsDetail(
             set_loading.set(true);
             set_error.set(None);
 
-            let url = format!("http://localhost:3000/api/ozon_returns/{}", id);
+            let url = format!("{}/api/ozon_returns/{}", api_base(), id);
 
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -125,7 +126,8 @@ pub fn OzonReturnsDetail(
                                         wasm_bindgen_futures::spawn_local(async move {
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
-                                                "http://localhost:3000/api/projections/p900/{}",
+                                                "{}/api/projections/p900/{}",
+                                                api_base(),
                                                 return_id
                                             );
                                             match Request::get(&projections_url).send().await {
@@ -584,7 +586,7 @@ fn render_projections_tab(
                                     let id = return_id.clone();
                                     set_posting_in_progress.set(true);
                                     wasm_bindgen_futures::spawn_local(async move {
-                                        let url = format!("http://localhost:3000/api/a009/ozon-returns/{}/unpost", id);
+                                        let url = format!("{}/api/a009/ozon-returns/{}/unpost", api_base(), id);
                                         match Request::post(&url).send().await {
                                             Ok(resp) if resp.status() == 200 => {
                                                 log!("Document unposted successfully");
@@ -616,7 +618,7 @@ fn render_projections_tab(
                                     let id = return_id.clone();
                                     set_posting_in_progress.set(true);
                                     wasm_bindgen_futures::spawn_local(async move {
-                                        let url = format!("http://localhost:3000/api/a009/ozon-returns/{}/post", id);
+                                        let url = format!("{}/api/a009/ozon-returns/{}/post", api_base(), id);
                                         match Request::post(&url).send().await {
                                             Ok(resp) if resp.status() == 200 => {
                                                 log!("Document posted successfully");

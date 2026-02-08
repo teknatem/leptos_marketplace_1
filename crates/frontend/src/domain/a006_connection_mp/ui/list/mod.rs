@@ -192,10 +192,12 @@ pub fn ConnectionMPList() -> impl IntoView {
     fetch();
 
     view! {
-        <div style="padding: 20px;">
-            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                <h1 style="font-size: 24px; font-weight: bold;">{"Подключения маркетплейсов"}</h1>
-                <Space>
+        <div class="page">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">{"Подключения маркетплейсов"}</h1>
+                </div>
+                <div class="page__header-right">
                     <Button
                         appearance=ButtonAppearance::Primary
                         on_click=move |_| handle_create_new()
@@ -218,8 +220,9 @@ pub fn ConnectionMPList() -> impl IntoView {
                         {icon("delete")}
                         {move || format!(" Удалить ({})", selected.get().len())}
                     </Button>
-                </Space>
-            </Flex>
+                </div>
+            </div>
+
             <div style="margin-top: 16px;">
             {move || error.get().map(|e| view! {
                 <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; display: flex; align-items: center; gap: 8px;">
@@ -235,7 +238,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                         <TableHeaderCell resizable=false class="fixed-checkbox-column">
                             <input
                                 type="checkbox"
-                                style="cursor: pointer;"
+                                class="table__checkbox"
                                 on:change=move |ev| {
                                     let checked = event_target_checked(&ev);
                                     let current_items = items.get();
@@ -355,7 +358,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                                 <TableCell class="fixed-checkbox-column">
                                     <input
                                         type="checkbox"
-                                        style="cursor: pointer;"
+                                        class="table__checkbox"
                                         prop:checked=move || selected.get().contains(&id_for_checkbox)
                                         on:change=move |ev| {
                                             let checked = event_target_checked(&ev);
