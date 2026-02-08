@@ -146,7 +146,7 @@ pub fn ThemeSelect() -> impl IntoView {
     view! {
         <div class="theme-select-wrapper">
             <button
-                class="top-header__icon-button"
+                class="app-header__icon-button"
                 on:click=toggle_dropdown
                 title="Выбор темы"
             >

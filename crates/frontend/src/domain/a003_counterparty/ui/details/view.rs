@@ -30,7 +30,7 @@ pub fn CounterpartyDetails(
                 move || vm.error.get().map(|e| view! { <div class="error">{e}</div> })
             }
 
-            <div class="detail-form">
+            <div class="page page--detail">
                 <div class="form__group">
                     <label for="description">{"Наименование"}</label>
                     <input

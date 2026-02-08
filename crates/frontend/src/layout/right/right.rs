@@ -1,6 +1,6 @@
 use crate::layout::global_context::AppGlobalContext;
-use leptos::prelude::*;
 use leptos::prelude::window_event_listener;
+use leptos::prelude::*;
 
 #[component]
 pub fn Right(children: Children) -> impl IntoView {
@@ -30,20 +30,18 @@ pub fn Right(children: Children) -> impl IntoView {
         if !is_resizing.get_untracked() {
             return;
         }
-        
+
         // Получаем размер окна
         let window = web_sys::window().expect("window");
         let window_width = window.inner_width().unwrap().as_f64().unwrap();
-        
+
         // Расчет доступной ширины
         let max_available = window_width - 400.0 - 260.0;
         let max_width = max_available.min(window_width * 0.5);
-        
+
         let dx = start_x.get_untracked() - ev.client_x() as f64;
-        let new_width = (start_width.get_untracked() + dx)
-            .max(30.0)
-            .min(max_width);
-        
+        let new_width = (start_width.get_untracked() + dx).max(30.0).min(max_width);
+
         width.set(new_width);
     });
 
@@ -57,7 +55,7 @@ pub fn Right(children: Children) -> impl IntoView {
     // Effect для управления cursor и user-select
     Effect::new(move |_| {
         let is_resizing_value = is_resizing.get();
-        
+
         if let Some(body) = web_sys::window()
             .and_then(|w| w.document())
             .and_then(|d| d.body())
@@ -75,12 +73,12 @@ pub fn Right(children: Children) -> impl IntoView {
     view! {
         <div
             data-zone="right"
-            class="right-panel"
-            class:right-panel--hidden=move || !is_open()
-            class:right-panel--resizing=move || is_resizing.get()
+            class="app-panel"
+            class:app-panel--hidden=move || !is_open()
+            class:app-panel--resizing=move || is_resizing.get()
             style:width=move || if is_open() { format!("{}px", width.get()) } else { "0px".to_string() }
         >
-            <div class="right-panel__resizer" on:mousedown=on_resize_start></div>
+            <div class="app-panel__resizer" on:mousedown=on_resize_start></div>
             {children()}
         </div>
     }

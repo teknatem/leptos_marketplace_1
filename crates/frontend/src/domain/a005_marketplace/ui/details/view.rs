@@ -7,8 +7,7 @@ use std::rc::Rc;
 #[component]
 pub fn MarketplaceDetails(
     id: Option<String>,
-    #[prop(optional)]
-    readonly: bool,
+    #[prop(optional)] readonly: bool,
     on_saved: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
@@ -25,8 +24,8 @@ pub fn MarketplaceDetails(
         let vm_clone = vm_clone.clone();
         move || {
             view! {
-                <div class="detail-form">
-                    <div class="detail-form-content">
+                <div class="page page--detail">
+                    <div class="page__content">
                         <div class="form__group">
                             <label class="form__label" for="description">{"Наименование"}</label>
                             <input

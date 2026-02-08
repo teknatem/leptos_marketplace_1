@@ -53,7 +53,8 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                         wasm_bindgen_futures::spawn_local(async move {
                                             let raw_url = format!(
                                                 "{}/api/a016/raw/{}",
-                                                api_base(), raw_payload_ref
+                                                api_base(),
+                                                raw_payload_ref
                                             );
                                             match Request::get(&raw_url).send().await {
                                                 Ok(resp) => {
@@ -89,7 +90,8 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                             set_projections_loading.set(true);
                                             let projections_url = format!(
                                                 "{}/api/a016/ym-returns/{}/projections",
-                                                api_base(), return_id
+                                                api_base(),
+                                                return_id
                                             );
                                             match Request::get(&projections_url).send().await {
                                                 Ok(resp) => {
@@ -143,19 +145,19 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     });
 
     view! {
-        <div class="detail-form">
-            <div class="detail-form-header">
-                <div class="detail-form-header-left">
+        <div class="page page--detail">
+            <div class="page__header">
+                <div class="page__header-left">
                     <h2>"Yandex Market Return"</h2>
                 </div>
-                <div class="detail-form-header-right">
+                <div class="page__header-right">
                     <button class="button button--secondary" on:click=move |_| on_close.run(())>
                         "✕ Закрыть"
                     </button>
                 </div>
             </div>
 
-            <div class="detail-form-content">
+            <div class="page__content">
                 {move || {
                     if loading.get() {
                         view! {

@@ -42,8 +42,8 @@ pub fn TabPage(tab: TabData, tabs_store: AppGlobalContext) -> impl IntoView {
 
     view! {
         <div
-            class="tabs__item"
-            class:tabs__item--hidden=move || !is_active()
+            class="app-tabs__item"
+            class:app-tabs__item--hidden=move || !is_active()
             data-tab-key=tab_key
         >
             {content}

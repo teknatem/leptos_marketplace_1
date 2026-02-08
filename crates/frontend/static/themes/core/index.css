@@ -9,6 +9,7 @@
 /* Import design tokens and core styles */
 @import url("./variables.css") layer(tokens);
 @import url("./base.css") layer(base);
+@import url("./app-shell.css") layer(layout);
 @import url("./layout.css") layer(layout);
 @import url("./components.css") layer(components);
 @import url("./dashboards/d401_metadata_dashboard.css") layer(components);

@@ -45,17 +45,17 @@ pub fn TopHeader() -> impl IntoView {
     let is_right_panel_visible = move || ctx.right_open.get();
 
     view! {
-        <div class="top-header">
+        <div class="app-header">
             // Left section - brand
-            <div class="top-header__brand">
-                <span class="top-header__title">"Integrator"</span>
+            <div class="app-header__brand">
+                <span class="app-header__title">"Integrator"</span>
             </div>
 
             // Right section - actions
-            <div class="top-header__actions">
+            <div class="app-header__actions">
                 // Left panel toggle
                 <button
-                    class="top-header__icon-button"
+                    class="app-header__icon-button"
                     on:click=toggle_sidebar
                     title=move || if is_sidebar_visible() { "Скрыть навигацию" } else { "Показать навигацию" }
                 >
@@ -68,7 +68,7 @@ pub fn TopHeader() -> impl IntoView {
 
                 // Right panel toggle
                 <button
-                    class="top-header__icon-button"
+                    class="app-header__icon-button"
                     on:click=toggle_right_panel
                     title=move || if is_right_panel_visible() { "Скрыть правую панель" } else { "Показать правую панель" }
                 >
@@ -80,18 +80,18 @@ pub fn TopHeader() -> impl IntoView {
                 </button>
 
                 // Notifications
-                <button class="top-header__icon-button" title="Уведомления">
+                <button class="app-header__icon-button" title="Уведомления">
                     {icon("bell")}
                 </button>
 
                 // Settings
-                <button class="top-header__icon-button" title="Настройки">
+                <button class="app-header__icon-button" title="Настройки">
                     {icon("settings")}
                 </button>
 
                 // DOM Inspector
-                <button 
-                    class="top-header__icon-button" 
+                <button
+                    class="app-header__icon-button"
                     on:click=move |_| {
                         // Захватываем DOM ДО открытия вкладки
                         if let Some(tree) = crate::shared::dom_validator::tree_builder::build_dom_tree() {
@@ -108,7 +108,7 @@ pub fn TopHeader() -> impl IntoView {
                 <ThemeSelect />
 
                 // User info
-                <div class="top-header__user">
+                <div class="app-header__user">
                     {icon("user")}
                     <span>
                         {move || auth_state.get().user_info
@@ -118,7 +118,7 @@ pub fn TopHeader() -> impl IntoView {
                 </div>
 
                 // Logout
-                <button class="top-header__icon-button" on:click=logout title="Выход">
+                <button class="app-header__icon-button" on:click=logout title="Выход">
                     {icon("log-out")}
                 </button>
             </div>

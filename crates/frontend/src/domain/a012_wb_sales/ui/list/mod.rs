@@ -582,10 +582,11 @@ pub fn WbSalesList() -> impl IntoView {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
-                let response = Request::post(&format!("{}/api/a012/wb-sales/batch-post", api_base()))
-                    .header("Content-Type", "application/json")
-                    .body(serde_json::to_string(&payload).unwrap_or_default())
-                    .map(|req| req.send());
+                let response =
+                    Request::post(&format!("{}/api/a012/wb-sales/batch-post", api_base()))
+                        .header("Content-Type", "application/json")
+                        .body(serde_json::to_string(&payload).unwrap_or_default())
+                        .map(|req| req.send());
 
                 match response {
                     Ok(future) => match future.await {
@@ -1122,7 +1123,7 @@ pub fn WbSalesList() -> impl IntoView {
                 }
             }}
 
-            <div class="page-content">
+            <div class="page__content">
                 <div class="list-container">
                     {move || {
                         if loading.get() {
