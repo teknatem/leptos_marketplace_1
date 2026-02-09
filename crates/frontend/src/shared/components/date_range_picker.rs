@@ -69,33 +69,38 @@ pub fn DateRangePicker(
         }
     };
 
-    // Установить предыдущий месяц
+    // Установить предыдущий месяц (вычитает от текущего выбранного периода)
     let on_previous_month = {
         let on_change = on_change.clone();
         move |_| {
-            let now = Utc::now().date_naive();
-            let (year, month) = if now.month() == 1 {
-                (now.year() - 1, 12)
-            } else {
-                (now.year(), now.month() - 1)
-            };
+            // Берем текущую дату "от" и вычитаем от нее месяц
+            let current_from = date_from.get_untracked();
 
-            let month_start =
-                NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-            let month_end = if month == 12 {
-                NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                    .map(|d| d - Duration::days(1))
-                    .expect("Invalid month end date")
-            } else {
-                NaiveDate::from_ymd_opt(year, month + 1, 1)
-                    .map(|d| d - Duration::days(1))
-                    .expect("Invalid month end date")
-            };
+            // Парсим текущую дату
+            if let Ok(current_date) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
+                let (year, month) = if current_date.month() == 1 {
+                    (current_date.year() - 1, 12)
+                } else {
+                    (current_date.year(), current_date.month() - 1)
+                };
 
-            on_change.run((
-                month_start.format("%Y-%m-%d").to_string(),
-                month_end.format("%Y-%m-%d").to_string(),
-            ));
+                let month_start =
+                    NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
+                let month_end = if month == 12 {
+                    NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                        .map(|d| d - Duration::days(1))
+                        .expect("Invalid month end date")
+                } else {
+                    NaiveDate::from_ymd_opt(year, month + 1, 1)
+                        .map(|d| d - Duration::days(1))
+                        .expect("Invalid month end date")
+                };
+
+                on_change.run((
+                    month_start.format("%Y-%m-%d").to_string(),
+                    month_end.format("%Y-%m-%d").to_string(),
+                ));
+            }
         }
     };
 
@@ -133,10 +138,27 @@ pub fn DateRangePicker(
         }
     };
 
+    // Обработчик выбора месяца по кнопке
+    let on_select_month = move |month: u32| {
+        selected_month.set(month.to_string());
+    };
+
+    // Установить текущий год
+    let on_current_year = move |_| {
+        let current_year = Utc::now().date_naive().year();
+        selected_year.set(current_year.to_string());
+    };
+
+    // Установить предыдущий год
+    let on_previous_year = move |_| {
+        let previous_year = Utc::now().date_naive().year() - 1;
+        selected_year.set(previous_year.to_string());
+    };
+
     view! {
 
     <style>
-        ".date-range-picker-compact .thaw-button--small { width: 32px; min-width: 32px; height: 32px;}"
+        ".date-range-picker-compact .thaw-button--small { width: 32px; min-width: 32px; height: 30px;}"
         "
         /* Match Thaw Input visuals (bottom stroke differs) */
         .date-range-picker {
@@ -274,30 +296,64 @@ pub fn DateRangePicker(
                     <DialogTitle>"Выберите месяц и год"</DialogTitle>
                     <DialogContent>
                         <Flex vertical=true gap=FlexGap::Large>
+                            // Секция выбора месяца - сетка 4x3
                             <div>
-                                <div style="margin-bottom: 8px; font-weight: 500;">"Месяц:"</div>
-                                <Select value=selected_month>
-                                    <option value="1">"Январь"</option>
-                                    <option value="2">"Февраль"</option>
-                                    <option value="3">"Март"</option>
-                                    <option value="4">"Апрель"</option>
-                                    <option value="5">"Май"</option>
-                                    <option value="6">"Июнь"</option>
-                                    <option value="7">"Июль"</option>
-                                    <option value="8">"Август"</option>
-                                    <option value="9">"Сентябрь"</option>
-                                    <option value="10">"Октябрь"</option>
-                                    <option value="11">"Ноябрь"</option>
-                                    <option value="12">"Декабрь"</option>
-                                </Select>
+                                <div style="margin-bottom: 12px; font-weight: 500;">"Месяц:"</div>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                                    {
+                                        let months = vec![
+                                            (1, "Янв"), (2, "Фев"), (3, "Мар"), (4, "Апр"),
+                                            (5, "Май"), (6, "Июн"), (7, "Июл"), (8, "Авг"),
+                                            (9, "Сен"), (10, "Окт"), (11, "Ноя"), (12, "Дек"),
+                                        ];
+
+                                        months.into_iter().map(|(month_num, month_name)| {
+                                            let is_selected = move || selected_month.get() == month_num.to_string();
+                                            view! {
+                                                <Button
+                                                    size=ButtonSize::Small
+                                                    appearance=move || {
+                                                        if is_selected() {
+                                                            ButtonAppearance::Primary
+                                                        } else {
+                                                            ButtonAppearance::Subtle
+                                                        }
+                                                    }
+                                                    on_click=move |_| on_select_month(month_num)
+                                                    attr:style="width: 100%;"
+                                                >
+                                                    {month_name}
+                                                </Button>
+                                            }
+                                        }).collect_view()
+                                    }
+                                </div>
                             </div>
 
+                            // Секция выбора года
                             <div>
-                                <div style="margin-bottom: 8px; font-weight: 500;">"Год:"</div>
-                                <Input
-                                    input_type=InputType::Number
-                                    value=selected_year
-                                />
+                                <div style="margin-bottom: 12px; font-weight: 500;">"Год:"</div>
+                                <Flex gap=FlexGap::Small vertical=false align=FlexAlign::Center>
+                                    <Button
+                                        size=ButtonSize::Small
+                                        appearance=ButtonAppearance::Subtle
+                                        on_click=on_previous_year
+                                    >
+                                        {(Utc::now().date_naive().year() - 1).to_string()}
+                                    </Button>
+                                    <Button
+                                        size=ButtonSize::Small
+                                        appearance=ButtonAppearance::Subtle
+                                        on_click=on_current_year
+                                    >
+                                        {Utc::now().date_naive().year().to_string()}
+                                    </Button>
+                                    <Input
+                                        input_type=InputType::Number
+                                        value=selected_year
+                                        attr:style="flex: 1;"
+                                    />
+                                </Flex>
                             </div>
                         </Flex>
                     </DialogContent>

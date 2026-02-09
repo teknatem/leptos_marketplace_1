@@ -411,9 +411,6 @@
   scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
 }
 
-.app-tabs--dimmed {
-  /* Applied when tabs are active */
-}
 
 /* Theme-aware scrollbar (Chromium/WebKit) */
 .app-tabs::-webkit-scrollbar {

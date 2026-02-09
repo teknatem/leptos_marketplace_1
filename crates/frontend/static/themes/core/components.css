@@ -804,10 +804,10 @@
   right: 0;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 10px;
   cursor: col-resize;
   background: transparent;
-  z-index: var(--z-resizer);
+  z-index: 999;
   transition: background var(--transition-fast);
   user-select: none;
 }

@@ -16,6 +16,7 @@ pub struct SalesRegisterDto {
     // References to aggregates (UUID as String)
     pub connection_mp_ref: String,
     pub organization_ref: String,
+    pub organization_name: Option<String>,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,

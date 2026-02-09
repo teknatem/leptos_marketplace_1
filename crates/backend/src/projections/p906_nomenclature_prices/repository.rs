@@ -387,3 +387,35 @@ pub async fn get_price_for_date(nomenclature_ref: &str, sale_date: &str) -> Resu
 
     Ok(result.map(|m| m.price))
 }
+
+/// Получить самую первую (раннюю) ненулевую цену для номенклатуры
+/// Логика: найти запись с MIN(period) WHERE price > 0
+pub async fn get_first_nonzero_price(nomenclature_ref: &str) -> Result<Option<f64>> {
+    let db = conn();
+
+    // Находим цену с минимальной датой period, где price > 0
+    let result = Entity::find()
+        .filter(Column::NomenclatureRef.eq(nomenclature_ref))
+        .filter(Column::Price.gt(0.0))
+        .order_by_asc(Column::Period)
+        .one(db)
+        .await?;
+
+    Ok(result.map(|m| m.price))
+}
+
+/// Получить самую последнюю (позднюю) ненулевую цену для номенклатуры
+/// Логика: найти запись с MAX(period) WHERE price > 0
+pub async fn get_last_nonzero_price(nomenclature_ref: &str) -> Result<Option<f64>> {
+    let db = conn();
+
+    // Находим цену с максимальной датой period, где price > 0
+    let result = Entity::find()
+        .filter(Column::NomenclatureRef.eq(nomenclature_ref))
+        .filter(Column::Price.gt(0.0))
+        .order_by_desc(Column::Period)
+        .one(db)
+        .await?;
+
+    Ok(result.map(|m| m.price))
+}

@@ -224,7 +224,7 @@ pub async fn from_wb_sales(
     Ok(SalesRegisterEntry {
         // NK
         marketplace: "WB".to_string(),
-        document_no: document.header.document_no.clone(),
+        document_no: document.header.sale_id.clone().unwrap_or_else(|| document.header.document_no.clone()),
         line_id: document.line.line_id.clone(), // В WB line_id совпадает с document_no (srid)
 
         // Metadata

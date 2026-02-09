@@ -1,11 +1,53 @@
 use axum::{extract::Query, Json};
+use contracts::domain::common::AggregateId;
 use contracts::projections::p900_mp_sales_register::{
     SalesRegisterDetailDto, SalesRegisterDto, SalesRegisterListRequest, SalesRegisterListResponse,
     SalesRegisterStatsByDateRequest, SalesRegisterStatsByDateResponse,
     SalesRegisterStatsByMarketplaceResponse,
 };
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::projections::p900_mp_sales_register::{backfill, repository, service};
+
+// Cache для организаций
+static ORG_CACHE: Lazy<Arc<RwLock<Option<(std::time::Instant, HashMap<String, String>)>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(None)));
+
+/// Получить кэш организаций (id -> description)
+async fn get_org_map() -> HashMap<String, String> {
+    let cache_ttl = std::time::Duration::from_secs(300); // 5 минут
+    
+    // Проверяем кэш
+    {
+        let cache = ORG_CACHE.read().await;
+        if let Some((timestamp, map)) = cache.as_ref() {
+            if timestamp.elapsed() < cache_ttl {
+                return map.clone();
+            }
+        }
+    }
+    
+    // Загружаем организации из БД
+    let organizations = crate::domain::a002_organization::service::list_all()
+        .await
+        .unwrap_or_default();
+    
+    let map: HashMap<String, String> = organizations
+        .into_iter()
+        .map(|org| (org.base.id.as_string(), org.base.description.clone()))
+        .collect();
+    
+    // Обновляем кэш
+    {
+        let mut cache = ORG_CACHE.write().await;
+        *cache = Some((std::time::Instant::now(), map.clone()));
+    }
+    
+    map
+}
 
 /// Handler для получения списка продаж с фильтрами
 pub async fn list_sales(
@@ -28,7 +70,10 @@ pub async fn list_sales(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(model_to_dto).collect();
+    // Получаем кэш организаций
+    let org_map = get_org_map().await;
+
+    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(|m| model_to_dto(m, &org_map)).collect();
 
     let has_more = total > (req.offset + dtos.len() as i32);
 
@@ -55,10 +100,13 @@ pub async fn get_sale_detail(
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
-    // TODO: получить связанные данные (organization_name, connection_mp_name, etc.)
+    // Получаем кэш организаций
+    let org_map = get_org_map().await;
+    let organization_name = org_map.get(&item.organization_ref).cloned();
+
     let dto = SalesRegisterDetailDto {
-        sale: model_to_dto(item),
-        organization_name: None,
+        sale: model_to_dto(item, &org_map),
+        organization_name,
         connection_mp_name: None,
         marketplace_product_name: None,
     };
@@ -123,7 +171,9 @@ pub async fn backfill_product_refs() -> Result<Json<serde_json::Value>, axum::ht
 }
 
 /// Преобразование Model в DTO
-fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
+fn model_to_dto(model: repository::Model, org_map: &HashMap<String, String>) -> SalesRegisterDto {
+    let organization_name = org_map.get(&model.organization_ref).cloned();
+    
     SalesRegisterDto {
         marketplace: model.marketplace,
         document_no: model.document_no,
@@ -133,6 +183,7 @@ fn model_to_dto(model: repository::Model) -> SalesRegisterDto {
         document_version: model.document_version,
         connection_mp_ref: model.connection_mp_ref,
         organization_ref: model.organization_ref,
+        organization_name,
         marketplace_product_ref: model.marketplace_product_ref,
         nomenclature_ref: model.nomenclature_ref,
         registrator_ref: model.registrator_ref,
@@ -171,7 +222,10 @@ pub async fn get_by_registrator(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(model_to_dto).collect();
+    // Получаем кэш организаций
+    let org_map = get_org_map().await;
+
+    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(|m| model_to_dto(m, &org_map)).collect();
 
     Ok(Json(dtos))
 }

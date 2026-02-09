@@ -181,8 +181,10 @@ pub async fn auto_fill_references(document: &mut WbSales) -> Result<()> {
 
 /// Автозаполнение dealer_price_ut из p906_nomenclature_prices
 /// Логика:
-/// 1. Ищем цену по nomenclature_ref
-/// 2. Если не найдено и есть base_nomenclature_ref, ищем по нему
+/// 1. Ищем цену на дату по nomenclature_ref
+/// 2. Если не найдено и есть base_nomenclature_ref, ищем цену на дату по нему
+/// 3. Если не найдено, ищем самую первую ненулевую цену по nomenclature_ref
+/// 4. Если не найдено и есть base_nomenclature_ref, ищем самую первую ненулевую цену по нему
 pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
     const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -195,7 +197,9 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
     // Получаем дату продажи в формате строки
     let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
 
-    // 1. Пытаемся найти цену по основной номенклатуре
+    let mut price_source = String::new();
+
+    // 1. Пытаемся найти цену на дату по основной номенклатуре
     let mut price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
         nom_ref, &sale_date,
     )
@@ -205,7 +209,15 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
         None
     });
 
-    // 2. Если цена не найдена, пробуем найти по base_nomenclature_ref
+    // Проверяем что цена не только найдена, но и не равна 0
+    if price.is_some() && price.unwrap() > 0.0 {
+        price_source = format!("nomenclature {} on date {}", nom_ref, sale_date);
+    } else {
+        // Нулевая цена считается как "не найдена"
+        price = None;
+    }
+
+    // 2. Если цена не найдена, пробуем найти по base_nomenclature_ref на дату
     if price.is_none() {
         // Получаем данные номенклатуры чтобы узнать base_nomenclature_ref
         if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
@@ -225,22 +237,73 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
                             None
                         });
 
-                        if price.is_some() {
-                            tracing::info!(
-                                "Filled dealer_price_ut = {:?} for document {} (from base_nomenclature: {})",
-                                price,
-                                document.base.id.as_string(),
-                                base_ref
-                            );
+                        // Проверяем что цена не только найдена, но и не равна 0
+                        if price.is_some() && price.unwrap() > 0.0 {
+                            price_source = format!("base_nomenclature {} on date {}", base_ref, sale_date);
+                        } else {
+                            // Нулевая цена считается как "не найдена"
+                            price = None;
                         }
                     }
                 }
             }
         }
-    } else {
+    }
+
+    // 3. Если цена всё ещё не найдена, пробуем найти самую первую ненулевую цену по основной номенклатуре
+    if price.is_none() {
+        price = crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
+            nom_ref,
+        )
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to get first nonzero price for {}: {}", nom_ref, e);
+            None
+        });
+
+        if price.is_some() {
+            price_source = format!("nomenclature {} (first nonzero price)", nom_ref);
+        }
+    }
+
+    // 4. Если цена всё ещё не найдена, пробуем найти самую первую ненулевую цену по base_nomenclature_ref
+    if price.is_none() {
+        if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
+            if let Ok(Some(nomenclature)) =
+                crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
+            {
+                if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
+                    // Проверяем что base_ref не пустой и не zero uuid
+                    if !base_ref.is_empty() && base_ref != ZERO_UUID {
+                        price = crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
+                            base_ref,
+                        )
+                        .await
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Failed to get first nonzero price for base_nomenclature {}: {}", base_ref, e);
+                            None
+                        });
+
+                        if price.is_some() {
+                            price_source = format!("base_nomenclature {} (first nonzero price)", base_ref);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Логируем результат
+    if price.is_some() {
         tracing::info!(
-            "Filled dealer_price_ut = {:?} for document {} (from nomenclature: {})",
+            "Filled dealer_price_ut = {:?} for document {} (from {})",
             price,
+            document.base.id.as_string(),
+            price_source
+        );
+    } else {
+        tracing::warn!(
+            "Could not find dealer_price_ut for document {} (nomenclature: {})",
             document.base.id.as_string(),
             nom_ref
         );
