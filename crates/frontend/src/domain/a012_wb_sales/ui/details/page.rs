@@ -86,14 +86,12 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }.into_any()
                     } else if vm.sale.get().is_some() {
                         view! {
-                            <div>
+                            <div  class="tabs__content">
                                 // Tab bar
                                 <TabBar vm=vm_tabs.clone() />
 
                                 // Tab content
-                                <div style="padding-top: var(--spacing-lg);">
-                                    <TabContent vm=vm_content.clone() />
-                                </div>
+                                <TabContent vm=vm_content.clone() />
                             </div>
                         }.into_any()
                     } else {

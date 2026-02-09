@@ -94,10 +94,12 @@ pub async fn from_ozon_fbs(
             qty: line.qty,
             price_list: line.price_list,
             cost: Some(0.00),
+            dealer_price_ut: None,
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
             currency_code: line.currency_code.clone(),
+            is_fact: None,
 
             // Technical
             payload_version: 1,
@@ -170,10 +172,12 @@ pub async fn from_ozon_fbo(
             qty: line.qty,
             price_list: line.price_list,
             cost: Some(0.00),
+            dealer_price_ut: None,
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
             currency_code: line.currency_code.clone(),
+            is_fact: None,
 
             // Technical
             payload_version: 1,
@@ -252,10 +256,12 @@ pub async fn from_wb_sales(
         qty: document.line.qty,
         price_list: document.line.price_list,
         cost,
+        dealer_price_ut: document.line.dealer_price_ut,
         discount_total: document.line.discount_total,
         price_effective: document.line.price_effective,
         amount_line: document.line.amount_line,
         currency_code: document.line.currency_code.clone(),
+        is_fact: document.line.is_fact,
 
         // Technical
         payload_version: 1,
@@ -332,10 +338,12 @@ pub async fn from_ym_order(
             qty: line.qty,
             price_list: line.price_list,
             cost: Some(0.00),
+            dealer_price_ut: None,
             discount_total: line.discount_total,
             price_effective: line.price_effective,
             amount_line: line.amount_line,
             currency_code: line.currency_code.clone(),
+            is_fact: None,
 
             // Technical
             payload_version: 1,
@@ -408,10 +416,12 @@ pub async fn from_ozon_returns(
         qty: qty_negative,
         price_list: None,
         cost: Some(0.00),
+        dealer_price_ut: None,
         discount_total: None,
         price_effective: Some(document.price),
         amount_line: Some(amount_negative),
         currency_code: Some("RUB".to_string()),
+        is_fact: None,
 
         // Technical
         payload_version: 1,

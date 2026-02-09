@@ -863,7 +863,8 @@ pub fn WbSalesList() -> impl IntoView {
                 </div>
             </div>
 
-            <div class="filter-panel">
+            <div class="page__content">
+                <div class="filter-panel">
                 <div class="filter-panel-header">
                     <div
                         class="filter-panel-header__left"
@@ -1123,8 +1124,7 @@ pub fn WbSalesList() -> impl IntoView {
                 }
             }}
 
-            <div class="page__content">
-                <div class="list-container">
+            <div class="table-wrapper">
                     {move || {
                         if loading.get() {
                             return view! {
@@ -1135,9 +1135,7 @@ pub fn WbSalesList() -> impl IntoView {
                         }
 
                         view! {
-                            // Only horizontal scrolling here; vertical scrolling is handled by `.page`
-                            <div class="table-container" style="overflow-x: auto; overflow-y: visible;">
-                                <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1740px;">
+                            <Table attr:id=TABLE_ID>
                                     <TableHeader>
                                         <TableRow>
                                             <TableHeaderCell resizable=false class="fixed-checkbox-column">
@@ -1345,7 +1343,6 @@ pub fn WbSalesList() -> impl IntoView {
                                         />
                                     </TableBody>
                                 </Table>
-                            </div>
                         }.into_any()
                     }}
                 </div>

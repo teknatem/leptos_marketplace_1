@@ -168,10 +168,12 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
         qty: record.qty,
         price_list: record.price_list,
         cost: Some(0.00),
+        dealer_price_ut: None,
         discount_total: record.discount_total,
         price_effective: record.price_effective,
         amount_line: record.amount_line,
         currency_code: record.currency_code.clone(),
+        is_fact: None,
 
         // Technical
         payload_version: record.payload_version,

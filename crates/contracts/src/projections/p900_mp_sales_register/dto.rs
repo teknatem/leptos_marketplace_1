@@ -41,7 +41,11 @@ pub struct SalesRegisterDto {
     pub amount_line: Option<f64>,
     /// Плановая себестоимость (из p906_nomenclature_prices)
     pub cost: Option<f64>,
+    /// Дилерская цена УТ (из p906_nomenclature_prices)
+    pub dealer_price_ut: Option<f64>,
     pub currency_code: Option<String>,
+    /// Флаг: факт или план
+    pub is_fact: Option<bool>,
 
     // Technical fields
     pub loaded_at_utc: String,
