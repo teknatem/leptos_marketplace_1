@@ -57,6 +57,7 @@
 .thaw-table-header-cell {
   height: 36px !important;
   font-size: var(--font-size-base) !important;
+  border-right: 1px dotted rgba(0, 0, 0, 0.05);
 }
 
 /* Унификация размера шрифта для контента внутри ячеек Thaw */
@@ -153,5 +154,22 @@
 /* Выравнивание содержимого по правому краю для числовых ячеек */
 .text-right,
 .text-right .thaw-table-cell-layout__content {
-  justify-content: flex-end !important;
+  text-align: right !important;
+}
+
+/* Resizable headers need position relative for absolute positioned resize handle */
+.thaw-table-header-cell.resizable {
+  position: relative !important;
+  min-width: 60px;
+}
+
+/* Ensure resize handle is on top of sortable header content */
+.thaw-table-header-cell.resizable .table__resizer {
+  z-index: 999;
+}
+
+/* Prevent sortable header content from overlapping resize handle */
+.thaw-table-header-cell.resizable .table__sortable-header {
+  padding-right: 12px !important;
+  max-width: calc(100% - 12px) !important;
 }

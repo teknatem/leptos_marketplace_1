@@ -245,7 +245,7 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
         };
 
         // Skip if already has resize handle
-        if th.query_selector(".resize-handle").ok().flatten().is_some() {
+        if th.query_selector(".table__resizer").ok().flatten().is_some() {
             continue;
         }
 
@@ -253,7 +253,7 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
         let Ok(handle) = document.create_element("div") else {
             continue;
         };
-        handle.set_class_name("resize-handle");
+        handle.set_class_name("table__resizer");
 
         // Double-click auto-fit handler
         let table_id_dblclick = table_id_owned.clone();

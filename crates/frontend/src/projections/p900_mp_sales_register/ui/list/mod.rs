@@ -10,13 +10,9 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
-// Импорты компонентов деталей документов
-use crate::domain::a009_ozon_returns::ui::details::OzonReturnsDetail;
-use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
-use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
-use crate::domain::a013_ym_order::ui::details::YmOrderDetail;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table::{SortableHeaderCell, TableCellMoney};
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::components::ui::button::Button as UiButton;
 use crate::shared::icons::icon;
@@ -35,6 +31,7 @@ pub struct SalesRegisterDto {
     pub document_version: i32,
     pub connection_mp_ref: String,
     pub organization_ref: String,
+    pub organization_name: Option<String>,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub registrator_ref: String,
@@ -54,7 +51,10 @@ pub struct SalesRegisterDto {
     pub amount_line: Option<f64>,
     /// Плановая себестоимость (из p906_nomenclature_prices)
     pub cost: Option<f64>,
+    /// Дилерская цена УТ (из p906_nomenclature_prices)
+    pub dealer_price_ut: Option<f64>,
     pub currency_code: Option<String>,
+    pub is_fact: Option<bool>,
     pub loaded_at_utc: String,
     pub payload_version: i32,
     pub extra: Option<String>,
@@ -65,12 +65,6 @@ pub struct SalesRegisterListResponse {
     pub items: Vec<SalesRegisterDto>,
     pub total_count: i32,
     pub has_more: bool,
-}
-
-#[derive(Debug, Clone)]
-struct SelectedDocument {
-    document_type: String,
-    document_id: String,
 }
 
 impl Sortable for SalesRegisterDto {
@@ -111,6 +105,13 @@ impl Sortable for SalesRegisterDto {
                     .partial_cmp(&other_cost)
                     .unwrap_or(Ordering::Equal)
             }
+            "dealer_price_ut" => {
+                let self_dealer = self.dealer_price_ut.map(|d| d * self.qty).unwrap_or(0.0);
+                let other_dealer = other.dealer_price_ut.map(|d| d * other.qty).unwrap_or(0.0);
+                self_dealer
+                    .partial_cmp(&other_dealer)
+                    .unwrap_or(Ordering::Equal)
+            }
             "profit" => {
                 let self_profit = self
                     .cost
@@ -129,9 +130,17 @@ impl Sortable for SalesRegisterDto {
                 .to_lowercase()
                 .cmp(&other.status_norm.to_lowercase()),
             "organization_ref" => self
-                .organization_ref
+                .organization_name
+                .as_deref()
+                .unwrap_or("")
                 .to_lowercase()
-                .cmp(&other.organization_ref.to_lowercase()),
+                .cmp(
+                    &other
+                        .organization_name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase(),
+                ),
             _ => Ordering::Equal,
         }
     }
@@ -142,10 +151,23 @@ pub fn SalesRegisterList() -> impl IntoView {
     let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
-    let (selected_document, set_selected_document) = signal::<Option<SelectedDocument>>(None);
+    let (organizations, set_organizations) = signal::<Vec<Organization>>(Vec::new());
+    let tabs_store =
+        leptos::context::use_context::<crate::layout::global_context::AppGlobalContext>()
+            .expect("AppGlobalContext context not found");
 
     // Filter panel expansion state
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
+
+    // Load organizations on mount
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match fetch_organizations().await {
+                Ok(orgs) => set_organizations.set(orgs),
+                Err(e) => log!("Failed to load organizations: {}", e),
+            }
+        });
+    });
 
     const TABLE_ID: &str = "p900-sales-register-table";
     const COLUMN_WIDTHS_KEY: &str = "p900_sales_register_column_widths";
@@ -158,17 +180,27 @@ pub fn SalesRegisterList() -> impl IntoView {
         items
     };
 
-    // Вычисление итогов по Qty, Amount, Cost и Profit
+    // Вычисление итогов по Qty, Amount, Cost, Dealer Price и Profit
     let totals = move || {
         let data = get_items();
         let total_qty: f64 = data.iter().map(|s| s.qty).sum();
         let total_amount: f64 = data.iter().map(|s| s.amount_line.unwrap_or(0.0)).sum();
         let total_cost: f64 = data.iter().filter_map(|s| s.cost.map(|c| c * s.qty)).sum();
+        let total_dealer_price: f64 = data
+            .iter()
+            .filter_map(|s| s.dealer_price_ut.map(|d| d * s.qty))
+            .sum();
         let total_profit: f64 = data
             .iter()
             .filter_map(|s| s.cost.map(|c| s.amount_line.unwrap_or(0.0) - c * s.qty))
             .sum();
-        (total_qty, total_amount, total_cost, total_profit)
+        (
+            total_qty,
+            total_amount,
+            total_cost,
+            total_dealer_price,
+            total_profit,
+        )
     };
 
     let load_sales = move || {
@@ -176,15 +208,17 @@ pub fn SalesRegisterList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let (date_from, date_to, marketplace, page, page_size) = state.with(|s| {
-                (
-                    s.date_from.clone(),
-                    s.date_to.clone(),
-                    s.marketplace.clone(),
-                    s.page,
-                    s.page_size,
-                )
-            });
+            let (date_from, date_to, marketplace, organization_ref, page, page_size) =
+                state.with(|s| {
+                    (
+                        s.date_from.clone(),
+                        s.date_to.clone(),
+                        s.marketplace.clone(),
+                        s.organization_ref.clone(),
+                        s.page,
+                        s.page_size,
+                    )
+                });
             let offset = (page * page_size) as i32;
 
             let mut query_params = format!(
@@ -194,6 +228,10 @@ pub fn SalesRegisterList() -> impl IntoView {
 
             if !marketplace.is_empty() {
                 query_params.push_str(&format!("&marketplace={}", marketplace));
+            }
+
+            if !organization_ref.is_empty() {
+                query_params.push_str(&format!("&organization_ref={}", organization_ref));
             }
 
             match fetch_sales(&query_params).await {
@@ -239,6 +277,17 @@ pub fn SalesRegisterList() -> impl IntoView {
         });
     });
 
+    let organization_value = RwSignal::new(state.get_untracked().organization_ref.clone());
+    Effect::new(move || {
+        let v = organization_value.get();
+        untrack(move || {
+            state.update(|s| {
+                s.organization_ref = v;
+                s.page = 0;
+            });
+        });
+    });
+
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
@@ -249,6 +298,9 @@ pub fn SalesRegisterList() -> impl IntoView {
             count += 1;
         }
         if !s.marketplace.is_empty() {
+            count += 1;
+        }
+        if !s.organization_ref.is_empty() {
             count += 1;
         }
         count
@@ -267,7 +319,7 @@ pub fn SalesRegisterList() -> impl IntoView {
     });
 
     // Функция для изменения сортировки
-    let toggle_sort = move |field: &'static str| {
+    let toggle_sort = move |field: &str| {
         if was_just_resizing() {
             clear_resize_flag();
             return;
@@ -298,7 +350,7 @@ pub fn SalesRegisterList() -> impl IntoView {
     };
 
     view! {
-        <div class="page page--wide">
+        <div class="page">
             <div class="page__header">
                 <div class="page__header-left">
                     <div class="page__icon">{icon("trending-up")}</div>
@@ -327,12 +379,13 @@ pub fn SalesRegisterList() -> impl IntoView {
                         </UiButton>
                         {move || {
                             if !loading.get() && !state.get().sales.is_empty() {
-                                let (total_qty, total_amount, total_cost, total_profit) = totals();
+                                let (total_qty, total_amount, total_cost, total_dealer_price, total_profit) = totals();
                                 view! {
                                     <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">
                                         "Qty: " {format_number(total_qty)} " | "
                                         "Amount: " {format_number(total_amount)} " | "
                                         "Cost: " {format_number(total_cost)} " | "
+                                        "Dealer: " {format_number(total_dealer_price)} " | "
                                         "Profit: " {format_number(total_profit)}
                                     </span>
                                 }.into_any()
@@ -443,6 +496,22 @@ pub fn SalesRegisterList() -> impl IntoView {
                                     </Select>
                                 </Flex>
                             </div>
+
+                            <div style="width: 220px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Организация:"</Label>
+                                    <Select value=organization_value>
+                                        <option value="">"Все"</option>
+                                        {move || {
+                                            organizations.get().into_iter().map(|org| {
+                                                view! {
+                                                    <option value=org.id.clone()>{org.description.clone()}</option>
+                                                }
+                                            }).collect::<Vec<_>>()
+                                        }}
+                                    </Select>
+                                </Flex>
+                            </div>
                         </Flex>
                     </div>
                 </div>
@@ -463,7 +532,6 @@ pub fn SalesRegisterList() -> impl IntoView {
             }}
 
             <div class="page__content">
-                <div class="list-container">
                     {move || {
                         if loading.get() {
                             return view! {
@@ -476,96 +544,6 @@ pub fn SalesRegisterList() -> impl IntoView {
                         let items = get_items();
 
                         view! {
-                            // Модальное окно для деталей документа
-                            {move || {
-                                if let Some(selected) = selected_document.get() {
-                                    view! {
-                                        <div class="modal-overlay" style="align-items: flex-start; padding-top: 40px;">
-                                            <div class="modal modal-content-wide">
-                                                {match selected.document_type.as_str() {
-                                                    "OZON_FBS_Posting" => {
-                                                        view! {
-                                                            <OzonFbsPostingDetail
-                                                                id=selected.document_id.clone()
-                                                                on_close=move || set_selected_document.set(None)
-                                                            />
-                                                        }.into_any()
-                                                    }
-                                                    "OZON_FBO_Posting" => {
-                                                        view! {
-                                                            <div style="padding: 20px;">
-                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                                                    <h2 style="margin: 0;">"OZON FBO Posting Details"</h2>
-                                                                    <button
-                                                                        on:click=move |_| set_selected_document.set(None)
-                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                                                                    >
-                                                                        "✕ Close"
-                                                                    </button>
-                                                                </div>
-                                                                <div style="padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-                                                                    <p>"OZON FBO Posting details component not yet implemented."</p>
-                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
-                                                                        "Document ID: " {selected.document_id.clone()}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        }.into_any()
-                                                    }
-                                                    "WB_Sales" => {
-                                                        view! {
-                                                            <WbSalesDetail
-                                                                id=selected.document_id.clone()
-                                                                on_close=move || set_selected_document.set(None)
-                                                            />
-                                                        }.into_any()
-                                                    }
-                                                    "YM_Order" => {
-                                                        view! {
-                                                            <YmOrderDetail
-                                                                id=selected.document_id.clone()
-                                                                on_close=move || set_selected_document.set(None)
-                                                            />
-                                                        }.into_any()
-                                                    }
-                                                    "OZON_Returns" => {
-                                                        view! {
-                                                            <OzonReturnsDetail
-                                                                id=selected.document_id.clone()
-                                                                on_close=move || set_selected_document.set(None)
-                                                            />
-                                                        }.into_any()
-                                                    }
-                                                    _ => {
-                                                        view! {
-                                                            <div style="padding: 20px;">
-                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                                                    <h2 style="margin: 0;">"Unknown Document Type"</h2>
-                                                                    <button
-                                                                        on:click=move |_| set_selected_document.set(None)
-                                                                        style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                                                                    >
-                                                                        "✕ Close"
-                                                                    </button>
-                                                                </div>
-                                                                <div style="padding: 20px; background: #ffebee; border: 1px solid #ef5350; border-radius: 4px; color: #c62828;">
-                                                                    <p>"Unknown document type: " {selected.document_type.clone()}</p>
-                                                                    <p style="font-family: monospace; font-size: 0.9em; margin-top: 10px;">
-                                                                        "Document ID: " {selected.document_id.clone()}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        }.into_any()
-                                                    }
-                                                }}
-                                            </div>
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! { <></> }.into_any()
-                                }
-                            }}
-
                             // Only horizontal scrolling here; vertical scrolling is handled by `.page`
                             <div class="table-container" style="overflow-x: auto; overflow-y: visible;">
                                 <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1500px;">
@@ -591,7 +569,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                     </span>
                                                 </div>
                                             </TableHeaderCell>
-                                            <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                            <TableHeaderCell resizable=false min_width=180.0 class="resizable">
                                                 <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
                                                     "Документ №"
                                                     <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
@@ -615,38 +593,46 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                     </span>
                                                 </div>
                                             </TableHeaderCell>
-                                            <TableHeaderCell resizable=false min_width=70.0 class="resizable">
-                                                <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("qty")>
-                                                    "Кол-во"
-                                                    <span class=move || state.with(|s| get_sort_class(&s.sort_field, "qty"))>
-                                                        {move || state.with(|s| get_sort_indicator(&s.sort_field, "qty", s.sort_ascending))}
-                                                    </span>
-                                                </div>
-                                            </TableHeaderCell>
-                                            <TableHeaderCell resizable=false min_width=100.0 class="resizable">
-                                                <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("amount_line")>
-                                                    "Сумма"
-                                                    <span class=move || state.with(|s| get_sort_class(&s.sort_field, "amount_line"))>
-                                                        {move || state.with(|s| get_sort_indicator(&s.sort_field, "amount_line", s.sort_ascending))}
-                                                    </span>
-                                                </div>
-                                            </TableHeaderCell>
-                                            <TableHeaderCell resizable=false min_width=100.0 class="resizable">
-                                                <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("cost")>
-                                                    "Себест."
-                                                    <span class=move || state.with(|s| get_sort_class(&s.sort_field, "cost"))>
-                                                        {move || state.with(|s| get_sort_indicator(&s.sort_field, "cost", s.sort_ascending))}
-                                                    </span>
-                                                </div>
-                                            </TableHeaderCell>
-                                            <TableHeaderCell resizable=false min_width=100.0 class="resizable">
-                                                <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("profit")>
-                                                    "Прибыль"
-                                                    <span class=move || state.with(|s| get_sort_class(&s.sort_field, "profit"))>
-                                                        {move || state.with(|s| get_sort_indicator(&s.sort_field, "profit", s.sort_ascending))}
-                                                    </span>
-                                                </div>
-                                            </TableHeaderCell>
+                                            <SortableHeaderCell
+                                                label="Кол-во"
+                                                sort_field="qty"
+                                                current_sort_field=Signal::derive(move || state.with(|s| s.sort_field.clone()))
+                                                sort_ascending=Signal::derive(move || state.with(|s| s.sort_ascending))
+                                                on_sort=Callback::new(move |field: String| toggle_sort(&field))
+                                                min_width=70.0
+                                            />
+                                            <SortableHeaderCell
+                                                label="Сумма"
+                                                sort_field="amount_line"
+                                                current_sort_field=Signal::derive(move || state.with(|s| s.sort_field.clone()))
+                                                sort_ascending=Signal::derive(move || state.with(|s| s.sort_ascending))
+                                                on_sort=Callback::new(move |field: String| toggle_sort(&field))
+                                                min_width=100.0
+                                            />
+                                            <SortableHeaderCell
+                                                label="Себест."
+                                                sort_field="cost"
+                                                current_sort_field=Signal::derive(move || state.with(|s| s.sort_field.clone()))
+                                                sort_ascending=Signal::derive(move || state.with(|s| s.sort_ascending))
+                                                on_sort=Callback::new(move |field: String| toggle_sort(&field))
+                                                min_width=100.0
+                                            />
+                                            <SortableHeaderCell
+                                                label="Дилер. УТ"
+                                                sort_field="dealer_price_ut"
+                                                current_sort_field=Signal::derive(move || state.with(|s| s.sort_field.clone()))
+                                                sort_ascending=Signal::derive(move || state.with(|s| s.sort_ascending))
+                                                on_sort=Callback::new(move |field: String| toggle_sort(&field))
+                                                min_width=110.0
+                                            />
+                                            <SortableHeaderCell
+                                                label="Прибыль"
+                                                sort_field="profit"
+                                                current_sort_field=Signal::derive(move || state.with(|s| s.sort_field.clone()))
+                                                sort_ascending=Signal::derive(move || state.with(|s| s.sort_ascending))
+                                                on_sort=Callback::new(move |field: String| toggle_sort(&field))
+                                                min_width=100.0
+                                            />
                                             <TableHeaderCell resizable=false min_width=120.0 class="resizable">
                                                 <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
                                                     "Статус"
@@ -677,26 +663,28 @@ pub fn SalesRegisterList() -> impl IntoView {
                                             let amount_line = sale.amount_line;
                                             let status_norm = sale.status_norm.clone();
                                             let org_ref = sale.organization_ref.clone();
-                                            let org_ref_short = if org_ref.len() > 8 {
-                                                format!("{}...", &org_ref[..8])
-                                            } else {
-                                                org_ref.clone()
-                                            };
+                                            let org_display = sale.organization_name.clone().unwrap_or_else(|| {
+                                                if org_ref.len() > 8 {
+                                                    format!("{}...", &org_ref[..8])
+                                                } else {
+                                                    org_ref.clone()
+                                                }
+                                            });
 
-                                            let amount_text = amount_line.map(format_number).unwrap_or_else(|| "—".to_string());
+                                            // Расчеты денежных значений
                                             let cost_total = sale.cost.map(|c| c * qty);
-                                            let cost_text = cost_total.map(format_number).unwrap_or_else(|| "—".to_string());
+                                            let dealer_price_total = sale.dealer_price_ut.map(|d| d * qty);
                                             let profit_value = sale.cost.map(|c| amount_line.unwrap_or(0.0) - c * qty);
-                                            let profit_text = profit_value.map(format_number).unwrap_or_else(|| "—".to_string());
-                                            let profit_style = match profit_value {
-                                                Some(p) if p >= 0.0 => "color: var(--color-success); font-weight: 600;",
-                                                Some(_) => "color: var(--color-error); font-weight: 600;",
-                                                None => "",
-                                            };
 
                                             let document_type = sale.document_type.clone();
                                             let registrator_ref = sale.registrator_ref.clone();
                                             let document_no_for_display = document_no.clone();
+
+                                            // Определяем, есть ли детальная страница для данного типа документа
+                                            let has_detail_page = matches!(
+                                                document_type.as_str(),
+                                                "WB_Sales" | "YM_Order" | "OZON_Returns"
+                                            );
 
                                             view! {
                                                 <TableRow>
@@ -704,36 +692,61 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                     <TableCell><TableCellLayout>{marketplace}</TableCellLayout></TableCell>
                                                     <TableCell>
                                                         <TableCellLayout truncate=true>
-                                                            <a
-                                                                href="#"
-                                                                style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
-                                                                on:click=move |ev| {
-                                                                    ev.prevent_default();
-                                                                    set_selected_document.set(Some(SelectedDocument {
-                                                                        document_type: document_type.clone(),
-                                                                        document_id: registrator_ref.clone(),
-                                                                    }));
-                                                                }
-                                                            >
-                                                                {document_no_for_display}
-                                                            </a>
+                                                            {if has_detail_page {
+                                                                let tabs_store_for_click = tabs_store.clone();
+                                                                let doc_type_for_click = document_type.clone();
+                                                                let registrator_ref_for_click = registrator_ref.clone();
+                                                                let document_no_for_title = document_no_for_display.clone();
+
+                                                                view! {
+                                                                    <a
+                                                                        href="#"
+                                                                        style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                                                        on:click=move |ev| {
+                                                                            ev.prevent_default();
+
+                                                                            // Формируем ключ таба в зависимости от типа документа
+                                                                            let (tab_key, tab_title) = match doc_type_for_click.as_str() {
+                                                                                "WB_Sales" => (
+                                                                                    format!("a012_wb_sales_detail_{}", registrator_ref_for_click),
+                                                                                    format!("WB Sale {}", document_no_for_title.clone())
+                                                                                ),
+                                                                                "YM_Order" => (
+                                                                                    format!("a013_ym_order_detail_{}", registrator_ref_for_click),
+                                                                                    format!("YM Order {}", &registrator_ref_for_click[..8])
+                                                                                ),
+                                                                                "OZON_Returns" => (
+                                                                                    format!("a009_ozon_returns_detail_{}", registrator_ref_for_click),
+                                                                                    format!("OZON Return {}", &registrator_ref_for_click[..8])
+                                                                                ),
+                                                                                _ => return,
+                                                                            };
+
+                                                                            tabs_store_for_click.open_tab(&tab_key, &tab_title);
+                                                                        }
+                                                                    >
+                                                                        {document_no_for_display.clone()}
+                                                                    </a>
+                                                                }.into_any()
+                                                            } else {
+                                                                view! {
+                                                                    <span>{document_no_for_display.clone()}</span>
+                                                                }.into_any()
+                                                            }}
                                                         </TableCellLayout>
                                                     </TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{title}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{seller_sku}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{format_number(qty)}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{amount_text}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{cost_text}</TableCellLayout></TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            <span style=profit_style>{profit_text}</span>
-                                                        </TableCellLayout>
-                                                    </TableCell>
+                                                    <TableCell class="text-right">{format_number(qty)}</TableCell>
+                                                    <TableCellMoney value=amount_line color_by_sign=false />
+                                                    <TableCellMoney value=cost_total color_by_sign=false />
+                                                    <TableCellMoney value=dealer_price_total color_by_sign=false />
+                                                    <TableCellMoney value=profit_value bold=true />
                                                     <TableCell><TableCellLayout truncate=true>{status_norm}</TableCellLayout></TableCell>
                                                     <TableCell>
                                                         <TableCellLayout truncate=true>
-                                                            <span title=org_ref style="font-family: monospace; font-size: 0.85em;">
-                                                                {org_ref_short}
+                                                            <span title=org_ref>
+                                                                {org_display}
                                                             </span>
                                                         </TableCellLayout>
                                                     </TableCell>
@@ -745,7 +758,6 @@ pub fn SalesRegisterList() -> impl IntoView {
                             </div>
                         }.into_any()
                     }}
-                </div>
             </div>
         </div>
     }
@@ -759,7 +771,7 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
 
     // Заголовок с точкой с запятой как разделитель
     csv.push_str(
-        "Date;Marketplace;Document №;Product;SKU;Qty;Amount;Cost;Profit;Status;Organization\n",
+        "Date;Marketplace;Document №;Product;SKU;Qty;Amount;Cost;Dealer Price;Profit;Status;Organization\n",
     );
 
     for sale in data {
@@ -770,10 +782,14 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
             .unwrap_or("")
             .replace("\"", "\"\"");
         let amount_line = sale.amount_line.unwrap_or(0.0);
-        let org_ref_short = &sale.organization_ref[..8.min(sale.organization_ref.len())];
+        let org_display = sale
+            .organization_name
+            .as_deref()
+            .unwrap_or(&sale.organization_ref[..8.min(sale.organization_ref.len())]);
 
-        // Себестоимость и прибыль
+        // Себестоимость, дилерская цена и прибыль
         let cost_total = sale.cost.map(|c| c * sale.qty);
+        let dealer_price_total = sale.dealer_price_ut.map(|d| d * sale.qty);
         let profit = sale.cost.map(|c| amount_line - c * sale.qty);
 
         // Форматируем числа с запятой как десятичный разделитель
@@ -783,13 +799,17 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
             Some(c) => format!("{:.2}", c).replace(".", ","),
             None => "".to_string(),
         };
+        let dealer_price_str = match dealer_price_total {
+            Some(d) => format!("{:.2}", d).replace(".", ","),
+            None => "".to_string(),
+        };
         let profit_str = match profit {
             Some(p) => format!("{:.2}", p).replace(".", ","),
             None => "".to_string(),
         };
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\";\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};\"{}\";\"{}\"\n",
             sale.sale_date,
             sale.marketplace,
             sale.document_no,
@@ -798,9 +818,10 @@ fn export_to_csv(data: &[SalesRegisterDto]) -> Result<(), String> {
             qty_str,
             amount_str,
             cost_str,
+            dealer_price_str,
             profit_str,
             sale.status_norm,
-            org_ref_short
+            org_display
         ));
     }
 
@@ -870,5 +891,42 @@ async fn fetch_sales(query_params: &str) -> Result<SalesRegisterListResponse, St
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: SalesRegisterListResponse =
         serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Organization {
+    id: String,
+    code: String,
+    description: String,
+}
+
+async fn fetch_organizations() -> Result<Vec<Organization>, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = "/api/organization";
+    let request = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<Organization> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }
