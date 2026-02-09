@@ -39,7 +39,7 @@
   --color-link-hover: #2e7d32;
 
   /* Table Colors */
-  --table-header-bg: #546e7a;
+  --table-header-bg: rgba(10, 66, 12, 0.75);
   --table-header-fg: #ffffff;
   --table-row-odd: #ffffff;
   --table-row-even: rgba(200, 230, 201, 0.3);
@@ -128,7 +128,7 @@
 
   /* Card Colors */
   --card-bg: rgba(255, 255, 255, 0.85);
-  --card-border: rgba(165, 214, 167, 0.4);
+  --card-border: rgba(165, 214, 167, 0.2);
   --card-hover-bg: rgba(255, 255, 255, 0.95);
   --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
 

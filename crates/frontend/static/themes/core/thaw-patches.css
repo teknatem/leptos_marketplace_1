@@ -20,6 +20,15 @@
   text-align: center !important;
 }
 
+.thaw-table-header {  /* или правильный класс Thaw */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--table-header-bg);
+  /*border-bottom: 1px solid var(--color-border);*/
+  box-shadow: 0 1px 0 0 var(--color-border);
+}
+
 /* Стилизация чекбокса в таблице */
 .fixed-checkbox-column .table__checkbox {
   margin: 0 !important;
@@ -29,13 +38,13 @@
 /* Темы */
 [data-theme="dark"] .thaw-config-provider,
 [data-theme="forest"] .thaw-config-provider {
-  --fontFamilyBase: "Roboto", sans-serif;
+  --fontFamilyBase: "Roboto", sans-serif !important;
   --fontSizeBase200: 13px;
   --fontSizeBase300: 13px;
 }
 
 [data-theme="light"] .thaw-config-provider {
-  --fontFamilyBase: "Roboto", sans-serif;
+  --fontFamilyBase: "Roboto", sans-serif !important;
   --fontSizeBase200: 13px;
   --fontSizeBase300: 13px;
 }

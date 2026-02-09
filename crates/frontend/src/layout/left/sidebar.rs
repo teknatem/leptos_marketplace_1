@@ -154,14 +154,16 @@ pub fn Sidebar() -> impl IntoView {
     };
 
     // Initially expanded groups (matching the sample)
-    let expanded_groups = RwSignal::new(vec![
+    /*let expanded_groups = RwSignal::new(vec![
         "dashboards".to_string(),
         "references".to_string(),
         "documents".to_string(),
         "integrations".to_string(),
         "operations".to_string(),
         "information".to_string(),
-    ]);
+    ]);*/
+
+    let expanded_groups = RwSignal::new(vec![]);
 
     let groups = get_menu_groups();
 

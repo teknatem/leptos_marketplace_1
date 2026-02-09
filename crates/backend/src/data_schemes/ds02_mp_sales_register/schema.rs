@@ -288,6 +288,18 @@ pub static DS02_SCHEMA: DataSourceSchema = DataSourceSchema {
             source_table: None,
             join_on_column: None,
         },
+        FieldDef {
+            id: "dealer_price_ut",
+            name: "Дилерская цена",
+            field_type: FieldType::Numeric,
+            can_group: false,
+            can_aggregate: true,
+            db_column: "dealer_price_ut",
+            ref_table: None,
+            ref_display_column: None,
+            source_table: None,
+            join_on_column: None,
+        },
     ],
 };
 

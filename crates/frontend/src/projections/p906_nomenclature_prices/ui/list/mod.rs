@@ -306,6 +306,9 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                 }
             }}
 
+
+            <div class="page__content">
+
             <div class="filter-panel">
                 <div class="filter-panel-header">
                     <div class="filter-panel-header__left">
@@ -358,8 +361,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                     </div>
             </div>
 
-            <div class="page__content">
-                <div style="width: 100%; overflow-x: auto;">
+                <div style="width: 100%; overflow-x: auto;" class = "table-wrapper">
                     <Table attr:style="width: 100%;">
                         <TableHeader>
                             <TableRow>

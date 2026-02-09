@@ -23,7 +23,7 @@
   --color-code-bg: rgba(0, 0, 0, 0.35);
 
   /* Border Colors */
-  --color-border: rgba(255, 255, 255, 0.14);
+  --color-border: rgba(255, 255, 255, 0.20);
   --color-border-light: rgba(255, 255, 255, 0.08);
   --color-border-lighter: rgba(255, 255, 255, 0.06);
 
@@ -38,7 +38,7 @@
   --color-link-hover: #bfdbfe;
 
   /* Table Colors */
-  --table-header-bg: rgba(55, 71, 79, 0.85);
+  --table-header-bg: rgba(40, 40, 40, 1);
   --table-header-fg: rgba(255, 255, 255, 0.95);
   --table-row-odd: rgba(30, 41, 59, 0.15);
   --table-row-even: rgba(30, 41, 59, 0.25);
@@ -127,7 +127,7 @@
 
   /* Card Colors */
   --card-bg: rgba(30, 41, 59, 0.25);
-  --card-border: rgba(255, 255, 255, 0.20);
+  --card-border: rgba(255, 255, 255, 0.10);
   --card-hover-bg: rgba(30, 41, 59, 0.40);
   --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 

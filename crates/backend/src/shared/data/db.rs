@@ -982,7 +982,10 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 discount_total REAL,
                 price_effective REAL,
                 amount_line REAL,
+                cost REAL,
+                dealer_price_ut REAL,
                 currency_code TEXT,
+                is_fact INTEGER,
                 
                 -- Technical fields
                 loaded_at_utc TEXT NOT NULL,

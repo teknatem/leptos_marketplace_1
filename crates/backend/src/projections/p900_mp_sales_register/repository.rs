@@ -63,7 +63,11 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub cost: Option<f64>,
     #[sea_orm(nullable)]
+    pub dealer_price_ut: Option<f64>,
+    #[sea_orm(nullable)]
     pub currency_code: Option<String>,
+    #[sea_orm(nullable)]
+    pub is_fact: Option<bool>,
 
     // Technical fields
     pub loaded_at_utc: String,
@@ -118,10 +122,12 @@ pub struct SalesRegisterEntry {
     pub qty: f64,
     pub price_list: Option<f64>,
     pub cost: Option<f64>,
+    pub dealer_price_ut: Option<f64>,
     pub discount_total: Option<f64>,
     pub price_effective: Option<f64>,
     pub amount_line: Option<f64>,
     pub currency_code: Option<String>,
+    pub is_fact: Option<bool>,
 
     // Technical
     pub payload_version: i32,
@@ -169,10 +175,12 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             qty: Set(entry.qty),
             price_list: Set(entry.price_list),
             cost: Set(entry.cost),
+            dealer_price_ut: Set(entry.dealer_price_ut),
             discount_total: Set(entry.discount_total),
             price_effective: Set(entry.price_effective),
             amount_line: Set(entry.amount_line),
             currency_code: Set(entry.currency_code.clone()),
+            is_fact: Set(entry.is_fact),
             loaded_at_utc: Set(now.to_rfc3339()),
             payload_version: Set(entry.payload_version),
             extra: Set(entry.extra.clone()),
@@ -204,10 +212,12 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             qty: Set(entry.qty),
             price_list: Set(entry.price_list),
             cost: Set(entry.cost),
+            dealer_price_ut: Set(entry.dealer_price_ut),
             discount_total: Set(entry.discount_total),
             price_effective: Set(entry.price_effective),
             amount_line: Set(entry.amount_line),
             currency_code: Set(entry.currency_code.clone()),
+            is_fact: Set(entry.is_fact),
             loaded_at_utc: Set(now.to_rfc3339()),
             payload_version: Set(entry.payload_version),
             extra: Set(entry.extra.clone()),
