@@ -8,3 +8,6 @@ path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 
 # Alternative: relative path from project root (not recommended for production)
 # path = "data/app.db"
+
+[scheduled_tasks]
+enabled = false

@@ -417,7 +417,7 @@ pub fn NomenclatureList() -> impl IntoView {
                     <Button
                         appearance=ButtonAppearance::Secondary
                         on_click=move |_| load()
-                        disabled=is_loading.get()
+                        disabled=move || is_loading.get()
                     >
                         {icon("refresh")}
                         {move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}

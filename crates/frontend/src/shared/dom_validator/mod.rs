@@ -8,6 +8,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DomNode {
     pub tag_name: String,
+    pub id: Option<String>,
     pub classes: Vec<String>,
     pub data_attributes: HashMap<String, String>,
     pub button_text: Option<String>,

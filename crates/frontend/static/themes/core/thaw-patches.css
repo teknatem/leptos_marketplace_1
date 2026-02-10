@@ -53,6 +53,11 @@
   height: 36px !important;
 }
 
+/* Disable default row hover - use SVG crosshair instead */
+.thaw-table-row:hover {
+  background: transparent !important;
+}
+
 .thaw-table-cell,
 .thaw-table-header-cell {
   height: 36px !important;

@@ -4,12 +4,26 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub database: DatabaseConfig,
+    #[serde(default)]
+    pub scheduled_tasks: ScheduledTasksConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
     #[serde(deserialize_with = "normalize_path")]
     pub path: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ScheduledTasksConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for ScheduledTasksConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// Нормализует пути Windows: конвертирует обратные слеши в прямые
@@ -32,7 +46,14 @@ where
 const DEFAULT_CONFIG: &str = r#"
 [database]
 path = "target/db/app.db"
+
+[scheduled_tasks]
+enabled = true
 "#;
+
+fn default_true() -> bool {
+    true
+}
 
 /// Load configuration from config.toml file
 ///
@@ -140,6 +161,10 @@ pub fn load_config() -> anyhow::Result<Config> {
                 };
 
                 println!("✓ Database path from config: {}", config.database.path);
+                println!(
+                    "✓ Scheduled task worker enabled: {}",
+                    config.scheduled_tasks.enabled
+                );
 
                 // Информируем о нормализации путей
                 if config.database.path.contains('\\') {
@@ -208,5 +233,6 @@ mod tests {
         assert!(config.is_ok());
         let config = config.unwrap();
         assert_eq!(config.database.path, "target/db/app.db");
+        assert!(config.scheduled_tasks.enabled);
     }
 }

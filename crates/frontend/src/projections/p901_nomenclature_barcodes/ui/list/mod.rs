@@ -72,17 +72,17 @@ pub fn BarcodesList() -> impl IntoView {
         spawn_local(async move {
             // Формируем query параметры
             let mut query_params = vec![
-                format!("limit={}", limit.get()),
-                format!("offset={}", offset.get()),
-                format!("include_inactive={}", include_inactive.get()),
+                format!("limit={}", limit.get_untracked()),
+                format!("offset={}", offset.get_untracked()),
+                format!("include_inactive={}", include_inactive.get_untracked()),
             ];
 
-            let article_filter = search_article.get();
+            let article_filter = search_article.get_untracked();
             if !article_filter.is_empty() {
                 query_params.push(format!("article={}", article_filter));
             }
 
-            let source_filter = filter_source.get();
+            let source_filter = filter_source.get_untracked();
             if !source_filter.is_empty() && source_filter != "all" {
                 query_params.push(format!("source={}", source_filter));
             }
@@ -174,8 +174,8 @@ pub fn BarcodesList() -> impl IntoView {
 
     // Индикатор сортировки
     let sort_indicator = move |column: SortColumn| {
-        if sort_column.get() == Some(column) {
-            match sort_direction.get() {
+        if sort_column.get_untracked() == Some(column) {
+            match sort_direction.get_untracked() {
                 SortDirection::Asc => " ▲",
                 SortDirection::Desc => " ▼",
             }

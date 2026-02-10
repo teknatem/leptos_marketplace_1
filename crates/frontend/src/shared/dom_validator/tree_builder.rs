@@ -50,6 +50,9 @@ fn get_text_content(element: &Element) -> Option<String> {
 fn build_node_tree(element: &Element, depth: usize) -> DomNode {
     let tag_name = element.tag_name().to_lowercase();
 
+    // Получаем id элемента
+    let id = element.get_attribute("id");
+
     // Получаем классы
     let classes = element
         .class_list()
@@ -98,6 +101,7 @@ fn build_node_tree(element: &Element, depth: usize) -> DomNode {
 
     DomNode {
         tag_name,
+        id,
         classes,
         data_attributes,
         button_text,

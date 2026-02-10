@@ -235,13 +235,15 @@ pub fn WbFinanceReportList() -> impl IntoView {
     };
 
     // Helper для получения имени подключения
+    // Using with_untracked to avoid creating reactive dependencies in render loops
     let get_connection_name = move |connection_id: &str| -> String {
-        connections
-            .get()
-            .iter()
-            .find(|(id, _)| id == connection_id)
-            .map(|(_, name)| name.clone())
-            .unwrap_or_else(|| connection_id.to_string())
+        connections.with_untracked(|conns| {
+            conns
+                .iter()
+                .find(|(id, _)| id == connection_id)
+                .map(|(_, name)| name.clone())
+                .unwrap_or_else(|| connection_id.to_string())
+        })
     };
 
     // Memoized totals calculation
@@ -462,7 +464,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                             page_size=Signal::derive(move || state.get().page_size)
                             on_page_change=Callback::new(go_to_page)
                             on_page_size_change=Callback::new(change_page_size)
-                            page_size_options=vec![100, 500, 1000, 5000, 10000, 100000]
+                            page_size_options=vec![100, 500, 1000, 5000, 10000]
                         />
                     </div>
 

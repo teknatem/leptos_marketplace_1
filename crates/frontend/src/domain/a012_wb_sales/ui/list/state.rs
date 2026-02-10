@@ -2,6 +2,7 @@ use super::WbSalesDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct WbSalesState {
@@ -11,7 +12,7 @@ pub struct WbSalesState {
     pub selected_organization_id: Option<String>,
     pub sort_field: String,
     pub sort_ascending: bool,
-    pub selected_ids: Vec<String>,
+    pub selected_ids: HashSet<String>,
     pub is_loaded: bool,
     // Pagination fields
     pub page: usize,
@@ -63,7 +64,7 @@ impl Default for WbSalesState {
             selected_organization_id: None,
             sort_field: "sale_date".to_string(),
             sort_ascending: false,
-            selected_ids: Vec::new(),
+            selected_ids: HashSet::new(),
             is_loaded: false,
             // Pagination defaults
             page: 0,

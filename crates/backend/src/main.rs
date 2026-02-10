@@ -82,28 +82,44 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 4.1. Initialize scheduled tasks
-    println!("Step 5: Initializing scheduled tasks...");
-    let worker = match system::tasks::initialization::initialize_scheduled_tasks().await {
-        Ok(w) => {
-            println!("✓ Scheduled tasks initialized\n");
-            w
-        }
+    // 4.1. Scheduled task worker startup mode
+    let scheduled_task_worker_enabled = match shared::config::load_config() {
+        Ok(cfg) => cfg.scheduled_tasks.enabled,
         Err(e) => {
-            println!("✗ ERROR: Scheduled tasks initialization failed: {}\n", e);
+            println!("✗ ERROR: Failed to load config for scheduled tasks: {}\n", e);
             return Err(e);
         }
     };
 
-    // 4.2. Start background worker
-    println!("Step 6: Starting background worker...");
-    tokio::spawn(async move {
-        worker.run_loop().await;
-    });
-    println!("✓ Background worker started\n");
+    println!(
+        "Step 5: Scheduled task worker is {} (config.toml -> [scheduled_tasks].enabled)",
+        if scheduled_task_worker_enabled { "ENABLED" } else { "DISABLED" }
+    );
+
+    if scheduled_task_worker_enabled {
+        println!("Step 6: Initializing scheduled tasks...");
+        let worker = match system::tasks::initialization::initialize_scheduled_tasks().await {
+            Ok(w) => {
+                println!("✓ Scheduled tasks initialized\n");
+                w
+            }
+            Err(e) => {
+                println!("✗ ERROR: Scheduled tasks initialization failed: {}\n", e);
+                return Err(e);
+            }
+        };
+
+        println!("Step 7: Starting background worker...");
+        tokio::spawn(async move {
+            worker.run_loop().await;
+        });
+        println!("✓ Background worker started\n");
+    } else {
+        println!("Step 6: Scheduled task worker disabled by configuration\n");
+    }
 
     // 5. Configure CORS
-    println!("Step 7: Configuring CORS...");
+    println!("Step 8: Configuring CORS...");
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([
@@ -117,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
     println!("✓ CORS configured\n");
 
     // 6. Build app with routes
-    println!("Step 8: Building application routes...");
+    println!("Step 9: Building application routes...");
     let app = axum::Router::new()
         .merge(system::api::configure_system_routes())
         .merge(api::configure_business_routes())
@@ -129,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
     println!("✓ Routes configured\n");
 
     // 7. Start server
-    println!("Step 9: Starting HTTP server...");
+    println!("Step 10: Starting HTTP server...");
     let addr: SocketAddr = ([0, 0, 0, 0], 3000).into();
 
     println!("   Attempting to bind to: http://{}", addr);
