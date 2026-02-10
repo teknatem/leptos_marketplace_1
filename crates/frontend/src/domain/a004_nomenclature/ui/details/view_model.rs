@@ -186,7 +186,7 @@ impl NomenclatureDetailsVm {
 
     /// Load counts for badges (barcodes and dealer prices)
     pub fn load_counts(&self) {
-        let Some(nom_id) = self.id.get() else {
+        let Some(nom_id) = self.id.get_untracked() else {
             return;
         };
 
@@ -203,7 +203,7 @@ impl NomenclatureDetailsVm {
         // Load dealer prices count
         let this_prices = self.clone();
         let nom_id_prices = nom_id.clone();
-        let base_ref = this_prices.base_nomenclature_ref.get();
+        let base_ref = this_prices.base_nomenclature_ref.get_untracked();
         let base_ref_option = if base_ref.is_empty() {
             None
         } else {

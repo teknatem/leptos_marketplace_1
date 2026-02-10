@@ -45,6 +45,11 @@
   --table-row-even: rgba(200, 230, 201, 0.3);
   --table-row-hover: rgba(200, 230, 201, 0.5);
   --table-row-selected: rgba(255, 235, 59, 0.3);
+  
+  /* Table Crosshair Highlight Colors */
+  --table-crosshair-row: rgba(67, 160, 71, 0.15);
+  --table-crosshair-col: rgba(67, 160, 71, 0.15);
+  --table-crosshair-cell: rgba(67, 160, 71, 0.05);
 
   /* Button Variant Colors */
   --btn-primary-bg: #43a047;

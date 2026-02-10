@@ -22,6 +22,9 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 use crate::shared::api_utils::api_base;
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -103,8 +106,8 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
     result
 }
 
-const TABLE_ID: &str = "a012-wb-sales-table";
-const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_column_widths";
+const TABLE_ID: &str = "a012-wb-sales-list-table";
+const COLUMN_WIDTHS_KEY: &str = "a012_wb_sales_list_column_widths";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesDto {
@@ -247,15 +250,16 @@ pub fn WbSalesList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let date_from_val = state.with(|s| s.date_from.clone());
-            let date_to_val = state.with(|s| s.date_to.clone());
-            let org_id = state.with(|s| s.selected_organization_id.clone());
-            let page = state.with(|s| s.page);
-            let page_size = state.with(|s| s.page_size);
-            let sort_field = state.with(|s| s.sort_field.clone());
-            let sort_ascending = state.with(|s| s.sort_ascending);
-            let search_sale_id = state.with(|s| s.search_sale_id.clone());
-            let search_supplier_article = state.with(|s| s.search_supplier_article.clone());
+            let date_from_val = state.with_untracked(|s| s.date_from.clone());
+            let date_to_val = state.with_untracked(|s| s.date_to.clone());
+            let org_id = state.with_untracked(|s| s.selected_organization_id.clone());
+            let page = state.with_untracked(|s| s.page);
+            let page_size = state.with_untracked(|s| s.page_size);
+            let sort_field = state.with_untracked(|s| s.sort_field.clone());
+            let sort_ascending = state.with_untracked(|s| s.sort_ascending);
+            let search_sale_id = state.with_untracked(|s| s.search_sale_id.clone());
+            let search_supplier_article =
+                state.with_untracked(|s| s.search_supplier_article.clone());
             let offset = page * page_size;
 
             // Build URL with pagination parameters
@@ -342,6 +346,10 @@ pub fn WbSalesList() -> impl IntoView {
 
     // Get items (sorting is now done on server) - no clone, returns reference via signal
     let get_items = move || -> Vec<WbSalesDto> { state.with(|s| s.sales.clone()) };
+
+    // Signals for TableHeaderCheckbox (outside the closure to avoid recreation)
+    let items_signal = Signal::derive(move || state.with(|s| s.sales.clone()));
+    let selected_signal = Signal::derive(move || state.with(|s| s.selected_ids.clone()));
 
     // Load saved settings from database on mount IF not already loaded in memory
     Effect::new(move |_| {
@@ -480,12 +488,11 @@ pub fn WbSalesList() -> impl IntoView {
         count
     });
 
-    // Init column resize after data is rendered
+    // Init column resize once (table is now stable)
+    let resize_initialized = leptos::prelude::StoredValue::new(false);
     Effect::new(move |_| {
-        let is_loaded = state.get().is_loaded;
-        let _page = state.get().page;
-        let _len = state.get().sales.len();
-        if is_loaded {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
             spawn_local(async move {
                 gloo_timers::future::TimeoutFuture::new(50).await;
                 init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
@@ -529,38 +536,32 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Переключение выбора одного документа
-    let toggle_selection = move |id: String| {
+    let toggle_selection = move |id: String, checked: bool| {
         state.update(|s| {
-            if s.selected_ids.contains(&id) {
-                s.selected_ids.retain(|x| x != &id);
+            if checked {
+                s.selected_ids.insert(id);
             } else {
-                s.selected_ids.push(id.clone());
+                s.selected_ids.remove(&id);
             }
         });
     };
 
     // Выбрать все / снять все
-    let toggle_all = move |_| {
-        let items = get_items();
-        let all_ids: Vec<String> = items.iter().map(|item| item.id.clone()).collect();
-        state.update(|s| {
-            if s.selected_ids.len() == all_ids.len() && !all_ids.is_empty() {
+    let toggle_all = move |check_all: bool| {
+        if check_all {
+            // Получаем items ДО state.update() чтобы избежать вложенного заимствования
+            let items = get_items();
+            state.update(|s| {
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
+            });
+        } else {
+            state.update(|s| {
                 s.selected_ids.clear();
-            } else {
-                s.selected_ids = all_ids;
-            }
-        });
+            });
+        }
     };
-
-    // Проверка, выбраны ли все
-    let all_selected = move || {
-        let items = get_items();
-        let selected_len = state.with(|s| s.selected_ids.len());
-        !items.is_empty() && selected_len == items.len()
-    };
-
-    // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| state.with(|s| s.selected_ids.contains(&id.to_string()));
 
     // Массовое проведение
     let post_selected = move |_: leptos::ev::MouseEvent| {
@@ -575,10 +576,11 @@ pub fn WbSalesList() -> impl IntoView {
 
         spawn_local(async move {
             let mut results = Vec::new();
-            let total = ids.len();
+            let ids_vec: Vec<String> = ids.into_iter().collect();
+            let total = ids_vec.len();
 
             // Разбиваем на чанки по 100
-            for (chunk_idx, chunk) in ids.chunks(100).enumerate() {
+            for (chunk_idx, chunk) in ids_vec.chunks(100).enumerate() {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
@@ -642,10 +644,11 @@ pub fn WbSalesList() -> impl IntoView {
 
         spawn_local(async move {
             let mut results = Vec::new();
-            let total = ids.len();
+            let ids_vec: Vec<String> = ids.into_iter().collect();
+            let total = ids_vec.len();
 
             // Разбиваем на чанки по 100
-            for (chunk_idx, chunk) in ids.chunks(100).enumerate() {
+            for (chunk_idx, chunk) in ids_vec.chunks(100).enumerate() {
                 set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
 
                 let payload = json!({ "ids": chunk });
@@ -919,7 +922,7 @@ pub fn WbSalesList() -> impl IntoView {
                         <thaw::Button
                             appearance=ButtonAppearance::Subtle
                             on_click=move |_| load_sales()
-                            disabled=loading.get()
+                            disabled=move || loading.get()
                         >
                             {icon("refresh")}
                             {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
@@ -981,11 +984,11 @@ pub fn WbSalesList() -> impl IntoView {
                                 </Flex>
                             </div>
 
-                            <div style="width: 200px; padding-left: 20px; border-left: 1px solid var(--colorNeutralStroke2);">
+                            <div style="width: 400px; padding-left: 20px; border-left: 1px solid var(--colorNeutralStroke2);">
                                 <Flex vertical=true gap=FlexGap::Small>
                                     <Label>"Колонки:"</Label>
-                                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <div style="display: flex; flex-direction: row; gap: 12px;">
+                                        <label style="padding:1px 8px; background:var(--badge-primary-bg); border-radius: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                             <input
                                                 type="checkbox"
                                                 style="cursor: pointer;"
@@ -996,7 +999,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             />
                                             <span style="font-size: 13px;">"Операция"</span>
                                         </label>
-                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <label style="padding:1px 8px; background:var(--badge-primary-bg); border-radius: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                             <input
                                                 type="checkbox"
                                                 style="cursor: pointer;"
@@ -1007,7 +1010,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             />
                                             <span style="font-size: 13px;">"Арт. МП"</span>
                                         </label>
-                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <label style="padding:1px 8px; background:var(--badge-primary-bg); border-radius: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
                                             <input
                                                 type="checkbox"
                                                 style="cursor: pointer;"
@@ -1125,27 +1128,25 @@ pub fn WbSalesList() -> impl IntoView {
             }}
 
             <div class="table-wrapper">
-                    {move || {
-                        if loading.get() {
-                            return view! {
-                                <div class="loading-spinner" style="text-align: center; padding: 40px;">
-                                    "Загрузка продаж..."
-                                </div>
-                            }.into_any();
-                        }
+                <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
 
-                        view! {
-                            <Table attr:id=TABLE_ID>
+                <Show when=move || loading.get()>
+                    <div class="loading-overlay">
+                        <div class="loading-overlay__spinner">
+                            "Загрузка продаж..."
+                        </div>
+                    </div>
+                </Show>
+
+                <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1200px;">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHeaderCell resizable=false class="fixed-checkbox-column">
-                                                <input
-                                                    type="checkbox"
-                                                    class="table__checkbox"
-                                                    on:change=toggle_all
-                                                    prop:checked=move || all_selected()
-                                                />
-                                            </TableHeaderCell>
+                                            <TableHeaderCheckbox
+                                                items=items_signal
+                                                selected=selected_signal
+                                                get_id=Callback::new(|row: WbSalesDto| row.id.clone())
+                                                on_change=Callback::new(toggle_all)
+                                            />
 
                                         <TableHeaderCell resizable=false min_width=140.0 class="resizable">
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("sale_id")>
@@ -1283,28 +1284,24 @@ pub fn WbSalesList() -> impl IntoView {
                                                 let mp_art = item.marketplace_article.clone().unwrap_or_else(|| "—".to_string());
                                                 let nom_code = item.nomenclature_code.clone().unwrap_or_else(|| "—".to_string());
                                                 let name = item.name;
-                                                let qty = format!("{:.0}", item.qty);
-                                                let amount = item.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                                let dealer_price = item.dealer_price_ut.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                                let total = item.total_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
-                                                let finished = item.finished_price.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string());
+                                                let qty = item.qty;
+                                                let amount = item.amount_line;
+                                                let dealer_price = item.dealer_price_ut;
+                                                let total = item.total_price;
+                                                let finished = item.finished_price;
 
-                                                let id_check = id.clone();
-                                                let id_toggle = id.clone();
                                                 let id_for_open = id.clone();
                                                 let sale_id_for_title = sale_id.clone();
 
                                                 view! {
                                                 <TableRow>
-                                                    <TableCell class="fixed-checkbox-column">
-                                                        <input
-                                                            type="checkbox"
-                                                            style="cursor: pointer;"
-                                                            on:click=|e| e.stop_propagation()
-                                                            prop:checked=move || is_selected(&id_check)
-                                                            on:change=move |_ev| toggle_selection(id_toggle.clone())
-                                                        />
-                                                    </TableCell>
+                                                    <TableCellCheckbox
+                                                        item_id=id.clone()
+                                                        selected=selected_signal
+                                                        on_change=Callback::new(move |(id, checked)| {
+                                                            toggle_selection(id, checked);
+                                                        })
+                                                    />
                                                     <TableCell>
                                                         <TableCellLayout truncate=true>
                                                             <a
@@ -1330,22 +1327,20 @@ pub fn WbSalesList() -> impl IntoView {
                                                     </TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{nom_code}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout truncate=true>{name}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{qty}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{amount}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{dealer_price}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{format_number(qty)}</TableCellLayout></TableCell>
+                                                    <TableCellMoney value=amount show_currency=false color_by_sign=false />
+                                                    <TableCellMoney value=dealer_price show_currency=false color_by_sign=false />
                                                     <TableCell attr:style=move || if state.with(|s| s.show_total_price) { "" } else { "display: none;" }>
-                                                        <TableCellLayout attr:style="text-align: right;">{total}</TableCellLayout>
+                                                        <TableCellMoney value=total show_currency=false color_by_sign=false />
                                                     </TableCell>
-                                                    <TableCell><TableCellLayout attr:style="text-align: right;">{finished}</TableCellLayout></TableCell>
+                                                    <TableCellMoney value=finished show_currency=false color_by_sign=false />
                                                 </TableRow>
                                             }
                                             }
                                         />
                                     </TableBody>
                                 </Table>
-                        }.into_any()
-                    }}
-                </div>
+            </div>
             </div>
         </div>
     }

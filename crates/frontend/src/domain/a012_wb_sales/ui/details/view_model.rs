@@ -253,11 +253,11 @@ impl WbSalesDetailsVm {
 
     /// Load projections (lazy, for "projections" tab)
     pub fn load_projections(&self) {
-        if self.projections_loaded.get() || self.projections_loading.get() {
+        if self.projections_loaded.get_untracked() || self.projections_loading.get_untracked() {
             return;
         }
 
-        let Some(id) = self.id.get() else {
+        let Some(id) = self.id.get_untracked() else {
             return;
         };
 
@@ -280,11 +280,11 @@ impl WbSalesDetailsVm {
 
     /// Load finance reports (lazy, for "links" or "line" tabs)
     pub fn load_finance_reports(&self) {
-        if self.finance_reports_loaded.get() || self.finance_reports_loading.get() {
+        if self.finance_reports_loaded.get_untracked() || self.finance_reports_loading.get_untracked() {
             return;
         }
 
-        let Some(sale) = self.sale.get() else {
+        let Some(sale) = self.sale.get_untracked() else {
             return;
         };
 

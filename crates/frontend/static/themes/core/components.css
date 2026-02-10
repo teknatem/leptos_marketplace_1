@@ -2795,3 +2795,39 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 .sql-placeholder .text-muted {
   color: var(--color-text-secondary);
 }
+
+/* ============================================
+   Loading Overlay
+   ============================================ */
+
+/* Loading overlay для таблиц с серверной пагинацией */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: all;
+}
+
+[data-theme="dark"] .loading-overlay,
+[data-theme="forest"] .loading-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.loading-overlay__spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--colorNeutralBackground1);
+  border-radius: 8px;
+  box-shadow: var(--shadow-8);
+}

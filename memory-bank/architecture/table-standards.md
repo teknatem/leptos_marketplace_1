@@ -5,7 +5,8 @@
 Единый стандарт для всех списков в системе с двумя уровнями сложности.
 
 **Дата создания:** 2025-12-19  
-**Версия:** 1.0
+**Последнее обновление:** 2026-02-10  
+**Версия:** 1.1
 
 ---
 
@@ -45,6 +46,362 @@
 
 ---
 
+## HTML структура с Thaw UI
+
+### Для простых таблиц (клиентская пагинация)
+
+```rust
+<div class="page">
+    <div class="page__header">...</div>
+
+    <div class="page__content">
+        {move || error.get().map(|e| view! { ... })}
+
+        <div class="table-wrapper">
+            <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+            <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 900px;">
+                <TableHeader>
+                    <TableRow>
+                        <TableHeaderCheckbox
+                            items=items
+                            selected=selected
+                            get_id=Callback::new(|row: Row| row.id.clone())
+                            on_change=Callback::new(toggle_all)
+                        />
+                        <TableHeaderCell>...</TableHeaderCell>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {move || items.get().into_iter().map(|row| {
+                        view! { <TableRow>...</TableRow> }
+                    }).collect_view()}
+                </TableBody>
+            </Table>
+        </div>
+    </div>
+</div>
+```
+
+**Ключевые элементы:**
+
+- Одна обёртка `table-wrapper` с `overflow-y: auto`
+- `TableCrosshairHighlight` для подсветки строк/колонок
+- Таблица размещается прямо внутри wrapper (без промежуточных div)
+
+### Для сложных таблиц (серверная пагинация)
+
+**ВАЖНО:** Таблица должна быть ВСЕГДА в DOM, loading показывается через overlay.
+
+```rust
+<div class="page">
+    <div class="page__header">...</div>
+
+    <div class="page__content">
+        <div class="filter-panel">...</div>
+
+        {move || error.get().map(|e| view! { ... })}
+
+        <div class="table-wrapper">
+            <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+            // Loading overlay - НЕ заменяет таблицу
+            <Show when=move || loading.get()>
+                <div class="loading-overlay">
+                    <div class="loading-overlay__spinner">
+                        "Загрузка..."
+                    </div>
+                </div>
+            </Show>
+
+            // Таблица ВСЕГДА в DOM
+            <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1200px;">
+                <TableHeader>
+                    <TableRow>
+                        <TableHeaderCheckbox
+                            items=items_signal  // ✅ Созданы снаружи!
+                            selected=selected_signal
+                            get_id=Callback::new(|row: Row| row.id.clone())
+                            on_change=Callback::new(toggle_all)
+                        />
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <For
+                        each=move || state.with(|s| s.items.clone())
+                        key=|item| item.id.clone()
+                        children=move |item| {
+                            view! { <TableRow>...</TableRow> }
+                        }
+                    />
+                </TableBody>
+            </Table>
+        </div>
+    </div>
+</div>
+```
+
+**КРИТИЧНЫЕ ПРАВИЛА для серверной пагинации:**
+
+1. Signals для чекбоксов создаются СНАРУЖИ любых closures
+2. Таблица НЕ должна пересоздаваться при loading
+3. Loading = overlay поверх, а НЕ условный рендеринг
+4. `<For>` вместо `.map().collect_view()` для лучшей производительности
+5. Crosshair нужно реинициализировать при изменении данных (см. ниже)
+
+---
+
+## 🔧 Инициализация компонентов
+
+### Run-once паттерн для Effect
+
+Effect'ы могут срабатывать многократно при изменении зависимостей. Для инициализаций используйте паттерн "run-once":
+
+**❌ Неправильно (инициализация при каждом изменении):**
+
+```rust
+Effect::new(move |_| {
+    spawn_local(async move {
+        init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+    });
+});
+```
+
+**✅ Правильно (инициализация один раз):**
+
+```rust
+let resize_initialized = leptos::prelude::StoredValue::new(false);
+Effect::new(move |_| {
+    if !resize_initialized.get_value() {
+        resize_initialized.set_value(true);
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(50).await;
+            init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+        });
+    }
+});
+```
+
+### Реинициализация crosshair для серверных таблиц
+
+Для таблиц с серверной пагинацией crosshair нужно реинициализировать при изменении данных:
+
+```rust
+// Init column resize once
+let resize_initialized = leptos::prelude::StoredValue::new(false);
+Effect::new(move |_| {
+    if !resize_initialized.get_value() {
+        resize_initialized.set_value(true);
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(50).await;
+            init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+        });
+    }
+});
+
+// Reinitialize crosshair when data changes (for server-side pagination)
+Effect::new(move |_| {
+    let _items_count = state.with(|s| s.items.len());
+    if state.with(|s| s.is_loaded) {
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(100).await;
+            use crate::shared::table_utils::reinit_crosshair_highlight;
+            reinit_crosshair_highlight(TABLE_ID);
+        });
+    }
+});
+```
+
+**Почему это нужно:**
+
+- Таблица всегда в DOM (для стабильности)
+- При первой инициализации таблица пустая (нет ячеек)
+- Когда приходят данные, `<For>` рендерит новые ячейки
+- Crosshair не знает о новых ячейках → нужна реинициализация
+
+---
+
+## ⚠️ Распространенные проблемы реактивности
+
+### Проблема 1: "RefCell already borrowed"
+
+**Симптом:** Паника при клике на checkbox в заголовке таблицы.
+
+**Причина:** Вложенное заимствование одного и того же signal.
+
+**❌ Неправильно:**
+
+```rust
+#[component]
+pub fn TableHeaderCheckbox(...) -> impl IntoView {
+    let checkbox_state = Signal::derive(move || {
+        // ... вычисление состояния
+    });
+
+    view! {
+        <input
+            on:change=move |_ev| {
+                let state = checkbox_state.get();  // ← Заимствование signal
+                let should_check = matches!(state, CheckboxState::Unchecked);
+                on_change.run(should_check);       // ← Пытается изменить тот же signal!
+            }
+        />
+    }
+}
+```
+
+**✅ Правильно:**
+
+```rust
+view! {
+    <input
+        on:change=move |ev| {
+            // Получаем значение из DOM, а не из signal
+            let checked = event_target_checked(&ev);
+            on_change.run(checked);
+        }
+    />
+}
+```
+
+### Проблема 2: "Reactive value has already been disposed"
+
+**Симптом:** Паника в `toggle_all` при выборе всех записей.
+
+**Причина:** Вложенное заимствование внутри `state.update()`.
+
+**❌ Неправильно:**
+
+```rust
+let toggle_all = move |check_all: bool| {
+    state.update(|s| {                  // ← Изменяемое заимствование
+        if check_all {
+            let items = get_items();    // ← get_items() делает state.with() - конфликт!
+            for item in items.iter() {
+                s.selected_ids.insert(item.id.clone());
+            }
+        }
+    });
+};
+```
+
+**✅ Правильно:**
+
+```rust
+let toggle_all = move |check_all: bool| {
+    if check_all {
+        let items = get_items();        // ← ДО state.update()
+        state.update(|s| {
+            for item in items.iter() {
+                s.selected_ids.insert(item.id.clone());
+            }
+        });
+    } else {
+        state.update(|s| {
+            s.selected_ids.clear();
+        });
+    }
+};
+```
+
+**Правило:** Никогда не вызывайте `state.with()` или `state.get()` внутри `state.update()` для того же signal.
+
+### Проблема 3: Crosshair не работает после загрузки данных
+
+**Симптом:** В таблицах с серверной пагинацией crosshair не реагирует на hover.
+
+**Причина:** Crosshair инициализируется на пустой таблице, не видит ячейки, добавленные позже.
+
+**Решение:** Используйте реинициализацию (см. раздел "Реинициализация crosshair для серверных таблиц" выше).
+
+---
+
+## ❌ Антипаттерны
+
+### 1. Условный рендеринг таблицы
+
+**НЕ делайте так:**
+
+```rust
+{move || {
+    if loading.get() {
+        return view! { <div>"Loading..."</div> }
+    }
+    view! { <Table>...</Table> }  // ❌ Пересоздается
+}}
+```
+
+**Проблемы:**
+
+- Таблица unmount/mount при каждой загрузке
+- Теряются инициализации (column resize, crosshair)
+- Чекбоксы теряют реактивность
+
+**Делайте так:**
+
+```rust
+<Table>...</Table>  // ✅ Всегда в DOM
+<Show when=loading>
+    <div class="loading-overlay">...</div>
+</Show>
+```
+
+### 2. Signals внутри closures
+
+**НЕ делайте так:**
+
+```rust
+{move || {
+    view! {
+        <TableHeaderCheckbox
+            items=Signal::derive(move || ...)  // ❌ Новый signal каждый рендер
+        />
+    }
+}}
+```
+
+**Проблема:** Signal пересоздается при каждом рендере, теряя реактивность.
+
+**Делайте так:**
+
+```rust
+let items_signal = Signal::derive(move || ...);  // ✅ Снаружи
+
+view! {
+    <TableHeaderCheckbox items=items_signal />
+}
+```
+
+### 3. Избыточные обёртки
+
+**НЕ делайте так:**
+
+```html
+<div class="table-wrapper">
+  <div class="table-container">
+    ❌ Лишний уровень
+    <table></table>
+  </div>
+</div>
+```
+
+**Проблемы:**
+
+- Увеличение вложенности DOM
+- Усложнение CSS (overflow конфликты)
+- Нет функциональной пользы
+
+**Делайте так:**
+
+```html
+<div class="table-wrapper">
+  ✅ Одна обертка достаточно
+  <table></table>
+</div>
+```
+
+---
+
 ## BEM Методология (ОБЯЗАТЕЛЬНО)
 
 ### Правила именования
@@ -71,6 +428,7 @@
 ```
 
 **ВАЖНО по выравниванию:**
+
 - Заголовки колонок всегда выравниваются **влево** (используйте `.table__header-cell` без модификатора)
 - Числовые значения в ячейках выравниваются **вправо** (используйте `.table__cell--right`)
 - ❌ НЕ используйте `.table__header-cell--right` - класс устарел

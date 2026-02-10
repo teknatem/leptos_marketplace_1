@@ -1,9 +1,12 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::table::{TableCrosshairHighlight, TableHeaderCheckbox, TableCellCheckbox};
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a002_organization::aggregate::Organization;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use std::collections::HashSet;
 use std::rc::Rc;
 use thaw::*;
@@ -40,6 +43,9 @@ impl From<Organization> for OrganizationRow {
 fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
+
+const TABLE_ID: &str = "a002-organization-table";
+const COLUMN_WIDTHS_KEY: &str = "a002_organization_column_widths";
 
 #[component]
 #[allow(non_snake_case)]
@@ -169,6 +175,18 @@ pub fn OrganizationList() -> impl IntoView {
 
     fetch();
 
+    // Initialize column resize once
+    let resize_initialized = leptos::prelude::StoredValue::new(false);
+    Effect::new(move |_| {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
+
     view! {
         <div class="page">
             // Page header with title and action buttons
@@ -202,70 +220,60 @@ pub fn OrganizationList() -> impl IntoView {
                 </div>
             </div>
 
-                    {move || error.get().map(|e| view! {
-                        <div class="warning-box warning-box--error">
-                            <span class="warning-box__icon">"⚠"</span>
-                            <span class="warning-box__text">{e}</span>
-                        </div>
-                    })}
+            <div class="page__content">
+                {move || error.get().map(|e| view! {
+                    <div class="warning-box warning-box--error">
+                        <span class="warning-box__icon">"⚠"</span>
+                        <span class="warning-box__text">{e}</span>
+                    </div>
+                })}
 
-                    <Table>
+                <div class="table-wrapper">
+                    <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+                    
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 900px;">
                         <TableHeader>
                             <TableRow>
-                                <TableHeaderCell resizable=false class="fixed-checkbox-column">
-                                    <input
-                                        type="checkbox"
-                                        class="table__checkbox"
-                                        prop:checked=move || {
-                                            let current = items.get();
-                                            let sel = selected.get();
-                                            !current.is_empty() && current.iter().all(|item| sel.contains(&item.id))
+                                <TableHeaderCheckbox
+                                    items=items
+                                    selected=selected
+                                    get_id=Callback::new(|row: OrganizationRow| row.id.clone())
+                                    on_change=Callback::new(move |check_all: bool| {
+                                        if check_all {
+                                            set_selected.update(|s| {
+                                                for item in items.get().iter() {
+                                                    s.insert(item.id.clone());
+                                                }
+                                            });
+                                        } else {
+                                            set_selected.set(HashSet::new());
                                         }
-                                        on:change=move |ev| {
-                                            let checked = event_target_checked(&ev);
-                                            let current_items = items.get();
-                                            if checked {
-                                                set_selected.update(|s| {
-                                                    for item in current_items.iter() {
-                                                        s.insert(item.id.clone());
-                                                    }
-                                                });
-                                            } else {
-                                                set_selected.set(HashSet::new());
-                                            }
-                                        }
-                                    />
-                                </TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=200.0>{"Наименование"}</TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=120.0>{"ИНН"}</TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=100.0>{"КПП"}</TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=150.0>{"Комментарий"}</TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=150.0>{"Создано"}</TableHeaderCell>
+                                    })
+                                />
+                                <TableHeaderCell resizable=false min_width=200.0 class="resizable">{"Наименование"}</TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">{"ИНН"}</TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">{"КПП"}</TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">{"Комментарий"}</TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">{"Создано"}</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {move || items.get().into_iter().map(|row| {
                                 let id = row.id.clone();
                                 let id_for_click = id.clone();
-                                let id_for_checkbox = id.clone();
-                                let id_for_toggle = id.clone();
                                 let is_selected = selected.get().contains(&id);
                                 view! {
                                     <TableRow
                                         class:table__row--selected=is_selected
                                         on:click=move |_| handle_edit(id_for_click.clone())
                                     >
-                                        <TableCell class="fixed-checkbox-column" on:click=|e| e.stop_propagation()>
-                                            <input
-                                                type="checkbox"
-                                                class="table__checkbox"
-                                                prop:checked=move || selected.get().contains(&id_for_checkbox)
-                                                on:change=move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    toggle_select(id_for_toggle.clone(), checked);
-                                                }
-                                            />
-                                        </TableCell>
+                                        <TableCellCheckbox
+                                            item_id=id.clone()
+                                            selected=selected
+                                            on_change=Callback::new(move |(id, checked)| {
+                                                toggle_select(id, checked);
+                                            })
+                                        />
                                         <TableCell><TableCellLayout>{row.description}</TableCellLayout></TableCell>
                                         <TableCell><TableCellLayout>{row.inn}</TableCellLayout></TableCell>
                                         <TableCell><TableCellLayout>{row.kpp}</TableCellLayout></TableCell>
@@ -276,8 +284,10 @@ pub fn OrganizationList() -> impl IntoView {
                             }).collect_view()}
                         </TableBody>
                     </Table>
+                </div>
+            </div>
 
-                    <Show when=move || show_modal.get()>
+            <Show when=move || show_modal.get()>
                         {move || {
                             // Bridge old local state to new modal stack mechanism (keeps list code minimal).
                             open_details_modal(editing_id.get());

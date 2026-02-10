@@ -12,7 +12,7 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
-use crate::shared::components::table::{SortableHeaderCell, TableCellMoney};
+use crate::shared::components::table::{SortableHeaderCell, TableCellMoney, TableCrosshairHighlight};
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::components::ui::button::Button as UiButton;
 use crate::shared::icons::icon;
@@ -209,7 +209,7 @@ pub fn SalesRegisterList() -> impl IntoView {
             set_error.set(None);
 
             let (date_from, date_to, marketplace, organization_ref, page, page_size) =
-                state.with(|s| {
+                state.with_untracked(|s| {
                     (
                         s.date_from.clone(),
                         s.date_to.clone(),
@@ -306,11 +306,12 @@ pub fn SalesRegisterList() -> impl IntoView {
         count
     });
 
+    // Init column resize once after data is loaded
+    let resize_initialized = leptos::prelude::StoredValue::new(false);
     Effect::new(move |_| {
         let is_loaded = state.get().is_loaded;
-        let _page = state.get().page;
-        let _len = state.get().sales.len();
-        if is_loaded {
+        if is_loaded && !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
             spawn_local(async move {
                 gloo_timers::future::TimeoutFuture::new(50).await;
                 init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
@@ -372,7 +373,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                                     log!("Failed to export: {}", e);
                                 }
                             })
-                            disabled=loading.get() || state.get().sales.is_empty()
+                            disabled=Signal::derive(move || loading.get() || state.get().sales.is_empty())
                         >
                             {icon("download")}
                             "Excel"
@@ -397,7 +398,8 @@ pub fn SalesRegisterList() -> impl IntoView {
                 </div>
             </div>
 
-            <div class="filter-panel">
+            <div class="page__content">
+                <div class="filter-panel">
                 <div class="filter-panel-header">
                     <div
                         class="filter-panel-header__left"
@@ -452,7 +454,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                         <thaw::Button
                             appearance=ButtonAppearance::Subtle
                             on_click=move |_| load_sales()
-                            disabled=loading.get()
+                            disabled=move || loading.get()
                         >
                             {icon("refresh")}
                             {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
@@ -517,21 +519,19 @@ pub fn SalesRegisterList() -> impl IntoView {
                 </div>
             </div>
 
-            // Error message
-            {move || {
-                if let Some(err) = error.get() {
-                    view! {
-                        <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);">
-                            <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                            <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                }
-            }}
-
-            <div class="page__content">
+                // Error message
+                {move || {
+                    if let Some(err) = error.get() {
+                        view! {
+                            <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-sm);">
+                                <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                                <span class="warning-box__text" style="color: var(--color-error);">{err}</span>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }
+                }}
                     {move || {
                         if loading.get() {
                             return view! {
@@ -544,8 +544,10 @@ pub fn SalesRegisterList() -> impl IntoView {
                         let items = get_items();
 
                         view! {
-                            // Only horizontal scrolling here; vertical scrolling is handled by `.page`
-                            <div class="table-container" style="overflow-x: auto; overflow-y: visible;">
+                            // Table wrapper with crosshair highlight overlay
+                            <div class="table-wrapper">
+                                <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+                                
                                 <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1500px;">
                                     <TableHeader>
                                         <TableRow>

@@ -153,6 +153,15 @@ pub fn Sidebar() -> impl IntoView {
             .unwrap_or(false)
     };
 
+    // Check admin status once, untracked, for filtering menu groups
+    let is_admin_untracked = auth_state.with_untracked(|state| {
+        state
+            .user_info
+            .as_ref()
+            .map(|u| u.is_admin)
+            .unwrap_or(false)
+    });
+
     // Initially expanded groups (matching the sample)
     /*let expanded_groups = RwSignal::new(vec![
         "dashboards".to_string(),
@@ -173,7 +182,7 @@ pub fn Sidebar() -> impl IntoView {
                     let is_admin_only = group.admin_only;
 
                     // Skip admin-only groups if user is not admin
-                    if is_admin_only && !is_admin() {
+                    if is_admin_only && !is_admin_untracked {
                         return None;
                     }
 
