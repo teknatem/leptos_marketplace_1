@@ -28,6 +28,8 @@ pub mod api;
 pub mod ui;
 
 // Re-export main components for convenience
+pub use ui::AllReportsDetails;
+pub use ui::AllReportsList;
 pub use ui::SchemaBrowser;
 pub use ui::UniversalDashboard;
 pub use ui::{

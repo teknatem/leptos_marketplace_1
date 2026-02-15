@@ -608,6 +608,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 comment TEXT,
                 marketplace TEXT NOT NULL,
                 organization TEXT NOT NULL,
+                organization_ref TEXT NOT NULL DEFAULT '',
                 api_key TEXT NOT NULL,
                 supplier_id TEXT,
                 application_id TEXT,
@@ -615,6 +616,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 business_account_id TEXT,
                 api_key_stats TEXT,
                 test_mode INTEGER NOT NULL DEFAULT 0,
+                planned_commission_percent REAL,
                 authorization_type TEXT NOT NULL DEFAULT 'API Key',
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
@@ -628,6 +630,28 @@ pub async fn initialize_database() -> anyhow::Result<()> {
             create_connection_mp_table_sql.to_string(),
         ))
         .await?;
+    } else {
+        // Keep legacy `organization`, add UUID-based `organization_ref` if missing
+        let pragma = format!("PRAGMA table_info('{}');", "a006_connection_mp");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_organization_ref = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "organization_ref" {
+                has_organization_ref = true;
+            }
+        }
+        if !has_organization_ref {
+            tracing::info!("Adding organization_ref column to a006_connection_mp");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a006_connection_mp ADD COLUMN organization_ref TEXT NOT NULL DEFAULT '';"
+                    .to_string(),
+            ))
+            .await?;
+        }
     }
 
     // a007_marketplace_product table
@@ -1491,6 +1515,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 source_meta_json TEXT NOT NULL,
                 marketplace_product_ref TEXT,
                 nomenclature_ref TEXT,
+                base_nomenclature_ref TEXT,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 is_posted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -1755,6 +1780,78 @@ pub async fn initialize_database() -> anyhow::Result<()> {
                 updated_at TEXT,
                 version INTEGER NOT NULL DEFAULT 0
             );
+        "#;
+        conn.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            create_table_sql.to_string(),
+        ))
+        .await?;
+    } else {
+        let pragma = format!("PRAGMA table_info('{}');", "a015_wb_orders");
+        let cols = conn
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, pragma))
+            .await?;
+        let mut has_base_nomenclature_ref = false;
+        for row in cols {
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            if name == "base_nomenclature_ref" {
+                has_base_nomenclature_ref = true;
+            }
+        }
+
+        if !has_base_nomenclature_ref {
+            tracing::info!("Adding base_nomenclature_ref column to a015_wb_orders");
+            conn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "ALTER TABLE a015_wb_orders ADD COLUMN base_nomenclature_ref TEXT;".to_string(),
+            ))
+            .await?;
+        }
+    }
+
+    // a015_wb_orders table - документы Wildberries Orders
+    let check_wb_orders = r#"
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='a015_wb_orders';
+    "#;
+    let wb_orders_exists = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            check_wb_orders.to_string(),
+        ))
+        .await?;
+
+    if wb_orders_exists.is_empty() {
+        tracing::info!("Creating a015_wb_orders table");
+        let create_table_sql = r#"
+            CREATE TABLE a015_wb_orders (
+                id TEXT PRIMARY KEY NOT NULL,
+                code TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                comment TEXT,
+                document_no TEXT NOT NULL,
+                document_date TEXT,
+                g_number TEXT,
+                spp REAL,
+                is_cancel INTEGER,
+                cancel_date TEXT,
+                header_json TEXT NOT NULL,
+                line_json TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                warehouse_json TEXT NOT NULL,
+                geography_json TEXT NOT NULL,
+                source_meta_json TEXT NOT NULL,
+                marketplace_product_ref TEXT,
+                nomenclature_ref TEXT,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_posted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_a015_document_no ON a015_wb_orders(document_no);
+            CREATE INDEX IF NOT EXISTS idx_a015_g_number ON a015_wb_orders(g_number);
+            CREATE INDEX IF NOT EXISTS idx_a015_is_posted ON a015_wb_orders(is_posted);
         "#;
         conn.execute(Statement::from_string(
             DatabaseBackend::Sqlite,

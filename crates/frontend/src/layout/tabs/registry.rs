@@ -9,7 +9,7 @@ use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::list::OrganizationList;
 use crate::domain::a004_nomenclature::ui::list::NomenclatureList;
 use crate::domain::a005_marketplace::ui::list::MarketplaceList;
-use crate::domain::a006_connection_mp::ui::list::ConnectionMPList;
+use crate::domain::a006_connection_mp::ui::{ConnectionMPDetail, ConnectionMPList};
 use crate::domain::a007_marketplace_product::ui::details::MarketplaceProductDetails;
 use crate::domain::a007_marketplace_product::ui::list::MarketplaceProductList;
 use crate::domain::a008_marketplace_sales::ui::list::MarketplaceSalesList;
@@ -121,6 +121,27 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a006: Marketplace Connections
         "a006_connection_mp" => view! { <ConnectionMPList /> }.into_any(),
+        k if k.starts_with("a006_connection_mp_detail_") => {
+            let id_str = k.strip_prefix("a006_connection_mp_detail_").unwrap();
+            let id = if id_str == "new" {
+                None
+            } else {
+                Some(id_str.to_string())
+            };
+
+            view! {
+                <ConnectionMPDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // a007: Marketplace Products
         "a007_marketplace_product" => view! { <MarketplaceProductList /> }.into_any(),
@@ -450,6 +471,28 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating SchemaBrowser");
             view! { <SchemaBrowser /> }.into_any()
         }
+        "all_reports" => {
+            log!("✅ Creating AllReportsList");
+            view! { <crate::shared::universal_dashboard::AllReportsList /> }.into_any()
+        }
+
+        // All Reports Details
+        k if k.starts_with("all_reports_detail_") => {
+            let config_id = k.strip_prefix("all_reports_detail_").unwrap().to_string();
+            log!("✅ Creating AllReportsDetails for config: {}", config_id);
+            view! {
+                <crate::shared::universal_dashboard::AllReportsDetails
+                    config_id=config_id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // Schema Details
         k if k.starts_with("schema_details_") => {
@@ -464,6 +507,39 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 />
             }
             .into_any()
+        }
+
+        // Universal Dashboard Report (opened from All Reports list)
+        // Format: universal_dashboard_report_{uuid}__{schema_id}__{config_id}
+        k if k.starts_with("universal_dashboard_report_") => {
+            let rest = k.strip_prefix("universal_dashboard_report_").unwrap();
+            // Parse: uuid__schema_id__config_id
+            let parts: Vec<&str> = rest.split("__").collect();
+            if parts.len() == 3 {
+                let schema_id = parts[1].to_string();
+                let config_id = parts[2].to_string();
+                log!(
+                    "✅ Creating UniversalDashboard with schema: {}, config: {}",
+                    schema_id,
+                    config_id
+                );
+                view! {
+                    <UniversalDashboard
+                        initial_schema_id=schema_id
+                        initial_config_id=config_id
+                        on_close=Callback::new({
+                            let key_for_close = key_for_close.clone();
+                            move |_| {
+                                tabs_store.close_tab(&key_for_close);
+                            }
+                        })
+                    />
+                }
+                .into_any()
+            } else {
+                log!("⚠️ Bad universal_dashboard_report tab key: {}", k);
+                view! { <div class="placeholder">{"Bad report tab key"}</div> }.into_any()
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════════

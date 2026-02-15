@@ -2,11 +2,15 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::components::date_input::DateInput;
-use crate::shared::components::month_selector::MonthSelector;
-use crate::shared::list_utils::{
-    format_number, format_number_int, get_sort_class, get_sort_indicator, Sortable,
+use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
 };
+use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::icons::icon;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a013_ym_order::aggregate::YmOrderListDto;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -15,6 +19,7 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use thaw::*;
 use wasm_bindgen::JsCast;
 
 use crate::shared::api_utils::api_base;
@@ -31,6 +36,9 @@ pub struct Organization {
 pub struct PaginatedResponse {
     pub items: Vec<YmOrderListDto>,
     pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
 }
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
@@ -92,26 +100,32 @@ impl Sortable for YmOrderListDto {
 }
 
 const FORM_KEY: &str = "a013_ym_order";
+const TABLE_ID: &str = "ym-orders-table";
+const COLUMN_WIDTHS_KEY: &str = "a013_ym_order_column_widths";
 
 #[component]
 pub fn YmOrderList() -> impl IntoView {
-    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
-        .expect("AppGlobalContext context not found");
-
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
 
     // Batch operation state
     let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (_, set_operation_results) = signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
-    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None);
 
     // Organizations
     let (organizations, set_organizations) = signal::<Vec<Organization>>(Vec::new());
 
     // State for save settings notification
     let (save_notification, set_save_notification) = signal(None::<String>);
+
+    let open_detail = move |id: String, document_no: String| {
+        tabs_store.open_tab(
+            &format!("a013_ym_order_detail_{}", id),
+            &format!("YM Order {}", document_no),
+        );
+    };
 
     let load_orders = move || {
         spawn_local(async move {
@@ -132,7 +146,11 @@ pub fn YmOrderList() -> impl IntoView {
             // Build URL with pagination parameters
             let mut url = format!(
                 "{}/api/a013/ym-order/list?limit={}&offset={}&sort_by={}&sort_desc={}",
-                api_base(), page_size, offset, sort_field, !sort_ascending
+                api_base(),
+                page_size,
+                offset,
+                sort_field,
+                !sort_ascending
             );
 
             // Add date filter if specified
@@ -170,21 +188,16 @@ pub fn YmOrderList() -> impl IntoView {
                                 match serde_json::from_str::<PaginatedResponse>(&text) {
                                     Ok(paginated) => {
                                         log!(
-                                            "Parsed paginated response: total={}",
-                                            paginated.total
+                                            "Parsed paginated response: total={}, page={}, total_pages={}",
+                                            paginated.total, paginated.page, paginated.total_pages
                                         );
-
-                                        let total = paginated.total;
-                                        let total_pages = if page_size > 0 {
-                                            (total + page_size - 1) / page_size
-                                        } else {
-                                            0
-                                        };
 
                                         state.update(|s| {
                                             s.orders = paginated.items;
-                                            s.total_count = total;
-                                            s.total_pages = total_pages;
+                                            s.total_count = paginated.total;
+                                            s.page = paginated.page;
+                                            s.page_size = paginated.page_size;
+                                            s.total_pages = paginated.total_pages;
                                             s.is_loaded = true;
                                         });
                                         set_loading.set(false);
@@ -216,26 +229,6 @@ pub fn YmOrderList() -> impl IntoView {
             }
         });
     };
-
-    // Get items (sorting is now done on server) - no clone, returns reference via signal
-    let get_items = move || -> Vec<YmOrderListDto> { state.with(|s| s.orders.clone()) };
-
-    // Мемоизированные итоги - вычисляются только при изменении orders
-    let totals = Memo::new(move |_| {
-        state.with(|s| {
-            let total_amount: f64 = s.orders.iter().map(|item| item.total_amount).sum();
-            let total_qty: f64 = s.orders.iter().map(|item| item.total_qty).sum();
-            let total_delivery: f64 = s.orders.iter().filter_map(|item| item.delivery_total).sum();
-            let total_subsidies: f64 = s.orders.iter().map(|item| item.subsidies_total).sum();
-            (
-                s.orders.len(),
-                total_amount,
-                total_qty,
-                total_delivery,
-                total_subsidies,
-            )
-        })
-    });
 
     // Load saved settings from database on mount IF not already loaded in memory
     Effect::new(move |_| {
@@ -322,173 +315,6 @@ pub fn YmOrderList() -> impl IntoView {
         load_orders();
     };
 
-    // Переключение выбора одного документа
-    let toggle_selection = move |id: String| {
-        state.update(|s| {
-            if s.selected_ids.contains(&id) {
-                s.selected_ids.retain(|x| x != &id);
-            } else {
-                s.selected_ids.push(id.clone());
-            }
-        });
-    };
-
-    // Выбрать все / снять все
-    let toggle_all = move |_| {
-        let items = get_items();
-        let all_ids: Vec<String> = items.iter().map(|item| item.id.clone()).collect();
-        state.update(|s| {
-            if s.selected_ids.len() == all_ids.len() && !all_ids.is_empty() {
-                s.selected_ids.clear();
-            } else {
-                s.selected_ids = all_ids;
-            }
-        });
-    };
-
-    // Проверка, выбраны ли все
-    let all_selected = move || {
-        let items = get_items();
-        let selected_len = state.with(|s| s.selected_ids.len());
-        !items.is_empty() && selected_len == items.len()
-    };
-
-    // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| state.with(|s| s.selected_ids.contains(&id.to_string()));
-
-    // Массовое проведение
-    let post_selected = move |_| {
-        let ids = state.with(|s| s.selected_ids.clone());
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            // Разбиваем на чанки по 100
-            for (chunk_idx, chunk) in ids.chunks(100).enumerate() {
-                set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
-
-                let payload = json!({ "ids": chunk });
-                let response = Request::post(&format!("{}/api/a013/ym-order/batch-post", api_base()))
-                    .header("Content-Type", "application/json")
-                    .body(serde_json::to_string(&payload).unwrap_or_default())
-                    .map(|req| req.send());
-
-                match response {
-                    Ok(future) => match future.await {
-                        Ok(resp) => {
-                            if resp.status() == 200 {
-                                for id in chunk {
-                                    results.push((id.clone(), true, None));
-                                }
-                            } else {
-                                for id in chunk {
-                                    results.push((
-                                        id.clone(),
-                                        false,
-                                        Some(format!("HTTP {}", resp.status())),
-                                    ));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            for id in chunk {
-                                results.push((id.clone(), false, Some(format!("{:?}", e))));
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        for id in chunk {
-                            results.push((id.clone(), false, Some(format!("{:?}", e))));
-                        }
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            state.update(|s| s.selected_ids.clear());
-
-            // Перезагрузить список
-            load_orders();
-        });
-    };
-
-    // Массовая отмена проведения
-    let unpost_selected = move |_| {
-        let ids = state.with(|s| s.selected_ids.clone());
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            // Разбиваем на чанки по 100
-            for (chunk_idx, chunk) in ids.chunks(100).enumerate() {
-                set_current_operation.set(Some((chunk_idx * 100 + chunk.len(), total)));
-
-                let payload = json!({ "ids": chunk });
-                let response =
-                    Request::post(&format!("{}/api/a013/ym-order/batch-unpost", api_base()))
-                        .header("Content-Type", "application/json")
-                        .body(serde_json::to_string(&payload).unwrap_or_default())
-                        .map(|req| req.send());
-
-                match response {
-                    Ok(future) => match future.await {
-                        Ok(resp) => {
-                            if resp.status() == 200 {
-                                for id in chunk {
-                                    results.push((id.clone(), true, None));
-                                }
-                            } else {
-                                for id in chunk {
-                                    results.push((
-                                        id.clone(),
-                                        false,
-                                        Some(format!("HTTP {}", resp.status())),
-                                    ));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            for id in chunk {
-                                results.push((id.clone(), false, Some(format!("{:?}", e))));
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        for id in chunk {
-                            results.push((id.clone(), false, Some(format!("{:?}", e))));
-                        }
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            state.update(|s| s.selected_ids.clear());
-
-            // Перезагрузить список
-            load_orders();
-        });
-    };
-
     // Save current settings to database
     let save_settings_to_db = move |_| {
         let settings = json!({
@@ -564,510 +390,571 @@ pub fn YmOrderList() -> impl IntoView {
         });
     };
 
-    // Открыть детальный просмотр
-    let open_detail = move |id: String, document_no: String| {
-        tabs_store.open_tab(
-            &format!("a013_ym_order_detail_{}", id),
-            &format!("YM Order {}", document_no),
-        );
+    // Filter panel collapsible state
+    let (is_filter_expanded, set_is_filter_expanded) = signal(true);
+
+    // Active filters count for badge
+    let active_filters_count = Memo::new(move |_| {
+        let mut count = 0;
+        state.with(|s| {
+            if !s.date_from.is_empty() || !s.date_to.is_empty() {
+                count += 1;
+            }
+            if s.selected_organization_id.is_some() {
+                count += 1;
+            }
+            if !s.search_order_no.is_empty() {
+                count += 1;
+            }
+            if !s.filter_status.is_empty() {
+                count += 1;
+            }
+        });
+        count
+    });
+
+    // Selection management for Thaw components
+    let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
+
+    let toggle_selection = move |id: String, checked: bool| {
+        selected.update(|s| {
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
+        });
+        state.update(|s| {
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
+        });
     };
 
-    view! {
-        <div class="ym-order-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            // Header - Row 1: Title with Pagination, Post/Unpost and Settings Buttons
-            <div style="background: linear-gradient(135deg, #1976d2 0%, #0d47a1 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">"📦 YM Orders"</h2>
+    let toggle_all = move |check_all: bool| {
+        if check_all {
+            let items = state.get().orders;
+            selected.update(|s| {
+                s.clear();
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
+            });
+            state.update(|s| {
+                s.selected_ids.clear();
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
+            });
+        } else {
+            selected.update(|s| s.clear());
+            state.update(|s| s.selected_ids.clear());
+        }
+    };
 
-                    // === PAGINATION CONTROLS ===
-                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px;">
-                        // First page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| go_to_page(0)
-                            title="Первая страница"
-                        >
-                            "⏮"
-                        </button>
+    let items_signal = Signal::derive(move || state.get().orders);
+    let selected_signal = Signal::derive(move || selected.get());
 
-                        // Previous page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page == 0) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                if current > 0 {
-                                    go_to_page(current - 1);
-                                }
-                            }
-                            title="Предыдущая страница"
-                        >
-                            "◀"
-                        </button>
+    // RwSignals for Thaw components
+    let selected_org_id = RwSignal::new(
+        state.with_untracked(|s| s.selected_organization_id.clone().unwrap_or_default()),
+    );
 
-                        // Page info
-                        <span style="color: white; font-size: 12px; font-weight: 500; min-width: 100px; text-align: center;">
-                            {move || {
-                                let page = state.with(|s| s.page);
-                                let total_pages = state.with(|s| s.total_pages);
-                                let total = state.with(|s| s.total_count);
-                                format!("{} / {} ({})", page + 1, total_pages.max(1), total)
-                            }}
-                        </span>
-
-                        // Next page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let current = state.with(|s| s.page);
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                if current < max_page {
-                                    go_to_page(current + 1);
-                                }
-                            }
-                            title="Следующая страница"
-                        >
-                            "▶"
-                        </button>
-
-                        // Last page button
-                        <button
-                            style="background: none; border: none; color: white; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 12px; opacity: 0.9; transition: all 0.2s;"
-                            prop:disabled=move || state.with(|s| s.page >= s.total_pages.saturating_sub(1)) || loading.get()
-                            on:click=move |_| {
-                                let max_page = state.with(|s| s.total_pages.saturating_sub(1));
-                                go_to_page(max_page);
-                            }
-                            title="Последняя страница"
-                        >
-                            "⏭"
-                        </button>
-
-                        // Divider
-                        <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
-
-                        // Page size selector
-                        <select
-                            style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer;"
-                            prop:value=move || state.with(|s| s.page_size.to_string())
-                            on:change=move |ev| {
-                                if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-                                    change_page_size(size);
-                                }
-                            }
-                        >
-                            <option value="50" style="color: black;">"50"</option>
-                            <option value="100" style="color: black;">"100"</option>
-                            <option value="200" style="color: black;">"200"</option>
-                            <option value="500" style="color: black;">"500"</option>
-                            <option value="10000" style="color: black;">"10000"</option>
-                        </select>
-                        <span style="color: rgba(255,255,255,0.8); font-size: 10px;">"на стр."</span>
-                    </div>
-                    // === END PAGINATION ===
-
-                    // Post/Unpost buttons
-                    <button
-                        class="button button--primary"
-                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
-                        on:click=post_selected
-                    >
-                        {move || format!("✓ Post ({})", state.with(|s| s.selected_ids.len()))}
-                    </button>
-                    <button
-                        class="button button--warning"
-                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
-                        on:click=unpost_selected
-                    >
-                        {move || format!("✗ Unpost ({})", state.with(|s| s.selected_ids.len()))}
-                    </button>
-                </div>
-
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    {move || {
-                        if let Some(msg) = save_notification.get() {
-                            view! {
-                                <span style="font-size: 0.75rem; color: white; font-weight: 500; margin-right: 8px;">{msg}</span>
-                            }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }
-                    }}
-                    <button
-                        class="button button--ghost button--small"
-                        on:click=restore_settings
-                        title="Восстановить настройки из базы данных"
-                    >
-                        "🔄"
-                    </button>
-                    <button
-                        class="button button--ghost button--small"
-                        on:click=save_settings_to_db
-                        title="Сохранить настройки в базу данных"
-                    >
-                        "💾"
-                    </button>
-                </div>
-            </div>
-
-            // Header - Row 2: Filters and Actions - All in one row
-            <div style="background: white; padding: 8px 12px; margin: 0 -12px 10px -12px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                // Period section
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Период:"</label>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_from)
-                        on_change=move |val| state.update(|s| s.date_from = val)
-                    />
-                    <span style="color: #6c757d;">"—"</span>
-                    <DateInput
-                        value=Signal::derive(move || state.get().date_to)
-                        on_change=move |val| state.update(|s| s.date_to = val)
-                    />
-                    <MonthSelector
-                        on_select=Callback::new(move |(from, to)| {
-                            state.update(|s| {
-                                s.date_from = from;
-                                s.date_to = to;
-                            });
-                        })
-                    />
-                </div>
-
-                // Organization filter
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Организация:"</label>
-                    <select
-                        prop:value=move || state.get().selected_organization_id.clone().unwrap_or_default()
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| {
-                                if value.is_empty() {
-                                    s.selected_organization_id = None;
-                                } else {
-                                    s.selected_organization_id = Some(value);
-                                }
-                            });
-                        }
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 200px; background: #fff;"
-                    >
-                        <option value="">"Все организации"</option>
-                        {move || organizations.get().into_iter().map(|org| {
-                            let org_id = org.id.clone();
-                            let org_id_for_selected = org.id.clone();
-                            let org_desc = org.description.clone();
-                            view! {
-                                <option value=org_id selected=move || {
-                                    state.get().selected_organization_id.as_ref() == Some(&org_id_for_selected)
-                                }>
-                                    {org_desc}
-                                </option>
-                            }
-                        }).collect_view()}
-                    </select>
-                </div>
-
-                // Search by Order №
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Order №:"</label>
-                    <input
-                        type="text"
-                        placeholder="Поиск..."
-                        prop:value=move || state.get().search_order_no
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| s.search_order_no = value);
-                        }
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; width: 150px; background: #fff;"
-                    />
-                </div>
-
-                // Status filter
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="margin: 0; font-size: 0.875rem; font-weight: 500; color: #495057; white-space: nowrap;">"Статус:"</label>
-                    <select
-                        style="padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.875rem; min-width: 150px; background: #fff;"
-                        prop:value=move || state.get().filter_status
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            state.update(|s| s.filter_status = value);
-                        }
-                    >
-                        <option value="">"Все"</option>
-                        <option value="DELIVERED">"DELIVERED"</option>
-                        <option value="PROCESSING">"PROCESSING"</option>
-                        <option value="CANCELLED">"CANCELLED"</option>
-                        <option value="PARTIALLY_RETURNED">"PARTIALLY_RETURNED"</option>
-                    </select>
-                </div>
-
-                // Update button
-                <button
-                    class="button button--primary"
-                    on:click=move |_| {
-                        load_orders();
-                    }
-                    prop:disabled=move || loading.get()
-                >
-                    "↻ Обновить"
-                </button>
-            </div>
-
-            // Totals display (for current page)
-            {move || if !loading.get() {
-                let (count, total_amount, total_qty, total_delivery, total_subsidies) = totals.get();
-                let total_count = state.with(|s| s.total_count);
-                view! {
-                    <div style="margin-bottom: 10px; padding: 3px 12px; background: var(--color-background-alt, #f5f5f5); border-radius: 4px; display: flex; align-items: center; flex-wrap: wrap;">
-                        <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text);">
-                            "На странице: " {format_number_int(count as f64)} " из " {format_number_int(total_count as f64)} " | "
-                            "Сумма: " {format_number(total_amount)} " | "
-                            "Кол-во: " {format_number(total_qty)} " | "
-                            "Доставка: " {format_number(total_delivery)} " | "
-                            "Субсидии: " {format_number(total_subsidies)}
-                        </span>
-                    </div>
-                }.into_any()
+    Effect::new(move |_| {
+        let val = selected_org_id.get();
+        state.update(|s| {
+            if val.is_empty() {
+                s.selected_organization_id = None;
             } else {
-                view! { <></> }.into_any()
-            }}
+                s.selected_organization_id = Some(val.clone());
+            }
+            s.page = 0;
+        });
+        load_orders();
+    });
 
-            // Selection summary panel (shows when items are selected)
-            {move || {
-                let selected_count = state.with(|s| s.selected_ids.len());
-                let is_processing = current_operation.get().is_some();
+    let search_order_no = RwSignal::new(state.with_untracked(|s| s.search_order_no.clone()));
 
-                if selected_count > 0 || is_processing {
-                    let selected_totals = move || {
-                        let sel_ids = state.with(|s| s.selected_ids.clone());
-                        let all_items = get_items();
-                        let selected_items: Vec<_> = all_items.into_iter()
-                            .filter(|item| sel_ids.contains(&item.id))
-                            .collect();
+    Effect::new(move |_| {
+        let val = search_order_no.get();
+        state.update(|s| {
+            s.search_order_no = val;
+            s.page = 0;
+        });
+        load_orders();
+    });
 
-                        let count = selected_items.len();
-                        let total_qty: f64 = selected_items.iter().map(|s| s.total_qty).sum();
-                        let total_amount: f64 = selected_items.iter().map(|s| s.total_amount).sum();
-                        let total_delivery: f64 = selected_items.iter().filter_map(|s| s.delivery_total).sum();
-                        let total_subsidies: f64 = selected_items.iter().map(|s| s.subsidies_total).sum();
+    let filter_status = RwSignal::new(state.with_untracked(|s| s.filter_status.clone()));
 
-                        (count, total_qty, total_amount, total_delivery, total_subsidies)
-                    };
+    Effect::new(move |_| {
+        let val = filter_status.get();
+        state.update(|s| {
+            s.filter_status = val;
+            s.page = 0;
+        });
+        load_orders();
+    });
 
-                    let (sel_count, sel_qty, sel_amount, sel_delivery, sel_subsidies) = selected_totals();
+    // Initialize column resize
+    Effect::new(move |_| {
+        init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+    });
 
-                    let progress_percent = if let Some((processed, total)) = current_operation.get() {
-                        if total > 0 {
-                            (processed as f64 / total as f64 * 100.0) as i32
-                        } else {
-                            0
-                        }
-                    } else {
-                        0
-                    };
+    view! {
+        <div class="page">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Заказы Yandex Market"</h1>
+                    <UiBadge variant="primary".to_string()>
+                        {move || state.get().total_count.to_string()}
+                    </UiBadge>
+                </div>
 
-                    let background_style = if is_processing {
-                        if progress_percent == 0 {
-                            "background: #ffffff; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;".to_string()
-                        } else {
-                            format!("background: linear-gradient(to right, #c8e6c9 {}%, #ffffff {}%); border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;", progress_percent, progress_percent)
-                        }
-                    } else {
-                        "background: #c8e6c9; border: 1px solid #4CAF50; border-radius: 4px; padding: 8px 12px; margin-bottom: 8px;".to_string()
-                    };
+                <div class="page__header-right">
+                    <Space>
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            on_click=move |e| restore_settings(e)
+                        >
+                            {icon("refresh")}
+                        </Button>
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            on_click=move |e| save_settings_to_db(e)
+                        >
+                            {icon("save")}
+                        </Button>
+                        {move || save_notification.get().map(|msg| view! {
+                            <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">{msg}</span>
+                        })}
+                    </Space>
+                </div>
+            </div>
 
-                    view! {
-                        <div style=background_style>
-                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                <span style="font-weight: 600; color: #2e7d32; font-size: 0.875rem;">
-                                    "Выделено: " {sel_count} " строк"
-                                </span>
-                                <span style="font-size: 0.875rem; color: #424242;">
-                                    "Кол-во: " {format_number(sel_qty)} " | "
-                                    "Сумма: " {format_number(sel_amount)} " | "
-                                    "Доставка: " {format_number(sel_delivery)} " | "
-                                    "Субсидии: " {format_number(sel_subsidies)}
-                                </span>
-                                <div style="margin-left: auto;">
-                                    <button
-                                        class="button button--secondary"
-                                        on:click=move |_| state.update(|s| s.selected_ids.clear())
-                                        prop:disabled=move || state.with(|s| s.selected_ids.is_empty()) || posting_in_progress.get()
-                                    >
-                                        "✕ Clear"
-                                    </button>
-                                </div>
-                            </div>
+            <div class="page__content">
+                <div class="filter-panel">
+                    <div class="filter-panel-header">
+                        <div
+                            class="filter-panel-header__left"
+                            on:click=move |_| set_is_filter_expanded.update(|e| *e = !*e)
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class=move || {
+                                    if is_filter_expanded.get() {
+                                        "filter-panel__chevron filter-panel__chevron--expanded"
+                                    } else {
+                                        "filter-panel__chevron"
+                                    }
+                                }
+                            >
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            {icon("filter")}
+                            <span class="filter-panel__title">"Фильтры"</span>
+                            {move || {
+                                let count = active_filters_count.get();
+                                if count > 0 {
+                                    view! {
+                                        <span class="filter-panel__badge">{count}</span>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }
+                            }}
                         </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                }
-            }}
 
-            {move || error.get().map(|err| view! {
-                <div class="error-message" style="padding: 12px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px; color: #c62828; margin-bottom: 10px;">{err}</div>
-            })}
+                        <div class="filter-panel-header__center">
+                            <PaginationControls
+                                current_page=Signal::derive(move || state.get().page)
+                                total_pages=Signal::derive(move || state.get().total_pages)
+                                total_count=Signal::derive(move || state.get().total_count)
+                                page_size=Signal::derive(move || state.get().page_size)
+                                on_page_change=Callback::new(go_to_page)
+                                on_page_size_change=Callback::new(change_page_size)
+                                page_size_options=vec![50, 100, 200, 500]
+                            />
+                        </div>
 
-            {move || {
-                if loading.get() {
-                    view! {
-                        <div class="loading-spinner" style="text-align: center; padding: 40px;">"Загрузка заказов..."</div>
-                    }.into_any()
-                } else {
-                    let items = get_items();
-                    let current_sort_field = state.with(|s| s.sort_field.clone());
-                    let current_sort_asc = state.with(|s| s.sort_ascending);
-
-                    view! {
-                        <div class="table-container" style="overflow: auto; max-height: calc(100vh - 240px); position: relative;">
-                            <table id="ym-orders-table" class="table__data table--striped" style="min-width: 1400px; table-layout: fixed;">
-                                <thead>
-                                    <tr>
-                                        <th class="table__cell--checkbox" style="width: 40px; min-width: 40px;">
-                                            <input
-                                                type="checkbox"
-                                                on:change=toggle_all
-                                                prop:checked=move || all_selected()
-                                            />
-                                        </th>
-                                        <th style="width: 130px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
-                                            <span class="table__sortable-header">"Order №" <span class={get_sort_class("document_no", &current_sort_field)}>{get_sort_indicator("document_no", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 100px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("creation_date")>
-                                            <span class="table__sortable-header">"Дата заказа" <span class={get_sort_class("creation_date", &current_sort_field)}>{get_sort_indicator("creation_date", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 100px; min-width: 80px; cursor: pointer;" on:click=move |_| toggle_sort("delivery_date")>
-                                            <span class="table__sortable-header">"Дата доставки" <span class={get_sort_class("delivery_date", &current_sort_field)}>{get_sort_indicator("delivery_date", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 130px; min-width: 100px; cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
-                                            <span class="table__sortable-header">"Статус" <span class={get_sort_class("status_norm", &current_sort_field)}>{get_sort_indicator("status_norm", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 70px; min-width: 60px; text-align: center; cursor: pointer;" on:click=move |_| toggle_sort("is_error")>
-                                            <span class="table__sortable-header" style="justify-content: center;">"Ошибка" <span class={get_sort_class("is_error", &current_sort_field)}>{get_sort_indicator("is_error", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 60px; min-width: 50px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
-                                            <span class="table__sortable-header">"Строк" <span class={get_sort_class("lines_count", &current_sort_field)}>{get_sort_indicator("lines_count", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 70px; min-width: 60px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_qty")>
-                                            <span class="table__sortable-header">"Кол-во" <span class={get_sort_class("total_qty", &current_sort_field)}>{get_sort_indicator("total_qty", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("total_amount")>
-                                            <span class="table__sortable-header">"Сумма" <span class={get_sort_class("total_amount", &current_sort_field)}>{get_sort_indicator("total_amount", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("delivery_total")>
-                                            <span class="table__sortable-header">"Доставка" <span class={get_sort_class("delivery_total", &current_sort_field)}>{get_sort_indicator("delivery_total", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                        <th style="width: 100px; min-width: 80px; text-align: right; cursor: pointer;" on:click=move |_| toggle_sort("subsidies_total")>
-                                            <span class="table__sortable-header">"Субсидии" <span class={get_sort_class("subsidies_total", &current_sort_field)}>{get_sort_indicator("subsidies_total", &current_sort_field, current_sort_asc)}</span></span>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {items.into_iter().map(|item| {
-                                        // Pre-compute all values once
-                                        let id = item.id.clone();
-                                        let doc_no = item.document_no.clone();
-                                        let creation_date = if !item.creation_date.is_empty() {
-                                            format_date(&item.creation_date)
-                                        } else {
-                                            "—".to_string()
-                                        };
-                                        let delivery_date = if !item.delivery_date.is_empty() {
-                                            format_date(&item.delivery_date)
-                                        } else {
-                                            "—".to_string()
-                                        };
-                                        let status = item.status_norm.clone();
-                                        let lines_count = item.lines_count;
-                                        let qty = format!("{:.0}", item.total_qty);
-                                        let amount = format!("{:.2}", item.total_amount);
-                                        let delivery = item.delivery_total.map(|d| format!("{:.2}", d)).unwrap_or_else(|| "—".to_string());
-                                        let subsidies = if item.subsidies_total > 0.0 {
-                                            format!("{:.2}", item.subsidies_total)
-                                        } else {
-                                            "—".to_string()
-                                        };
-
-                                        let is_posted_flag = item.is_posted;
-                                        let is_error_flag = item.is_error;
-
-                                        let status_style = match status.as_str() {
-                                            "DELIVERED" => "background: #e8f5e9; color: #2e7d32;",
-                                            "CANCELLED" => "background: #ffebee; color: #c62828;",
-                                            "PROCESSING" => "background: #fff3e0; color: #e65100;",
-                                            "PARTIALLY_RETURNED" => "background: #e3f2fd; color: #1565c0;",
-                                            _ => "background: #f5f5f5; color: #666;",
-                                        };
-
-                                        // Clone once for closures
-                                        let id_check = id.clone();
-                                        let id_toggle = id.clone();
-                                        let id_row = id.clone();
-                                        let doc_row = doc_no.clone();
-
-                                        // Single click handler for entire row
-                                        let on_row_click = move |_| {
-                                            open_detail(id_row.clone(), doc_row.clone());
-                                        };
-
-                                        // Row style based on posted/error flags
-                                        let row_style = if is_error_flag {
-                                            "background: #ffebee;"
-                                        } else if is_posted_flag {
-                                            "background: #e8f5e9;"
-                                        } else {
-                                            ""
-                                        };
-
-                                        view! {
-                                            <tr on:click=on_row_click.clone() style=row_style>
-                                                <td class="table__cell--checkbox" on:click=move |e| e.stop_propagation()>
-                                                    <input
-                                                        type="checkbox"
-                                                        prop:checked=move || is_selected(&id_check)
-                                                        on:change=move |_| toggle_selection(id_toggle.clone())
-                                                    />
-                                                </td>
-                                                <td class="cell-truncate" style="color: #1976d2; font-weight: 600;">{doc_no}</td>
-                                                <td>{creation_date}</td>
-                                                <td style="color: #c62828; font-weight: 500;">{delivery_date}</td>
-                                                <td>
-                                                    <span style={format!("padding: 3px 10px; border-radius: 4px; font-size: 0.85em; font-weight: 500; {}", status_style)}>
-                                                        {status}
-                                                    </span>
-                                                </td>
-                                                <td class="text-center">
-                                                    {if is_error_flag {
-                                                        view! {
-                                                            <span style="padding: 3px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; background: #ffebee; color: #c62828;">
-                                                                "Да"
-                                                            </span>
-                                                        }.into_any()
-                                                    } else {
-                                                        view! {
-                                                            <span style="color: #999;">
-                                                                "—"
-                                                            </span>
-                                                        }.into_any()
-                                                    }}
-                                                </td>
-                                                <td class="text-right">{lines_count}</td>
-                                                <td class="text-right">{qty}</td>
-                                                <td class="text-right" style="font-weight: 500;">{amount}</td>
-                                                <td class="text-right" style="color: #0288d1;">{delivery}</td>
-                                                <td class="text-right" style="color: #7b1fa2;">{subsidies}</td>
-                                            </tr>
+                        <div class="filter-panel-header__right">
+                            <Space>
+                                <Button
+                                    appearance=ButtonAppearance::Primary
+                                    disabled=Signal::derive(move || state.get().selected_ids.is_empty() || posting_in_progress.get())
+                                    on_click=move |_| {
+                                        let ids: Vec<String> = state.with(|s| s.selected_ids.iter().cloned().collect());
+                                        if ids.is_empty() {
+                                            return;
                                         }
-                                    }).collect::<Vec<_>>()}
-                                </tbody>
-                            </table>
+                                        set_posting_in_progress.set(true);
+                                        spawn_local(async move {
+                                            let payload = json!({ "ids": ids });
+                                            match Request::post(&format!("{}/api/a013/ym-order/batch-post", api_base()))
+                                                .header("Content-Type", "application/json")
+                                                .body(serde_json::to_string(&payload).unwrap_or_default())
+                                                .unwrap()
+                                                .send()
+                                                .await
+                                            {
+                                                Ok(_) => {
+                                                    state.update(|s| s.selected_ids.clear());
+                                                    selected.update(|s| s.clear());
+                                                    load_orders();
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to post: {:?}", e);
+                                                }
+                                            }
+                                            set_posting_in_progress.set(false);
+                                        });
+                                    }
+                                >
+                                    {move || format!("✓ Post ({})", state.get().selected_ids.len())}
+                                </Button>
+                                <Button
+                                    appearance=ButtonAppearance::Secondary
+                                    disabled=Signal::derive(move || state.get().selected_ids.is_empty() || posting_in_progress.get())
+                                    on_click=move |_| {
+                                        let ids: Vec<String> = state.with(|s| s.selected_ids.iter().cloned().collect());
+                                        if ids.is_empty() {
+                                            return;
+                                        }
+                                        set_posting_in_progress.set(true);
+                                        spawn_local(async move {
+                                            let payload = json!({ "ids": ids });
+                                            match Request::post(&format!("{}/api/a013/ym-order/batch-unpost", api_base()))
+                                                .header("Content-Type", "application/json")
+                                                .body(serde_json::to_string(&payload).unwrap_or_default())
+                                                .unwrap()
+                                                .send()
+                                                .await
+                                            {
+                                                Ok(_) => {
+                                                    state.update(|s| s.selected_ids.clear());
+                                                    selected.update(|s| s.clear());
+                                                    load_orders();
+                                                }
+                                                Err(e) => {
+                                                    log!("Failed to unpost: {:?}", e);
+                                                }
+                                            }
+                                            set_posting_in_progress.set(false);
+                                        });
+                                    }
+                                >
+                                    {move || format!("✗ Unpost ({})", state.get().selected_ids.len())}
+                                </Button>
+                            </Space>
                         </div>
-                    }.into_any()
-                }
-            }}
+                    </div>
+
+                    <Show when=move || is_filter_expanded.get()>
+                        <div class="filter-panel-content">
+                            <Flex gap=FlexGap::Small align=FlexAlign::End>
+                                <div style="min-width: 420px;">
+                                    <DateRangePicker
+                                        date_from=Signal::derive(move || state.with(|s| s.date_from.clone()))
+                                        date_to=Signal::derive(move || state.with(|s| s.date_to.clone()))
+                                        on_change=Callback::new(move |(from, to)| {
+                                            state.update(|s| {
+                                                s.date_from = from;
+                                                s.date_to = to;
+                                                s.page = 0;
+                                            });
+                                            load_orders();
+                                        })
+                                        label="Период:".to_string()
+                                    />
+                                </div>
+
+                                <div style="width: 260px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Организация:"</Label>
+                                        <Select value=selected_org_id>
+                                            <option value="">"Все организации"</option>
+                                            {move || organizations.get().into_iter().map(|org| {
+                                                let id = org.id.clone();
+                                                view! {
+                                                    <option value=id>{org.description}</option>
+                                                }
+                                            }).collect_view()}
+                                        </Select>
+                                    </Flex>
+                                </div>
+
+                                <div style="flex: 1; max-width: 300px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Поиск (Order №):"</Label>
+                                        <Input
+                                            value=search_order_no
+                                            placeholder="Номер заказа..."
+                                        />
+                                    </Flex>
+                                </div>
+
+                                <div style="width: 180px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Статус:"</Label>
+                                        <Select value=filter_status>
+                                            <option value="">"Все"</option>
+                                            <option value="DELIVERED">"DELIVERED"</option>
+                                            <option value="PROCESSING">"PROCESSING"</option>
+                                            <option value="CANCELLED">"CANCELLED"</option>
+                                            <option value="PARTIALLY_RETURNED">"PARTIALLY_RETURNED"</option>
+                                        </Select>
+                                    </Flex>
+                                </div>
+
+                                <div style="width: 120px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>" "</Label>
+                                        <Button
+                                            appearance=ButtonAppearance::Primary
+                                            on_click=move |_| load_orders()
+                                            disabled=Signal::derive(move || loading.get())
+                                        >
+                                            {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                                        </Button>
+                                    </Flex>
+                                </div>
+                            </Flex>
+                        </div>
+                    </Show>
+                </div>
+
+                {move || {
+                    error
+                        .get()
+                        .map(|err| {
+                            view! {
+                                <div class="alert alert--error">
+                                    {err}
+                                </div>
+                            }
+                        })
+                }}
+
+                <div class="table-wrapper">
+                    <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1000px;">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHeaderCheckbox
+                                    items=items_signal
+                                    selected=selected_signal
+                                    get_id=Callback::new(|row: YmOrderListDto| row.id.clone())
+                                    on_change=Callback::new(toggle_all)
+                                />
+
+                                <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
+                                        "Order №"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "document_no", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("creation_date")>
+                                        "Дата заказа"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "creation_date"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "creation_date", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("delivery_date")>
+                                        "Дата доставки"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "delivery_date"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "delivery_date", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">
+                                    "Организация"
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
+                                        "Статус"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "status_norm"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "status_norm", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=80.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("is_error")>
+                                        "Ошибка"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "is_error"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "is_error", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
+                                        "Строк"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "lines_count"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "lines_count", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=80.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_qty")>
+                                        "Кол-во"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_qty"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_qty", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_amount")>
+                                        "Сумма"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_amount"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_amount", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("delivery_total")>
+                                        "Доставка"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "delivery_total"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "delivery_total", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("subsidies_total")>
+                                        "Субсидии"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "subsidies_total"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "subsidies_total", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                            </TableRow>
+                        </TableHeader>
+
+                        <TableBody>
+                            <For
+                                each=move || state.get().orders
+                                key=|item| item.id.clone()
+                                children=move |order| {
+                                    let order_id = order.id.clone();
+                                    let order_id_for_link = order_id.clone();
+                                    let document_no_for_link = order.document_no.clone();
+                                    let document_no_text = order.document_no.clone();
+                                    let formatted_creation_date = format_date(&order.creation_date);
+                                    let formatted_delivery_date = format_date(&order.delivery_date);
+
+                                    view! {
+                                        <TableRow>
+                                            <TableCellCheckbox
+                                                item_id=order_id.clone()
+                                                selected=selected_signal
+                                                on_change=Callback::new(move |(id, checked)| toggle_selection(id, checked))
+                                            />
+
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    <a
+                                                        href="#"
+                                                        class="table__link"
+                                                        style="color: #0f6cbd; text-decoration: underline;"
+                                                        on:click=move |e| {
+                                                            e.prevent_default();
+                                                            open_detail(order_id_for_link.clone(), document_no_for_link.clone());
+                                                        }
+                                                    >
+                                                        {document_no_text}
+                                                    </a>
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {formatted_creation_date}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {formatted_delivery_date}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {order.organization_name.clone().unwrap_or_else(|| "—".to_string())}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {order.status_norm.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {if order.is_error { "Да" } else { "—" }}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {order.lines_count.to_string()}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {format!("{:.0}", order.total_qty)}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCellMoney
+                                                value=order.total_amount
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+
+                                            <TableCellMoney
+                                                value=order.delivery_total.unwrap_or(0.0)
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+
+                                            <TableCellMoney
+                                                value=order.subsidies_total
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+                                        </TableRow>
+                                    }
+                                }
+                            />
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
         </div>
     }
 }

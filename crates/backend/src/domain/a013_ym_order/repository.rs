@@ -481,6 +481,7 @@ pub struct YmOrderListRow {
     pub subsidies_total: Option<f64>,
     pub is_posted: bool,
     pub is_error: bool,
+    pub organization_id: Option<String>,
 }
 
 /// Параметры запроса для списка
@@ -583,7 +584,8 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
         r#"SELECT 
             id, document_no, status_changed_at, creation_date, delivery_date,
             campaign_id, status_norm, total_qty, total_amount, total_amount_api,
-            lines_count, delivery_total, subsidies_total, is_posted, is_error
+            lines_count, delivery_total, subsidies_total, is_posted, is_error,
+            organization_id
         FROM a013_ym_order 
         WHERE {}
         ORDER BY {} {} NULLS LAST
@@ -623,6 +625,7 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
                     .try_get::<i32>("", "is_error")
                     .map(|v| v != 0)
                     .unwrap_or(false),
+                organization_id: row.try_get("", "organization_id").ok(),
             })
         })
         .collect();

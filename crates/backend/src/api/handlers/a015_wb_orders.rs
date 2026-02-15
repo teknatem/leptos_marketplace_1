@@ -1,11 +1,9 @@
 use axum::{extract::Query, Json};
-use chrono::NaiveDate;
 use contracts::domain::a015_wb_orders::aggregate::WbOrders;
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::a002_organization;
 use crate::domain::a015_wb_orders;
 use crate::shared::data::raw_storage;
 
@@ -26,64 +24,87 @@ pub struct ListOrdersQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub organization_id: Option<String>,
+    pub search_query: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub show_cancelled: Option<bool>,
 }
 
-/// Handler для получения списка Wildberries Orders
+/// Simplified DTO for list responses (from repository row data)
+#[derive(Debug, Clone, Serialize)]
+pub struct WbOrdersListItemSimpleDto {
+    pub id: String,
+    pub document_no: String,
+    pub document_date: Option<String>,
+    pub supplier_article: Option<String>,
+    pub brand: Option<String>,
+    pub qty: Option<f64>,
+    pub margin_pro: Option<f64>,
+    pub dealer_price_ut: Option<f64>,
+    pub finished_price: Option<f64>,
+    pub total_price: Option<f64>,
+    pub is_cancel: Option<bool>,
+    pub is_posted: bool,
+    pub organization_name: Option<String>,
+    pub marketplace_article: Option<String>,
+    pub nomenclature_code: Option<String>,
+    pub nomenclature_article: Option<String>,
+    pub base_nomenclature_article: Option<String>,
+    pub base_nomenclature_description: Option<String>,
+    pub has_wb_sales: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaginatedWbOrdersResponse {
+    pub items: Vec<WbOrdersListItemSimpleDto>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
+}
+
+/// Handler для получения списка Wildberries Orders с серверной пагинацией
 pub async fn list_orders(
     Query(query): Query<ListOrdersQuery>,
-) -> Result<Json<Vec<WbOrdersListItemDto>>, axum::http::StatusCode> {
-    // Парсим даты
-    let date_from = query
-        .date_from
-        .as_ref()
-        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+) -> Result<Json<PaginatedWbOrdersResponse>, axum::http::StatusCode> {
+    use a015_wb_orders::repository::{list_sql, WbOrdersListQuery};
 
-    let date_to = query
-        .date_to
-        .as_ref()
-        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-
-    let limit = query.limit.unwrap_or(20000); // По умолчанию максимум 20000 записей
+    let page_size = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
+    let page = if page_size > 0 { offset / page_size } else { 0 };
+    let sort_by = query
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "document_date".to_string());
+    let sort_desc = query.sort_desc.unwrap_or(true);
+    let show_cancelled = query.show_cancelled.unwrap_or(true);
 
-    let mut items = if date_from.is_some() || date_to.is_some() {
-        a015_wb_orders::service::list_by_date_range(date_from, date_to)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to list Wildberries orders: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    } else {
-        a015_wb_orders::service::list_all().await.map_err(|e| {
-            tracing::error!("Failed to list Wildberries orders: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?
+    // Build query for SQL-based list
+    let list_query = WbOrdersListQuery {
+        date_from: query.date_from.clone(),
+        date_to: query.date_to.clone(),
+        organization_id: query.organization_id.clone(),
+        search_query: query.search_query.clone(),
+        sort_by: sort_by.clone(),
+        sort_desc,
+        limit: page_size,
+        offset,
+        show_cancelled,
     };
 
-    // Фильтруем по organization_id, если указан
-    if let Some(org_id) = query.organization_id {
-        items.retain(|order| order.header.organization_id == org_id);
-    }
-
-    // Сортируем по дате (новые сначала) перед применением пагинации
-    items.sort_by(|a, b| b.state.order_dt.cmp(&a.state.order_dt));
-
-    // Применяем пагинацию
-    let items: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
-
-    // ОПТИМИЗАЦИЯ: Загружаем все организации одним запросом
-    let organizations = a002_organization::service::list_all().await.map_err(|e| {
-        tracing::error!("Failed to load organizations: {}", e);
+    // Execute SQL query
+    let result = list_sql(list_query.clone()).await.map_err(|e| {
+        tracing::error!("Failed to list Wildberries orders: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Создаем map для быстрого поиска
-    let org_map: std::collections::HashMap<String, String> = organizations
-        .into_iter()
-        .map(|org| (org.base.id.as_string(), org.base.description.clone()))
-        .collect();
+    let total = result.total;
+    let total_pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
 
-    // Загружаем все товары маркетплейса
     let marketplace_products = crate::domain::a007_marketplace_product::service::list_all()
         .await
         .map_err(|e| {
@@ -96,7 +117,6 @@ pub async fn list_orders(
         .map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone())))
         .collect();
 
-    // Загружаем всю номенклатуру
     let nomenclature_items = crate::domain::a004_nomenclature::service::list_all()
         .await
         .map_err(|e| {
@@ -104,40 +124,108 @@ pub async fn list_orders(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let nom_map: std::collections::HashMap<String, (String, String)> = nomenclature_items
-        .into_iter()
-        .map(|nom| (nom.base.id.as_string(), (nom.base.code.clone(), nom.article.clone())))
-        .collect();
+    let nom_map: std::collections::HashMap<String, (String, String, String, Option<String>)> =
+        nomenclature_items
+            .into_iter()
+            .map(|nom| {
+                (
+                    nom.base.id.as_string(),
+                    (
+                        nom.base.code.clone(),
+                        nom.article.clone(),
+                        nom.base.description.clone(),
+                        nom.base_nomenclature_ref.clone(),
+                    ),
+                )
+            })
+            .collect();
 
-    // Формируем результат с дополнительными полями
-    let result: Vec<WbOrdersListItemDto> = items
+    // Build response DTOs with reference data
+    let items: Vec<WbOrdersListItemSimpleDto> = result
+        .items
         .into_iter()
-        .map(|order| {
-            let organization_name = org_map.get(&order.header.organization_id).cloned();
-            
-            // Получаем данные из marketplace_product
-            let (marketplace_article, nomenclature_ref_from_mp) = order.marketplace_product_ref
+        .map(|row| {
+            let organization_name = row.organization_name.clone();
+
+            let (marketplace_article, nomenclature_ref_from_mp) = row
+                .marketplace_product_ref
                 .as_ref()
                 .and_then(|mp_ref| mp_map.get(mp_ref).cloned())
                 .unwrap_or((String::new(), None));
 
-            // Получаем данные из nomenclature (приоритет отдаем прямой ссылке из order)
-            let nom_ref = order.nomenclature_ref.as_ref().or(nomenclature_ref_from_mp.as_ref());
+            let nom_ref = row
+                .nomenclature_ref
+                .as_ref()
+                .or(nomenclature_ref_from_mp.as_ref());
             let (nomenclature_code, nomenclature_article) = nom_ref
-                .and_then(|nom_ref| nom_map.get(nom_ref).cloned())
+                .and_then(|nr| {
+                    nom_map
+                        .get(nr)
+                        .cloned()
+                        .map(|(code, article, _, _)| (code, article))
+                })
                 .unwrap_or((String::new(), String::new()));
 
-            WbOrdersListItemDto {
-                order,
+            let effective_base_ref = row.base_nomenclature_ref.clone().or_else(|| {
+                nom_ref.and_then(|nr| {
+                    nom_map.get(nr).and_then(|(_, _, _, base_ref)| {
+                        base_ref
+                            .clone()
+                            .filter(|s| {
+                                let v = s.trim();
+                                !v.is_empty() && v != "00000000-0000-0000-0000-000000000000"
+                            })
+                            .or_else(|| Some(nr.to_string()))
+                    })
+                })
+            });
+
+            let (base_nomenclature_article, base_nomenclature_description) = effective_base_ref
+                .as_ref()
+                .and_then(|base_ref| {
+                    nom_map
+                        .get(base_ref)
+                        .cloned()
+                        .map(|(_, article, description, _)| (Some(article), Some(description)))
+                })
+                .or_else(|| {
+                    row.base_nomenclature_article
+                        .clone()
+                        .map(|article| (Some(article), row.base_nomenclature_description.clone()))
+                })
+                .unwrap_or((None, None));
+
+            WbOrdersListItemSimpleDto {
+                id: row.id,
+                document_no: row.document_no,
+                document_date: row.document_date,
+                supplier_article: row.supplier_article,
+                brand: row.brand,
+                qty: row.qty,
+                margin_pro: row.margin_pro,
+                dealer_price_ut: row.dealer_price_ut,
+                finished_price: row.finished_price,
+                total_price: row.total_price,
+                is_cancel: row.is_cancel,
+                is_posted: row.is_posted,
                 organization_name,
                 marketplace_article: Some(marketplace_article),
                 nomenclature_code: Some(nomenclature_code),
                 nomenclature_article: Some(nomenclature_article),
+                base_nomenclature_article,
+                base_nomenclature_description,
+                has_wb_sales: row.has_wb_sales,
             }
         })
         .collect();
 
-    Ok(Json(result))
+    Ok(Json(PaginatedWbOrdersResponse {
+        items,
+        total,
+        page,
+        page_size,
+        total_pages,
+    }))
 }
 
 /// Handler для получения детальной информации о Wildberries Order

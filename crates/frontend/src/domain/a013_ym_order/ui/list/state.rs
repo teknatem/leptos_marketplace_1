@@ -1,5 +1,6 @@
 use contracts::domain::a013_ym_order::aggregate::YmOrderListDto;
 use leptos::prelude::*;
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct YmOrderState {
@@ -9,7 +10,7 @@ pub struct YmOrderState {
     pub selected_organization_id: Option<String>,
     pub sort_field: String,
     pub sort_ascending: bool,
-    pub selected_ids: Vec<String>,
+    pub selected_ids: HashSet<String>,
     pub is_loaded: bool,
     // Pagination fields
     pub page: usize,
@@ -30,7 +31,7 @@ impl Default for YmOrderState {
             selected_organization_id: None,
             sort_field: "delivery_date".to_string(),
             sort_ascending: false,
-            selected_ids: Vec::new(),
+            selected_ids: HashSet::new(),
             is_loaded: false,
             // Pagination defaults
             page: 0,

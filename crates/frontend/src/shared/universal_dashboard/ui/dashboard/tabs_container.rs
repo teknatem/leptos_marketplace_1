@@ -1,13 +1,13 @@
-//! Tab container component
+//! Settings tab container — inner tabs for configuration
+//! (Настройки, Сохранённые, SQL, JSON)
 
 use super::json_tab::JsonTab;
-use super::result_tab::ResultTab;
 use super::saved_tab::SavedTab;
 use super::settings_tab::SettingsTab;
 use super::sql_tab::SqlTab;
 use crate::shared::universal_dashboard::api;
 use contracts::shared::universal_dashboard::{
-    DashboardConfig, DataSourceSchemaOwned, ExecuteDashboardResponse, SavedDashboardConfigSummary,
+    DashboardConfig, DataSourceSchemaOwned, SavedDashboardConfigSummary,
 };
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -18,14 +18,11 @@ use thaw::{Badge, BadgeAppearance, BadgeColor, Button, ButtonAppearance, Space};
 pub fn TabsContainer(
     active_tab: RwSignal<&'static str>,
     #[prop(into)] schema: Signal<Option<DataSourceSchemaOwned>>,
-    #[prop(into)] response: Signal<Option<ExecuteDashboardResponse>>,
     #[prop(into)] saved_configs: Signal<Vec<SavedDashboardConfigSummary>>,
     #[prop(into)] generated_sql: Signal<
         Option<contracts::shared::universal_dashboard::GenerateSqlResponse>,
     >,
     #[prop(into)] config: Signal<DashboardConfig>,
-    #[prop(into)] loading: Signal<bool>,
-    #[prop(into)] error: Signal<Option<String>>,
     #[prop(into)] current_config_id: Signal<Option<String>>,
     show_only_selected: RwSignal<bool>,
     is_loading_config: RwSignal<bool>,
@@ -40,24 +37,9 @@ pub fn TabsContainer(
 ) -> impl IntoView {
     view! {
         <div>
+            // Inner tab bar (no "Результат" — it's on level 1)
             <div style="margin-bottom: 8px; margin-top: 8px;">
                 <Space>
-                    <Button
-                        appearance=move || if active_tab.get() == "result" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                        on_click=move |_| active_tab.set("result")
-                    >
-                        "Результат"
-                        {move || response.get().map(|resp| {
-                            let count = resp.rows.len();
-                            view! {
-                                <span style="margin-left: 8px;">
-                                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                                        {count.to_string()}
-                                    </Badge>
-                                </span>
-                            }
-                        })}
-                    </Button>
                     <Button
                         appearance=move || if active_tab.get() == "settings" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
                         on_click=move |_| active_tab.set("settings")
@@ -104,6 +86,7 @@ pub fn TabsContainer(
                 </Space>
             </div>
 
+            // Tab content
             <div class="dashboard-tab-content">
                 <Show
                     when=move || schema.get().is_some()
@@ -115,9 +98,6 @@ pub fn TabsContainer(
                     }
                 >
                     {move || schema.get().map(|s| view! {
-                        <div style=move || if active_tab.get() == "result" { "" } else { "display: none;" }>
-                            <ResultTab loading=loading error=error response=response />
-                        </div>
                         <div style=move || if active_tab.get() == "settings" { "" } else { "display: none;" }>
                             <SettingsTab
                                 config=config

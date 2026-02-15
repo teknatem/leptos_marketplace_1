@@ -1918,17 +1918,16 @@ impl WildberriesApiClient {
         Ok(all_daily_reports)
     }
 
-    /// Получить данные по заказам через Statistics API
+    /// Получить данные по заказам через Statistics API (Backfill mode)
     /// GET /api/v1/supplier/orders
     ///
-    /// Параметры API:
-    /// - dateFrom (обязательный): RFC3339 формат, дата последнего изменения заказа
-    /// - flag (опциональный):
-    ///   * flag=0 (по умолчанию): lastChangeDate >= dateFrom, до ~100k записей
-    ///   * flag=1: ВСЕ заказы/продажи за дату dateFrom (игнорирует время)
+    /// Стратегия:
+    /// - flag=0 (инкремент по lastChangeDate)
+    /// - dateFrom = курсор lastChangeDate
+    /// - для следующей страницы курсор сдвигаем на +1мс от максимального lastChangeDate
+    /// - соблюдаем лимит API (1 запрос/мин) и обрабатываем 429
     ///
-    /// ВАЖНО: API использует только dateFrom (без dateTo)!
-    /// Для загрузки данных за период нужно итерировать по датам.
+    /// date_to используется как soft-stop / фильтр.
     pub async fn fetch_orders(
         &self,
         connection: &ConnectionMP,
@@ -1942,39 +1941,49 @@ impl WildberriesApiClient {
         }
 
         let mut all_orders = Vec::new();
+        let mut page_num = 1;
+        let mut cursor = format!("{}T00:00:00", date_from.format("%Y-%m-%d"));
+        let soft_stop = date_to
+            .and_hms_milli_opt(23, 59, 59, 999)
+            .ok_or_else(|| anyhow::anyhow!("Invalid date_to value"))?;
+
+        fn parse_wb_dt(value: &str) -> Option<chrono::NaiveDateTime> {
+            chrono::DateTime::parse_from_rfc3339(value)
+                .ok()
+                .map(|dt| dt.naive_utc())
+                .or_else(|| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f").ok())
+                .or_else(|| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S").ok())
+        }
+
+        fn format_cursor(dt: chrono::NaiveDateTime) -> String {
+            dt.format("%Y-%m-%dT%H:%M:%S%.3f").to_string()
+        }
 
         self.log_to_file(&format!(
             "\n╔════════════════════════════════════════════════════════════════╗"
         ));
-        self.log_to_file(&format!("║ WILDBERRIES ORDERS API - LOADING ALL RECORDS"));
+        self.log_to_file(&format!("║ WILDBERRIES ORDERS API - BACKFILL BY CURSOR"));
         self.log_to_file(&format!("║ Period: {} to {}", date_from, date_to));
         self.log_to_file(&format!("║ API URL: {}", url));
         self.log_to_file(&format!(
-            "║ Method: Iterate by date with flag=1 (all orders per day)"
+            "║ Method: flag=0 with lastChangeDate cursor (1 req/min)"
         ));
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝"
         ));
 
-        // Итерируем по каждой дате в диапазоне
-        let mut current_date = date_from;
-        let mut day_counter = 1;
-
-        while current_date <= date_to {
-            // Формат RFC3339 для даты (с временем 00:00:00)
-            let date_from_rfc3339 = format!("{}T00:00:00", current_date.format("%Y-%m-%d"));
-
+        loop {
             self.log_to_file(&format!(
                 "\n┌────────────────────────────────────────────────────────────┐"
             ));
             self.log_to_file(&format!(
-                "│ Day {}: {} (flag=1 - all orders for this date)",
-                day_counter, current_date
+                "│ Page {}: dateFrom={}, flag=0",
+                page_num, cursor
             ));
 
             self.log_to_file(&format!(
-                "=== REQUEST ===\nGET {}?dateFrom={}&flag=1\nAuthorization: ****",
-                url, date_from_rfc3339
+                "=== REQUEST ===\nGET {}?dateFrom={}&flag=0\nAuthorization: ****",
+                url, cursor
             ));
 
             let response = match self
@@ -1982,8 +1991,8 @@ impl WildberriesApiClient {
                 .get(url)
                 .header("Authorization", &connection.api_key)
                 .query(&[
-                    ("dateFrom", date_from_rfc3339.as_str()),
-                    ("flag", "1"), // flag=1 для получения ВСЕХ заказов за дату
+                    ("dateFrom", cursor.as_str()),
+                    ("flag", "0"),
                 ])
                 .send()
                 .await
@@ -2040,6 +2049,15 @@ impl WildberriesApiClient {
             self.log_to_file(&format!("Response status: {}", status));
             self.log_to_file(&format!("Final URL: {}", final_url));
 
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                self.log_to_file(&format!(
+                    "│ ⚠️ Rate limit hit (429). Waiting 65 seconds before retry..."
+                ));
+                tracing::warn!("WB Orders API rate limit hit. Waiting 65 seconds...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
+                continue;
+            }
+
             // Логируем заголовки ответа для диагностики
             self.log_to_file(&format!("Response headers:"));
             for (name, value) in response.headers() {
@@ -2052,29 +2070,15 @@ impl WildberriesApiClient {
                 let body = response.text().await.unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!(
-                    "Wildberries Orders API request failed for date {}: {}",
-                    current_date,
+                    "Wildberries Orders API request failed for cursor {}: {}",
+                    cursor,
                     body
                 );
-
-                // Если 404 или другая ошибка для конкретной даты, пропускаем и идем дальше
-                if status.as_u16() == 404 {
-                    self.log_to_file(&format!(
-                        "│ ⚠️ No orders found for date {}, skipping...",
-                        current_date
-                    ));
-                    self.log_to_file(&format!(
-                        "└────────────────────────────────────────────────────────────┘"
-                    ));
-                    current_date = current_date.succ_opt().unwrap_or(current_date);
-                    day_counter += 1;
-                    continue;
-                }
 
                 // Специальная обработка для 302 редиректов
                 if status.as_u16() == 302 || status.as_u16() == 301 {
                     anyhow::bail!(
-                        "Wildberries Orders API returned redirect {} for date {}. \
+                        "Wildberries Orders API returned redirect {} for cursor {}. \
                         This may indicate:\n\
                         1. Incorrect API endpoint URL\n\
                         2. Missing or invalid authentication\n\
@@ -2082,15 +2086,15 @@ impl WildberriesApiClient {
                         Response: {}\n\
                         Check Wildberries API documentation for the correct endpoint.",
                         status,
-                        current_date,
+                        cursor,
                         body
                     );
                 }
 
                 anyhow::bail!(
-                    "Wildberries Orders API failed with status {} for date {}: {}",
+                    "Wildberries Orders API failed with status {} for cursor {}: {}",
                     status,
-                    current_date,
+                    cursor,
                     body
                 );
             }
@@ -2101,15 +2105,11 @@ impl WildberriesApiClient {
                 Err(e) => {
                     self.log_to_file(&format!("│ ⚠️ Failed to read response body: {}", e));
                     tracing::error!(
-                        "Failed to read response body for date {}: {}",
-                        current_date,
+                        "Failed to read response body for cursor {}: {}",
+                        cursor,
                         e
                     );
-                    // Считаем это пустым ответом и переходим к следующей дате
-                    current_date = current_date.succ_opt().unwrap_or(current_date);
-                    day_counter += 1;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                    continue;
+                    anyhow::bail!("Failed to read response body: {}", e);
                 }
             };
 
@@ -2117,19 +2117,13 @@ impl WildberriesApiClient {
 
             // Проверяем, не пустой ли ответ
             let body_trimmed = body.trim();
-            if body_trimmed.is_empty() {
-                self.log_to_file(&format!("│ Empty response for date {}", current_date));
-                self.log_to_file(&format!("│ Received: 0 orders for {}", current_date));
+            if body_trimmed.is_empty() || body_trimmed == "[]" {
+                self.log_to_file(&format!("│ Empty response, all records loaded"));
                 self.log_to_file(&format!("│ Total so far: {} records", all_orders.len()));
                 self.log_to_file(&format!(
                     "└────────────────────────────────────────────────────────────┘"
                 ));
-
-                // Пустой ответ - это нормально, значит нет заказов за эту дату
-                current_date = current_date.succ_opt().unwrap_or(current_date);
-                day_counter += 1;
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                continue;
+                break;
             }
 
             let body_preview = if body.chars().count() > 5000 {
@@ -2144,61 +2138,77 @@ impl WildberriesApiClient {
             ));
 
             match serde_json::from_str::<Vec<WbOrderRow>>(&body) {
-                Ok(day_data) => {
-                    let day_count = day_data.len();
+                Ok(page_data) => {
+                    let page_count = page_data.len();
                     self.log_to_file(&format!(
-                        "│ Received: {} orders for {}",
-                        day_count, current_date
+                        "│ Received: {} rows on page {}",
+                        page_count, page_num
                     ));
                     self.log_to_file(&format!(
                         "│ Total so far: {} records",
-                        all_orders.len() + day_count
+                        all_orders.len() + page_count
                     ));
                     self.log_to_file(&format!(
                         "└────────────────────────────────────────────────────────────┘"
                     ));
 
-                    // Добавляем полученные данные
-                    all_orders.extend(day_data);
-                }
-                Err(e) => {
-                    self.log_to_file(&format!(
-                        "Failed to parse JSON for date {}: {}",
-                        current_date, e
-                    ));
-                    self.log_to_file(&format!("Response body: {}", body_preview));
-                    tracing::error!(
-                        "Failed to parse Wildberries orders response for {}: {}",
-                        current_date,
-                        e
-                    );
+                    let mut max_last_change = None::<chrono::NaiveDateTime>;
+                    let mut kept_rows = 0usize;
+                    for row in page_data {
+                        let row_last_change = row
+                            .last_change_date
+                            .as_deref()
+                            .and_then(parse_wb_dt);
 
-                    // Если это пустой массив или какой-то некритичный ответ, пропускаем
-                    if body_trimmed == "[]" {
-                        self.log_to_file(&format!(
-                            "│ Empty array for date {}, skipping...",
-                            current_date
-                        ));
-                        current_date = current_date.succ_opt().unwrap_or(current_date);
-                        day_counter += 1;
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        continue;
+                        if let Some(parsed) = row_last_change {
+                            if max_last_change.map(|v| parsed > v).unwrap_or(true) {
+                                max_last_change = Some(parsed);
+                            }
+                        }
+
+                        // soft-stop по date_to: строки после date_to не включаем
+                        let include_row = row_last_change.map(|dt| dt <= soft_stop).unwrap_or(true);
+                        if include_row {
+                            all_orders.push(row);
+                            kept_rows += 1;
+                        }
                     }
 
-                    anyhow::bail!(
-                        "Failed to parse orders response for date {}: {}",
-                        current_date,
+                    self.log_to_file(&format!(
+                        "│ Kept {} rows after soft-stop filter",
+                        kept_rows
+                    ));
+
+                    let Some(max_dt) = max_last_change else {
+                        self.log_to_file("│ No lastChangeDate found on page; stopping");
+                        break;
+                    };
+
+                    if max_dt > soft_stop {
+                        self.log_to_file(&format!(
+                            "│ Soft-stop reached (max lastChangeDate {} > date_to {})",
+                            max_dt, soft_stop
+                        ));
+                        break;
+                    }
+
+                    let next_cursor_dt = max_dt + chrono::Duration::milliseconds(1);
+                    cursor = format_cursor(next_cursor_dt);
+                    page_num += 1;
+                }
+                Err(e) => {
+                    self.log_to_file(&format!("Failed to parse JSON: {}", e));
+                    self.log_to_file(&format!("Response body: {}", body_preview));
+                    tracing::error!(
+                        "Failed to parse Wildberries orders response: {}",
                         e
-                    )
+                    );
+                    anyhow::bail!("Failed to parse orders response: {}", e)
                 }
             }
 
-            // Переходим к следующей дате
-            current_date = current_date.succ_opt().unwrap_or(current_date);
-            day_counter += 1;
-
-            // Небольшая задержка между запросами для снижения нагрузки на API
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            // Лимит WB Statistics: 1 запрос в минуту
+            tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
         }
 
         self.log_to_file(&format!(

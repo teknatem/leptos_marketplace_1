@@ -121,7 +121,7 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
 
                     // Amounts table
                     <Card>
-                        <h4 class="details-section__title">"Суммы и проценты"</h4>
+                        <h4 class="details-section__title">"Деталазация Sales WD"</h4>
                         <Table>
                             <TableHeader>
                                 <TableRow>

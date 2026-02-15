@@ -37,6 +37,10 @@ static NOM_CACHE: OnceLock<RwLock<(HashMap<String, (String, String)>, std::time:
 
 const CACHE_TTL_SECS: u64 = 300; // 5 minutes
 
+fn normalize_id(s: &str) -> String {
+    s.trim().trim_matches('"').to_ascii_lowercase()
+}
+
 async fn get_org_map() -> HashMap<String, String> {
     let cache = ORG_CACHE.get_or_init(|| {
         RwLock::new((
@@ -61,7 +65,7 @@ async fn get_org_map() -> HashMap<String, String> {
     if let Ok(orgs) = a002_organization::service::list_all().await {
         write.0 = orgs
             .into_iter()
-            .map(|org| (org.base.id.as_string(), org.base.description.clone()))
+            .map(|org| (normalize_id(&org.base.id.as_string()), org.base.description.clone()))
             .collect();
         write.1 = std::time::Instant::now();
     }
@@ -314,10 +318,11 @@ pub async fn list_sales(
         .into_iter()
         .map(|row| {
             // Get organization name from cache
-            let organization_name = row
-                .organization_id
-                .as_ref()
-                .and_then(|org_id| org_map.get(org_id).cloned());
+            let organization_name = row.organization_name.clone().or_else(|| {
+                row.organization_id
+                    .as_ref()
+                    .and_then(|org_id| org_map.get(&normalize_id(org_id)).cloned())
+            });
 
             // Get marketplace article and nomenclature_ref from marketplace_product
             let (marketplace_article, nomenclature_ref_from_mp) = row
@@ -396,7 +401,10 @@ async fn calculate_wb_sales_totals(
     }
     if let Some(ref org_id) = query.organization_id {
         if !org_id.is_empty() {
-            conditions.push(format!("organization_ref = '{}'", org_id));
+            conditions.push(format!(
+                "LOWER(TRIM(REPLACE(COALESCE(organization_id, ''), '\"', ''))) = LOWER(TRIM(REPLACE('{}', '\"', '')))",
+                org_id
+            ));
         }
     }
     if let Some(ref sale_id) = query.search_sale_id {

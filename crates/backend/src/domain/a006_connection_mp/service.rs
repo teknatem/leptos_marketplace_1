@@ -12,7 +12,7 @@ pub async fn create(dto: ConnectionMPDto) -> anyhow::Result<Uuid> {
         code,
         dto.description,
         dto.marketplace_id,
-        dto.organization,
+        dto.organization_ref,
         dto.api_key,
         dto.comment,
     );

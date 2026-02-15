@@ -1,5 +1,6 @@
 use crate::shared::icons::icon;
 use leptos::prelude::*;
+use thaw::*;
 
 /// Подсветка JSON синтаксиса с цветами для разных типов данных
 fn highlight_json_html(json: &str) -> String {
@@ -9,14 +10,14 @@ fn highlight_json_html(json: &str) -> String {
     let mut in_key = false;
     let mut escape_next = false;
     let mut current_token = String::new();
-    
+
     while let Some(ch) = chars.next() {
         if escape_next {
             current_token.push(ch);
             escape_next = false;
             continue;
         }
-        
+
         match ch {
             '\\' if in_string => {
                 escape_next = true;
@@ -27,7 +28,11 @@ fn highlight_json_html(json: &str) -> String {
                     // Закрываем строку
                     current_token.push('"');
                     let class = if in_key { "json-key" } else { "json-string" };
-                    result.push_str(&format!("<span class=\"{}\">{}</span>", class, html_escape(&current_token)));
+                    result.push_str(&format!(
+                        "<span class=\"{}\">{}</span>",
+                        class,
+                        html_escape(&current_token)
+                    ));
                     current_token.clear();
                     in_string = false;
                     in_key = false;
@@ -60,19 +65,34 @@ fn highlight_json_html(json: &str) -> String {
             c if !in_string && !c.is_whitespace() => {
                 // Собираем числа, true, false, null
                 current_token.push(c);
-                if chars.peek().map(|&next| next.is_whitespace() || ",:]}".contains(next)).unwrap_or(true) {
+                if chars
+                    .peek()
+                    .map(|&next| next.is_whitespace() || ",:]}".contains(next))
+                    .unwrap_or(true)
+                {
                     let class = if current_token == "true" || current_token == "false" {
                         "json-boolean"
                     } else if current_token == "null" {
                         "json-null"
-                    } else if current_token.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+') {
+                    } else if current_token.chars().all(|c| {
+                        c.is_ascii_digit()
+                            || c == '.'
+                            || c == '-'
+                            || c == 'e'
+                            || c == 'E'
+                            || c == '+'
+                    }) {
                         "json-number"
                     } else {
                         ""
                     };
-                    
+
                     if !class.is_empty() {
-                        result.push_str(&format!("<span class=\"{}\">{}</span>", class, html_escape(&current_token)));
+                        result.push_str(&format!(
+                            "<span class=\"{}\">{}</span>",
+                            class,
+                            html_escape(&current_token)
+                        ));
                     } else {
                         result.push_str(&html_escape(&current_token));
                     }
@@ -87,7 +107,7 @@ fn highlight_json_html(json: &str) -> String {
             }
         }
     }
-    
+
     result
 }
 
@@ -113,7 +133,7 @@ pub fn JsonViewer(
     let json_content_for_copy = json_content.clone();
     let json_content_for_download = json_content.clone();
     let json_content_for_stats = json_content.clone();
-    
+
     // Применяем подсветку синтаксиса
     let highlighted_html = highlight_json_html(&json_content);
 
@@ -172,57 +192,56 @@ pub fn JsonViewer(
 
     view! {
         <div class="json-viewer">
-            // Заголовок и кнопки
-            <div class="modal-header modal-header--compact">
-                <h3 class="modal-title">
-                    {title.unwrap_or_else(|| "JSON Данные".to_string())}
-                </h3>
-                <div class="modal-header-actions">
-                    <button
-                        class="button button--secondary"
-                        on:click=handle_copy
-                        title="Копировать в буфер обмена"
-                    >
-                        {move || if copied.get() {
-                            view! {
-                                <>
-                                    {icon("check")}
-                                    {"Скопировано!"}
-                                </>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <>
-                                    {icon("copy")}
-                                    {"Копировать"}
-                                </>
-                            }.into_any()
-                        }}
-                    </button>
-                    <button
-                        class="button button--success"
-                        on:click=handle_download
-                        title="Скачать как файл"
-                    >
-                        {icon("download")}
-                        {"Скачать"}
-                    </button>
-                </div>
+            // Заголовок с названием, статистикой и кнопками
+            <div class="json-header">
+                <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center gap=FlexGap::Medium style="width: 100%;">
+                    // Левая часть: название и статистика
+                        <div style="color: var(--color-text-secondary); font-size: 0.875rem; padding: 8px">
+                            {"Размер: "}
+                            <strong>{format!("{} символов", json_content_for_stats.len())}</strong>
+                            {" • Строк: "}
+                            <strong>{json_content_for_stats.lines().count()}</strong>
+                        </div>
+
+                    // Правая часть: кнопки действий
+                    <Flex gap=FlexGap::Small style="flex-shrink: 0;">
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            size=ButtonSize::Small
+                            on_click=handle_copy
+                        >
+                            {move || if copied.get() {
+                                view! {
+                                    <>
+                                        {icon("check")}
+                                        <span style="margin-left: 4px;">"Скопировано!"</span>
+                                    </>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <>
+                                        {icon("copy")}
+                                        <span style="margin-left: 4px;">"Копировать"</span>
+                                    </>
+                                }.into_any()
+                            }}
+                        </Button>
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            size=ButtonSize::Small
+                            on_click=handle_download
+                        >
+                            {icon("download")}
+                            <span style="margin-left: 4px;">"Скачать"</span>
+                        </Button>
+                    </Flex>
+                </Flex>
             </div>
 
             // Область просмотра JSON
             <div class="json-viewer__body">
                 <pre class="json-viewer__content" inner_html=highlighted_html>
                 </pre>
-            </div>
-
-            // Статистика
-            <div class="json-viewer__footer">
-                {"Размер: "}
-                <strong>{format!("{} символов", json_content_for_stats.len())}</strong>
-                {" | "}
-                {"Строк: "}
-                <strong>{json_content_for_stats.lines().count()}</strong>
             </div>
         </div>
     }

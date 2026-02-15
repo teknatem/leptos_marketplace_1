@@ -348,4 +348,5 @@ pub struct YmOrderListDto {
     pub is_posted: bool,
     #[serde(default)]
     pub is_error: bool,
+    pub organization_name: Option<String>,
 }

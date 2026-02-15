@@ -185,7 +185,7 @@ pub fn SettingsTable(
                                 }}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell min_width=120.0>"Роль"</TableHeaderCell>
+                        <TableHeaderCell min_width=180.0>"Роль"</TableHeaderCell>
                         <TableHeaderCell min_width=100.0>"Функция"</TableHeaderCell>
                         <TableHeaderCell min_width=250.0>"Условие"</TableHeaderCell>
                     </TableRow>
@@ -255,7 +255,7 @@ fn FieldRow(
         }
     });
 
-    // Update role_select_value when config changes (from outside, like loading saved config)
+    // Sync role_select_value when config changes externally (e.g. loading saved config)
     Effect::new({
         let field_id = field_id.clone();
         move |_| {
@@ -269,26 +269,10 @@ fn FieldRow(
             } else {
                 "none".to_string()
             };
-            let current = role_select_value.get_untracked();
-            log!(
-                "[Effect 1] Field: {}, new_value: {}, current: {}",
-                field_id,
-                new_value,
-                current
-            );
-
-            // Force update even if value is the same - set to different value first, then set target
-            if current == new_value {
-                log!("[Effect 1] FORCING UPDATE for field: {}", field_id);
-                // Set to a different valid value first to trigger change
-                let temp_value = if new_value == "none" {
-                    "grouping"
-                } else {
-                    "none"
-                };
-                role_select_value.set(temp_value.to_string());
+            // Only update if actually different — avoids triggering Effect 2
+            if role_select_value.get_untracked() != new_value {
+                role_select_value.set(new_value);
             }
-            role_select_value.set(new_value);
         }
     });
 
@@ -565,6 +549,44 @@ fn FieldRow(
         }
     };
 
+    // Grouping position info: (index, total_groupings)
+    let grouping_info = Memo::new({
+        let field_id = field_id.clone();
+        move |_| {
+            let cfg = config.get();
+            cfg.groupings
+                .iter()
+                .position(|g| g == &field_id)
+                .map(|idx| (idx, cfg.groupings.len()))
+        }
+    });
+
+    let on_move_up = Callback::new({
+        let field_id = field_id.clone();
+        move |_: ()| {
+            let mut cfg = config.get_untracked();
+            if let Some(idx) = cfg.groupings.iter().position(|g| g == &field_id) {
+                if idx > 0 {
+                    cfg.groupings.swap(idx, idx - 1);
+                    on_config_change.run(cfg);
+                }
+            }
+        }
+    });
+
+    let on_move_down = Callback::new({
+        let field_id = field_id.clone();
+        move |_: ()| {
+            let mut cfg = config.get_untracked();
+            if let Some(idx) = cfg.groupings.iter().position(|g| g == &field_id) {
+                if idx + 1 < cfg.groupings.len() {
+                    cfg.groupings.swap(idx, idx + 1);
+                    on_config_change.run(cfg);
+                }
+            }
+        }
+    });
+
     view! {
         <TableRow>
             <TableCell>
@@ -601,24 +623,55 @@ fn FieldRow(
                     <code>{field_id_for_code}</code>
                 </TableCellLayout>
             </TableCell>
-            <TableCell>
+            <TableCell attr:class="role-cell-wrapper">
                 <TableCellLayout>
-                    <Select value=role_select_value size=SelectSize::Small>
-                        <option value="none">"Нет"</option>
-                        {can_group.then(|| {
-                            view! {
-                                <>
-                                <option value="grouping">"Группировка"</option>
-                                <option value="display">"Отображать"</option>
-                                </>
-                            }
-                        })}
+                    <div class="role-cell">
+                        <div class="role-cell__select">
+                            <Select value=role_select_value size=SelectSize::Small>
+                                <option value="none">"Нет"</option>
+                                {can_group.then(|| {
+                                    view! {
+                                        <>
+                                        <option value="grouping">"Группировка"</option>
+                                        <option value="display">"Отображать"</option>
+                                        </>
+                                    }
+                                })}
 
-                        {can_aggregate.then(|| {
-                            view! { <option value="measure">"Показатель"</option> }
-                        })}
+                                {can_aggregate.then(|| {
+                                    view! { <option value="measure">"Показатель"</option> }
+                                })}
 
-                    </Select>
+                            </Select>
+                        </div>
+                        {move || {
+                            grouping_info.get().map(|(idx, total)| {
+                                view! {
+                                    <div class="grouping-order-controls">
+                                        <span class="grouping-order-controls__position">
+                                            {idx + 1}
+                                        </span>
+                                        <button
+                                            class="grouping-order-controls__btn"
+                                            disabled=idx == 0
+                                            on:click=move |_| on_move_up.run(())
+                                            title="Переместить вверх"
+                                        >
+                                            "▲"
+                                        </button>
+                                        <button
+                                            class="grouping-order-controls__btn"
+                                            disabled={idx + 1 >= total}
+                                            on:click=move |_| on_move_down.run(())
+                                            title="Переместить вниз"
+                                        >
+                                            "▼"
+                                        </button>
+                                    </div>
+                                }
+                            })
+                        }}
+                    </div>
                 </TableCellLayout>
             </TableCell>
             <TableCell>

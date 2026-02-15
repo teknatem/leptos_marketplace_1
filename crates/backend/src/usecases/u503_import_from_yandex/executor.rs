@@ -308,18 +308,28 @@ impl ImportExecutor {
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // 1. Resolve organization
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
+        // 1. Resolve organization by UUID reference from connection
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
                 Some(org) => org.base.id.as_string(),
                 None => {
-                    let msg = format!("Organization '{}' not found", connection.organization);
+                    let msg = format!(
+                        "Organization UUID '{}' not found",
+                        connection.organization_ref
+                    );
                     tracing::error!("{}", msg);
                     anyhow::bail!("{}", msg);
                 }
-            };
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Invalid organization_ref UUID in connection: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", msg);
+                anyhow::bail!("{}", msg);
+            }
+        };
 
         // 2. Fetch orders from API with date period
         let orders = self
@@ -417,18 +427,28 @@ impl ImportExecutor {
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // 1. Resolve organization
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
+        // 1. Resolve organization by UUID reference from connection
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
                 Some(org) => org.base.id.as_string(),
                 None => {
-                    let msg = format!("Organization '{}' not found", connection.organization);
+                    let msg = format!(
+                        "Organization UUID '{}' not found",
+                        connection.organization_ref
+                    );
                     tracing::error!("{}", msg);
                     anyhow::bail!("{}", msg);
                 }
-            };
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Invalid organization_ref UUID in connection: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", msg);
+                anyhow::bail!("{}", msg);
+            }
+        };
 
         // 2. Fetch returns from API with date period
         let returns = self

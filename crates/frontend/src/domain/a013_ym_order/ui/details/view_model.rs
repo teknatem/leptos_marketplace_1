@@ -1,0 +1,250 @@
+//! ViewModel for YM Order details
+
+use super::model::*;
+use leptos::prelude::*;
+use std::collections::HashMap;
+use wasm_bindgen_futures::spawn_local;
+
+#[derive(Clone)]
+pub struct YmOrderDetailsVm {
+    pub id: RwSignal<Option<String>>,
+    pub order: RwSignal<Option<YmOrderDetailDto>>,
+
+    pub raw_json: RwSignal<Option<String>>,
+    pub raw_json_loaded: RwSignal<bool>,
+    pub raw_json_loading: RwSignal<bool>,
+
+    pub projections: RwSignal<Option<serde_json::Value>>,
+    pub projections_loaded: RwSignal<bool>,
+    pub projections_loading: RwSignal<bool>,
+
+    pub nomenclatures_info: RwSignal<HashMap<String, NomenclatureInfo>>,
+    pub marketplace_products_info: RwSignal<HashMap<String, MarketplaceProductInfo>>,
+
+    pub active_tab: RwSignal<&'static str>,
+    pub loading: RwSignal<bool>,
+    pub posting: RwSignal<bool>,
+    pub error: RwSignal<Option<String>>,
+}
+
+impl YmOrderDetailsVm {
+    pub fn new() -> Self {
+        Self {
+            id: RwSignal::new(None),
+            order: RwSignal::new(None),
+
+            raw_json: RwSignal::new(None),
+            raw_json_loaded: RwSignal::new(false),
+            raw_json_loading: RwSignal::new(false),
+
+            projections: RwSignal::new(None),
+            projections_loaded: RwSignal::new(false),
+            projections_loading: RwSignal::new(false),
+
+            nomenclatures_info: RwSignal::new(HashMap::new()),
+            marketplace_products_info: RwSignal::new(HashMap::new()),
+
+            active_tab: RwSignal::new("general"),
+            loading: RwSignal::new(false),
+            posting: RwSignal::new(false),
+            error: RwSignal::new(None),
+        }
+    }
+
+    pub fn is_posted(&self) -> Signal<bool> {
+        let order = self.order;
+        Signal::derive(move || order.get().map(|o| o.metadata.is_posted).unwrap_or(false))
+    }
+
+    pub fn document_no(&self) -> Signal<String> {
+        let order = self.order;
+        Signal::derive(move || {
+            order
+                .get()
+                .map(|o| o.header.document_no.clone())
+                .unwrap_or_default()
+        })
+    }
+
+    pub fn projections_count(&self) -> Signal<usize> {
+        let projections = self.projections;
+        Signal::derive(move || {
+            projections
+                .get()
+                .as_ref()
+                .map(|p| {
+                    let p900_len = p["p900_sales_register"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let p904_len = p["p904_sales_data"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p900_len + p904_len
+                })
+                .unwrap_or(0)
+        })
+    }
+
+    pub fn set_tab(&self, tab: &'static str) {
+        self.active_tab.set(tab);
+    }
+
+    pub fn load(&self, id: String) {
+        let vm = self.clone();
+        vm.id.set(Some(id.clone()));
+        vm.loading.set(true);
+        vm.error.set(None);
+
+        spawn_local(async move {
+            match fetch_by_id(&id).await {
+                Ok(data) => {
+                    vm.order.set(Some(data.clone()));
+                    vm.load_line_links(data.lines);
+                    vm.load_projections();
+                    vm.loading.set(false);
+                }
+                Err(e) => {
+                    vm.error.set(Some(e));
+                    vm.loading.set(false);
+                }
+            }
+        });
+    }
+
+    fn load_line_links(&self, lines: Vec<LineDto>) {
+        for line in lines {
+            let line_id = line.line_id.clone();
+
+            if let Some(nom_ref) = line.nomenclature_ref {
+                let nom_store = self.nomenclatures_info;
+                let line_id_nom = line_id.clone();
+                spawn_local(async move {
+                    if let Ok(info) = fetch_nomenclature(&nom_ref).await {
+                        nom_store.update(|map| {
+                            map.insert(line_id_nom, info);
+                        });
+                    }
+                });
+            }
+
+            if let Some(mp_ref) = line.marketplace_product_ref {
+                let mp_store = self.marketplace_products_info;
+                let line_id_mp = line_id;
+                spawn_local(async move {
+                    if let Ok(info) = fetch_marketplace_product(&mp_ref).await {
+                        mp_store.update(|map| {
+                            map.insert(line_id_mp, info);
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn load_raw_json(&self) {
+        if self.raw_json_loaded.get() || self.raw_json_loading.get() {
+            return;
+        }
+        let Some(order) = self.order.get() else {
+            return;
+        };
+
+        let raw_payload_ref = order.source_meta.raw_payload_ref.clone();
+        let vm = self.clone();
+        vm.raw_json_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_raw_json(&raw_payload_ref).await {
+                Ok(json) => {
+                    vm.raw_json.set(Some(json));
+                    vm.raw_json_loaded.set(true);
+                }
+                Err(e) => leptos::logging::log!("Failed to load raw JSON: {}", e),
+            }
+            vm.raw_json_loading.set(false);
+        });
+    }
+
+    pub fn load_projections(&self) {
+        if self.projections_loaded.get_untracked() || self.projections_loading.get_untracked() {
+            return;
+        }
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.projections_loading.set(true);
+        spawn_local(async move {
+            match fetch_projections(&id).await {
+                Ok(p) => {
+                    vm.projections.set(Some(p));
+                    vm.projections_loaded.set(true);
+                }
+                Err(e) => leptos::logging::log!("Failed to load projections: {}", e),
+            }
+            vm.projections_loading.set(false);
+        });
+    }
+
+    pub fn post(&self) {
+        let Some(id) = self.id.get() else {
+            return;
+        };
+        let vm = self.clone();
+        vm.posting.set(true);
+
+        spawn_local(async move {
+            if let Err(e) = post_document(&id).await {
+                leptos::logging::log!("Failed to post document: {}", e);
+            } else {
+                vm.reload().await;
+            }
+            vm.posting.set(false);
+        });
+    }
+
+    pub fn unpost(&self) {
+        let Some(id) = self.id.get() else {
+            return;
+        };
+        let vm = self.clone();
+        vm.posting.set(true);
+
+        spawn_local(async move {
+            if let Err(e) = unpost_document(&id).await {
+                leptos::logging::log!("Failed to unpost document: {}", e);
+            } else {
+                vm.reload().await;
+            }
+            vm.posting.set(false);
+        });
+    }
+
+    async fn reload(&self) {
+        let Some(id) = self.id.get() else {
+            return;
+        };
+
+        if let Ok(data) = fetch_by_id(&id).await {
+            self.nomenclatures_info.set(HashMap::new());
+            self.marketplace_products_info.set(HashMap::new());
+            self.load_line_links(data.lines.clone());
+            self.order.set(Some(data));
+        }
+
+        if self.projections_loaded.get() {
+            if let Ok(p) = fetch_projections(&id).await {
+                self.projections.set(Some(p));
+            }
+        }
+    }
+}
+
+impl Default for YmOrderDetailsVm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
