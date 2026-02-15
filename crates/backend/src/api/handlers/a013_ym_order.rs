@@ -48,17 +48,24 @@ fn default_limit() -> usize {
     1000
 }
 
-/// Response для быстрого списка
+/// Paginated response для списка
 #[derive(Debug, Serialize)]
-pub struct ListResponse {
+pub struct PaginatedYmOrderResponse {
     pub items: Vec<YmOrderListDto>,
     pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_pages: usize,
 }
 
-/// Handler для быстрого получения списка (использует денормализованные колонки)
+/// Handler для получения списка с серверной пагинацией
 pub async fn list_orders_fast(
     Query(params): Query<ListQueryParams>,
-) -> Result<Json<ListResponse>, axum::http::StatusCode> {
+) -> Result<Json<PaginatedYmOrderResponse>, axum::http::StatusCode> {
+    let page_size = params.limit;
+    let offset = params.offset;
+    let page = if page_size > 0 { offset / page_size } else { 0 };
+
     let query = a013_ym_order::repository::YmOrderListQuery {
         date_from: params.date_from,
         date_to: params.date_to,
@@ -67,42 +74,73 @@ pub async fn list_orders_fast(
         status_norm: params.status_norm,
         sort_by: params.sort_by,
         sort_desc: params.sort_desc,
-        limit: params.limit,
-        offset: params.offset,
+        limit: page_size,
+        offset,
     };
 
     let result = a013_ym_order::repository::list_sql(query)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to list Yandex Market orders (fast): {}", e);
+            tracing::error!("Failed to list Yandex Market orders: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    let total = result.total;
+    let total_pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
+
+    // Load organizations for enrichment
+    let organizations = crate::domain::a002_organization::service::list_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load organizations: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let org_map: std::collections::HashMap<String, String> = organizations
+        .into_iter()
+        .map(|org| (org.base.id.as_string(), org.base.description.clone()))
+        .collect();
 
     let items: Vec<YmOrderListDto> = result
         .items
         .into_iter()
-        .map(|row| YmOrderListDto {
-            id: row.id,
-            document_no: row.document_no,
-            status_changed_at: row.status_changed_at.unwrap_or_default(),
-            creation_date: row.creation_date.unwrap_or_default(),
-            delivery_date: row.delivery_date.unwrap_or_default(),
-            campaign_id: row.campaign_id.unwrap_or_default(),
-            status_norm: row.status_norm.unwrap_or_default(),
-            total_qty: row.total_qty.unwrap_or(0.0),
-            total_amount: row.total_amount.unwrap_or(0.0),
-            total_amount_api: row.total_amount_api,
-            lines_count: row.lines_count.unwrap_or(0) as usize,
-            delivery_total: row.delivery_total,
-            subsidies_total: row.subsidies_total.unwrap_or(0.0),
-            is_posted: row.is_posted,
-            is_error: row.is_error,
+        .map(|row| {
+            let organization_name = row
+                .organization_id
+                .as_ref()
+                .and_then(|org_id| org_map.get(org_id).cloned());
+
+            YmOrderListDto {
+                id: row.id,
+                document_no: row.document_no,
+                status_changed_at: row.status_changed_at.unwrap_or_default(),
+                creation_date: row.creation_date.unwrap_or_default(),
+                delivery_date: row.delivery_date.unwrap_or_default(),
+                campaign_id: row.campaign_id.unwrap_or_default(),
+                status_norm: row.status_norm.unwrap_or_default(),
+                total_qty: row.total_qty.unwrap_or(0.0),
+                total_amount: row.total_amount.unwrap_or(0.0),
+                total_amount_api: row.total_amount_api,
+                lines_count: row.lines_count.unwrap_or(0) as usize,
+                delivery_total: row.delivery_total,
+                subsidies_total: row.subsidies_total.unwrap_or(0.0),
+                is_posted: row.is_posted,
+                is_error: row.is_error,
+                organization_name,
+            }
         })
         .collect();
 
-    Ok(Json(ListResponse {
+    Ok(Json(PaginatedYmOrderResponse {
         items,
-        total: result.total,
+        total,
+        page,
+        page_size,
+        total_pages,
     }))
 }
 
@@ -135,11 +173,10 @@ pub async fn get_raw_json(
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
-    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str)
-        .map_err(|e| {
-            tracing::error!("Failed to parse raw JSON: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str).map_err(|e| {
+        tracing::error!("Failed to parse raw JSON: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(json_value))
 }
@@ -196,12 +233,10 @@ pub async fn post_period(
     let to = NaiveDate::parse_from_str(&req.to, "%Y-%m-%d")
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-    let documents = a013_ym_order::service::list_all()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list documents: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let documents = a013_ym_order::service::list_all().await.map_err(|e| {
+        tracing::error!("Failed to list documents: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let mut posted_count = 0;
     let mut failed_count = 0;
@@ -216,11 +251,7 @@ pub async fn post_period(
                 }
                 Err(e) => {
                     failed_count += 1;
-                    tracing::error!(
-                        "Failed to post document {}: {}",
-                        doc.base.id.as_string(),
-                        e
-                    );
+                    tracing::error!("Failed to post document {}: {}", doc.base.id.as_string(), e);
                 }
             }
         }
@@ -314,13 +345,12 @@ pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     // Получаем данные из проекций p900 и p904
-    let p900_items =
-        crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get p900 projections: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let p900_items = crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p900 projections: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
         .await
@@ -337,4 +367,3 @@ pub async fn get_projections(
 
     Ok(Json(result))
 }
-

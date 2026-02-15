@@ -252,7 +252,7 @@ pub fn configure_business_routes() -> Router {
         // A013 YM Order handlers
         .route(
             "/api/a013/ym-order",
-            get(handlers::a013_ym_order::list_orders),
+            get(handlers::a013_ym_order::list_orders_fast),
         )
         .route(
             "/api/a013/ym-order/list",

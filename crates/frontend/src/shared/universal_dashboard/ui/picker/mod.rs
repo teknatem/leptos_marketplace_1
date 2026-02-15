@@ -1,6 +1,7 @@
 //! Schema picker component for selecting a pivot schema
 
 use contracts::shared::universal_dashboard::SchemaInfo;
+use leptos::logging::log;
 use leptos::prelude::*;
 use thaw::Select;
 
@@ -17,32 +18,50 @@ pub fn SchemaPicker(
     #[prop(optional)]
     on_change: Option<Callback<String>>,
 ) -> impl IntoView {
-    // Convert Option<String> to String for Select (empty string = not selected)
+    // Internal value for Thaw Select (String, not Option<String>)
     let select_value = RwSignal::new(selected.get_untracked().unwrap_or_default());
 
-    // Update select_value when selected changes (from outside)
+    // One-way sync: parent `selected` → internal `select_value`
+    // Also subscribes to `schemas` so that when schemas load,
+    // we re-apply the parent value (Thaw Select may have cleared it
+    // because no matching <option> existed yet).
     Effect::new(move |_| {
-        let new_value = selected.get().unwrap_or_default();
-        select_value.set(new_value);
+        let _ = schemas.get(); // subscribe to schemas changes
+        let parent_val = selected.get().unwrap_or_default();
+        if select_value.get_untracked() != parent_val {
+            log!("[SchemaPicker] Syncing select_value to parent: {}", parent_val);
+            select_value.set(parent_val);
+        }
     });
 
-    // Update selected when user changes select_value
+    // Reverse sync: user changes select → update parent `selected`
+    // Uses prev-tracking to only fire on actual user changes, not on our sync above.
     Effect::new(move |prev: Option<String>| {
         let val = select_value.get();
 
-        // Skip first run (initialization)
+        // Skip first run
         if prev.is_none() {
-            return val.clone();
+            return val;
         }
 
         // Only process if value actually changed
         if Some(&val) == prev.as_ref() {
-            return val.clone();
+            return val;
         }
 
+        // Ignore resets to empty when schemas aren't loaded
+        // (Thaw Select resets value when no matching <option> exists)
+        if val.is_empty() && schemas.get_untracked().is_empty() {
+            log!("[SchemaPicker] Ignoring empty reset (schemas not loaded)");
+            return val;
+        }
+
+        // Real user change — propagate to parent
         if val.is_empty() {
+            log!("[SchemaPicker] User cleared schema selection");
             selected.set(None);
         } else {
+            log!("[SchemaPicker] User selected schema: {}", val);
             selected.set(Some(val.clone()));
             if let Some(cb) = on_change {
                 cb.run(val.clone());

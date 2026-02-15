@@ -9,6 +9,8 @@
 //!   - `saved_tab` - Saved configurations list
 //!   - `sql_tab` - SQL query viewer
 //!   - `tabs_container` - Tab bar and content container
+//! - `all_reports_list/` - All reports list page
+//! - `all_reports_details/` - All reports details page (view/edit config)
 //! - `picker/` - Schema picker dropdown
 //! - `condition_editor/` - Filter condition editor with modal and tabs
 //! - `config_panel` - Legacy config panel (deprecated, use SettingsTable)
@@ -16,6 +18,8 @@
 //! - `saved_configs` - Saved configurations list and dialogs
 //! - `settings_table` - Field configuration table
 
+pub mod all_reports_details;
+pub mod all_reports_list;
 pub mod condition_editor;
 pub mod config_panel;
 pub mod dashboard;
@@ -26,6 +30,8 @@ pub mod schema_browser;
 pub mod schema_details;
 pub mod settings_table;
 
+pub use all_reports_details::AllReportsDetails;
+pub use all_reports_list::AllReportsList;
 pub use condition_editor::*;
 pub use config_panel::*;
 pub use dashboard::UniversalDashboard;

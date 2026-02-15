@@ -46,6 +46,7 @@ impl ImportExecutor {
         for aggregate_index in &request.target_aggregates {
             let aggregate_name = match aggregate_index.as_str() {
                 "a007_marketplace_product" => "Товары маркетплейса",
+                "a015_wb_orders" => "Заказы Wildberries (Backfill)",
                 "a012_wb_sales" => "Продажи Wildberries",
                 "p903_wb_finance_report" => "Финансовый отчет WB",
                 "p905_wb_commission_history" => "История комиссий WB",
@@ -122,36 +123,13 @@ impl ImportExecutor {
                     .await?;
                 }
                 "a015_wb_orders" => {
-                    // Orders API может быть недоступен - пытаемся, но не останавливаем импорт
-                    match self
-                        .import_wb_orders(
-                            session_id,
-                            connection,
-                            request.date_from,
-                            request.date_to,
-                        )
-                        .await
-                    {
-                        Ok(_) => {
-                            tracing::info!("✅ WB Orders imported successfully");
-                        }
-                        Err(e) => {
-                            let warning_msg = format!(
-                                "⚠️ WB Orders API unavailable: {}. Skipping orders import. This may be normal if the API endpoint doesn't exist.",
-                                e
-                            );
-                            tracing::warn!("{}", warning_msg);
-
-                            self.progress_tracker.add_error(
-                                session_id,
-                                Some("a015_wb_orders".to_string()),
-                                warning_msg.clone(),
-                                Some(e.to_string()),
-                            );
-
-                            // Продолжаем импорт остальных агрегатов
-                        }
-                    }
+                    self.import_wb_orders(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
                 }
                 "p903_wb_finance_report" => {
                     self.import_wb_finance_report(
@@ -333,16 +311,14 @@ impl ImportExecutor {
             date_to
         );
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
+        // Получаем ID организации по UUID-ссылке из подключения
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
                 Some(org) => org.base.id.as_string(),
                 None => {
                     let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
+                        "Организация с UUID '{}' не найдена в справочнике",
+                        connection.organization_ref
                     );
                     tracing::error!("{}", error_msg);
                     self.progress_tracker.add_error(
@@ -353,7 +329,22 @@ impl ImportExecutor {
                     );
                     anyhow::bail!("{}", error_msg);
                 }
-            };
+            },
+            Err(_) => {
+                let error_msg = format!(
+                    "Некорректный organization_ref UUID в подключении: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", error_msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    error_msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", error_msg);
+            }
+        };
 
         // Получаем продажи из API WB
         let sales_rows = self
@@ -430,16 +421,14 @@ impl ImportExecutor {
             date_to
         );
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
+        // Получаем ID организации по UUID-ссылке из подключения
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
                 Some(org) => org.base.id.as_string(),
                 None => {
                     let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
+                        "Организация с UUID '{}' не найдена в справочнике",
+                        connection.organization_ref
                     );
                     tracing::error!("{}", error_msg);
                     self.progress_tracker.add_error(
@@ -450,7 +439,22 @@ impl ImportExecutor {
                     );
                     anyhow::bail!("{}", error_msg);
                 }
-            };
+            },
+            Err(_) => {
+                let error_msg = format!(
+                    "Некорректный organization_ref UUID в подключении: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", error_msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    error_msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", error_msg);
+            }
+        };
 
         // Получаем заказы из API WB
         let order_rows = self
@@ -529,16 +533,14 @@ impl ImportExecutor {
             date_to
         );
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
+        // Получаем ID организации по UUID-ссылке из подключения
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
                 Some(org) => org.base.id.as_string(),
                 None => {
                     let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
+                        "Организация с UUID '{}' не найдена в справочнике",
+                        connection.organization_ref
                     );
                     tracing::error!("{}", error_msg);
                     self.progress_tracker.add_error(
@@ -549,7 +551,22 @@ impl ImportExecutor {
                     );
                     anyhow::bail!("{}", error_msg);
                 }
-            };
+            },
+            Err(_) => {
+                let error_msg = format!(
+                    "Некорректный organization_ref UUID в подключении: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", error_msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    error_msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", error_msg);
+            }
+        };
 
         self.progress_tracker.set_current_item(
             session_id,

@@ -108,8 +108,8 @@ pub struct ConnectionMP {
     #[serde(rename = "Маркетплейс")]
     pub marketplace_id: String, // UUID маркетплейса из справочника a005_marketplace
 
-    #[serde(rename = "Организация")]
-    pub organization: String, // Ссылка на организацию
+    #[serde(rename = "ОрганизацияRef")]
+    pub organization_ref: String, // UUID организации
 
     // Дополнительные поля
     #[serde(rename = "API_Key")]
@@ -133,6 +133,9 @@ pub struct ConnectionMP {
     #[serde(rename = "ТестовыйРежим")]
     pub test_mode: bool,
 
+    #[serde(rename = "ПлановыйПроцентКомиссии")]
+    pub planned_commission_percent: Option<f64>,
+
     #[serde(rename = "ТипАвторизации")]
     pub authorization_type: AuthorizationType,
 }
@@ -143,7 +146,7 @@ impl ConnectionMP {
         code: String,
         description: String,
         marketplace_id: String,
-        organization: String,
+        organization_ref: String,
         api_key: String,
         comment: Option<String>,
     ) -> Self {
@@ -157,7 +160,7 @@ impl ConnectionMP {
         Self {
             base,
             marketplace_id,
-            organization,
+            organization_ref,
             api_key,
             supplier_id: None,
             application_id: None,
@@ -165,6 +168,7 @@ impl ConnectionMP {
             business_account_id: None,
             api_key_stats: None,
             test_mode: false,
+            planned_commission_percent: None,
             authorization_type: AuthorizationType::default(),
         }
     }
@@ -185,7 +189,7 @@ impl ConnectionMP {
         self.base.description = dto.description.clone();
         self.base.comment = dto.comment.clone();
         self.marketplace_id = dto.marketplace_id.clone();
-        self.organization = dto.organization.clone();
+        self.organization_ref = dto.organization_ref.clone();
         self.api_key = dto.api_key.clone();
         self.supplier_id = dto.supplier_id.clone();
         self.application_id = dto.application_id.clone();
@@ -193,6 +197,7 @@ impl ConnectionMP {
         self.business_account_id = dto.business_account_id.clone();
         self.api_key_stats = dto.api_key_stats.clone();
         self.test_mode = dto.test_mode;
+        self.planned_commission_percent = dto.planned_commission_percent;
         self.authorization_type = dto.authorization_type.clone();
     }
 
@@ -207,7 +212,7 @@ impl ConnectionMP {
         if self.api_key.trim().is_empty() {
             return Err("API Key не может быть пустым".into());
         }
-        if self.organization.trim().is_empty() {
+        if self.organization_ref.trim().is_empty() {
             return Err("Организация должна быть указана".into());
         }
         Ok(())
@@ -286,8 +291,8 @@ pub struct ConnectionMPDto {
     #[serde(rename = "Маркетплейс")]
     pub marketplace_id: String,
 
-    #[serde(rename = "Организация")]
-    pub organization: String,
+    #[serde(rename = "ОрганизацияRef")]
+    pub organization_ref: String,
 
     #[serde(rename = "API_Key")]
     pub api_key: String,
@@ -309,6 +314,9 @@ pub struct ConnectionMPDto {
 
     #[serde(rename = "ТестовыйРежим")]
     pub test_mode: bool,
+
+    #[serde(rename = "ПлановыйПроцентКомиссии")]
+    pub planned_commission_percent: Option<f64>,
 
     #[serde(rename = "ТипАвторизации")]
     pub authorization_type: AuthorizationType,

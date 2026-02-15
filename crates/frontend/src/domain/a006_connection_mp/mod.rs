@@ -1,3 +1,3 @@
 pub mod ui;
 
-pub use ui::{ConnectionMPDetails, ConnectionMPList};
+pub use ui::{ConnectionMPDetail, ConnectionMPList};

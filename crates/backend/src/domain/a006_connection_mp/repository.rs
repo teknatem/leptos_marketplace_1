@@ -12,7 +12,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::shared::data::db::get_connection;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a006_connection_mp")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -21,7 +21,9 @@ pub struct Model {
     pub description: String,
     pub comment: Option<String>,
     pub marketplace: String,
+    // Deprecated legacy field, kept for backward DB compatibility.
     pub organization: String,
+    pub organization_ref: String,
     pub api_key: String,
     pub supplier_id: Option<String>,
     pub application_id: Option<String>,
@@ -29,6 +31,7 @@ pub struct Model {
     pub business_account_id: Option<String>,
     pub api_key_stats: Option<String>,
     pub test_mode: bool,
+    pub planned_commission_percent: Option<f64>,
     pub authorization_type: String,
     pub is_deleted: bool,
     pub is_posted: bool,
@@ -69,7 +72,7 @@ impl From<Model> for ConnectionMP {
                 metadata,
             ),
             marketplace_id: m.marketplace,
-            organization: m.organization,
+            organization_ref: m.organization_ref,
             api_key: m.api_key,
             supplier_id: m.supplier_id,
             application_id: m.application_id,
@@ -77,6 +80,7 @@ impl From<Model> for ConnectionMP {
             business_account_id: m.business_account_id,
             api_key_stats: m.api_key_stats,
             test_mode: m.test_mode,
+            planned_commission_percent: m.planned_commission_percent,
             authorization_type,
         }
     }
@@ -116,7 +120,8 @@ pub async fn insert(aggregate: &ConnectionMP) -> anyhow::Result<Uuid> {
         description: Set(aggregate.base.description.clone()),
         comment: Set(aggregate.base.comment.clone()),
         marketplace: Set(aggregate.marketplace_id.clone()),
-        organization: Set(aggregate.organization.clone()),
+        organization: Set(String::new()),
+        organization_ref: Set(aggregate.organization_ref.clone()),
         api_key: Set(aggregate.api_key.clone()),
         supplier_id: Set(aggregate.supplier_id.clone()),
         application_id: Set(aggregate.application_id.clone()),
@@ -124,6 +129,7 @@ pub async fn insert(aggregate: &ConnectionMP) -> anyhow::Result<Uuid> {
         business_account_id: Set(aggregate.business_account_id.clone()),
         api_key_stats: Set(aggregate.api_key_stats.clone()),
         test_mode: Set(aggregate.test_mode),
+        planned_commission_percent: Set(aggregate.planned_commission_percent),
         authorization_type: Set(aggregate.authorization_type.as_str().to_string()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
@@ -143,7 +149,8 @@ pub async fn update(aggregate: &ConnectionMP) -> anyhow::Result<()> {
         description: Set(aggregate.base.description.clone()),
         comment: Set(aggregate.base.comment.clone()),
         marketplace: Set(aggregate.marketplace_id.clone()),
-        organization: Set(aggregate.organization.clone()),
+        organization: Set(String::new()),
+        organization_ref: Set(aggregate.organization_ref.clone()),
         api_key: Set(aggregate.api_key.clone()),
         supplier_id: Set(aggregate.supplier_id.clone()),
         application_id: Set(aggregate.application_id.clone()),
@@ -151,6 +158,7 @@ pub async fn update(aggregate: &ConnectionMP) -> anyhow::Result<()> {
         business_account_id: Set(aggregate.business_account_id.clone()),
         api_key_stats: Set(aggregate.api_key_stats.clone()),
         test_mode: Set(aggregate.test_mode),
+        planned_commission_percent: Set(aggregate.planned_commission_percent),
         authorization_type: Set(aggregate.authorization_type.as_str().to_string()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),

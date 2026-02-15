@@ -409,6 +409,7 @@ pub async fn search_by_document_no(document_no: &str) -> Result<Vec<WbSales>> {
     let items: Vec<WbSales> = Entity::find()
         .filter(Column::DocumentNo.eq(document_no))
         .filter(Column::IsDeleted.eq(false))
+        .filter(Column::TotalPrice.gt(0.0)) // Exclude returns (negative or zero total_price)
         .all(conn())
         .await?
         .into_iter()
@@ -425,6 +426,7 @@ pub struct WbSalesListRow {
     pub sale_id: Option<String>,
     pub sale_date: Option<String>,
     pub organization_id: Option<String>,
+    pub organization_name: Option<String>,
     pub supplier_article: Option<String>,
     pub product_name: Option<String>,
     pub qty: Option<f64>,
@@ -482,24 +484,27 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
     let db = conn();
 
     // Build WHERE clause
-    let mut conditions = vec!["is_deleted = 0".to_string()];
+    let mut conditions = vec!["s.is_deleted = 0".to_string()];
 
     if let Some(ref date_from) = query.date_from {
-        conditions.push(format!("sale_date >= '{}'", date_from));
+        conditions.push(format!("s.sale_date >= '{}'", date_from));
     }
     if let Some(ref date_to) = query.date_to {
         // Add time part to include the whole day
-        conditions.push(format!("sale_date <= '{}T23:59:59'", date_to));
+        conditions.push(format!("s.sale_date <= '{}T23:59:59'", date_to));
     }
     if let Some(ref org_id) = query.organization_id {
         if !org_id.is_empty() {
-            conditions.push(format!("organization_id = '{}'", org_id));
+            conditions.push(format!(
+                "LOWER(TRIM(REPLACE(COALESCE(s.organization_id, ''), '\"', ''))) = LOWER(TRIM(REPLACE('{}', '\"', '')))",
+                org_id
+            ));
         }
     }
     if let Some(ref search_sale_id) = query.search_sale_id {
         if !search_sale_id.is_empty() {
             conditions.push(format!(
-                "sale_id LIKE '%{}%'",
+                "s.sale_id LIKE '%{}%'",
                 search_sale_id.replace("'", "''")
             ));
         }
@@ -507,7 +512,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
     if let Some(ref search_srid) = query.search_srid {
         if !search_srid.is_empty() {
             conditions.push(format!(
-                "document_no LIKE '%{}%'",
+                "s.document_no LIKE '%{}%'",
                 search_srid.replace("'", "''")
             ));
         }
@@ -515,7 +520,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
     if let Some(ref search_supplier_article) = query.search_supplier_article {
         if !search_supplier_article.is_empty() {
             conditions.push(format!(
-                "supplier_article LIKE '%{}%'",
+                "s.supplier_article LIKE '%{}%'",
                 search_supplier_article.replace("'", "''")
             ));
         }
@@ -525,7 +530,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
 
     // Count total
     let count_sql = format!(
-        "SELECT COUNT(*) as cnt FROM a012_wb_sales WHERE {}",
+        "SELECT COUNT(*) as cnt FROM a012_wb_sales s WHERE {}",
         where_clause
     );
     let count_result = db
@@ -551,6 +556,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
         "total_price" => "total_price",
         "finished_price" => "finished_price",
         "event_type" => "event_type",
+        "organization_name" => "org.description",
         _ => "sale_date",
     };
     let order_dir = if query.sort_desc { "DESC" } else { "ASC" };
@@ -558,14 +564,19 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
     // Query data
     let data_sql = format!(
         r#"SELECT 
-            id, document_no, sale_id, sale_date, organization_id,
-            supplier_article, product_name, qty, amount_line, total_price,
-            finished_price, event_type, marketplace_product_ref, nomenclature_ref, is_posted,
-            is_fact, sell_out_plan, sell_out_fact, acquiring_fee_plan, acquiring_fee_fact,
-            other_fee_plan, other_fee_fact, supplier_payout_plan, supplier_payout_fact,
-            profit_plan, profit_fact, cost_of_production, commission_plan, commission_fact,
-            dealer_price_ut
-        FROM a012_wb_sales 
+            s.id, s.document_no, s.sale_id, s.sale_date, s.organization_id,
+            org.description as organization_name,
+            s.supplier_article, s.product_name, s.qty, s.amount_line, s.total_price,
+            s.finished_price, s.event_type, s.marketplace_product_ref, s.nomenclature_ref, s.is_posted,
+            s.is_fact, s.sell_out_plan, s.sell_out_fact, s.acquiring_fee_plan, s.acquiring_fee_fact,
+            s.other_fee_plan, s.other_fee_fact, s.supplier_payout_plan, s.supplier_payout_fact,
+            s.profit_plan, s.profit_fact, s.cost_of_production, s.commission_plan, s.commission_fact,
+            s.dealer_price_ut
+        FROM a012_wb_sales s
+        LEFT JOIN a002_organization org
+               ON LOWER(TRIM(REPLACE(COALESCE(org.id, ''), '\"', '')))
+                = LOWER(TRIM(REPLACE(COALESCE(s.organization_id, ''), '\"', '')))
+              AND org.is_deleted = 0
         WHERE {}
         ORDER BY {} {} NULLS LAST
         LIMIT {} OFFSET {}"#,
@@ -588,6 +599,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
                 sale_id: row.try_get("", "sale_id").ok(),
                 sale_date: row.try_get("", "sale_date").ok(),
                 organization_id: row.try_get("", "organization_id").ok(),
+                organization_name: row.try_get("", "organization_name").ok(),
                 supplier_article: row.try_get("", "supplier_article").ok(),
                 product_name: row.try_get("", "product_name").ok(),
                 qty: row.try_get("", "qty").ok(),

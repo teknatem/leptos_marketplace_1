@@ -8,7 +8,7 @@ use crate::shared::data::db::get_connection;
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct RevenueAggregation {
     pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
-    pub organization_name: Option<String>, // Directly from conn.organization
+    pub organization_name: Option<String>, // From a002_organization.description
     pub total_revenue: f64,
 }
 
@@ -16,7 +16,7 @@ pub struct RevenueAggregation {
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct ReturnsAggregation {
     pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
-    pub organization_name: Option<String>, // Directly from conn.organization
+    pub organization_name: Option<String>, // From a002_organization.description
     pub total_returns: f64,
 }
 
@@ -24,7 +24,7 @@ pub struct ReturnsAggregation {
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct CostAggregation {
     pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
-    pub organization_name: Option<String>, // Directly from conn.organization
+    pub organization_name: Option<String>, // From a002_organization.description
     pub total_cost: f64,
 }
 
@@ -45,13 +45,14 @@ pub async fn get_revenue_by_marketplace_and_org(
                 WHEN 'mp-lemana' THEN 'LEMANA'
                 ELSE mp.marketplace_type
             END AS marketplace_code,
-            conn.organization AS organization_name,
+            org.description AS organization_name,
             COALESCE(SUM(p904.customer_in), 0) AS total_revenue
         FROM p904_sales_data p904
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
+        LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
         WHERE p904.date >= ? AND p904.date <= ?
-        GROUP BY mp.marketplace_type, conn.organization
+        GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
 
@@ -83,13 +84,14 @@ pub async fn get_returns_by_marketplace_and_org(
                 WHEN 'mp-lemana' THEN 'LEMANA'
                 ELSE mp.marketplace_type
             END AS marketplace_code,
-            conn.organization AS organization_name,
+            org.description AS organization_name,
             COALESCE(SUM(p904.customer_out), 0) AS total_returns
         FROM p904_sales_data p904
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
+        LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
         WHERE p904.date >= ? AND p904.date <= ?
-        GROUP BY mp.marketplace_type, conn.organization
+        GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
 
@@ -121,13 +123,14 @@ pub async fn get_cost_by_marketplace_and_org(
                 WHEN 'mp-lemana' THEN 'LEMANA'
                 ELSE mp.marketplace_type
             END AS marketplace_code,
-            conn.organization AS organization_name,
+            org.description AS organization_name,
             -CAST(COALESCE(SUM(p904.cost), 0) AS REAL) AS total_cost
         FROM p904_sales_data p904
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
+        LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
         WHERE p904.date >= ? AND p904.date <= ?
-        GROUP BY mp.marketplace_type, conn.organization
+        GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
 
@@ -198,13 +201,14 @@ pub async fn get_organizations_with_sales(date_from: &str, date_to: &str) -> Res
 
     let sql = r#"
         SELECT DISTINCT 
-            conn.organization AS organization_name
+            org.description AS organization_name
         FROM p904_sales_data p904
         JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
+        JOIN a002_organization org ON conn.organization_ref = org.id
         WHERE p904.date >= ? AND p904.date <= ?
-            AND conn.organization IS NOT NULL
-            AND conn.organization != ''
-        ORDER BY conn.organization
+            AND conn.organization_ref IS NOT NULL
+            AND conn.organization_ref != ''
+        ORDER BY org.description
     "#;
 
     #[derive(Debug, FromQueryResult)]

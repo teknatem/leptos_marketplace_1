@@ -65,6 +65,11 @@
   border-right: 1px dotted rgba(0, 0, 0, 0.05);
 }
 
+.thaw-table-header-cell__button {
+  color: var(--form-label-text) !important;
+
+}
+
 /* Унификация размера шрифта для контента внутри ячеек Thaw */
 .thaw-table-cell-layout__content {
   font-size: var(--font-size-base) !important;

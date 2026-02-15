@@ -76,6 +76,10 @@ pub struct WbOrdersLine {
     pub finished_price: Option<f64>,
     /// Цена с учетом скидки
     pub price_with_disc: Option<f64>,
+    /// Дилерская цена УТ
+    pub dealer_price_ut: Option<f64>,
+    /// Маржинальность, %
+    pub margin_pro: Option<f64>,
 }
 
 /// Статусы и временные метки
@@ -165,6 +169,9 @@ pub struct WbOrders {
     /// Ссылка на номенклатуру 1С (a004_nomenclature)
     pub nomenclature_ref: Option<String>,
 
+    /// Ссылка на базовую номенклатуру
+    pub base_nomenclature_ref: Option<String>,
+
     /// Дата документа из API (основная дата заказа для фильтрации)
     pub document_date: Option<String>,
 }
@@ -195,6 +202,7 @@ impl WbOrders {
             is_posted,
             marketplace_product_ref: None,
             nomenclature_ref: None,
+            base_nomenclature_ref: None,
             document_date,
         }
     }
@@ -225,6 +233,7 @@ impl WbOrders {
             is_posted,
             marketplace_product_ref: None,
             nomenclature_ref: None,
+            base_nomenclature_ref: None,
             document_date,
         }
     }

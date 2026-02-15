@@ -100,6 +100,44 @@ impl ImportExecutor {
         self.progress_tracker.get_progress(session_id)
     }
 
+    async fn resolve_organization_id(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        session_id: &str,
+        aggregate_index: &str,
+    ) -> Result<String> {
+        let organization_uuid = Uuid::parse_str(&connection.organization_ref).map_err(|_| {
+            let error_msg = format!(
+                "Некорректный organization_ref UUID в подключении: '{}'",
+                connection.organization_ref
+            );
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                error_msg.clone(),
+                None,
+            );
+            anyhow::anyhow!(error_msg)
+        })?;
+
+        match crate::domain::a002_organization::service::get_by_id(organization_uuid).await? {
+            Some(org) => Ok(org.base.id.as_string()),
+            None => {
+                let error_msg = format!(
+                    "Организация с UUID '{}' не найдена в справочнике",
+                    connection.organization_ref
+                );
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    error_msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", error_msg);
+            }
+        }
+    }
+
     /// Выполнить импорт
     pub async fn execute_import(
         &self,
@@ -332,34 +370,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "a008_marketplace_sales";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Кеш сопоставлений SKU/offer_id -> product_id
         use std::collections::HashMap;
@@ -515,34 +533,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "a009_ozon_returns";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Курсорная пагинация через last_id
         let mut last_id: i64 = 0;
@@ -764,34 +762,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "a010_ozon_fbs_posting";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Пагинация
         let limit = 100;
@@ -881,34 +859,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "a011_ozon_fbo_posting";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Пагинация
         let limit = 100;
@@ -998,34 +956,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "p902_ozon_finance_realization";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации по названию
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Finance Realization API НЕ ПОДДЕРЖИВАЕТ ПАГИНАЦИЮ - возвращает все данные за месяц сразу
         // Генерируем уникальный registrator_ref для всей сессии импорта
@@ -1108,34 +1046,14 @@ impl ImportExecutor {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
-        use crate::domain::a002_organization;
-
         let aggregate_index = "a014_ozon_transactions";
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
 
-        // Получаем ID организации
-        let organization_id =
-            match a002_organization::repository::get_by_description(&connection.organization)
-                .await?
-            {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let error_msg = format!(
-                        "Организация '{}' не найдена в справочнике",
-                        connection.organization
-                    );
-                    tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        error_msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", error_msg);
-                }
-            };
+        let organization_id = self
+            .resolve_organization_id(connection, session_id, aggregate_index)
+            .await?;
 
         // Пагинация по страницам
         let page_size = 1000; // Максимум для OZON API

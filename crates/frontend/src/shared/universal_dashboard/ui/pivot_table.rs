@@ -2,10 +2,7 @@ use contracts::shared::universal_dashboard::{
     CellValue, ColumnHeader, ColumnType, ExecuteDashboardResponse, PivotRow,
 };
 use leptos::prelude::*;
-use thaw::{
-    Button, ButtonAppearance, Table, TableBody, TableCell, TableCellLayout, TableHeader,
-    TableHeaderCell, TableRow,
-};
+use thaw::{Table, TableBody, TableCell, TableCellLayout, TableHeader, TableHeaderCell, TableRow};
 use wasm_bindgen::JsCast;
 use web_sys::Blob;
 
@@ -18,14 +15,6 @@ pub fn PivotTable(
     let sort_column = RwSignal::new(None::<String>);
     let sort_ascending = RwSignal::new(true);
 
-    // CSV Export function
-    let export_csv = move |_| {
-        if let Some(resp) = response.get() {
-            let csv_content = generate_csv(&resp);
-            download_csv(&csv_content, "dashboard_export.csv");
-        }
-    };
-
     view! {
         <div class="pivot-table-container">
             {move || {
@@ -35,14 +24,6 @@ pub fn PivotTable(
                     let columns_for_body = resp.columns.clone();
 
                     view! {
-                        <div style="margin-bottom: 12px;">
-                            <Button
-                                appearance=ButtonAppearance::Secondary
-                                on_click=export_csv
-                            >
-                                "📥 Экспорт CSV"
-                            </Button>
-                        </div>
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -216,7 +197,7 @@ fn sort_rows(
 }
 
 /// Generate CSV content from dashboard response
-fn generate_csv(response: &ExecuteDashboardResponse) -> String {
+pub fn generate_csv(response: &ExecuteDashboardResponse) -> String {
     let mut csv = String::new();
 
     // Header row
@@ -269,7 +250,7 @@ fn escape_csv_field(field: &str) -> String {
 }
 
 /// Download CSV content as a file
-fn download_csv(content: &str, filename: &str) {
+pub fn download_csv(content: &str, filename: &str) {
     use wasm_bindgen::JsValue;
     use web_sys::{HtmlAnchorElement, Url};
 
