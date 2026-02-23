@@ -19,7 +19,7 @@ pub mod a017_llm_agent;
 pub mod a018_llm_chat;
 pub mod a019_llm_artifact;
 
-// Projection handlers (p900-p906)
+// Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
 pub mod p901_nomenclature_barcodes;
 pub mod p902_ozon_finance_realization;
@@ -27,6 +27,11 @@ pub mod p903_wb_finance_report;
 pub mod p904_sales_data;
 pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
+pub mod p907_ym_payment_report;
+pub mod p908_wb_goods_prices;
+
+// Indicator handlers
+pub mod indicators;
 
 // Dashboard handlers (d400)
 pub mod d400_monthly_summary;

@@ -1,6 +1,8 @@
 mod state;
 
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table::{TableCellMoney, TableCrosshairHighlight};
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use contracts::projections::p903_wb_finance_report::dto::{
@@ -13,11 +15,7 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
-#[derive(Debug, Clone)]
-struct SelectedReport {
-    rr_dt: String,
-    rrd_id: i64,
-}
+const TABLE_ID: &str = "p903-wb-finance-report-list-table";
 
 async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -71,10 +69,14 @@ pub fn WbFinanceReportList() -> impl IntoView {
     let (items, set_items) = signal(Vec::<WbFinanceReportDto>::new());
     let (is_loading, set_is_loading) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (selected_report, set_selected_report) = signal::<Option<SelectedReport>>(None);
 
-    // Загрузка списка подключений для отображения названий
+    let tabs_store = leptos::context::use_context::<AppGlobalContext>()
+        .expect("AppGlobalContext context not found");
+
     let (connections, set_connections) = signal(Vec::<(String, String)>::new());
+
+    // Filter panel expansion state
+    let (is_filter_expanded, set_is_filter_expanded) = signal(false);
 
     // RwSignals bound to Thaw controls
     let date_from = RwSignal::new(state.get_untracked().date_from.clone());
@@ -84,6 +86,34 @@ pub fn WbFinanceReportList() -> impl IntoView {
     let connection_filter = RwSignal::new(state.get_untracked().connection_filter.clone());
     let operation_filter = RwSignal::new(state.get_untracked().operation_filter.clone());
     let srid_filter = RwSignal::new(state.get_untracked().srid_filter.clone());
+
+    // Active filters count for badge
+    let active_filters_count = Signal::derive(move || {
+        let s = state.get();
+        let mut count = 0;
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if !s.nm_id_filter.is_empty() {
+            count += 1;
+        }
+        if !s.sa_name_filter.is_empty() {
+            count += 1;
+        }
+        if !s.connection_filter.is_empty() {
+            count += 1;
+        }
+        if !s.operation_filter.is_empty() {
+            count += 1;
+        }
+        if !s.srid_filter.is_empty() {
+            count += 1;
+        }
+        count
+    });
 
     // Load connections on mount
     Effect::new(move |_| {
@@ -226,16 +256,15 @@ pub fn WbFinanceReportList() -> impl IntoView {
         load();
     };
 
-    let handle_row_click = move |rr_dt: String, rrd_id: i64| {
-        set_selected_report.set(Some(SelectedReport { rr_dt, rrd_id }));
+    let open_detail = move |rr_dt: String, rrd_id: i64| {
+        let tab_key = format!(
+            "p903_wb_finance_report_detail_{}__{rrd_id}",
+            encode_q(&rr_dt)
+        );
+        let tab_title = format!("WB Finance #{rrd_id}");
+        tabs_store.open_tab(&tab_key, &tab_title);
     };
 
-    let close_details = move || {
-        set_selected_report.set(None);
-    };
-
-    // Helper для получения имени подключения
-    // Using with_untracked to avoid creating reactive dependencies in render loops
     let get_connection_name = move |connection_id: &str| -> String {
         connections.with_untracked(|conns| {
             conns
@@ -289,7 +318,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
         )
     });
 
-    // Экспорт в Excel
     let export_to_excel = move || {
         let data = items.get();
         if data.is_empty() {
@@ -297,10 +325,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
             return;
         }
 
-        // UTF-8 BOM для правильного отображения кириллицы в Excel
         let mut csv = String::from("\u{FEFF}");
-
-        // Заголовок с точкой с запятой как разделитель
         csv.push_str("Date;RRD_ID;NM_ID;SA_Name;Subject;Operation;Qty;Retail_Amount;Price_withDisc;Commission%;Sales_Commission;Acquiring_Fee;Penalty;Storage_Fee;SRID;Loaded_At\n");
 
         for item in data {
@@ -375,7 +400,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
             ));
         }
 
-        // Создаем Blob с CSV данными
         use js_sys::Array;
         use wasm_bindgen::JsValue;
 
@@ -417,14 +441,6 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 </div>
                 <div class="page__header-right">
                     <Button
-                        appearance=ButtonAppearance::Primary
-                        on_click=move |_| load()
-                        disabled=is_loading
-                    >
-                        {icon("refresh")}
-                        {move || if is_loading.get() { " Загрузка..." } else { " Применить фильтры" }}
-                    </Button>
-                    <Button
                         appearance=ButtonAppearance::Secondary
                         on_click=move |_| export_to_excel()
                         disabled=move || state.get().total_count == 0
@@ -449,137 +465,212 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 }
             }}
 
-            <div class="filter-panel">
-                <div class="filter-panel-header">
-                    <div class="filter-panel-header__left">
-                        <span>{vec![icon("filter").into_view()]}</span>
-                        <span class="filter-panel__title">"Фильтры"</span>
+            <div class="page__content">
+                <div class="filter-panel">
+                    <div class="filter-panel-header">
+                        <div
+                            class="filter-panel-header__left"
+                            on:click=move |_| set_is_filter_expanded.update(|e| *e = !*e)
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class=move || {
+                                    if is_filter_expanded.get() {
+                                        "filter-panel__chevron filter-panel__chevron--expanded"
+                                    } else {
+                                        "filter-panel__chevron"
+                                    }
+                                }
+                            >
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            {icon("filter")}
+                            <span class="filter-panel__title">"Фильтры"</span>
+                            {move || {
+                                let count = active_filters_count.get();
+                                if count > 0 {
+                                    view! {
+                                        <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>{count}</Badge>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }
+                            }}
+                        </div>
+
+                        <div class="filter-panel-header__center">
+                            <PaginationControls
+                                current_page=Signal::derive(move || state.get().page)
+                                total_pages=Signal::derive(move || state.get().total_pages)
+                                total_count=Signal::derive(move || state.get().total_count)
+                                page_size=Signal::derive(move || state.get().page_size)
+                                on_page_change=Callback::new(go_to_page)
+                                on_page_size_change=Callback::new(change_page_size)
+                                page_size_options=vec![100, 500, 1000]
+                            />
+                        </div>
+
+                        <div class="filter-panel-header__right">
+                            <Button
+                                appearance=ButtonAppearance::Subtle
+                                on_click=move |_| load()
+                                disabled=is_loading
+                            >
+                                {icon("refresh")}
+                                {move || if is_loading.get() { "Загрузка..." } else { "Обновить" }}
+                            </Button>
+                        </div>
                     </div>
 
-                    <div class="filter-panel-header__center">
-                        <PaginationControls
-                            current_page=Signal::derive(move || state.get().page)
-                            total_pages=Signal::derive(move || state.get().total_pages)
-                            total_count=Signal::derive(move || state.get().total_count)
-                            page_size=Signal::derive(move || state.get().page_size)
-                            on_page_change=Callback::new(go_to_page)
-                            on_page_size_change=Callback::new(change_page_size)
-                            page_size_options=vec![100, 500, 1000, 5000, 10000]
-                        />
-                    </div>
-
-                    <div class="filter-panel-header__right">
-                        <span class="text-muted">
-                            {move || if is_loading.get() { "Загрузка…" } else { "" }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="filter-panel__collapsible filter-panel__collapsible--expanded">
-                    <div class="filter-panel-content">
-                        <Flex gap=FlexGap::Small align=FlexAlign::End>
-                            <div style="min-width: 160px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"From:"</Label>
-                                    <input
-                                        type="date"
-                                        class="form__input"
-                                        prop:value=move || date_from.get()
-                                        on:input=move |ev| {
-                                            date_from.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </Flex>
-                            </div>
-
-                            <div style="min-width: 160px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"To:"</Label>
-                                    <input
-                                        type="date"
-                                        class="form__input"
-                                        prop:value=move || date_to.get()
-                                        on:input=move |ev| {
-                                            date_to.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </Flex>
-                            </div>
-
-                            <div style="min-width: 140px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"NM ID:"</Label>
-                                    <Input
-                                        value=nm_id_filter
-                                        placeholder="NM ID..."
-                                    />
-                                </Flex>
-                            </div>
-
-                            <div style="min-width: 200px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"SA Name:"</Label>
-                                    <Input
-                                        value=sa_name_filter
-                                        placeholder="Артикул продавца..."
-                                    />
-                                </Flex>
-                            </div>
-
-                            <div style="min-width: 180px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"Кабинет:"</Label>
-                                    <Select
-                                        value=connection_filter
-                                    >
-                                        <option value="">"Все"</option>
-                                        <For
-                                            each=move || connections.get()
-                                            key=|conn| conn.0.clone()
-                                            children=move |conn: (String, String)| {
-                                                view! {
-                                                    <option value={conn.0.clone()}>{conn.1.clone()}</option>
-                                                }
+                    <div class=move || {
+                        if is_filter_expanded.get() {
+                            "filter-panel__collapsible filter-panel__collapsible--expanded"
+                        } else {
+                            "filter-panel__collapsible filter-panel__collapsible--collapsed"
+                        }
+                    }>
+                        <div class="filter-panel-content">
+                            <Flex gap=FlexGap::Small align=FlexAlign::End>
+                                <div style="min-width: 160px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"From:"</Label>
+                                        <input
+                                            type="date"
+                                            class="form__input"
+                                            prop:value=move || date_from.get()
+                                            on:input=move |ev| {
+                                                date_from.set(event_target_value(&ev));
                                             }
                                         />
-                                    </Select>
-                                </Flex>
-                            </div>
+                                    </Flex>
+                                </div>
 
-                            <div style="min-width: 180px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"Операция:"</Label>
-                                    <Select
-                                        value=operation_filter
-                                    >
-                                        <option value="">"Все"</option>
-                                        <option value="Продажа">"Продажа"</option>
-                                        <option value="Возврат">"Возврат"</option>
-                                        <option value="Логистика">"Логистика"</option>
-                                        <option value="Хранение">"Хранение"</option>
-                                        <option value="Платная приемка">"Платная приемка"</option>
-                                        <option value="Корректировка продаж">"Корректировка продаж"</option>
-                                        <option value="Корректировка возвратов">"Корректировка возвратов"</option>
-                                        <option value="Прочее">"Прочее"</option>
-                                    </Select>
-                                </Flex>
-                            </div>
+                                <div style="min-width: 160px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"To:"</Label>
+                                        <input
+                                            type="date"
+                                            class="form__input"
+                                            prop:value=move || date_to.get()
+                                            on:input=move |ev| {
+                                                date_to.set(event_target_value(&ev));
+                                            }
+                                        />
+                                    </Flex>
+                                </div>
 
-                            <div style="min-width: 140px;">
-                                <Flex vertical=true gap=FlexGap::Small>
-                                    <Label>"SRID:"</Label>
-                                    <Input
-                                        value=srid_filter
-                                        placeholder="SRID..."
-                                    />
-                                </Flex>
-                            </div>
-                        </Flex>
-                    </div>
+                                <div style="min-width: 140px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"NM ID:"</Label>
+                                        <Input
+                                            value=nm_id_filter
+                                            placeholder="NM ID..."
+                                        />
+                                    </Flex>
+                                </div>
+
+                                <div style="min-width: 200px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"SA Name:"</Label>
+                                        <Input
+                                            value=sa_name_filter
+                                            placeholder="Артикул продавца..."
+                                        />
+                                    </Flex>
+                                </div>
+
+                                <div style="min-width: 180px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Кабинет:"</Label>
+                                        <Select
+                                            value=connection_filter
+                                        >
+                                            <option value="">"Все"</option>
+                                            <For
+                                                each=move || connections.get()
+                                                key=|conn| conn.0.clone()
+                                                children=move |conn: (String, String)| {
+                                                    view! {
+                                                        <option value={conn.0.clone()}>{conn.1.clone()}</option>
+                                                    }
+                                                }
+                                            />
+                                        </Select>
+                                    </Flex>
+                                </div>
+
+                                <div style="min-width: 180px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Операция:"</Label>
+                                        <Select
+                                            value=operation_filter
+                                        >
+                                            <option value="">"Все"</option>
+                                            <option value="Продажа">"Продажа"</option>
+                                            <option value="Возврат">"Возврат"</option>
+                                            <option value="Логистика">"Логистика"</option>
+                                            <option value="Хранение">"Хранение"</option>
+                                            <option value="Платная приемка">"Платная приемка"</option>
+                                            <option value="Корректировка продаж">"Корректировка продаж"</option>
+                                            <option value="Корректировка возвратов">"Корректировка возвратов"</option>
+                                            <option value="Прочее">"Прочее"</option>
+                                        </Select>
+                                    </Flex>
+                                </div>
+
+                                <div style="min-width: 140px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"SRID:"</Label>
+                                        <Input
+                                            value=srid_filter
+                                            placeholder="SRID..."
+                                        />
+                                    </Flex>
+                                </div>
+                            </Flex>
+                        </div>
                 </div>
+
             </div>
 
-            <div class="page__content">
+            {move || {
+                if items.get().is_empty() {
+                    view! { <></> }.into_any()
+                } else {
+                    let (items_count, total_qty, total_retail, total_price_withdisc, total_sales_comm, total_acquiring, total_logistics, total_penalty, total_storage) = totals.get();
+                    view! {
+                        <div style="padding: 8px 12px; background: var(--color-bg-secondary); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); border-bottom: 1px solid var(--color-border);">
+                            <span style="font-weight: 600;">"ИТОГО:"</span>
+                            <span style="color: var(--color-primary);">"Строк: " {items_count}</span>
+                            <span>"Qty: " {total_qty}</span>
+                            <span>"Retail: " {format_number(total_retail)}</span>
+                            <span>"Price w/Disc: " {format_number(total_price_withdisc)}</span>
+                            <span>"Sales Comm: " {format_number(total_sales_comm)}</span>
+                            <span>"Acquiring: " {format_number(total_acquiring)}</span>
+                            <span>"Logistics: " {format_number(total_logistics)}</span>
+                            <span>"Penalty: " {format_number(total_penalty)}</span>
+                            <span>"Storage: " {format_number(total_storage)}</span>
+                        </div>
+                    }.into_any()
+                }
+            }}
+
+            <div class="table-wrapper">
+                <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+                <Show when=move || is_loading.get()>
+                    <div class="loading-overlay">
+                        <div class="loading-overlay__spinner">"Загрузка..."</div>
+                    </div>
+                </Show>
+
                 {move || {
                     if is_loading.get() && items.get().is_empty() {
                         view! { <p class="text-muted">"Загрузка..."</p> }.into_any()
@@ -588,26 +679,10 @@ pub fn WbFinanceReportList() -> impl IntoView {
                         if data.is_empty() {
                             view! { <p class="text-muted">"Нет данных"</p> }.into_any()
                         } else {
-                            // Get memoized totals
-                            let (items_count, total_qty, total_retail, total_price_withdisc, total_sales_comm, total_acquiring, total_logistics, total_penalty, total_storage) = totals.get();
-
                             view! {
-                                <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm);">
-                                    <span style="font-weight: 600;">"ИТОГО:"</span>
-                                    <span style="color: var(--color-primary);">"Строк: " {items_count}</span>
-                                    <span>"Qty: " {total_qty}</span>
-                                    <span>"Retail: " {format_number(total_retail)}</span>
-                                    <span>"Price w/Disc: " {format_number(total_price_withdisc)}</span>
-                                    <span>"Sales Comm: " {format_number(total_sales_comm)}</span>
-                                    <span>"Acquiring: " {format_number(total_acquiring)}</span>
-                                    <span>"Logistics: " {format_number(total_logistics)}</span>
-                                    <span>"Penalty: " {format_number(total_penalty)}</span>
-                                    <span>"Storage: " {format_number(total_storage)}</span>
-                                </div>
-
                                 <div style="width: 100%; overflow-x: auto;">
-                                    <Table attr:style="width: 100%;">
-                                        <TableHeader>
+                                    <Table attr:id=TABLE_ID attr:style="width: 100%;">
+                                        <TableHeader attr:style="position: sticky; top: 0; z-index: 10; background: var(--colorNeutralBackground1);">
                                             <TableRow>
                                                 <TableHeaderCell resizable=true min_width=100.0>
                                                     "Date"
@@ -761,31 +836,40 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             {data
                                                 .into_iter()
                                                 .map(|item| {
-                                                    let rr_dt_clone = item.rr_dt.clone();
+                                                    let rr_dt_link = item.rr_dt.clone();
                                                     let rrd_id_clone = item.rrd_id;
                                                     let connection_id = item.connection_mp_ref.clone();
                                                     view! {
-                                                        <TableRow
-                                                            on:click=move |_| {
-                                                                handle_row_click(rr_dt_clone.clone(), rrd_id_clone)
-                                                            }
-                                                        >
+                                                        <TableRow>
                                                             <TableCell><TableCellLayout>{item.rr_dt}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{get_connection_name(&connection_id)}</TableCellLayout></TableCell>
-                                                            <TableCell><TableCellLayout>{item.rrd_id}</TableCellLayout></TableCell>
+                                                            <TableCell>
+                                                                <TableCellLayout>
+                                                                    <a
+                                                                        href="#"
+                                                                        style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                                                        on:click=move |e| {
+                                                                            e.prevent_default();
+                                                                            open_detail(rr_dt_link.clone(), rrd_id_clone);
+                                                                        }
+                                                                    >
+                                                                        {rrd_id_clone}
+                                                                    </a>
+                                                                </TableCellLayout>
+                                                            </TableCell>
                                                             <TableCell><TableCellLayout>{item.nm_id.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.sa_name.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.subject_name.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.supplier_oper_name.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.quantity.map(|q| q.to_string()).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.retail_amount.map(|r| format_number(r)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.retail_price_withdisc_rub.map(|p| format_number(p)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.commission_percent.map(|c| format_number(c)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.ppvz_sales_commission.map(|sc| format_number(sc)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.acquiring_fee.map(|a| format_number(a)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.penalty.map(|p| format_number(p)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.rebill_logistic_cost.map(|l| format_number(l)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                            <TableCell class="table__cell--right"><TableCellLayout>{item.storage_fee.map(|s| format_number(s)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                            <TableCell class="text-right"><TableCellLayout>{item.quantity.map(|q| q.to_string()).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                            <TableCellMoney value=item.retail_amount show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.retail_price_withdisc_rub show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.commission_percent show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.ppvz_sales_commission show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.acquiring_fee show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.penalty show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.rebill_logistic_cost show_currency=false color_by_sign=false />
+                                                            <TableCellMoney value=item.storage_fee show_currency=false color_by_sign=false />
                                                             <TableCell><TableCellLayout truncate=true>{item.srid.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                         </TableRow>
                                                     }
@@ -801,26 +885,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                     }
                 }}
             </div>
-
-            // Details panel - Modal
-            {move || {
-                if let Some(selected) = selected_report.get() {
-                    view! {
-                        <div class="modal-overlay">
-                            <div class="modal modal-content-wide">
-                                <crate::projections::p903_wb_finance_report::ui::details::WbFinanceReportDetail
-                                    rr_dt=selected.rr_dt.clone()
-                                    rrd_id=selected.rrd_id
-                                    on_close=move || close_details()
-                                />
-                            </div>
-                        </div>
-                    }
-                        .into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
+        </div>
 
         </div>
     }

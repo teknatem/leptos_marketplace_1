@@ -111,6 +111,7 @@ members = [
 
 ```powershell
 # Запуск backend сервера
+# ВАЖНО: при старте автоматически применяются pending-миграции из migrations/
 cargo run --bin backend
 
 # Backend слушает на http://localhost:3000
@@ -183,20 +184,45 @@ trunk serve --port 8080 --open
 
 ### Migrations
 
-**Strategy:**
+**Стратегия:** Формальная система через `sqlx::migrate::Migrator` (с 2026-02-18).
 
-- SQL файлы с префиксом `migrate_*.sql`
-- Ручное применение или через `migrate_db.py`
+**Автоматическое применение при старте:**
 
-**Examples:**
+Все pending-миграции применяются автоматически при каждом запуске `cargo run --bin backend`.
+
+**Добавить новую миграцию:**
 
 ```powershell
-# Применить миграцию вручную
-sqlite3 marketplace.db < migrate_a014_posting_ref.sql
+# Создать файл с номером после последнего
+# Файл: migrations/0002_description.sql
 
-# Или через Python скрипт
-python migrate_db.py
+# При следующем запуске backend применится автоматически
+cargo run --bin backend
 ```
+
+**Проверить состояние:**
+
+```powershell
+# Через sqlite3 CLI
+sqlite3 marketplace.db "SELECT version, description, installed_on FROM _sqlx_migrations"
+
+# Или через sqlx-cli (если установлен):
+sqlx migrate info --database-url "sqlite:marketplace.db"
+```
+
+**Структура:**
+
+```
+migrations/
+├── 0001_baseline_schema.sql   <- полная схема при первом запуске
+├── 0002_...sql                <- новые изменения (добавлять сюда)
+└── archive/                   <- старые migrate_*.sql (только история)
+```
+
+**Ключевые файлы:**
+
+- `crates/backend/src/shared/data/migration_runner.rs` — запускает `sqlx::migrate::Migrator`
+- `crates/backend/src/shared/data/db.rs` — только коннект (`get_connection()` + `migrate_wb_sales_denormalize()`)
 
 ### Database Tools
 
@@ -269,10 +295,11 @@ python migrate_db.py
 
 ### Typical Development Session
 
-1. **Start backend**:
+1. **Start backend** (миграции применятся автоматически):
 
    ```powershell
    cargo run --bin backend
+   # В логах: "✓ Database migrations processed"
    ```
 
 2. **Start frontend** (in another terminal):
@@ -286,6 +313,10 @@ python migrate_db.py
 4. **Make changes**:
    - Frontend hot reload автоматически
    - Backend требует restart (Ctrl+C, cargo run снова)
+
+5. **Добавить изменение схемы БД**:
+   - Создать `migrations/NNNN_description.sql`
+   - Restart backend — миграция применится автоматически
 
 ### Debugging
 
@@ -335,6 +366,19 @@ web_sys::console::log_1(&"Value".into());
 - AI assistant project context
 - Critical patterns и rules
 
+### config.toml (рядом с backend.exe)
+
+```toml
+[database]
+path = "C:/path/to/data/app.db"   # абсолютный путь рекомендуется
+
+[scheduled_tasks]
+enabled = true                     # false для dev без фонового воркера
+```
+
+- При отсутствии файла используется дефолт: `target/db/app.db`
+- `build.rs` backend автоматически копирует `config.toml` из корня проекта в `target/debug/` при сборке
+
 ## Known Issues & Workarounds
 
 ### Windows-Specific
@@ -345,8 +389,9 @@ web_sys::console::log_1(&"Value".into());
 
 ### SQLite
 
-- **Locked database**: Закрыть все connections перед миграцией
+- **Locked database**: Закрыть все connections перед инспекцией (не перед миграцией — миграции теперь авто)
 - **Performance**: Индексы критичны для больших таблиц
+- **Migration checksum**: Никогда не редактировать уже применённые файлы в `migrations/` — sqlx проверяет checksum
 
 ### WASM
 
@@ -366,7 +411,8 @@ web_sys::console::log_1(&"Value".into());
 - **Leptos 0.8**: Активно развивается, следить за минорными обновлениями
 - **Thaw UI 0.5.0-beta**: Beta версия, возможны изменения API
 - **Axum 0.7**: Стабильный, редкие breaking changes
-- **Sea-ORM 0.12**: ORM стабильна, но следить за миграциями
+- **Sea-ORM 0.12**: ORM используется для доменных запросов (repositories)
+- **sqlx 0.7**: Используется для миграций (`sqlx::migrate::Migrator`)
 - **Serde**: Очень стабильный
 
 ## Resources & Documentation
@@ -380,6 +426,7 @@ web_sys::console::log_1(&"Value".into());
 ### Project-Specific
 
 - See `memory-bank/architecture/` для архитектурных деталей
+- See `memory-bank/runbooks/RB_db-migration-workflow_v1.md` — как добавлять миграции
 - See `memory-bank/features/` для документации по фичам
 - See `.cursorrules` для quick reference
 
@@ -387,9 +434,19 @@ web_sys::console::log_1(&"Value".into());
 
 ### Backend
 
+Конфигурация через `config.toml` (рядом с исполняемым файлом), не через env vars.
+
+```toml
+[database]
+path = "E:/data/app.db"     # путь к SQLite (абсолютный или относительный от .exe)
+
+[scheduled_tasks]
+enabled = true
 ```
-DATABASE_URL=marketplace.db  # SQLite database path (optional, defaults to marketplace.db)
-RUST_LOG=info                # Logging level
+
+Env var для уровня логирования (опционально):
+```
+RUST_LOG=info               # или debug, warn, error
 ```
 
 ### Frontend

@@ -399,9 +399,51 @@ is_deleted INTEGER DEFAULT 0   -- Мягкое удаление
 
 ### Migration Strategy
 
-- SQL файлы: `migrate_*.sql`
-- Ручное применение или через `migrate_db.py`
-- Нет ORM миграций (SQLite простая)
+Формальная система миграций на базе `sqlx::migrate::Migrator` (с версии 2026-02-18).
+
+**Структура:**
+
+```
+leptos_marketplace_1/
+├── migrations/
+│   ├── 0001_baseline_schema.sql   <- полная исходная схема (40+ таблиц)
+│   ├── 0002_...sql                <- будущие изменения
+│   └── archive/                   <- старые migrate_*.sql (только история)
+└── crates/backend/src/shared/data/
+    ├── db.rs                      <- коннект к БД + get_connection()
+    └── migration_runner.rs        <- sqlx::migrate::Migrator + поиск директории
+```
+
+**Как это работает:**
+
+1. При старте backend `main.rs` вызывает `migration_runner::run_migrations()`
+2. Runner ищет директорию `migrations/` (рядом с .exe → CWD → `../../migrations`)
+3. `sqlx::migrate::Migrator::new(dir).run(pool)` применяет все pending-миграции
+4. Трекинг применённых миграций в таблице `_sqlx_migrations` (автоматически)
+
+**Трекинг состояния БД:**
+
+```sql
+SELECT version, description, installed_on, success
+FROM _sqlx_migrations ORDER BY version;
+-- 1 | baseline schema | 2026-02-18 10:00:00 | true
+```
+
+**Добавление новой миграции:**
+
+```powershell
+# 1. Создать файл (номер следующий после последнего)
+# migrations/0002_a020_new_table.sql
+
+# 2. Миграция применится автоматически при следующем запуске backend
+cargo run --bin backend
+```
+
+**Ключевые файлы:**
+
+- `crates/backend/src/shared/data/migration_runner.rs` — логика запуска миграций
+- `crates/backend/src/shared/data/db.rs` — только коннект (`get_connection()`)
+- `crates/backend/src/system/initialization.rs` — только `ensure_admin_user_exists()`
 
 ## API Patterns
 

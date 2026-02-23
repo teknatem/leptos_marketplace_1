@@ -2325,6 +2325,76 @@ impl WildberriesApiClient {
 
         Ok(parsed.report)
     }
+
+    /// Получить страницу цен товаров из WB Prices API
+    /// GET https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=N&offset=N
+    pub async fn fetch_goods_prices(
+        &self,
+        connection: &ConnectionMP,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<WbGoodsPriceRow>> {
+        let url = format!(
+            "https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit={}&offset={}",
+            limit, offset
+        );
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Prices API");
+        }
+
+        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+
+        let response = match self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("Wildberries Prices API connection error: {}", e);
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: WB Prices API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к discounts-prices-api.wildberries.ru");
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("Wildberries Prices API request failed: {}", body);
+            anyhow::bail!(
+                "Wildberries Prices API failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", &body[..body.len().min(2000)]));
+
+        let parsed: WbGoodsPriceFilterResponse = serde_json::from_str(&body).map_err(|e| {
+            self.log_to_file(&format!("ERROR: Failed to parse JSON: {}", e));
+            anyhow::anyhow!("Failed to parse WB Prices response: {}", e)
+        })?;
+
+        let rows = parsed.data.map(|d| d.list_goods).unwrap_or_default();
+        self.log_to_file(&format!("✓ Parsed {} goods price rows", rows.len()));
+        tracing::info!("WB Prices API: loaded {} rows (offset={})", rows.len(), offset);
+
+        Ok(rows)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -2934,4 +3004,46 @@ pub struct DiagnosticResult {
     pub total_returned: i32,
     pub cursor_total: i32,
     pub response_headers: Option<String>,
+}
+
+// ============================================================================
+// WB Prices API structures (GET /api/v2/list/goods/filter)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbGoodsPriceFilterResponse {
+    #[serde(default)]
+    pub data: Option<WbGoodsPriceData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbGoodsPriceData {
+    #[serde(rename = "listGoods", default)]
+    pub list_goods: Vec<WbGoodsPriceRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbGoodsPriceRow {
+    #[serde(rename = "nmID")]
+    pub nm_id: i64,
+    #[serde(rename = "vendorCode", default)]
+    pub vendor_code: Option<String>,
+    #[serde(default)]
+    pub discount: Option<i32>,
+    #[serde(rename = "editableSizePrice", default)]
+    pub editable_size_price: bool,
+    #[serde(default)]
+    pub sizes: Vec<WbGoodsSize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbGoodsSize {
+    #[serde(rename = "sizeID", default)]
+    pub size_id: Option<i64>,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(rename = "discountedPrice", default)]
+    pub discounted_price: Option<f64>,
+    #[serde(rename = "techSizeName", default)]
+    pub tech_size_name: Option<String>,
 }

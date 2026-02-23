@@ -7,6 +7,8 @@ use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
 /// Автозаполнение marketplace_product_ref и nomenclature_ref для одной строки
 /// Возвращает обновлённую строку
 async fn fill_line_references(
@@ -144,6 +146,235 @@ pub async fn auto_fill_references(document: &mut YmOrder) -> Result<()> {
     document.update_is_error();
     // Пересчитываем итоги
     document.recalculate_totals();
+
+    Ok(())
+}
+
+/// Заполнить dealer_price_ut для каждой строки документа из p906_nomenclature_prices.
+/// Логика аналогична a015_wb_orders::fill_dealer_price:
+/// 1. Цена на дату по nomenclature_ref
+/// 2. Цена на дату по base_nomenclature_ref
+/// 3. Первая ненулевая цена по nomenclature_ref
+/// 4. Первая ненулевая цена по base_nomenclature_ref
+pub async fn fill_dealer_price_for_lines(document: &mut YmOrder) -> Result<()> {
+    // Определяем дату документа (creation_date или сегодня)
+    let order_date = document
+        .state
+        .creation_date
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    for line in document.lines.iter_mut() {
+        let Some(ref nom_ref) = line.nomenclature_ref.clone() else {
+            line.dealer_price_ut = None;
+            continue;
+        };
+
+        let mut price_source = String::new();
+
+        // 1. По nomenclature_ref на дату
+        let mut price =
+            crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
+                nom_ref,
+                &order_date,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "fill_dealer_price_for_lines: failed to get price for {}: {}",
+                    nom_ref,
+                    e
+                );
+                None
+            });
+
+        if price.is_some() && price.unwrap_or(0.0) > 0.0 {
+            price_source = format!("nomenclature {} on date {}", nom_ref, order_date);
+        } else {
+            price = None;
+        }
+
+        // 2. По base_nomenclature_ref на дату
+        if price.is_none() {
+            if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
+                if let Ok(Some(nomenclature)) =
+                    crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
+                {
+                    if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
+                        if !base_ref.is_empty() && base_ref != ZERO_UUID {
+                            price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
+                                base_ref,
+                                &order_date,
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                tracing::warn!(
+                                    "fill_dealer_price_for_lines: failed to get price for base_nomenclature {}: {}",
+                                    base_ref,
+                                    e
+                                );
+                                None
+                            });
+
+                            if price.is_some() && price.unwrap_or(0.0) > 0.0 {
+                                price_source = format!(
+                                    "base_nomenclature {} on date {}",
+                                    base_ref, order_date
+                                );
+                            } else {
+                                price = None;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Первая ненулевая по nomenclature_ref
+        if price.is_none() {
+            price =
+                crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
+                    nom_ref,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "fill_dealer_price_for_lines: failed to get first nonzero price for {}: {}",
+                        nom_ref,
+                        e
+                    );
+                    None
+                });
+
+            if price.is_some() {
+                price_source = format!("nomenclature {} (first nonzero price)", nom_ref);
+            }
+        }
+
+        // 4. Первая ненулевая по base_nomenclature_ref
+        if price.is_none() {
+            if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
+                if let Ok(Some(nomenclature)) =
+                    crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
+                {
+                    if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
+                        if !base_ref.is_empty() && base_ref != ZERO_UUID {
+                            price = crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
+                                base_ref,
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                tracing::warn!(
+                                    "fill_dealer_price_for_lines: failed to get first nonzero price for base_nomenclature {}: {}",
+                                    base_ref,
+                                    e
+                                );
+                                None
+                            });
+
+                            if price.is_some() {
+                                price_source = format!(
+                                    "base_nomenclature {} (first nonzero price)",
+                                    base_ref
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if price.is_some() {
+            tracing::info!(
+                "fill_dealer_price_for_lines: line {} -> dealer_price_ut={:?} (from {})",
+                line.line_id,
+                price,
+                price_source
+            );
+        } else {
+            tracing::warn!(
+                "fill_dealer_price_for_lines: could not find dealer_price_ut for line {} (nomenclature: {})",
+                line.line_id,
+                nom_ref
+            );
+        }
+
+        line.dealer_price_ut = price;
+    }
+
+    Ok(())
+}
+
+/// Рассчитать итоговую дилерскую сумму и маржу документа.
+/// total_dealer_amount = sum(dealer_price_ut_i * qty_i) по всем строкам
+/// margin_pro (%) = (total_amount * (1 - commission/100) - total_dealer_amount) / total_dealer_amount * 100
+/// Fallback (без комиссии): (total_amount - total_dealer_amount) / total_dealer_amount * 100
+pub async fn calculate_totals_and_margin(document: &mut YmOrder) -> Result<()> {
+    let total_dealer_amount: f64 = document
+        .lines
+        .iter()
+        .filter_map(|l| l.dealer_price_ut.map(|p| p * l.qty))
+        .sum();
+
+    if total_dealer_amount <= 0.0 {
+        document.header.total_dealer_amount = None;
+        document.header.margin_pro = None;
+        return Ok(());
+    }
+
+    document.header.total_dealer_amount = Some(total_dealer_amount);
+
+    // total_amount из строк документа
+    let total_amount: f64 = document.lines.iter().filter_map(|l| l.amount_line).sum();
+
+    // Пытаемся получить planned_commission_percent из подключения
+    let mut margin = (total_amount - total_dealer_amount) / total_dealer_amount * 100.0;
+
+    match Uuid::parse_str(&document.header.connection_id) {
+        Ok(connection_id) => {
+            match crate::domain::a006_connection_mp::service::get_by_id(connection_id).await {
+                Ok(Some(connection)) => {
+                    if let Some(planned_percent) = connection.planned_commission_percent {
+                        margin = (total_amount * (100.0 - planned_percent) / 100.0
+                            - total_dealer_amount)
+                            / total_dealer_amount
+                            * 100.0;
+                    }
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        "calculate_totals_and_margin: connection {} not found for document {}, using fallback margin formula",
+                        document.header.connection_id,
+                        document.base.id.as_string()
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "calculate_totals_and_margin: failed to load connection for document {}: {}, using fallback margin formula",
+                        document.base.id.as_string(),
+                        e
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "calculate_totals_and_margin: invalid connection_id {} for document {}: {}, using fallback margin formula",
+                document.header.connection_id,
+                document.base.id.as_string(),
+                e
+            );
+        }
+    }
+
+    document.header.margin_pro = Some(margin);
+
+    tracing::info!(
+        "calculate_totals_and_margin: document {} -> total_dealer_amount={:.2}, margin_pro={:.2}%",
+        document.base.id.as_string(),
+        total_dealer_amount,
+        margin
+    );
 
     Ok(())
 }

@@ -54,6 +54,10 @@ pub struct Model {
     pub organization_id: Option<String>,
     #[sea_orm(nullable)]
     pub connection_id: Option<String>,
+    #[sea_orm(nullable)]
+    pub total_dealer_amount: Option<f64>,
+    #[sea_orm(nullable)]
+    pub margin_pro: Option<f64>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub version: i32,
@@ -93,6 +97,7 @@ pub mod items {
         pub buyer_price: Option<f64>,
         pub subsidies_json: Option<String>,
         pub status: Option<String>,
+        pub dealer_price_ut: Option<f64>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -119,6 +124,7 @@ pub mod items {
                 price_plan: m.price_plan,
                 marketplace_product_ref: m.marketplace_product_ref,
                 nomenclature_ref: m.nomenclature_ref,
+                dealer_price_ut: m.dealer_price_ut,
             }
         }
     }
@@ -259,6 +265,8 @@ fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
         subsidies_total: Some(subsidies_total),
         organization_id: Some(aggregate.header.organization_id.clone()),
         connection_id: Some(aggregate.header.connection_id.clone()),
+        total_dealer_amount: aggregate.header.total_dealer_amount,
+        margin_pro: aggregate.header.margin_pro,
     }
 }
 
@@ -276,6 +284,8 @@ struct DenormalizedFields {
     subsidies_total: Option<f64>,
     organization_id: Option<String>,
     connection_id: Option<String>,
+    total_dealer_amount: Option<f64>,
+    margin_pro: Option<f64>,
 }
 
 pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
@@ -319,6 +329,8 @@ pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
             subsidies_total: Set(denorm.subsidies_total),
             organization_id: Set(denorm.organization_id),
             connection_id: Set(denorm.connection_id),
+            total_dealer_amount: Set(denorm.total_dealer_amount),
+            margin_pro: Set(denorm.margin_pro),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version + 1),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -353,6 +365,8 @@ pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
             subsidies_total: Set(denorm.subsidies_total),
             organization_id: Set(denorm.organization_id),
             connection_id: Set(denorm.connection_id),
+            total_dealer_amount: Set(denorm.total_dealer_amount),
+            margin_pro: Set(denorm.margin_pro),
             created_at: Set(Some(aggregate.base.metadata.created_at)),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),
@@ -410,6 +424,7 @@ pub async fn save_items(order_id: &str, lines: &[YmOrderLine]) -> Result<()> {
             buyer_price: Set(line.buyer_price),
             subsidies_json: Set(line.subsidies_json.clone()),
             status: Set(line.status.clone()),
+            dealer_price_ut: Set(line.dealer_price_ut),
         };
         items::Entity::insert(active).exec(conn()).await?;
     }
@@ -482,6 +497,8 @@ pub struct YmOrderListRow {
     pub is_posted: bool,
     pub is_error: bool,
     pub organization_id: Option<String>,
+    pub total_dealer_amount: Option<f64>,
+    pub margin_pro: Option<f64>,
 }
 
 /// Параметры запроса для списка
@@ -516,13 +533,13 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
 
     if let Some(ref date_from) = query.date_from {
         if !date_from.is_empty() {
-            conditions.push(format!("delivery_date >= '{}'", date_from));
+            conditions.push(format!("creation_date >= '{}'", date_from));
         }
     }
     if let Some(ref date_to) = query.date_to {
         if !date_to.is_empty() {
             // Add time part to include the whole day
-            conditions.push(format!("delivery_date <= '{}T23:59:59'", date_to));
+            conditions.push(format!("creation_date <= '{}T23:59:59'", date_to));
         }
     }
     if let Some(ref org_id) = query.organization_id {
@@ -575,6 +592,8 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
         "lines_count" => "lines_count",
         "delivery_total" => "delivery_total",
         "subsidies_total" => "subsidies_total",
+        "total_dealer_amount" => "total_dealer_amount",
+        "margin_pro" => "margin_pro",
         _ => "delivery_date",
     };
     let order_dir = if query.sort_desc { "DESC" } else { "ASC" };
@@ -585,7 +604,7 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
             id, document_no, status_changed_at, creation_date, delivery_date,
             campaign_id, status_norm, total_qty, total_amount, total_amount_api,
             lines_count, delivery_total, subsidies_total, is_posted, is_error,
-            organization_id
+            organization_id, total_dealer_amount, margin_pro
         FROM a013_ym_order 
         WHERE {}
         ORDER BY {} {} NULLS LAST
@@ -626,6 +645,8 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
                     .map(|v| v != 0)
                     .unwrap_or(false),
                 organization_id: row.try_get("", "organization_id").ok(),
+                total_dealer_amount: row.try_get("", "total_dealer_amount").ok(),
+                margin_pro: row.try_get("", "margin_pro").ok(),
             })
         })
         .collect();

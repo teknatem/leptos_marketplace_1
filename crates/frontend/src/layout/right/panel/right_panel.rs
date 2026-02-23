@@ -8,7 +8,7 @@ use leptos::prelude::*;
 #[component]
 pub fn RightPanel() -> impl IntoView {
     view! {
-        <div class="right-panel__content">
+        <div class="app-panel__content">
             <WindowsList />
         </div>
     }

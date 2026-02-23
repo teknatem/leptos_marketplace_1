@@ -107,6 +107,7 @@ pub async fn process_order(
                 price_plan: Some(0.0),
                 marketplace_product_ref: None,
                 nomenclature_ref: None,
+                dealer_price_ut: None,
             }
         })
         .collect();
@@ -155,6 +156,8 @@ pub async fn process_order(
         items_total: order_details.items_total,
         delivery_total: order_details.delivery_total,
         subsidies_json,
+        total_dealer_amount: None,
+        margin_pro: None,
     };
 
     let state = YmOrderState {

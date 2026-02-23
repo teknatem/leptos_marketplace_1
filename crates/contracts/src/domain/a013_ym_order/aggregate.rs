@@ -58,6 +58,12 @@ pub struct YmOrderHeader {
     /// Субсидии от Маркета (JSON массив OrderSubsidyDTO)
     #[serde(default)]
     pub subsidies_json: Option<String>,
+    /// Итоговая сумма по дилерским ценам (заполняется при проведении)
+    #[serde(default)]
+    pub total_dealer_amount: Option<f64>,
+    /// Маржинальность, % (заполняется при проведении)
+    #[serde(default)]
+    pub margin_pro: Option<f64>,
 }
 
 /// Строка документа (позиция)
@@ -101,6 +107,9 @@ pub struct YmOrderLine {
     /// Ссылка на номенклатуру 1С (a004_nomenclature)
     #[serde(default)]
     pub nomenclature_ref: Option<String>,
+    /// Дилерская цена УТ (заполняется при проведении из p906)
+    #[serde(default)]
+    pub dealer_price_ut: Option<f64>,
 }
 
 /// Статусы и временные метки
@@ -349,4 +358,6 @@ pub struct YmOrderListDto {
     #[serde(default)]
     pub is_error: bool,
     pub organization_name: Option<String>,
+    pub total_dealer_amount: Option<f64>,
+    pub margin_pro: Option<f64>,
 }

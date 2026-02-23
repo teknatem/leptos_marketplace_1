@@ -146,19 +146,18 @@
   margin: 1px !important;
   background-color: var(--card-bg) !important;
   border: 1px solid var(--card-border) !important;
-  transition: background-color var(--transition-fast),
-              box-shadow var(--transition-fast),
-              transform var(--transition-fast);
-}
-
-.thaw-card:hover:not([role="group"]) {
-  background-color: var(--card-hover-bg) !important;
-  box-shadow: var(--card-hover-shadow);
-  transform: translateY(-1px);
+  transition: background-color var(--transition-base),
+              box-shadow var(--transition-base),
+              transform var(--transition-base);
 }
 
 .thaw-card[role="group"] {
   background-color: transparent !important;
+}
+
+.thaw-card:hover {
+  background-color: var(--card-hover-bg) !important;
+  box-shadow: 0 8px 24px var(--card-hover-shadow) !important;
 }
 
 /* Выравнивание содержимого по правому краю для числовых ячеек */

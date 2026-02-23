@@ -44,12 +44,26 @@
   color: var(--top-header-text);
   box-shadow: var(--shadow-md);
   border-bottom: 1px solid var(--top-header-border);
+  position: relative;
 }
 
 .app-header__brand {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+}
+
+.app-header::after {
+  content: '';
+  pointer-events: none;
+  user-select: none;
+  position: absolute;
+  inset: 0;
+  background-image: url('/assets/images/noise.png');
+  background-size: 180px;
+  background-repeat: repeat;
+  opacity: var(--header-noise-opacity, 0);
+  z-index: 1;
 }
 
 .app-header__title {

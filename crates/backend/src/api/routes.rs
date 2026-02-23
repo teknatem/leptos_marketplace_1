@@ -611,6 +611,35 @@ pub fn configure_business_routes() -> Router {
             "/api/p906/import-excel",
             post(handlers::p906_nomenclature_prices::import_excel),
         )
+        // P907 YM Payment Report handlers
+        .route(
+            "/api/p907/payment-report",
+            get(handlers::p907_ym_payment_report::list_reports),
+        )
+        .route(
+            "/api/p907/payment-report/:record_key",
+            get(handlers::p907_ym_payment_report::get_report),
+        )
+        // P908 WB Goods Prices handlers
+        .route(
+            "/api/p908/goods-prices",
+            get(handlers::p908_wb_goods_prices::list_goods_prices),
+        )
+        .route(
+            "/api/p908/goods-prices/:nm_id",
+            get(handlers::p908_wb_goods_prices::get_goods_price),
+        )
+        // ========================================
+        // INDICATORS
+        // ========================================
+        .route(
+            "/api/indicators/compute",
+            post(handlers::indicators::compute_indicators),
+        )
+        .route(
+            "/api/indicators/meta",
+            get(handlers::indicators::get_indicator_catalog),
+        )
         // ========================================
         // DASHBOARDS (D400-D401)
         // ========================================

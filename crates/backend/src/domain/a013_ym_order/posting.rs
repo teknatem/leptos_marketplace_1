@@ -27,6 +27,12 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Автозаполнение ссылок для всех строк
     auto_fill_references(&mut document).await?;
 
+    // Заполнение dealer_price_ut для каждой строки из p906_nomenclature_prices
+    super::service::fill_dealer_price_for_lines(&mut document).await?;
+
+    // Расчёт итоговой дилерской суммы и маржи документа
+    super::service::calculate_totals_and_margin(&mut document).await?;
+
     // Установить флаг is_posted
     document.is_posted = true;
     document.before_write();

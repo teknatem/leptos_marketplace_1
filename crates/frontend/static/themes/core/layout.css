@@ -22,8 +22,7 @@
   border-bottom: 1px solid var(--header-border);
   background: var(--header-bg);
   color: var(--header-text);
-  backdrop-filter: blur(var(--header-backdrop-blur));
-  -webkit-backdrop-filter: blur(var(--header-backdrop-blur));
+  overflow: hidden;
 }
 
 .page__header-left {
@@ -108,7 +107,7 @@
 }
 
 .page--detail .page__header {
-  background: var(--detail-form-header-bg);
+  /*background: var(--detail-form-header-bg);*/
   padding: var(--spacing-sm) var(--spacing-xl);
 }
 

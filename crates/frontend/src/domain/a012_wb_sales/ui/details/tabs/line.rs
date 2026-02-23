@@ -1,6 +1,7 @@
 //! Line tab - line details, amounts table, and finance details
 
 use super::super::view_model::WbSalesDetailsVm;
+use crate::shared::components::table::TableCellMoney;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -25,16 +26,16 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let qty = format!("{:.0}", line.qty);
 
             // Amounts rows data
-            let amounts_rows: Vec<(String, String, String, String)> = vec![
-                ("Полная цена".to_string(), "total_price".to_string(), line.total_price.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("Процент скидки".to_string(), "discount_percent".to_string(), line.discount_percent.map(|d| format!("{:.1}", d)).unwrap_or_else(|| "—".to_string()), "%".to_string()),
-                ("Цена без скидок".to_string(), "price_list".to_string(), line.price_list.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("Сумма скидок".to_string(), "discount_total".to_string(), line.discount_total.map(|d| format!("{:.2}", d)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("Цена после скидок".to_string(), "price_effective".to_string(), line.price_effective.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("СПП".to_string(), "spp".to_string(), line.spp.map(|s| format!("{:.1}", s)).unwrap_or_else(|| "—".to_string()), "%".to_string()),
-                ("Итоговая цена".to_string(), "finished_price".to_string(), line.finished_price.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("Сумма платежа".to_string(), "payment_sale_amount".to_string(), line.payment_sale_amount.map(|p| format!("{:.2}", p)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
-                ("К выплате".to_string(), "amount_line".to_string(), line.amount_line.map(|a| format!("{:.2}", a)).unwrap_or_else(|| "—".to_string()), "rub".to_string()),
+            let amounts_rows: Vec<(&'static str, &'static str, Option<f64>, &'static str)> = vec![
+                ("Полная цена",      "total_price",          line.total_price,         "rub"),
+                ("Процент скидки",   "discount_percent",     line.discount_percent,    "%"),
+                ("Цена без скидок",  "price_list",           line.price_list,          "rub"),
+                ("Сумма скидок",     "discount_total",       line.discount_total,      "rub"),
+                ("Цена после скидок","price_effective",      line.price_effective,     "rub"),
+                ("СПП",              "spp",                  line.spp,                 "%"),
+                ("Итоговая цена",    "finished_price",       line.finished_price,      "rub"),
+                ("Сумма платежа",    "payment_sale_amount",  line.payment_sale_amount, "rub"),
+                ("К выплате",        "amount_line",          line.amount_line,         "rub"),
             ];
 
             // Finance rows (if reports are loaded)
@@ -134,13 +135,13 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <TableBody>
                                 <For
                                     each=move || amounts_rows.clone()
-                                    key=|r| r.1.clone()
+                                    key=|r| r.1
                                     children=move |(name, field, value, unit)| {
                                         view! {
                                             <TableRow>
                                                 <TableCell><TableCellLayout>{name}</TableCellLayout></TableCell>
                                                 <TableCell><TableCellLayout><code>{field}</code></TableCellLayout></TableCell>
-                                                <TableCell><TableCellLayout>{value}</TableCellLayout></TableCell>
+                                                <TableCellMoney value=value color_by_sign=false />
                                                 <TableCell><TableCellLayout>{unit}</TableCellLayout></TableCell>
                                             </TableRow>
                                         }
@@ -172,10 +173,10 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                 children=move |(num, name, field, value)| {
                                                     view! {
                                                         <TableRow>
-                                                            <TableCell><TableCellLayout>{num}</TableCellLayout></TableCell>
-                                                            <TableCell><TableCellLayout>{name}</TableCellLayout></TableCell>
-                                                            <TableCell><TableCellLayout><code>{field}</code></TableCellLayout></TableCell>
-                                                            <TableCell><TableCellLayout>{value}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{num}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{name}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout><code>{field}</code></TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{value}</TableCellLayout></TableCell>
                                                         </TableRow>
                                                     }
                                                 }
