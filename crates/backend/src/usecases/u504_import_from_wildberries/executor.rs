@@ -1,7 +1,7 @@
 use super::{
-    progress_tracker::ProgressTracker, 
+    progress_tracker::ProgressTracker,
     wildberries_api_client::WildberriesApiClient,
-    processors::{product, sales, order, finance_report, commission},
+    processors::{product, sales, order, finance_report, commission, goods_prices},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -50,6 +50,7 @@ impl ImportExecutor {
                 "a012_wb_sales" => "Продажи Wildberries",
                 "p903_wb_finance_report" => "Финансовый отчет WB",
                 "p905_wb_commission_history" => "История комиссий WB",
+                "p908_wb_goods_prices" => "Цены товаров WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -143,6 +144,9 @@ impl ImportExecutor {
                 "p905_wb_commission_history" => {
                     self.import_commission_history(session_id, connection)
                         .await?;
+                }
+                "p908_wb_goods_prices" => {
+                    self.import_wb_goods_prices(session_id, connection).await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -698,6 +702,81 @@ impl ImportExecutor {
             new_records,
             updated_records,
             skipped_records
+        );
+
+        Ok(())
+    }
+
+    /// Импорт цен товаров Wildberries в p908
+    async fn import_wb_goods_prices(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<()> {
+        let aggregate_index = "p908_wb_goods_prices";
+        let page_size = 1000;
+        let mut offset = 0i32;
+        let mut total_processed = 0i32;
+        let mut total_upserted = 0i32;
+
+        tracing::info!("Importing WB goods prices for session: {}", session_id);
+
+        loop {
+            let page = self
+                .api_client
+                .fetch_goods_prices(connection, page_size, offset)
+                .await?;
+
+            if page.is_empty() {
+                break;
+            }
+
+            let page_len = page.len() as i32;
+
+            for row in &page {
+                match goods_prices::process_goods_price(connection, row).await {
+                    Ok(_) => {
+                        total_upserted += 1;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to process goods price row nm_id={}: {}",
+                            row.nm_id,
+                            e
+                        );
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process nm_id={}", row.nm_id),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+                total_processed += 1;
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_upserted,
+                0,
+            );
+
+            if page_len < page_size {
+                break;
+            }
+
+            offset += page_size;
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB goods prices import completed: processed={}, upserted={}",
+            total_processed,
+            total_upserted
         );
 
         Ok(())

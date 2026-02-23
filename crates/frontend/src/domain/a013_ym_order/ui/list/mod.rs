@@ -94,6 +94,18 @@ impl Sortable for YmOrderListDto {
                 .partial_cmp(&other.subsidies_total)
                 .unwrap_or(Ordering::Equal),
             "lines_count" => self.lines_count.cmp(&other.lines_count),
+            "total_dealer_amount" => match (&self.total_dealer_amount, &other.total_dealer_amount) {
+                (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
+            "margin_pro" => match (&self.margin_pro, &other.margin_pro) {
+                (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             _ => Ordering::Equal,
         }
     }
@@ -672,7 +684,7 @@ pub fn YmOrderList() -> impl IntoView {
                                             });
                                             load_orders();
                                         })
-                                        label="Период:".to_string()
+                                        label="Период (дата создания):".to_string()
                                     />
                                 </div>
 
@@ -849,6 +861,24 @@ pub fn YmOrderList() -> impl IntoView {
                                         </span>
                                     </div>
                                 </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_dealer_amount")>
+                                        "Дилер. сумма УТ"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_dealer_amount"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_dealer_amount", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("margin_pro")>
+                                        "Маржа, %"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "margin_pro"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "margin_pro", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
@@ -947,6 +977,18 @@ pub fn YmOrderList() -> impl IntoView {
                                                 show_currency=false
                                                 color_by_sign=false
                                             />
+
+                                            <TableCellMoney
+                                                value=order.total_dealer_amount.unwrap_or(0.0)
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {order.margin_pro.map(|v| format!("{:.1}%", v)).unwrap_or_else(|| "—".to_string())}
+                                                </TableCellLayout>
+                                            </TableCell>
                                         </TableRow>
                                     }
                                 }

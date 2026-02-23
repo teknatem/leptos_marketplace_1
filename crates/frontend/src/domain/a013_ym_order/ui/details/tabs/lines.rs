@@ -21,6 +21,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let lines_for_table = lines.clone();
             let total_qty: f64 = lines.iter().map(|l| l.qty).sum();
             let total_amount: f64 = lines.iter().filter_map(|l| l.amount_line).sum();
+            let total_dealer_amount: f64 = lines.iter().filter_map(|l| l.dealer_price_ut.map(|p| p * l.qty)).sum();
             let lines_without_nomenclature = lines.iter().filter(|l| l.nomenclature_ref.is_none()).count();
 
             view! {
@@ -32,6 +33,13 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                         </Badge>
                         <span>"Qty: " <strong>{format!("{:.0}", total_qty)}</strong></span>
                         <span>"Amount: " <strong>{format!("{:.2}", total_amount)}</strong></span>
+                        {if total_dealer_amount > 0.0 {
+                            view! {
+                                <span>"Дилер. сумма: " <strong>{format!("{:.2}", total_dealer_amount)}</strong></span>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
                         <Badge
                             appearance=BadgeAppearance::Filled
                             color={if lines_without_nomenclature > 0 { BadgeColor::Danger } else { BadgeColor::Success }}
@@ -54,6 +62,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     <TableHeaderCell>"Qty"</TableHeaderCell>
                                     <TableHeaderCell>"Цена"</TableHeaderCell>
                                     <TableHeaderCell>"Сумма"</TableHeaderCell>
+                                    <TableHeaderCell>"Дилерская цена УТ"</TableHeaderCell>
                                     <TableHeaderCell>"Товар МП"</TableHeaderCell>
                                     <TableHeaderCell>"Номенклатура"</TableHeaderCell>
                                     <TableHeaderCell>"Статус"</TableHeaderCell>
@@ -80,6 +89,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                 <TableCell><TableCellLayout>{format!("{:.0}", line.qty)}</TableCellLayout></TableCell>
                                                 <TableCell><TableCellLayout>{line.price_effective.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                 <TableCell><TableCellLayout>{line.amount_line.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout>{line.dealer_price_ut.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                 <TableCell>
                                                     <TableCellLayout truncate=true>
                                                         {move || {

@@ -87,7 +87,7 @@ pub fn LinksTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     <TableHeaderCell>"PPVZ For Pay"</TableHeaderCell>
                                     <TableHeaderCell>"Commission %"</TableHeaderCell>
                                     <TableHeaderCell>"Retail Price"</TableHeaderCell>
-                                    <TableHeaderCell>"Retail w/Disc"</TableHeaderCell>
+                                    <TableHeaderCell>"Операция"</TableHeaderCell>
                                     <TableHeaderCell>"Acquiring Fee"</TableHeaderCell>
                                 </TableRow>
                             </TableHeader>
@@ -126,7 +126,7 @@ pub fn LinksTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                     <TableCell><TableCellLayout>{report.ppvz_for_pay.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout>{report.commission_percent.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout>{report.retail_price.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{report.retail_price_withdisc_rub.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{report.supplier_oper_name.unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout>{report.acquiring_fee.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                                 </TableRow>
                                             }

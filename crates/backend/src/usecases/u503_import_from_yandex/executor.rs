@@ -1,7 +1,7 @@
 use super::{
-    progress_tracker::ProgressTracker, 
+    progress_tracker::ProgressTracker,
+    processors::{order, payment_report, product, returns},
     yandex_api_client::YandexApiClient,
-    processors::{product, order, returns},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -48,6 +48,7 @@ impl ImportExecutor {
                 "a007_marketplace_product" => "Товары маркетплейса",
                 "a013_ym_order" => "Заказы Yandex Market",
                 "a016_ym_returns" => "Возвраты Yandex Market",
+                "p907_ym_payment_report" => "Отчёт по платежам YM",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -122,6 +123,15 @@ impl ImportExecutor {
                 }
                 "a016_ym_returns" => {
                     self.import_ym_returns(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "p907_ym_payment_report" => {
+                    self.import_ym_payment_report(
                         session_id,
                         connection,
                         request.date_from,
@@ -504,6 +514,228 @@ impl ImportExecutor {
             total_processed,
             total_inserted,
             total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Импорт отчёта по платежам Yandex Market (двухфазный процесс)
+    ///
+    /// Фаза 1: POST /v2/reports/united-netting/generate → получить reportId
+    /// Фаза 2: GET /v2/reports/info/{reportId} → polling до DONE (макс. 60 попыток по 5с)
+    /// Фаза 3: Скачать CSV и разобрать каждую строку в p907_ym_payment_report
+    async fn import_ym_payment_report(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+
+        tracing::info!(
+            "Importing YM payment report for session: {}",
+            session_id
+        );
+
+        let aggregate_index = "p907_ym_payment_report";
+
+        // Resolve organization
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!(
+                        "Organization UUID '{}' not found",
+                        connection.organization_ref
+                    );
+                    tracing::error!("{}", msg);
+                    anyhow::bail!("{}", msg);
+                }
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Invalid organization_ref UUID in connection: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", msg);
+                anyhow::bail!("{}", msg);
+            }
+        };
+
+        // Phase 1: request report generation
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Запрос генерации отчёта...".to_string()),
+        );
+
+        let report_id = self
+            .api_client
+            .generate_payment_report(connection, date_from, date_to)
+            .await
+            .map_err(|e| {
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Ошибка запроса генерации отчёта: {}", e),
+                    None,
+                );
+                e
+            })?;
+
+        tracing::info!("Payment report requested, reportId={}", report_id);
+
+        // Phase 2: poll until DONE (up to 60 attempts, 5s each = max 5 minutes)
+        const MAX_POLL_ATTEMPTS: u32 = 60;
+        const POLL_INTERVAL_SECS: u64 = 5;
+
+        let mut download_url: Option<String> = None;
+
+        for attempt in 1..=MAX_POLL_ATTEMPTS {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Ожидание готовности отчёта... ({}/{})",
+                    attempt, MAX_POLL_ATTEMPTS
+                )),
+            );
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+
+            let (status, file_url) = self
+                .api_client
+                .poll_report_status(connection, &report_id)
+                .await
+                .map_err(|e| {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка получения статуса отчёта: {}", e),
+                        None,
+                    );
+                    e
+                })?;
+
+            tracing::info!(
+                "Payment report status (attempt {}): {}",
+                attempt,
+                status
+            );
+
+            match status.as_str() {
+                "DONE" => {
+                    download_url = file_url;
+                    break;
+                }
+                "FAILED" => {
+                    let msg = "Генерация отчёта завершилась ошибкой на стороне YM".to_string();
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", msg);
+                }
+                _ => {
+                    // PENDING / PROCESSING — continue polling
+                }
+            }
+
+            if attempt == MAX_POLL_ATTEMPTS {
+                let msg = format!(
+                    "Превышено время ожидания готовности отчёта ({} попыток по {}с)",
+                    MAX_POLL_ATTEMPTS, POLL_INTERVAL_SECS
+                );
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", msg);
+            }
+        }
+
+        let url = download_url.ok_or_else(|| {
+            let msg = "Отчёт DONE, но URL файла не получен";
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                msg.to_string(),
+                None,
+            );
+            anyhow::anyhow!("{}", msg)
+        })?;
+
+        // Phase 3: download ZIP and extract CSV
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Загрузка ZIP-архива...".to_string()),
+        );
+
+        let (csv_text, zip_path, csv_path) = self
+            .api_client
+            .download_report_zip(&url)
+            .await
+            .map_err(|e| {
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Ошибка загрузки ZIP: {}", e),
+                    None,
+                );
+                e
+            })?;
+
+        tracing::info!(
+            "Payment report ZIP saved to: {}, CSV saved to: {}",
+            zip_path,
+            csv_path
+        );
+
+        // Phase 4: parse and import CSV rows
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!("Разбор и загрузка CSV ({})...", csv_path)),
+        );
+
+        let (inserted, updated) = payment_report::process_payment_report_csv(
+            connection,
+            &organization_id,
+            &csv_text,
+        )
+        .await
+        .map_err(|e| {
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                format!("Ошибка обработки CSV: {}", e),
+                None,
+            );
+            e
+        })?;
+
+        let total = inserted + updated;
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total,
+            Some(total),
+            inserted,
+            updated,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "YM payment report import completed: inserted={}, updated={}",
+            inserted,
+            updated
         );
 
         Ok(())

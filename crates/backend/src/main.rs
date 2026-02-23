@@ -62,12 +62,12 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 3. Apply auth system migration (optional)
-    println!("Step 3: Checking for authentication system migrations...");
-    match system::initialization::apply_auth_migration().await {
-        Ok(_) => println!("✓ Auth migrations processed\n"),
+    // 3. Run database migrations
+    println!("Step 3: Running database migrations...");
+    match shared::data::migration_runner::run_migrations().await {
+        Ok(_) => println!("✓ Database migrations processed\n"),
         Err(e) => {
-            println!("✗ ERROR: Auth migration failed: {}\n", e);
+            println!("✗ ERROR: Database migrations failed: {}\n", e);
             return Err(e);
         }
     }

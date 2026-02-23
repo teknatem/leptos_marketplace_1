@@ -208,13 +208,15 @@ _Последнее обновление: 2025-12-26_
 ### Database
 
 - ✅ **SQLite schema**
-  - Все таблицы для aggregates
-  - Таблицы для projections
+  - 40+ таблиц для aggregates, projections, system
   - Индексы для производительности
   - Soft delete support
-- ✅ **Migrations**
-  - Migration scripts (migrate\_\*.sql)
-  - Python migration tool
+- ✅ **Формальная система миграций (2026-02-18)**
+  - `migrations/0001_baseline_schema.sql` — полная исходная схема
+  - `migration_runner.rs` — автозапуск `sqlx::migrate::Migrator` при старте
+  - Трекинг в `_sqlx_migrations`: версия, описание, checksum, дата
+  - Поддержка fresh install и idempotent повторного запуска
+  - Старые `migrate_*.sql` заархивированы в `migrations/archive/`
 
 ## 🔨 В процессе разработки
 

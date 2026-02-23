@@ -264,6 +264,12 @@ pub async fn list_with_filters(
     offset: i32,
 ) -> Result<(Vec<Model>, i32)> {
     let db = get_connection();
+    const MAX_LIMIT: i32 = 1000;
+    const MAX_TOTAL_COUNT: i32 = 10_000;
+    const COUNT_SCAN_LIMIT: u64 = (MAX_TOTAL_COUNT as u64) + 1;
+
+    let safe_limit = limit.max(1).min(MAX_LIMIT);
+    let safe_offset = offset.max(0);
 
     // Helper function to apply filters to a query
     let apply_filters = |mut q: sea_orm::Select<Entity>| -> sea_orm::Select<Entity> {
@@ -311,9 +317,17 @@ pub async fn list_with_filters(
         q
     };
 
-    // Построить COUNT запрос отдельно (без клонирования основного запроса)
-    let count_query = apply_filters(Entity::find());
-    let total_count = count_query.count(db).await? as i32;
+    // Оптимизированный COUNT: считаем только до 10001 строк и обрезаем до 10000.
+    // Это сильно снижает стоимость подсчета на больших диапазонах.
+    let total_count = apply_filters(Entity::find())
+        .select_only()
+        .column(Column::RrdId)
+        .limit(COUNT_SCAN_LIMIT)
+        .into_tuple::<i64>()
+        .all(db)
+        .await?
+        .len() as i32;
+    let total_count = total_count.min(MAX_TOTAL_COUNT);
 
     // Построить основной запрос с фильтрами
     let mut query = apply_filters(Entity::find());
@@ -443,8 +457,8 @@ pub async fn list_with_filters(
 
     // Пагинация
     let items = query
-        .limit(limit as u64)
-        .offset(offset as u64)
+        .limit(safe_limit as u64)
+        .offset(safe_offset as u64)
         .all(db)
         .await?;
 

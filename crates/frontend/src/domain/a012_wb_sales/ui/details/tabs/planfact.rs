@@ -108,7 +108,7 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
             ];
 
             view! {
-                <div style="max-width: 1400px;">
+                <div style="max-width: 1000px;">
                     <Card>
                         <h4 class="details-section__title">"План/Факт сравнение"</h4>
 
@@ -137,9 +137,9 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                         <TableHeaderCell>"Наименование"</TableHeaderCell>
                                         <TableHeaderCell attr:style="color: var(--colorBrandForeground2);">"Формула (План)"</TableHeaderCell>
                                         <TableHeaderCell>"Формула (Факт)"</TableHeaderCell>
-                                        <TableHeaderCell attr:style="color: var(--colorBrandForeground2);">"План"</TableHeaderCell>
-                                        <TableHeaderCell>"Факт"</TableHeaderCell>
-                                        <TableHeaderCell>"Разница"</TableHeaderCell>
+                                        <TableHeaderCell max_width=100 attr:style="color: var(--colorBrandForeground2);">"План"</TableHeaderCell>
+                                        <TableHeaderCell max_width=100>"Факт"</TableHeaderCell>
+                                        <TableHeaderCell max_width=100>"Разница"</TableHeaderCell>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -156,12 +156,12 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                     </TableCell>
                                                     <TableCell>
                                                         <TableCellLayout>
-                                                            <code style="font-size: 0.85em; color: var(--colorBrandForeground2);">{formula_plan}</code>
+                                                            <code style="font-size: 1em; color: var(--colorBrandForeground2);">{formula_plan}</code>
                                                         </TableCellLayout>
                                                     </TableCell>
                                                     <TableCell>
                                                         <TableCellLayout>
-                                                            <code style="font-size: 0.85em;">{formula_fact}</code>
+                                                            <code style="font-size: 1em;">{formula_fact}</code>
                                                         </TableCellLayout>
                                                     </TableCell>
                                                     <TableCell>
@@ -187,9 +187,10 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </Table>
                         </div>
 
-                        <div style="margin-top: var(--spacing-lg); padding: var(--spacing-md); background: var(--color-bg-secondary); border-radius: var(--radius-md);">
-                            <h5 style="margin-bottom: var(--spacing-sm);">"Как рассчитываются показатели"</h5>
-                            <div style="font-size: 0.9em; line-height: 1.6;">
+                        <div>
+                            <h5 style="margin: var(--spacing-sm);">"Как рассчитываются показатели"</h5>
+                            <Flex vertical=false gap=FlexGap::Large justify=FlexJustify::Start align=FlexAlign::FlexStart>
+                            <div style = "display: block;">
                                 <p><strong>"План"</strong>" (когда нет данных P903, is_fact = false):"</p>
                                 <ul style="margin-left: var(--spacing-lg);">
                                     <li>"sell_out_plan = finished_price"</li>
@@ -199,7 +200,9 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     <li>"supplier_payout_plan = finished_price - acquiring_fee_plan"</li>
                                     <li>"profit_plan = finished_price - acquiring_fee_plan - commission_plan - other_fee_plan - cost_of_production"</li>
                                 </ul>
-                                <p style="margin-top: var(--spacing-md);"><strong>"Факт"</strong>" (когда есть данные P903, is_fact = true):"</p>
+                            </div>
+                            <div style = "display: block;">
+                                <p><strong>"Факт"</strong>" (когда есть данные P903, is_fact = true):"</p>
                                 <ul style="margin-left: var(--spacing-lg);">
                                     <li>"sell_out_fact = retail_amount (из P903)"</li>
                                     <li>"acquiring_fee_fact = acquiring_fee (из P903)"</li>
@@ -209,6 +212,7 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     <li>"profit_fact = retail_amount - acquiring_fee - commission - other_fee - cost_of_production"</li>
                                 </ul>
                             </div>
+                            </Flex>
                         </div>
                     </Card>
                 </div>

@@ -131,6 +131,8 @@ pub async fn list_orders_fast(
                 is_posted: row.is_posted,
                 is_error: row.is_error,
                 organization_name,
+                total_dealer_amount: row.total_dealer_amount,
+                margin_pro: row.margin_pro,
             }
         })
         .collect();

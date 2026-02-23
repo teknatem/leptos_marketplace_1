@@ -115,9 +115,10 @@
   --sidebar-border: rgba(0, 0, 0, 0.08);
 
   /* Header Colors */
-  --header-bg: linear-gradient(135deg, #c4c9e9  0%, #a4c2f4aa 100%);
+  --header-bg: linear-gradient(135deg, #dddddd  0%, #cccccc 100%);
   --header-text: #ffffff;
   --header-border: rgba(0, 0, 0, 0.1);
+  --header-noise-opacity: 0.04;
 
   /* Top Header Colors */
   --top-header-bg: #e8eaed;
@@ -133,8 +134,8 @@
   /* Card Colors */
   --card-bg: rgba(255, 255, 255, 0.75);
   --card-border: rgba(200, 200, 200, 0.4);
-  --card-hover-bg: rgba(255, 255, 255, 0.92);
-  --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --card-hover-bg: rgba(255, 255, 255, 0.8);
+  --card-hover-shadow: 0 2px 8px rgba(255, 255, 255, 0.5);
 
   /* Form Colors */
   --form-label-text: #262626;

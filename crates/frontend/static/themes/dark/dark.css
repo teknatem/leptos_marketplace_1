@@ -104,7 +104,7 @@
   --modal-header-bg: rgba(255, 255, 255, 0.05);
 
   /* Sidebar Colors */
-  --sidebar-bg: rgba(42, 45, 51, 0.5);
+  --sidebar-bg: rgba(42, 45, 51, 0.2);
   --sidebar-text: rgba(255, 255, 255, 0.9);
   --sidebar-text-active: #93c5fd;
   --sidebar-item-hover: rgba(255, 255, 255, 0.10);
@@ -118,6 +118,7 @@
   --header-bg: rgba(64, 72, 76, 0.85);
   --header-text: #ffffff;
   --header-border: rgba(255, 255, 255, 0.15);
+  --header-noise-opacity: 0.1;
 
   /* Top Header Colors */
   --top-header-bg: rgba(17, 24, 39, 0.35);
@@ -126,14 +127,14 @@
   --top-header-btn-hover: rgba(255, 255, 255, 0.10);
 
   /* Panel Colors */
-  --panel-bg: rgba(30, 35, 45, 0.50);
+  --panel-bg: rgba(30, 35, 45, 0.30);
   --panel-border: rgba(255, 255, 255, 0.15);
   --panel-resizer-hover: rgba(255, 255, 255, 0.10);
 
   /* Card Colors */
   --card-bg: rgba(30, 41, 59, 0.25);
   --card-border: rgba(255, 255, 255, 0.10);
-  --card-hover-bg: rgba(30, 41, 59, 0.40);
+  --card-hover-bg: rgba(0, 0, 0, 0.20);
   --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 
   /* Form Colors */

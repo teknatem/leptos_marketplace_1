@@ -119,6 +119,7 @@
   --header-bg: rgba(4, 84, 4, 0.30);
   --header-text: #ffffff;
   --header-border: rgba(255, 255, 255, 0.15);
+  --header-noise-opacity: 0.05;
 
   /* Top Header Colors */
   --top-header-bg: rgba(232, 245, 233, 0.25);
@@ -127,15 +128,15 @@
   --top-header-btn-hover: rgba(76, 175, 80, 0.1);
 
   /* Panel Colors */
-  --panel-bg: rgba(255, 255, 255, 0.08);
-  --panel-border: rgba(76, 175, 80, 0.2);
-  --panel-resizer-hover: rgba(76, 175, 80, 0.15);
+  --panel-bg: rgba(0, 50, 0, 0.75);
+  --panel-border: rgba(36, 170, 40, 0.2);
+  --panel-resizer-hover: rgba(15, 241, 23, 0.76);
 
   /* Card Colors */
   --card-bg: rgba(255, 255, 255, 0.85);
   --card-border: rgba(165, 214, 167, 0.2);
-  --card-hover-bg: rgba(255, 255, 255, 0.95);
-  --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  --card-hover-bg: rgba(0, 60, 0, 0.5);
+  --card-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.80);
 
   /* Form Colors */
   --form-label-text: #ffffff;

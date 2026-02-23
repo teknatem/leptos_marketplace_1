@@ -3,6 +3,7 @@
 //! Этот модуль содержит функцию `render_tab_content`, которая по ключу таба
 //! возвращает соответствующий View. Все tab keys собраны здесь в одном месте.
 
+use crate::dashboards::IndicatorsDashboard;
 use crate::dashboards::MetadataDashboard;
 use crate::dashboards::{D401WbFinanceDashboard, MonthlySummaryDashboard};
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
@@ -42,6 +43,9 @@ use crate::projections::p904_sales_data::ui::list::SalesDataList;
 use crate::projections::p905_wb_commission_history::ui::details::CommissionHistoryDetails;
 use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryList;
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
+use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
+use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
+use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
@@ -422,6 +426,35 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating NomenclaturePricesList");
             view! { <NomenclaturePricesList /> }.into_any()
         }
+        "p907_ym_payment_report" => {
+            log!("✅ Creating YmPaymentReportList");
+            view! { <YmPaymentReportList /> }.into_any()
+        }
+        "p908_wb_goods_prices" => {
+            log!("✅ Creating WbGoodsPricesList");
+            view! { <WbGoodsPricesList /> }.into_any()
+        }
+        k if k.starts_with("p907_ym_payment_report_detail_") => {
+            let encoded = k
+                .strip_prefix("p907_ym_payment_report_detail_")
+                .unwrap_or_default();
+            let record_key = urlencoding::decode(encoded)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| encoded.to_string());
+            log!("✅ Creating YmPaymentReportDetail for record_key: {}", record_key);
+            view! {
+                <YmPaymentReportDetail
+                    record_key=record_key
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // ═══════════════════════════════════════════════════════════════════
         // System (sys_*)
@@ -447,6 +480,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // ═══════════════════════════════════════════════════════════════════
         // Dashboards (d400-d401)
         // ═══════════════════════════════════════════════════════════════════
+        "d403_indicators" => {
+            log!("✅ Creating IndicatorsDashboard");
+            view! { <IndicatorsDashboard /> }.into_any()
+        }
         "d400_monthly_summary" => {
             log!("✅ Creating MonthlySummaryDashboard");
             view! { <MonthlySummaryDashboard /> }.into_any()

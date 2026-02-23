@@ -74,7 +74,10 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 <Input value=RwSignal::new(code) attr:readonly=true />
                             </div>
                         </div>
-
+                        <div class="form__group">
+                            <label class="form__label">"Описание"</label>
+                            <Input value=RwSignal::new(description) attr:readonly=true />
+                        </div>
                     </Card>
                     // Goods card
                     <Card attr:style="width: 600px; margin: 0px;">
@@ -214,18 +217,6 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <label class="form__label">"Тип"</label>
                             <Input value=RwSignal::new(wh_type) attr:readonly=true />
                         </div>
-                        <div class="form__group">
-                            <label class="form__label">"Created"</label>
-                            <Input value=RwSignal::new(created_at) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Updated"</label>
-                            <Input value=RwSignal::new(updated_at) attr:readonly=true />
-                        </div>
-                        <div class="form__group">
-                            <label class="form__label">"Version"</label>
-                            <Input value=RwSignal::new(version) attr:readonly=true />
-                        </div>
                     </Card>
 
                 </Flex>
@@ -266,9 +257,18 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
                 </div>
                 <div class="form__group">
-                    <label class="form__label">"Описание"</label>
-                    <Input value=RwSignal::new(description) attr:readonly=true />
-                </div>
+                <label class="form__label">"Created"</label>
+                <Input value=RwSignal::new(created_at) attr:readonly=true />
+            </div>
+            <div class="form__group">
+                <label class="form__label">"Updated"</label>
+                <Input value=RwSignal::new(updated_at) attr:readonly=true />
+            </div>
+            <div class="form__group">
+                <label class="form__label">"Version"</label>
+                <Input value=RwSignal::new(version) attr:readonly=true />
+            </div>
+
             </Card>
                     // Links card
                     <Card attr:style="width: 600px; margin: 0px;">

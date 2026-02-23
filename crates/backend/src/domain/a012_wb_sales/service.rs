@@ -17,12 +17,6 @@ pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
             Vec::new()
         });
 
-    // Фильтруем только записи с supplier_oper_name = "Продажа"
-    let sales_entries: Vec<_> = p903_entries
-        .iter()
-        .filter(|entry| entry.supplier_oper_name.as_deref() == Some("Продажа"))
-        .collect();
-
     // Получаем acquiring_fee_pro из маркетплейса
     let acquiring_fee_pro =
         if let Ok(marketplace_uuid) = Uuid::parse_str(&document.header.marketplace_id) {
@@ -45,11 +39,22 @@ pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
     let amount_line = document.line.amount_line.unwrap_or(0.0);
     let cost_of_production = document.line.cost_of_production.unwrap_or(0.0);
 
+    // Определяем тип документа по знаку finished_price
+    let is_return = finished_price < 0.0;
+    let sign = if is_return { -1.0_f64 } else { 1.0_f64 };
+    let target_oper_name = if is_return { "Возврат" } else { "Продажа" };
+
+    // Фильтруем записи P903 по типу операции (Продажа / Возврат)
+    let sales_entries: Vec<_> = p903_entries
+        .iter()
+        .filter(|entry| entry.supplier_oper_name.as_deref() == Some(target_oper_name))
+        .collect();
+
     // Проверяем наличие фактических данных в P903
     let has_fact_data = !sales_entries.is_empty()
         && sales_entries
             .iter()
-            .any(|e| e.retail_amount.unwrap_or(0.0) > 0.0);
+            .any(|e| e.retail_amount.unwrap_or(0.0) != 0.0);
 
     // Устанавливаем флаг is_fact
     document.line.is_fact = Some(has_fact_data);
@@ -70,24 +75,29 @@ pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
 
     // ФАКТ: заполняем только если есть данные P903
     if has_fact_data {
-        // Агрегируем значения из всех записей продаж
-        let retail_amount: f64 = sales_entries.iter().filter_map(|e| e.retail_amount).sum();
-        let acquiring_fee: f64 = sales_entries.iter().filter_map(|e| e.acquiring_fee).sum();
-        let rebill_logistic_cost: f64 = sales_entries
+        // Агрегируем сырые значения из P903
+        let retail_amount_raw: f64 = sales_entries.iter().filter_map(|e| e.retail_amount).sum();
+        let acquiring_fee_raw: f64 = sales_entries.iter().filter_map(|e| e.acquiring_fee).sum();
+        let rebill_logistic_cost_raw: f64 = sales_entries
             .iter()
             .filter_map(|e| e.rebill_logistic_cost)
             .sum();
-        let ppvz_vw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw).sum();
-        let ppvz_vw_nds: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw_nds).sum();
-        let ppvz_for_pay: f64 = sales_entries.iter().filter_map(|e| e.ppvz_for_pay).sum();
+        let ppvz_vw_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw).sum();
+        let ppvz_vw_nds_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw_nds).sum();
+        let ppvz_for_pay_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_for_pay).sum();
+
+        // Применяем sign: для возвратов все значения P903 инвертируются
+        let retail_amount = retail_amount_raw * sign;
+        let acquiring_fee = acquiring_fee_raw * sign;
+        let rebill_logistic_cost = rebill_logistic_cost_raw * sign;
+        let commission_fact = (ppvz_vw_raw + ppvz_vw_nds_raw) * sign;
+        let supplier_payout = ppvz_for_pay_raw * sign;
 
         document.line.sell_out_fact = Some(retail_amount);
         document.line.acquiring_fee_fact = Some(acquiring_fee);
         document.line.other_fee_fact = Some(rebill_logistic_cost);
-        document.line.commission_fact = Some(ppvz_vw + ppvz_vw_nds);
-        document.line.supplier_payout_fact = Some(ppvz_for_pay);
-
-        let commission_fact = ppvz_vw + ppvz_vw_nds;
+        document.line.commission_fact = Some(commission_fact);
+        document.line.supplier_payout_fact = Some(supplier_payout);
         document.line.profit_fact = Some(
             retail_amount
                 - acquiring_fee
@@ -96,16 +106,20 @@ pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
                 - cost_of_production,
         );
 
+        let doc_type = if is_return { "return" } else { "sale" };
         tracing::info!(
-            "Calculated PLAN and FACT fields for document {} (srid: {})",
+            "Calculated PLAN and FACT fields for document {} (srid: {}, type: {})",
             document.base.id.as_string(),
-            srid
+            srid,
+            doc_type
         );
     } else {
+        let doc_type = if is_return { "return" } else { "sale" };
         tracing::info!(
-            "Calculated PLAN fields only for document {} (srid: {}) - no P903 data",
+            "Calculated PLAN fields only for document {} (srid: {}, type: {}) - no P903 data",
             document.base.id.as_string(),
-            srid
+            srid,
+            doc_type
         );
     }
 

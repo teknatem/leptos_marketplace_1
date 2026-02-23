@@ -45,6 +45,10 @@ pub struct HeaderDto {
     pub delivery_total: Option<f64>,
     #[serde(default)]
     pub subsidies_json: Option<String>,
+    #[serde(default)]
+    pub total_dealer_amount: Option<f64>,
+    #[serde(default)]
+    pub margin_pro: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +75,8 @@ pub struct LineDto {
     pub marketplace_product_ref: Option<String>,
     #[serde(default)]
     pub nomenclature_ref: Option<String>,
+    #[serde(default)]
+    pub dealer_price_ut: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +210,55 @@ pub async fn fetch_marketplace_product(id: &str) -> Result<MarketplaceProductInf
             .unwrap_or("")
             .to_string(),
     })
+}
+
+/// DTO for p907 payment report records linked to this order
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmPaymentReportLinkDto {
+    pub record_key: String,
+    pub transaction_date: Option<String>,
+    pub transaction_type: Option<String>,
+    pub transaction_id: Option<String>,
+    pub transaction_sum: Option<f64>,
+    pub bank_sum: Option<f64>,
+    pub payment_status: Option<String>,
+    pub transaction_source: Option<String>,
+    pub shop_sku: Option<String>,
+    pub offer_or_service_name: Option<String>,
+    pub count: Option<i32>,
+    pub comments: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PaymentReportListResponse {
+    items: Vec<YmPaymentReportLinkDto>,
+    total_count: i32,
+    #[allow(dead_code)]
+    has_more: bool,
+}
+
+pub async fn fetch_payment_reports_by_order(
+    order_id: i64,
+) -> Result<Vec<YmPaymentReportLinkDto>, String> {
+    let url = format!(
+        "{}/api/p907/payment-report?order_id={}&limit=1000&sort_by=transaction_date&sort_desc=false",
+        api_base(),
+        order_id
+    );
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch payment reports: {}", e))?;
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let resp: PaymentReportListResponse =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+    Ok(resp.items)
 }
 
 pub async fn fetch_nomenclature(id: &str) -> Result<NomenclatureInfo, String> {

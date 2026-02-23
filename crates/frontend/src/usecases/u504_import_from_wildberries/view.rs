@@ -4,12 +4,13 @@ use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 use contracts::enums::marketplace_type::MarketplaceType;
 use contracts::usecases::u504_import_from_wildberries::{
-    progress::ImportProgress,
+    progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
+use thaw::*;
 
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window().and_then(|w| w.local_storage().ok().flatten())
@@ -55,7 +56,6 @@ fn clear_row_storage(row_id: &str) {
 }
 
 fn is_finished(progress: &ImportProgress) -> bool {
-    use contracts::usecases::u504_import_from_wildberries::progress::ImportStatus;
     matches!(
         progress.status,
         ImportStatus::Completed
@@ -75,7 +75,7 @@ fn ServiceRow(
     #[prop(default = false)] show_backfill_note: bool,
     #[prop(into)] selected_connection: Signal<String>,
 ) -> impl IntoView {
-    let default_date_from = Utc::now().naive_utc().date() - Duration::days(30);
+    let default_date_from = Utc::now().naive_utc().date() - Duration::days(3);
     let default_date_to = Utc::now().naive_utc().date();
 
     let (date_from, set_date_from) = signal(default_date_from.format("%Y-%m-%d").to_string());
@@ -84,6 +84,21 @@ fn ServiceRow(
     let (progress, set_progress) = signal(None::<ImportProgress>);
     let (error_msg, set_error_msg) = signal(String::new());
     let (is_starting, set_is_starting) = signal(false);
+
+    let prev_connection = StoredValue::new(selected_connection.get_untracked());
+    Effect::new(move || {
+        let current = selected_connection.get();
+        if current != prev_connection.get_value() {
+            prev_connection.set_value(current);
+            set_session_id.set(None);
+            set_progress.set(None);
+            set_error_msg.set(String::new());
+            set_date_from.set(default_date_from.format("%Y-%m-%d").to_string());
+            set_date_to.set(default_date_to.format("%Y-%m-%d").to_string());
+            set_is_starting.set(false);
+            clear_row_storage(row_id);
+        }
+    });
 
     Effect::new(move || {
         if session_id.get().is_none() {
@@ -191,23 +206,22 @@ fn ServiceRow(
         });
     };
 
-    let row_progress = move || {
+    let row_agg = move || {
         progress.get().and_then(|p| {
+            let status = p.status;
             p.aggregates
-                .iter()
+                .into_iter()
                 .find(|agg| agg.aggregate_index == aggregate)
-                .cloned()
-                .map(|agg| (p, agg))
+                .map(|agg| (status, agg))
         })
     };
 
     view! {
-        <div class="doc-filters" style="margin: 2px 8px;">
+        <Card>
             <div class="doc-filters__row">
-                // Кнопка запуска
-                <button
-                    class="button button--primary"
-                    on:click=on_start
+                <Button
+                    appearance=ButtonAppearance::Primary
+                    on_click=on_start
                     disabled=move || {
                         selected_connection.get().is_empty() || is_starting.get() || session_id.get().is_some()
                     }
@@ -219,20 +233,17 @@ fn ServiceRow(
                     } else {
                         "Запустить"
                     }}
-                </button>
+                </Button>
 
-                // Заголовок и описание сервиса
                 <div class="doc-filter" style="flex-direction: column; align-items: flex-start; gap: 2px; min-width: 220px;">
                     <span style="font-size: var(--font-size-base); font-weight: 600;">{title}</span>
                     <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">{description}</span>
+                    <div style="font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-family: monospace;">
+                        {aggregate}
+                    </div>
                 </div>
 
-                // ID агрегата
-                <div style="font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-family: monospace; min-width: 180px;">
-                    {aggregate}
-                </div>
-
-                // Даты (если нужны)
+                <Flex vertical=true gap=FlexGap::Small>
                 {move || if needs_period {
                     view! {
                         <div class="doc-filter">
@@ -256,9 +267,8 @@ fn ServiceRow(
                     view! { <></> }.into_any()
                 }}
 
-                // Прогресс и статус
                 {move || {
-                    if let Some((p, agg)) = row_progress() {
+                    if let Some((status, agg)) = row_agg() {
                         let total = agg.total.unwrap_or(0);
                         let percent = if total > 0 {
                             ((agg.processed as f64 / total as f64) * 100.0).clamp(0.0, 100.0) as i32
@@ -267,15 +277,12 @@ fn ServiceRow(
                         } else {
                             0
                         };
-
-                        let current_info = agg
-                            .current_item
-                            .unwrap_or_else(|| "-".to_string());
+                        let current_info = agg.current_item.unwrap_or_else(|| "-".to_string());
 
                         view! {
                             <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
                                 <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 90px;">
-                                    {format!("{:?}", p.status)}
+                                    {format!("{:?}", status)}
                                 </span>
                                 <div style="height: 16px; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-border); flex: 1; min-width: 200px;">
                                     <div style={format!("width: {}%; height: 100%; background: var(--colorBrandForeground1); transition: width 0.2s;", percent)}></div>
@@ -284,7 +291,7 @@ fn ServiceRow(
                                     {if total > 0 { format!("{} / {}", agg.processed, total) } else { format!("{}", agg.processed) }}
                                 </span>
                                 <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 165px;">
-                                    {format!("ins:{} upd:{} err:{}", agg.inserted, agg.updated, agg.errors)}
+                                    {format!("ins: {}  upd: {}  err:{}", agg.inserted, agg.updated, agg.errors)}
                                 </span>
                                 <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                     {format!("item: {}", current_info)}
@@ -305,9 +312,9 @@ fn ServiceRow(
                         }.into_any()
                     }
                 }}
+                </Flex>
             </div>
 
-            // Ошибки
             {move || {
                 let err = error_msg.get();
                 if !err.is_empty() {
@@ -321,7 +328,6 @@ fn ServiceRow(
                 }
             }}
 
-            // Примечание Backfill
             {move || if show_backfill_note {
                 view! {
                     <div style="margin-top: 6px; font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-style: italic;">
@@ -331,7 +337,7 @@ fn ServiceRow(
             } else {
                 view! { <></> }.into_any()
             }}
-        </div>
+        </Card>
     }
 }
 
@@ -384,10 +390,11 @@ pub fn ImportWidget() -> impl IntoView {
     view! {
         <div class="page">
             <div class="page__header">
-                <h2>"u504: Импорт Wildberries"</h2>
+                <div class="page__header-left">
+                    <h1 class="page__title">{"u504: Импорт Wildberries"}</h1>
+                </div>
             </div>
 
-            // Глобальные ошибки
             {move || {
                 let err = error_msg.get();
                 if !err.is_empty() {
@@ -401,9 +408,8 @@ pub fn ImportWidget() -> impl IntoView {
                 }
             }}
 
-            // Выбор подключения
-            <div class="doc-filters" style="margin: 16px;">
-                <div class="form__group">
+            <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
+                <Flex vertical=false gap=FlexGap::Large justify=FlexJustify::Center align=FlexAlign::Center>
                     <label class="form__label">"Подключение Wildberries"</label>
                     <select
                         class="doc-filter__select"
@@ -418,11 +424,9 @@ pub fn ImportWidget() -> impl IntoView {
                             view! { <option selected=selected value={id}>{caption}</option> }
                         }).collect_view()}
                     </select>
-                </div>
-            </div>
+                </Flex>
 
-            // Строки сервисов
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-left:16px; margin-right:16px;">
                 <ServiceRow
                     row_id="a007"
                     title="Товары маркетплейса"
@@ -462,6 +466,14 @@ pub fn ImportWidget() -> impl IntoView {
                     aggregate="p905_wb_commission_history"
                     selected_connection=selected_connection
                 />
+                <ServiceRow
+                    row_id="p908"
+                    title="Цены товаров WB"
+                    description="p908_wb_goods_prices"
+                    aggregate="p908_wb_goods_prices"
+                    selected_connection=selected_connection
+                />
+            </div>
             </div>
         </div>
     }

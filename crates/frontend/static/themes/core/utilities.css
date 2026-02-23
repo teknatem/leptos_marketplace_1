@@ -341,3 +341,14 @@
   font-size: var(--font-size-xl);
   margin-bottom: var(--spacing-md);
 }
+
+.noise-pattern {
+  pointer-events: none;
+  user-select: none;
+  z-index: 105;
+  position: absolute;
+  inset: 0;
+  background-size: 180px;
+  background-repeat: repeat;
+  opacity: var(--noise-opacity);
+}

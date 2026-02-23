@@ -18,6 +18,11 @@ pub struct YmOrderDetailsVm {
     pub projections_loaded: RwSignal<bool>,
     pub projections_loading: RwSignal<bool>,
 
+    pub payment_reports: RwSignal<Vec<YmPaymentReportLinkDto>>,
+    pub payment_reports_loaded: RwSignal<bool>,
+    pub payment_reports_loading: RwSignal<bool>,
+    pub payment_reports_error: RwSignal<Option<String>>,
+
     pub nomenclatures_info: RwSignal<HashMap<String, NomenclatureInfo>>,
     pub marketplace_products_info: RwSignal<HashMap<String, MarketplaceProductInfo>>,
 
@@ -40,6 +45,11 @@ impl YmOrderDetailsVm {
             projections: RwSignal::new(None),
             projections_loaded: RwSignal::new(false),
             projections_loading: RwSignal::new(false),
+
+            payment_reports: RwSignal::new(Vec::new()),
+            payment_reports_loaded: RwSignal::new(false),
+            payment_reports_loading: RwSignal::new(false),
+            payment_reports_error: RwSignal::new(None),
 
             nomenclatures_info: RwSignal::new(HashMap::new()),
             marketplace_products_info: RwSignal::new(HashMap::new()),
@@ -187,6 +197,50 @@ impl YmOrderDetailsVm {
             }
             vm.projections_loading.set(false);
         });
+    }
+
+    pub fn load_payment_reports(&self) {
+        if self.payment_reports_loaded.get_untracked()
+            || self.payment_reports_loading.get_untracked()
+        {
+            return;
+        }
+        let Some(order) = self.order.get_untracked() else {
+            return;
+        };
+
+        // document_no is the YM integer order id stored as a string
+        let order_id: i64 = match order.header.document_no.parse() {
+            Ok(v) => v,
+            Err(_) => {
+                self.payment_reports_error
+                    .set(Some(format!("Не удалось разобрать номер заказа: {}", order.header.document_no)));
+                return;
+            }
+        };
+
+        let vm = self.clone();
+        vm.payment_reports_loading.set(true);
+        vm.payment_reports_error.set(None);
+
+        spawn_local(async move {
+            match fetch_payment_reports_by_order(order_id).await {
+                Ok(reports) => {
+                    vm.payment_reports.set(reports);
+                    vm.payment_reports_loaded.set(true);
+                }
+                Err(e) => {
+                    leptos::logging::log!("Failed to load payment reports: {}", e);
+                    vm.payment_reports_error.set(Some(e));
+                }
+            }
+            vm.payment_reports_loading.set(false);
+        });
+    }
+
+    pub fn payment_reports_count(&self) -> Signal<usize> {
+        let payment_reports = self.payment_reports;
+        Signal::derive(move || payment_reports.get().len())
     }
 
     pub fn post(&self) {

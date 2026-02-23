@@ -5,3 +5,5 @@ pub mod p903_wb_finance_report;
 pub mod p904_sales_data;
 pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
+pub mod p907_ym_payment_report;
+pub mod p908_wb_goods_prices;

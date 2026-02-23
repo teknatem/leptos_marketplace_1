@@ -22,6 +22,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             label: "Дашборды",
             icon: "bar-chart",
             items: vec![
+                ("d403_indicators", "Показатели", "activity"),
                 ("d400_monthly_summary", "Сводка за месяц", "bar-chart"),
                 ("d401_metadata_dashboard", "Метаданные", "layout-dashboard"),
                 (
@@ -121,6 +122,16 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "p906_nomenclature_prices",
                     "Дилерские цены (УТ)",
                     "dollar-sign",
+                ),
+                (
+                    "p907_ym_payment_report",
+                    "YM Отчёт по платежам",
+                    "receipt",
+                ),
+                (
+                    "p908_wb_goods_prices",
+                    "WB Цены товаров",
+                    "tag",
                 ),
             ],
             admin_only: false,

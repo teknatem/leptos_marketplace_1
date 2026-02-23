@@ -1082,4 +1082,280 @@ impl YandexApiClient {
             }
         }
     }
+
+    // =========================================================================
+    // Payment Report (united-netting) — two-phase async report generation
+    // =========================================================================
+
+    /// Phase 1: Request payment report generation.
+    /// Endpoint: POST https://api.partner.market.yandex.ru/v2/reports/united-netting/generate
+    /// Returns reportId that can be polled with `poll_report_status`.
+    pub async fn generate_payment_report(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<String> {
+        // businessId goes in the JSON body; format is a query parameter
+        let business_id: i64 = connection
+            .business_account_id
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "businessId (БизнесАккаунтID) is required for YM payment report generation"
+                )
+            })?
+            .parse()
+            .map_err(|e| anyhow::anyhow!("businessId must be an integer: {}", e))?;
+
+        let url =
+            "https://api.partner.market.yandex.ru/v2/reports/united-netting/generate?format=CSV";
+
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GeneratePaymentReportRequest {
+            business_id: i64,
+            date_from: String,
+            date_to: String,
+        }
+
+        let body = GeneratePaymentReportRequest {
+            business_id,
+            date_from: date_from.format("%Y-%m-%d").to_string(),
+            date_to: date_to.format("%Y-%m-%d").to_string(),
+        };
+
+        self.log_to_file(&format!(
+            "=== GENERATE PAYMENT REPORT ===\nPOST {}\nbusinessId={}, date_from={}, date_to={}",
+            url,
+            business_id,
+            date_from,
+            date_to
+        ));
+
+        let response = self
+            .client
+            .post(url)
+            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to request payment report generation: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!(
+                "Generate payment report failed ({}): {}",
+                status, err_body
+            ));
+            anyhow::bail!(
+                "generate_payment_report failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+
+        let resp_body = response.text().await?;
+        self.log_to_file(&format!(
+            "Generate payment report response: {}",
+            resp_body
+        ));
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
+
+        let report_id = parsed
+            .pointer("/result/reportId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("reportId not found in response: {}", resp_body))?
+            .to_string();
+
+        self.log_to_file(&format!("Payment report generated, reportId={}", report_id));
+        Ok(report_id)
+    }
+
+    /// Phase 2: Poll report generation status.
+    /// Endpoint: GET https://api.partner.market.yandex.ru/v2/reports/info/{reportId}
+    /// Returns (status_str, Option<download_url>).
+    /// status_str values: "PENDING" | "PROCESSING" | "DONE" | "FAILED"
+    pub async fn poll_report_status(
+        &self,
+        connection: &ConnectionMP,
+        report_id: &str,
+    ) -> Result<(String, Option<String>)> {
+        let url = format!(
+            "https://api.partner.market.yandex.ru/v2/reports/info/{}",
+            report_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to poll report status: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "poll_report_status failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+
+        let resp_body = response.text().await?;
+        self.log_to_file(&format!(
+            "Poll report status ({}): {}",
+            report_id, resp_body
+        ));
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse status response: {}", e))?;
+
+        let report_status = parsed
+            .pointer("/result/status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("UNKNOWN")
+            .to_string();
+
+        let file_url = parsed
+            .pointer("/result/file")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok((report_status, file_url))
+    }
+
+    /// Phase 3: Download the generated CSV report from the signed URL.
+    /// Returns the raw CSV text content.
+    /// Downloads a ZIP archive from the given URL, saves it to `downloads/p907_ym_payment_report/`,
+    /// extracts the first CSV file found inside, saves that too, and returns (csv_text, zip_path, csv_path).
+    pub async fn download_report_zip(&self, url: &str) -> Result<(String, String, String)> {
+        self.log_to_file(&format!("Downloading payment report ZIP from: {}", url));
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download report file: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "download_report_zip failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read report file body: {}", e))?;
+
+        self.log_to_file(&format!(
+            "Downloaded payment report ZIP, size={} bytes",
+            bytes.len()
+        ));
+
+        // Save ZIP and extract CSV in a blocking thread (zip operations are synchronous)
+        let log_closure = {
+            let log_path = "yandex_api_requests.log".to_string();
+            move |msg: String| {
+                use std::io::Write;
+                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                    let ts = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                    let _ = writeln!(f, "[{}] {}", ts, msg);
+                }
+            }
+        };
+
+        let bytes_vec = bytes.to_vec();
+        let (csv_text, zip_path, csv_path) =
+            tokio::task::spawn_blocking(move || -> Result<(String, String, String)> {
+                // Ensure downloads directory exists
+                let dir = std::path::Path::new("downloads/p907_ym_payment_report");
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| anyhow::anyhow!("Failed to create downloads dir: {}", e))?;
+
+                // Save ZIP with timestamp
+                let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                let zip_path = dir.join(format!("report_{}.zip", ts));
+                std::fs::write(&zip_path, &bytes_vec)
+                    .map_err(|e| anyhow::anyhow!("Failed to save ZIP to disk: {}", e))?;
+                let zip_path_str = zip_path.to_string_lossy().to_string();
+                log_closure(format!("Saved ZIP to: {}", zip_path_str));
+
+                // Extract CSV from ZIP
+                let cursor = std::io::Cursor::new(&bytes_vec[..]);
+                let mut archive = zip::ZipArchive::new(cursor)
+                    .map_err(|e| anyhow::anyhow!("Failed to open ZIP archive: {}", e))?;
+
+                log_closure(format!("ZIP contains {} file(s):", archive.len()));
+                for i in 0..archive.len() {
+                    if let Ok(f) = archive.by_index(i) {
+                        log_closure(format!(
+                            "  ZIP entry[{}]: {} ({} bytes uncompressed)",
+                            i,
+                            f.name(),
+                            f.size()
+                        ));
+                    }
+                }
+
+                for i in 0..archive.len() {
+                    let mut file = archive
+                        .by_index(i)
+                        .map_err(|e| anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e))?;
+
+                    let name = file.name().to_string();
+                    let lower = name.to_lowercase();
+
+                    if lower.ends_with(".csv") {
+                        use std::io::Read;
+                        let mut raw_bytes: Vec<u8> = Vec::new();
+                        file.read_to_end(&mut raw_bytes)
+                            .map_err(|e| anyhow::anyhow!("Failed to read {} from ZIP: {}", name, e))?;
+
+                        // Save raw CSV bytes to disk before decoding
+                        let csv_path = dir.join(format!("report_{}.csv", ts));
+                        std::fs::write(&csv_path, &raw_bytes)
+                            .map_err(|e| anyhow::anyhow!("Failed to save CSV to disk: {}", e))?;
+                        let csv_path_str = csv_path.to_string_lossy().to_string();
+                        log_closure(format!("Saved CSV to: {}", csv_path_str));
+
+                        // Decode: strip UTF-8 BOM if present
+                        let content = if raw_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+                            String::from_utf8_lossy(&raw_bytes[3..]).into_owned()
+                        } else {
+                            String::from_utf8_lossy(&raw_bytes).into_owned()
+                        };
+
+                        let preview: String = content.chars().take(500).collect();
+                        log_closure(format!(
+                            "CSV '{}': {} chars, first 500 chars: {:?}",
+                            name,
+                            content.len(),
+                            preview
+                        ));
+
+                        return Ok((content, zip_path_str, csv_path_str));
+                    }
+                }
+
+                anyhow::bail!("No .csv file found inside the payment report ZIP archive")
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking panicked: {}", e))??;
+
+        Ok((csv_text, zip_path, csv_path))
+    }
 }

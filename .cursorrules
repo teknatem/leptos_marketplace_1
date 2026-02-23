@@ -158,7 +158,7 @@ Handlers → Service → Repository → Database
 ### Development Commands
 
 ```powershell
-# Backend
+# Backend (миграции применяются автоматически при старте)
 cargo run --bin backend
 
 # Frontend (development)
@@ -167,8 +167,12 @@ trunk serve --port 8080
 # Frontend (production build)
 trunk build --release
 
-# Database migrations
-# Run .sql files manually or via migrate_db.py
+# Добавить новую миграцию схемы БД:
+# 1. Создать migrations/0002_description.sql
+# 2. cargo run --bin backend  <- применится автоматически
+
+# Проверить текущие миграции:
+# sqlite3 marketplace.db "SELECT version, description FROM _sqlx_migrations"
 ```
 
 ## 📊 Database Patterns
@@ -178,6 +182,7 @@ trunk build --release
 - Aggregates: `a001_connection_1c_database`
 - UseCases history: `u501_import_history`
 - Projections: `p904_sales_data`
+- System: `sys_users`, `sys_tasks`, `sys_settings`
 
 ### Common Fields
 
@@ -189,6 +194,19 @@ created_at TEXT,               -- ISO timestamp
 updated_at TEXT,               -- ISO timestamp
 is_deleted INTEGER DEFAULT 0   -- Soft delete flag
 ```
+
+### Migration System (CRITICAL)
+
+Изменения схемы ТОЛЬКО через `migrations/NNNN_description.sql`. Никогда не добавлять SQL в `db.rs`.
+
+```
+migrations/
+├── 0001_baseline_schema.sql   <- полная исходная схема (40+ таблиц)
+├── 0002_...                   <- новые изменения
+└── archive/                   <- старые migrate_*.sql (история)
+```
+
+Трекинг в `_sqlx_migrations`. Применяется автоматически при `cargo run --bin backend`.
 
 ## 🎨 Frontend Patterns
 
@@ -294,10 +312,11 @@ When updating memory bank (user command: "update memory bank"):
 4. Update this `.cursorrules` if discovering new patterns
 5. Update architecture docs only if patterns changed
 
-## 🎯 Current Project Status (2025-12-26)
+## 🎯 Current Project Status (2026-02-18)
 
 **Working Features:**
 
+- ✅ Formal DB Migration System (sqlx migrate, `migrations/`, `_sqlx_migrations` tracking)
 - ✅ Field Metadata System (POC on a001_connection_1c)
 - ✅ Scheduled Tasks System (sys_scheduled_task)
 - ✅ 1C integration (u501)
@@ -307,11 +326,13 @@ When updating memory bank (user command: "update memory bank"):
 - ✅ Sales analytics (p904)
 - ✅ WB commission history (p905)
 - ✅ Ozon transactions (a014)
+- ✅ LLM Agents (a017), Chat (a018), Artifacts (a019)
+- ✅ Auth system (sys_users, JWT, refresh tokens)
 
 **In Progress:**
 
 - 🔄 Extending metadata to all aggregates (a002-a016)
-- 🔄 LLM chat integration preparation
+- 🔄 LLM chat integration with metadata
 
 **Known Issues:**
 
