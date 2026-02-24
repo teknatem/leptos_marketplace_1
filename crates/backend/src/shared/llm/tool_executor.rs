@@ -4,6 +4,7 @@
 //! - определения инструментов для передачи LLM (`metadata_tool_definitions`)
 //! - диспетчер выполнения (`execute_tool_call`)
 
+use super::knowledge_base::KNOWLEDGE_BASE;
 use super::metadata_registry::METADATA_REGISTRY;
 use super::types::{ToolCall, ToolDefinition};
 
@@ -71,6 +72,45 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["from_entity", "to_entity"]
             }),
         },
+        ToolDefinition {
+            name: "search_knowledge".into(),
+            description: "Поиск справочных материалов по тегам (база знаний Obsidian). \
+                          Используй когда нужно понять бизнес-термин, метрику или получить \
+                          контекст о сущности домена. \
+                          Теги совпадают с entity_index (a020, a012, ...) и ключевыми словами: \
+                          'drr', 'cpm', 'roas', 'акции', 'скидки', 'комиссии', 'wildberries', 'ozon'. \
+                          Возвращает список документов (id, title) — затем вызывай get_knowledge(id)."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Список тегов для поиска. OR-семантика: совпадение хотя бы по одному. \
+                                        Примеры: ['a020'] для акций WB, ['drr'] для метрики ДРР, \
+                                        ['wildberries', 'комиссии'] для комиссий WB."
+                    }
+                },
+                "required": ["tags"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_knowledge".into(),
+            description: "Получить полное содержимое справочного материала по id. \
+                          id берётся из результата search_knowledge."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Идентификатор документа из search_knowledge, например 'wb-promotions'."
+                    }
+                },
+                "required": ["id"]
+            }),
+        },
     ]
 }
 
@@ -97,8 +137,72 @@ pub fn execute_tool_call(call: &ToolCall) -> String {
             METADATA_REGISTRY.get_join_hint(&from, &to)
         }
 
+        "search_knowledge" => {
+            let tags_value = serde_json::from_str::<serde_json::Value>(&call.arguments)
+                .ok()
+                .and_then(|v| v.get("tags").cloned());
+
+            let tags: Vec<String> = match tags_value {
+                Some(serde_json::Value::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect(),
+                _ => vec![],
+            };
+
+            if tags.is_empty() {
+                serde_json::json!({
+                    "error": "Parameter 'tags' is required and must be a non-empty array of strings."
+                })
+            } else {
+                let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+                let results = KNOWLEDGE_BASE.search_by_tags(&tag_refs);
+                let items: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|doc| serde_json::json!({
+                        "id":      doc.id,
+                        "title":   doc.title,
+                        "tags":    doc.tags,
+                        "related": doc.related,
+                    }))
+                    .collect();
+                serde_json::json!({
+                    "results": items,
+                    "total": items.len(),
+                    "hint": "Используй get_knowledge(id) чтобы получить полное содержимое документа."
+                })
+            }
+        }
+
+        "get_knowledge" => {
+            let id = parse_string_arg(&call.arguments, "id").unwrap_or_default();
+            match KNOWLEDGE_BASE.get(&id) {
+                Some(doc) => serde_json::json!({
+                    "id":      doc.id,
+                    "title":   doc.title,
+                    "tags":    doc.tags,
+                    "related": doc.related,
+                    "content": doc.content,
+                }),
+                None => {
+                    let available: Vec<&str> = KNOWLEDGE_BASE
+                        .all_docs()
+                        .iter()
+                        .map(|d| d.id.as_str())
+                        .collect();
+                    serde_json::json!({
+                        "error": format!("Document '{}' not found.", id),
+                        "available_ids": available,
+                    })
+                }
+            }
+        }
+
         unknown => serde_json::json!({
-            "error": format!("Unknown tool: '{}'. Available tools: list_entities, get_entity_schema, get_join_hint.", unknown)
+            "error": format!(
+                "Unknown tool: '{}'. Available tools: list_entities, get_entity_schema, get_join_hint, search_knowledge, get_knowledge.",
+                unknown
+            )
         }),
     };
 

@@ -11,3 +11,9 @@ path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 
 [scheduled_tasks]
 enabled = false
+
+[llm]
+# Директория с Obsidian-совместимыми MD-файлами базы знаний.
+# Относительный путь разрешается от директории бинарника.
+# Для dev-режима: E:/dev/rust/leptos_marketplace_1/data/knowledge
+knowledge_base_path = "E:/dev/rust/leptos_marketplace_1/data/knowledge"

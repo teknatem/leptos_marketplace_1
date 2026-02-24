@@ -6,6 +6,23 @@ pub struct Config {
     pub database: DatabaseConfig,
     #[serde(default)]
     pub scheduled_tasks: ScheduledTasksConfig,
+    #[serde(default)]
+    pub llm: LlmConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LlmConfig {
+    /// Путь к директории с MD-файлами базы знаний (Obsidian-формат).
+    /// Относительный путь разрешается от директории бинарника.
+    pub knowledge_base_path: String,
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            knowledge_base_path: "data/knowledge".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -49,6 +66,9 @@ path = "target/db/app.db"
 
 [scheduled_tasks]
 enabled = true
+
+[llm]
+knowledge_base_path = "data/knowledge"
 "#;
 
 fn default_true() -> bool {
@@ -221,6 +241,22 @@ pub fn get_database_path(config: &Config) -> anyhow::Result<PathBuf> {
 
     // Fallback: use relative to current directory
     Ok(PathBuf::from(db_path_str))
+}
+
+/// Get the knowledge base directory path from configuration.
+/// Resolves relative paths relative to the executable directory.
+pub fn get_knowledge_base_path(config: &Config) -> PathBuf {
+    let raw = &config.llm.knowledge_base_path;
+    let p = Path::new(raw);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            return exe_dir.join(p);
+        }
+    }
+    PathBuf::from(raw)
 }
 
 #[cfg(test)]
