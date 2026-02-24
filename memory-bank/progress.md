@@ -1,6 +1,6 @@
 # Progress Tracker
 
-_Последнее обновление: 2025-12-26_
+_Последнее обновление: 2026-02-25_
 
 ## ✅ Реализовано и работает
 
@@ -68,6 +68,18 @@ _Последнее обновление: 2025-12-26_
   - Обработка возвратов ЯМ
   - Posting функционал
   - State management
+- ✅ **a017_llm_agent** - LLM-агенты
+  - CRUD для агентов (model, system_prompt, температура)
+  - UI список и детали
+- ✅ **a018_llm_chat** - LLM-чаты
+  - Чат с LLM через встроенный интерфейс
+  - Tool calls: list_entities, get_entity_schema, get_join_hint, search_knowledge, get_knowledge
+  - История сообщений, артефакты
+- ✅ **a019_llm_artifact** - LLM-артефакты
+  - Хранение артефактов чата (SQL-запросы и пр.)
+- ✅ **a020_wb_promotion** - WB-продвижение
+  - Акции Wildberries
+  - Интеграция с WB Promotion API
 - ✅ **sys_scheduled_task** - Регламентные задания
   - Хранение расписаний (Cron) и параметров (JSON)
   - Статус последнего запуска и ссылка на сессию
@@ -168,6 +180,13 @@ _Последнее обновление: 2025-12-26_
   - Registry для динамического поиска обработчиков
   - Backend API для мониторинга и управления
   - Frontend UI (список, детали, логи)
+
+- ✅ **LLM Chat System (a017-a019)**
+  - Встроенный чат-интерфейс для аналитики данных
+  - Tool-calling инфраструктура: list_entities, get_entity_schema, get_join_hint, search_knowledge, get_knowledge
+  - Агенты (a017) с настраиваемым system_prompt
+  - История чатов (a018) и артефакты (a019)
+  - System prompt: `crates/backend/src/domain/a018_llm_chat/prompts/default_agent.md`
 
 ### Frontend Components
 

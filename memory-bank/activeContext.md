@@ -98,7 +98,7 @@ _Последнее обновление: 2026-02-18_
 ### Что важно знать прямо сейчас
 
 - **Версии**: Leptos 0.8, Thaw UI 0.5.0-beta, Axum 0.7, Sea-ORM 0.12, sqlx 0.7
-- **Индексированная система**: a001-a019 (aggregates), u501-u506 (usecases), p900-p906 (projections)
+- **Индексированная система**: a001-a020 (aggregates), u501-u506 (usecases), p900-p908 (projections)
 - **Архитектура**: DDD + VSA с тремя крейтами (contracts, backend, frontend)
 - **Окружение**: Windows 11, PowerShell (не использовать &&), pnpm для Node.js
 - **База данных**: SQLite — путь берётся из `config.toml` рядом с .exe (или дефолт `target/db/app.db`)

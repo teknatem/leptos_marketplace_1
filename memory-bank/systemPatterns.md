@@ -35,7 +35,7 @@ leptos_marketplace_1/
 
 Доменные сущности с бизнес-логикой
 
-**Реализовано (a001-a016):**
+**Реализовано (a001-a020):**
 
 - `a001_connection_1c` - Подключения к 1С
 - `a002_organization` - Организации
@@ -44,6 +44,10 @@ leptos_marketplace_1/
 - `a005_marketplace` - Маркетплейсы
 - `a006_connection_mp` - Подключения к маркетплейсам
 - `a007-a016` - Продукты, продажи, заказы и возвраты маркетплейсов
+- `a017_llm_agent` - LLM-агенты
+- `a018_llm_chat` - LLM-чаты
+- `a019_llm_artifact` - LLM-артефакты
+- `a020_wb_promotion` - WB-продвижение (акции)
 
 **Структура:**
 
@@ -236,74 +240,11 @@ for field in Connection1CDatabase::field_metadata() {
 - Операции над НЕСКОЛЬКИМИ aggregates
 - Пример: импорт из 1С затрагивает Organization + Product + Nomenclature
 
-## Thaw UI Integration
+## Thaw UI
 
-### ConfigProvider Pattern
+Детали интеграции: `techContext.md` → раздел "Thaw UI Integration".
 
-Приложение использует Thaw ConfigProvider для управления темами:
-
-- **Theme switching**: light / dark / forest
-- **CSS переменные** для кастомизации: `--colorNeutralBackground1`, `--colorBrandBackground` и др.
-- **Программная модификация** стилей через DOM API (для особых случаев типа transparent background)
-
-```rust
-use thaw::{ConfigProvider, Theme};
-
-#[component]
-pub fn App() -> impl IntoView {
-    let theme = create_rw_signal(Theme::dark());
-
-    view! {
-        <ConfigProvider theme>
-            // App content
-        </ConfigProvider>
-    }
-}
-```
-
-### Table Components
-
-Проект использует **гибридный подход** к таблицам:
-
-#### 1. Thaw Table
-
-Используется когда нужны готовые компоненты с минимальной настройкой.
-
-**Преимущества:**
-
-- Встроенная стилизация через Thaw CSS переменные
-- Готовые компоненты TableColumn, TableRow
-- Автоматическая адаптация к теме
-
-**Ограничения:**
-
-- Resize columns требует workarounds
-- Меньше контроля над DOM структурой
-- Некоторые кастомизации требуют программной модификации CSS
-
-**Примеры:** a006_connection_mp
-
-#### 2. Native HTML `<table>`
-
-Используется когда нужен полный контроль или сложная кастомизация.
-
-**Преимущества:**
-
-- Полный контроль над стилями
-- Легкая кастомизация
-- Прямой доступ к DOM
-
-**Недостатки:**
-
-- Требует ручной реализации сортировки
-- Нужно вручную поддерживать стили
-
-**Примеры:** a002_organization, a016_ym_returns
-
-**См. также:**
-
-- `memory-bank/runbooks/RB-thaw-table-sorting-v1.md` - добавление сортировки
-- `memory-bank/known-issues/KI-thaw-table-style-limitations-2025-12-21.md` - известные ограничения
+Гибридный подход: Thaw `<Table>` для простых справочников, нативный `<table>` + BEM для сложных (resize, полный контроль).
 
 ### Signal Reactivity Pattern
 
@@ -342,34 +283,12 @@ domain/{feature}/ui/
     └── mod.rs        # Form for create/edit
 ```
 
-### Leptos Signals & State Management
-
-**Reactive system:**
-
-```rust
-// Read signal
-let (data, set_data) = create_signal(Vec::new());
-
-// Derived signal
-let filtered_data = create_memo(move |_| {
-    data().into_iter().filter(|x| x.active).collect()
-});
-
-// Resource (async data)
-let data_resource = create_resource(
-    move || (),
-    |_| async { fetch_data().await }
-);
-```
-
-**Recent pattern:** Separate `state.rs` для управления состоянием компонента.
-
 ### Common UI Utilities
 
 - `shared/list_utils.rs` - Sorting, filtering for tables
 - `shared/date_utils.rs` - Date formatting
 - `layout/center/tabs/tabs.rs` - Tab management
-- CSS в `crates/frontend/static/themes/` (точка входа: `crates/frontend/static/themes/core/index.css`)
+- CSS entry point: `crates/frontend/static/themes/core/index.css`
 
 ## Database Patterns
 
@@ -514,8 +433,5 @@ GET /api/p904/sales_data?from=2024-01-01&to=2024-12-31
 
 ## Дополнительная информация
 
-Детальные описания архитектурных паттернов:
-
 - `architecture/domain-layer-architecture.md` - Полное описание domain layer
-- `architecture/naming-conventions.md` - Детали системы именования
 - `architecture/project-structure.md` - Структура workspace
