@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-/// Максимальное число итераций tool calling в одном запросе
-const MAX_TOOL_ITERATIONS: usize = 3;
+/// Максимальное число итераций tool calling в одном запросе.
+/// Увеличено до 6: knowledge-flow требует до 3 шагов
+/// (search_knowledge → get_knowledge → get_entity_schema) перед финальным ответом.
+const MAX_TOOL_ITERATIONS: usize = 6;
 
 /// Системный промпт по умолчанию — используется когда у агента не задан system_prompt в БД.
 /// Файл: prompts/default_agent.md (рядом с этим модулем)
