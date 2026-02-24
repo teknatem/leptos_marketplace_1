@@ -14,7 +14,14 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Максимальное число итераций tool calling в одном запросе
-const MAX_TOOL_ITERATIONS: usize = 5;
+const MAX_TOOL_ITERATIONS: usize = 3;
+
+/// Системный промпт по умолчанию — используется когда у агента не задан system_prompt в БД.
+/// Файл: prompts/default_agent.md (рядом с этим модулем)
+const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompts/default_agent.md");
+
+/// Максимальное число не-системных сообщений в контексте (sliding window)
+const MAX_HISTORY_MESSAGES: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatDto {
@@ -262,13 +269,31 @@ pub async fn send_message(
         }
     }
 
+    // Sliding window: system-сообщения сохраняются полностью,
+    // не-системные обрезаются до MAX_HISTORY_MESSAGES (последние N)
+    if history.len() > MAX_HISTORY_MESSAGES {
+        let system_msgs: Vec<_> = history.iter()
+            .filter(|m| m.role == ChatRole::System)
+            .cloned()
+            .collect();
+        let mut non_system: Vec<_> = history.iter()
+            .filter(|m| m.role != ChatRole::System)
+            .cloned()
+            .collect();
+        if non_system.len() > MAX_HISTORY_MESSAGES {
+            non_system.drain(0..non_system.len() - MAX_HISTORY_MESSAGES);
+        }
+        history = system_msgs.into_iter().chain(non_system).collect();
+    }
+
     // 7. Преобразовать историю в формат для LLM
     let mut llm_messages: Vec<ChatMessage> = Vec::new();
 
-    // Добавить системный промпт если есть
-    if let Some(system_prompt) = &agent.system_prompt {
-        llm_messages.push(ChatMessage::system(system_prompt.clone()));
-    }
+    // Системный промпт: из агента в БД, иначе — файл prompts/default_agent.md
+    let system_prompt = agent.system_prompt
+        .as_deref()
+        .unwrap_or(DEFAULT_SYSTEM_PROMPT);
+    llm_messages.push(ChatMessage::system(system_prompt.to_string()));
 
     // Добавить историю
     for msg in &history {

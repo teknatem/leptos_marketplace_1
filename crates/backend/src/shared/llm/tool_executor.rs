@@ -16,8 +16,11 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "list_entities".into(),
             description: "Получить список таблиц базы данных с кратким описанием. \
-                          Используй в начале, чтобы понять какие данные есть в системе. \
-                          Можно фильтровать по категории: wb, ozon, ym, ref, llm."
+                          ВСЕГДА передавай category — не запрашивай все таблицы без фильтра. \
+                          Категории: wb=Wildberries (продажи), \
+                          ozon=OZON, ym=Яндекс.Маркет, ref=справочники (организации, номенклатура), \
+                          llm=чаты/агенты. \
+                          Если уже знаешь entity_index — сразу вызывай get_entity_schema."
                 .into(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -25,7 +28,7 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
                     "category": {
                         "type": "string",
                         "description": "Необязательный фильтр по категории данных.",
-                        "enum": ["wb", "ozon", "ym", "ref", "llm"]
+                        "enum": ["wb", "ozon", "ym", "ref", "llm", "promotion"]
                     }
                 }
             }),
@@ -33,7 +36,9 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "get_entity_schema".into(),
             description: "Получить детальную схему таблицы: поля, SQL-типы, описания, \
-                          внешние ключи (FK). Используй перед написанием SQL-запроса."
+                          внешние ключи (FK). Используй ПЕРЕД написанием SQL-запроса. \
+                          Примеры entity_index: 'a004' (номенклатура), 'a012' (продажи WB), \
+                          'a013' (заказы YM), 'a006' (подключения МП), 'a002' (организации)."
                 .into(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -82,16 +87,13 @@ pub fn execute_tool_call(call: &ToolCall) -> String {
         }
 
         "get_entity_schema" => {
-            let index = parse_string_arg(&call.arguments, "entity_index")
-                .unwrap_or_default();
+            let index = parse_string_arg(&call.arguments, "entity_index").unwrap_or_default();
             METADATA_REGISTRY.get_entity_schema(&index)
         }
 
         "get_join_hint" => {
-            let from = parse_string_arg(&call.arguments, "from_entity")
-                .unwrap_or_default();
-            let to = parse_string_arg(&call.arguments, "to_entity")
-                .unwrap_or_default();
+            let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
+            let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
             METADATA_REGISTRY.get_join_hint(&from, &to)
         }
 

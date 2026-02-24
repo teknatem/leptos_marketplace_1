@@ -29,97 +29,106 @@ fn opt_f64(v: Option<f64>) -> String {
 #[component]
 pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
     view! {
-        <div style="padding: var(--spacing-lg);">
-            {move || {
-                let Some(promo) = vm.promotion.get() else {
-                    return view! { <div>"Нет данных"</div> }.into_any();
-                };
+        {move || {
+            let Some(promo) = vm.promotion.get() else {
+                return view! { <div>"Нет данных"</div> }.into_any();
+            };
 
-                let advantages = promo.data.advantages.clone();
-                let ranging = promo.data.ranging.clone();
+            let advantages = promo.data.advantages.clone();
+            let ranging = promo.data.ranging.clone();
+            let desc = promo.data.description.clone().unwrap_or_default();
 
-                view! {
-                    <div style="display: flex; flex-direction: column; gap: var(--spacing-xl);">
+            let promo_id = promo.data.promotion_id.to_string();
+            let name = promo.data.name.clone();
+            let promo_type = promo.data.promotion_type.clone().unwrap_or_else(|| "—".to_string());
+            let start_dt = format_dt(&promo.data.start_date_time);
+            let end_dt = format_dt(&promo.data.end_date_time);
+            let nom_count = promo.nomenclatures.len().to_string();
+            let exceptions = opt_i32(promo.data.exception_products_count);
 
-                        // Первая строка: Данные акции + Статистика участия
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-xl);">
-                            <div>
-                                <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Данные акции"</h3>
-                                <table style="width: 100%; border-collapse: collapse;">
-                                    <tbody>
-                                        <FieldRow label="ID акции WB" value=promo.data.promotion_id.to_string() />
-                                        <FieldRow label="Название" value=promo.data.name.clone() />
-                                        <FieldRow
-                                            label="Тип акции"
-                                            value=promo.data.promotion_type.clone().unwrap_or_else(|| "—".to_string())
-                                        />
-                                        <FieldRow label="Начало акции" value=format_dt(&promo.data.start_date_time) />
-                                        <FieldRow label="Окончание акции" value=format_dt(&promo.data.end_date_time) />
-                                        <FieldRow
-                                            label="Загружено номенклатур"
-                                            value=promo.nomenclatures.len().to_string()
-                                        />
-                                        <FieldRow label="Исключений" value=opt_i32(promo.data.exception_products_count) />
-                                    </tbody>
-                                </table>
+            let in_total = opt_i32(promo.data.in_promo_action_total);
+            let in_leftovers = opt_i32(promo.data.in_promo_action_leftovers);
+            let not_in_total = opt_i32(promo.data.not_in_promo_action_total);
+            let not_in_leftovers = opt_i32(promo.data.not_in_promo_action_leftovers);
+            let participation = promo
+                .data
+                .participation_percentage
+                .map(|v| format!("{:.1}%", v))
+                .unwrap_or_else(|| "—".to_string());
+
+            let document_no = promo.header.document_no.clone();
+            let connection_id = promo.header.connection_id.clone();
+            let organization_id = promo.header.organization_id.clone();
+            let fetched_at = promo.source_meta.fetched_at.clone();
+            let version = promo.metadata.version.to_string();
+
+            view! {
+                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; align-content: start;">
+
+                    // Левая колонка
+                    <Flex vertical=true gap=FlexGap::Medium>
+
+                        // Данные акции
+                        <Card attr:style="width: 600px; margin: 0px;">
+                            <h4 class="details-section__title">"Данные акции"</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"ID акции WB"</label>
+                                    <Input value=RwSignal::new(promo_id) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Тип акции"</label>
+                                    <Input value=RwSignal::new(promo_type) attr:readonly=true />
+                                </div>
                             </div>
-
-                            <div>
-                                <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Статистика участия"</h3>
-                                <table style="width: 100%; border-collapse: collapse;">
-                                    <tbody>
-                                        <FieldRow
-                                            label="В акции (всего)"
-                                            value=opt_i32(promo.data.in_promo_action_total)
-                                        />
-                                        <FieldRow
-                                            label="В акции (остатки)"
-                                            value=opt_i32(promo.data.in_promo_action_leftovers)
-                                        />
-                                        <FieldRow
-                                            label="Не в акции (всего)"
-                                            value=opt_i32(promo.data.not_in_promo_action_total)
-                                        />
-                                        <FieldRow
-                                            label="Не в акции (остатки)"
-                                            value=opt_i32(promo.data.not_in_promo_action_leftovers)
-                                        />
-                                        <FieldRow
-                                            label="% участия"
-                                            value={
-                                                promo.data.participation_percentage
-                                                    .map(|v| format!("{:.1}%", v))
-                                                    .unwrap_or_else(|| "—".to_string())
-                                            }
-                                        />
-                                    </tbody>
-                                </table>
+                            <div class="form__group">
+                                <label class="form__label">"Название"</label>
+                                <Input value=RwSignal::new(name) attr:readonly=true />
                             </div>
-                        </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Начало акции"</label>
+                                    <Input value=RwSignal::new(start_dt) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Окончание акции"</label>
+                                    <Input value=RwSignal::new(end_dt) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Номенклатур загружено"</label>
+                                    <Input value=RwSignal::new(nom_count) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Исключений"</label>
+                                    <Input value=RwSignal::new(exceptions) attr:readonly=true />
+                                </div>
+                            </div>
+                        </Card>
 
-                        // Описание
+                        // Описание (если есть)
                         {
-                            let desc = promo.data.description.clone().unwrap_or_default();
                             if !desc.is_empty() {
                                 view! {
-                                    <div>
-                                        <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Описание"</h3>
-                                        <p style="font-size: 13px; color: var(--colorNeutralForeground1); line-height: 1.5; background: var(--colorNeutralBackground2); padding: 10px 12px; border-radius: 4px;">
+                                    <Card attr:style="width: 600px; margin: 0px;">
+                                        <h4 class="details-section__title">"Описание"</h4>
+                                        <p style="font-size: 13px; color: var(--colorNeutralForeground1); line-height: 1.5; margin: 0;">
                                             {desc}
                                         </p>
-                                    </div>
+                                    </Card>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
                             }
                         }
 
-                        // Преимущества
+                        // Преимущества участия (если есть)
                         {
                             if !advantages.is_empty() {
                                 view! {
-                                    <div>
-                                        <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Преимущества участия"</h3>
+                                    <Card attr:style="width: 600px; margin: 0px;">
+                                        <h4 class="details-section__title">"Преимущества участия"</h4>
                                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                                             {advantages.into_iter().map(|adv| view! {
                                                 <span style="background: var(--colorBrandBackground2); color: var(--colorBrandForeground1); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">
@@ -127,19 +136,53 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                                 </span>
                                             }).collect::<Vec<_>>()}
                                         </div>
-                                    </div>
+                                    </Card>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
                             }
                         }
 
-                        // Условия рейтингового буста
+                    </Flex>
+
+                    // Правая колонка
+                    <Flex vertical=true gap=FlexGap::Medium>
+
+                        // Статистика участия
+                        <Card attr:style="width: 600px; margin: 0px;">
+                            <h4 class="details-section__title">"Статистика участия"</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"В акции (всего)"</label>
+                                    <Input value=RwSignal::new(in_total) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"В акции (остатки)"</label>
+                                    <Input value=RwSignal::new(in_leftovers) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Не в акции (всего)"</label>
+                                    <Input value=RwSignal::new(not_in_total) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Не в акции (остатки)"</label>
+                                    <Input value=RwSignal::new(not_in_leftovers) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"% участия"</label>
+                                <Input value=RwSignal::new(participation) attr:readonly=true />
+                            </div>
+                        </Card>
+
+                        // Условия рейтингового буста (если есть)
                         {
                             if !ranging.is_empty() {
                                 view! {
-                                    <div>
-                                        <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Условия рейтингового буста"</h3>
+                                    <Card attr:style="width: 600px; margin: 0px;">
+                                        <h4 class="details-section__title">"Условия рейтингового буста"</h4>
                                         <table style="width: 100%; border-collapse: collapse;">
                                             <thead>
                                                 <tr style="background: var(--colorNeutralBackground2);">
@@ -163,44 +206,46 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                                 }).collect::<Vec<_>>()}
                                             </tbody>
                                         </table>
-                                    </div>
+                                    </Card>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
                             }
                         }
 
-                        // Подключение / метаданные
-                        <div>
-                            <h3 style="margin-bottom: var(--spacing-md); font-size: 14px; font-weight: 600; color: var(--colorNeutralForeground2);">"Подключение"</h3>
-                            <table style="width: 100%; border-collapse: collapse;">
-                                <tbody>
-                                    <FieldRow label="Номер документа" value=promo.header.document_no.clone() />
-                                    <FieldRow label="ID подключения" value=promo.header.connection_id.clone() />
-                                    <FieldRow label="ID организации" value=promo.header.organization_id.clone() />
-                                    <FieldRow label="Загружено" value=promo.source_meta.fetched_at.clone() />
-                                    <FieldRow label="Версия" value=promo.metadata.version.to_string() />
-                                </tbody>
-                            </table>
-                        </div>
+                        // Подключение
+                        <Card attr:style="width: 600px; margin: 0px;">
+                            <h4 class="details-section__title">"Подключение"</h4>
+                            <div class="form__group">
+                                <label class="form__label">"Номер документа"</label>
+                                <Input value=RwSignal::new(document_no) attr:readonly=true />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"ID подключения"</label>
+                                    <Input value=RwSignal::new(connection_id) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"ID организации"</label>
+                                    <Input value=RwSignal::new(organization_id) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Загружено"</label>
+                                    <Input value=RwSignal::new(fetched_at) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Версия"</label>
+                                    <Input value=RwSignal::new(version) attr:readonly=true />
+                                </div>
+                            </div>
+                        </Card>
 
-                    </div>
-                }.into_any()
-            }}
-        </div>
-    }
-}
+                    </Flex>
 
-#[component]
-fn FieldRow(label: &'static str, value: String) -> impl IntoView {
-    view! {
-        <tr style="border-bottom: 1px solid var(--colorNeutralStroke2);">
-            <td style="padding: 6px 8px; font-size: 12px; color: var(--colorNeutralForeground2); white-space: nowrap; width: 200px;">
-                {label}
-            </td>
-            <td style="padding: 6px 8px; font-size: 12px; color: var(--colorNeutralForeground1);">
-                {value}
-            </td>
-        </tr>
+                </div>
+            }.into_any()
+        }}
     }
 }
