@@ -38,16 +38,21 @@ This project uses indexed naming for features:
 
 - `a001_connection_1c` - 1C connections
 - `a002_organization` - Organizations
-- `a003_product` - Products
+- `a003_counterparty` - Counterparties
 - `a004_nomenclature` - Nomenclature
 - `a014_ozon_transactions` - Ozon transactions
 - `a015_wb_orders` - Wildberries orders
+- `a017_llm_agent` - LLM agents
+- `a018_llm_chat` - LLM chats
+- `a020_wb_promotion` - WB promotions
 
 ### UseCases: `u501-u999` (Operations)
 
 - `u501_import_from_ut` - Import from 1C:UT11
+- `u502_import_from_ozon` - Ozon integration
+- `u503_import_from_yandex` - Yandex Market integration
 - `u504_import_from_wildberries` - WB integration
-- `u505_import_from_ozon` - Ozon integration
+- `u505_match_nomenclature` - Nomenclature matching
 - `u506_import_from_lemanapro` - LemanaPro integration
 
 ### Projections: `p901-p999` (Read models/analytics)
@@ -326,7 +331,7 @@ When updating memory bank (user command: "update memory bank"):
 - ✅ Sales analytics (p904)
 - ✅ WB commission history (p905)
 - ✅ Ozon transactions (a014)
-- ✅ LLM Agents (a017), Chat (a018), Artifacts (a019)
+- ✅ LLM Agents (a017), Chat (a018), Artifacts (a019), WB Promotion (a020)
 - ✅ Auth system (sys_users, JWT, refresh tokens)
 
 **In Progress:**
