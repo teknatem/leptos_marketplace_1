@@ -24,6 +24,19 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let total_dealer_amount: f64 = lines.iter().filter_map(|l| l.dealer_price_ut.map(|p| p * l.qty)).sum();
             let lines_without_nomenclature = lines.iter().filter(|l| l.nomenclature_ref.is_none()).count();
 
+            // Субсидии из заголовка (агрегированный итог)
+            let subsidies_total: f64 = order_data.header.subsidies_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str::<Vec<serde_json::Value>>(json).ok())
+                .map(|arr| arr.iter()
+                    .filter_map(|v| v.get("amount").and_then(|a| a.as_f64()))
+                    .sum())
+                .unwrap_or(0.0);
+
+            // Эффективная сумма продажи = Amount + Субсидии
+            let effective_amount = total_amount + subsidies_total;
+            let margin_pro = order_data.header.margin_pro;
+
             view! {
                 <Card>
                     <h4 class="details-section__title">"Строки заказа"</h4>
@@ -32,13 +45,48 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                             {format!("Строк: {}", lines_count)}
                         </Badge>
                         <span>"Qty: " <strong>{format!("{:.0}", total_qty)}</strong></span>
-                        <span>"Amount: " <strong>{format!("{:.2}", total_amount)}</strong></span>
+                        <span>"Сумма продажи: " <strong>{format!("{:.2}", total_amount)}</strong></span>
+                        {if subsidies_total > 0.0 {
+                            view! {
+                                <span style="color: var(--colorPaletteGreenForeground1);">
+                                    "Субсидии: " <strong>{format!("{:.2}", subsidies_total)}</strong>
+                                </span>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
+                        {if subsidies_total > 0.0 {
+                            view! {
+                                <span style="font-weight: 600;">
+                                    "Эфф. сумма: " <strong>{format!("{:.2}", effective_amount)}</strong>
+                                </span>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
                         {if total_dealer_amount > 0.0 {
                             view! {
                                 <span>"Дилер. сумма: " <strong>{format!("{:.2}", total_dealer_amount)}</strong></span>
                             }.into_any()
                         } else {
                             view! { <></> }.into_any()
+                        }}
+                        {match margin_pro {
+                            Some(margin) if total_dealer_amount > 0.0 => {
+                                let color = if margin >= 20.0 {
+                                    "color: var(--colorPaletteGreenForeground1);"
+                                } else if margin >= 0.0 {
+                                    "color: var(--colorPaletteYellowForeground2);"
+                                } else {
+                                    "color: var(--colorPaletteRedForeground1);"
+                                };
+                                view! {
+                                    <span style={color}>
+                                        "Маржа: " <strong>{format!("{:.1}%", margin)}</strong>
+                                    </span>
+                                }.into_any()
+                            },
+                            _ => view! { <></> }.into_any()
                         }}
                         <Badge
                             appearance=BadgeAppearance::Filled

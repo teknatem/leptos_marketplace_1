@@ -31,35 +31,95 @@ pub enum ChatRole {
     System,
     User,
     Assistant,
+    /// Результат выполнения инструмента (tool call result)
+    Tool,
 }
 
-/// Сообщение чата
+/// Вызов инструмента от LLM (содержится в ответе ассистента)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Уникальный ID вызова (нужен для связи с результатом)
+    pub id: String,
+    /// Имя функции/инструмента
+    pub name: String,
+    /// Аргументы в виде JSON-строки
+    pub arguments: String,
+}
+
+/// Определение инструмента для передачи LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema параметров функции
+    pub parameters: serde_json::Value,
+}
+
+/// Сообщение чата с поддержкой tool calling
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatRole,
-    pub content: String,
+    /// Текстовое содержимое (None для assistant-сообщений с tool_calls)
+    pub content: Option<String>,
+    /// Вызовы инструментов (только для Assistant)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// ID вызова инструмента (только для Tool role — связь с ToolCall.id)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: ChatRole::System,
-            content: content.into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: ChatRole::User,
-            content: content.into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: ChatRole::Assistant,
-            content: content.into(),
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: None,
         }
+    }
+
+    /// Сообщение ассистента с вызовами инструментов (без текстового контента)
+    pub fn assistant_with_tool_calls(tool_calls: Vec<ToolCall>) -> Self {
+        Self {
+            role: ChatRole::Assistant,
+            content: None,
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+        }
+    }
+
+    /// Результат выполнения инструмента
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::Tool,
+            content: Some(content.into()),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+        }
+    }
+
+    /// Получить текст сообщения (пустая строка если None)
+    pub fn content_str(&self) -> &str {
+        self.content.as_deref().unwrap_or("")
     }
 }
 
@@ -67,17 +127,34 @@ impl ChatMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmResponse {
     pub content: String,
+    /// Вызовы инструментов (пусто если LLM ответил текстом)
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
     pub tokens_used: Option<i32>,
     pub model: String,
     pub finish_reason: Option<String>,
     pub confidence: Option<f64>,
 }
 
+impl LlmResponse {
+    /// Проверить, вернул ли LLM вызовы инструментов
+    pub fn has_tool_calls(&self) -> bool {
+        !self.tool_calls.is_empty()
+    }
+}
+
 /// Трейт для LLM провайдеров
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
-    /// Отправка запроса к чату
+    /// Отправка запроса к чату (без инструментов)
     async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<LlmResponse, LlmError>;
+
+    /// Отправка запроса к чату с поддержкой инструментов
+    async fn chat_completion_with_tools(
+        &self,
+        messages: Vec<ChatMessage>,
+        tools: Vec<ToolDefinition>,
+    ) -> Result<LlmResponse, LlmError>;
 
     /// Тест подключения к провайдеру
     async fn test_connection(&self) -> Result<(), LlmError>;

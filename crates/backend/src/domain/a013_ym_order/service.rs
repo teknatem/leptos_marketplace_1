@@ -305,10 +305,36 @@ pub async fn fill_dealer_price_for_lines(document: &mut YmOrder) -> Result<()> {
     Ok(())
 }
 
+/// Вычислить сумму субсидий документа.
+/// Используем ТОЛЬКО субсидии из заголовка: header.subsidies_json содержит
+/// агрегированный итог по всему заказу (равен сумме item-level субсидий).
+/// Суммирование обоих источников приводит к двойному счёту.
+fn calculate_subsidies_total(document: &YmOrder) -> f64 {
+    if let Some(ref json) = document.header.subsidies_json {
+        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(json) {
+            return arr
+                .iter()
+                .filter_map(|sub| sub.get("amount").and_then(|a| a.as_f64()))
+                .sum();
+        }
+    }
+
+    // Fallback: если header subsidies отсутствуют — суммируем по строкам
+    document
+        .lines
+        .iter()
+        .filter_map(|line| line.subsidies_json.as_deref())
+        .filter_map(|json| serde_json::from_str::<Vec<serde_json::Value>>(json).ok())
+        .flatten()
+        .filter_map(|sub| sub.get("amount").and_then(|a| a.as_f64()))
+        .sum()
+}
+
 /// Рассчитать итоговую дилерскую сумму и маржу документа.
 /// total_dealer_amount = sum(dealer_price_ut_i * qty_i) по всем строкам
-/// margin_pro (%) = (total_amount * (1 - commission/100) - total_dealer_amount) / total_dealer_amount * 100
-/// Fallback (без комиссии): (total_amount - total_dealer_amount) / total_dealer_amount * 100
+/// effective_amount = sum(amount_line) + subsidies_total
+/// margin_pro (%) = (effective_amount * (1 - commission/100) - total_dealer_amount) / total_dealer_amount * 100
+/// Fallback (без комиссии): (effective_amount - total_dealer_amount) / total_dealer_amount * 100
 pub async fn calculate_totals_and_margin(document: &mut YmOrder) -> Result<()> {
     let total_dealer_amount: f64 = document
         .lines
@@ -324,18 +350,31 @@ pub async fn calculate_totals_and_margin(document: &mut YmOrder) -> Result<()> {
 
     document.header.total_dealer_amount = Some(total_dealer_amount);
 
-    // total_amount из строк документа
+    // Сумма продажи из строк документа
     let total_amount: f64 = document.lines.iter().filter_map(|l| l.amount_line).sum();
 
+    // Сумма субсидий (добавляется к сумме продажи при расчёте маржи)
+    let subsidies_total = calculate_subsidies_total(document);
+    let effective_amount = total_amount + subsidies_total;
+
+    if subsidies_total > 0.0 {
+        tracing::info!(
+            "calculate_totals_and_margin: document {} -> subsidies_total={:.2}, effective_amount={:.2}",
+            document.base.id.as_string(),
+            subsidies_total,
+            effective_amount
+        );
+    }
+
     // Пытаемся получить planned_commission_percent из подключения
-    let mut margin = (total_amount - total_dealer_amount) / total_dealer_amount * 100.0;
+    let mut margin = (effective_amount - total_dealer_amount) / total_dealer_amount * 100.0;
 
     match Uuid::parse_str(&document.header.connection_id) {
         Ok(connection_id) => {
             match crate::domain::a006_connection_mp::service::get_by_id(connection_id).await {
                 Ok(Some(connection)) => {
                     if let Some(planned_percent) = connection.planned_commission_percent {
-                        margin = (total_amount * (100.0 - planned_percent) / 100.0
+                        margin = (effective_amount * (100.0 - planned_percent) / 100.0
                             - total_dealer_amount)
                             / total_dealer_amount
                             * 100.0;

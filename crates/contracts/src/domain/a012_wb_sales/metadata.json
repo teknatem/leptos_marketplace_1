@@ -1,0 +1,278 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbSales",
+  "entity_index": "a012",
+  "collection_name": "wb_sales",
+  "table_name": "a012_wb_sales",
+
+  "ui": {
+    "element_name": "Документ WB Продажи",
+    "element_name_en": "WB Sales Document",
+    "list_name": "Документы WB Продажи",
+    "list_name_en": "WB Sales Documents",
+    "icon": "shopping-bag"
+  },
+
+  "ai": {
+    "description": "Продажи и возвраты с Wildberries. Каждая запись — одна транзакция из отчёта WB (sale или return). Содержит финансовые показатели: выручку, комиссию WB, прибыль план/факт. Данные загружаются через WB API. Для расчёта выручки фильтруй event_type = 'Продажа', для возвратов — 'Возврат'.",
+    "questions": [
+      "Какова выручка WB за период?",
+      "Топ-10 товаров по продажам на WB",
+      "Процент возвратов по артикулу",
+      "Прибыль по магазинам WB",
+      "Сколько продано штук товара X?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a006_connection_mp",
+      "a002_organization"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbSalesId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "sale_date",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата продажи",
+        "label_en": "Sale Date",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "widget": "datetime"
+      },
+      "validation": { "required": false },
+      "ai_hint": "Дата и время продажи/возврата. Хранится в формате ISO 8601 (TEXT). Для группировки по дням: date(sale_date). Для фильтра по месяцу: strftime('%Y-%m', sale_date) = '2024-01'."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": {
+        "label": "Подключение (магазин WB)",
+        "label_en": "Connection (WB shop)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения магазина WB из a006_connection_mp. Для названия магазина: JOIN a006_connection_mp ON a012_wb_sales.connection_id = a006_connection_mp.id."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": {
+        "label": "Организация",
+        "label_en": "Organization",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    },
+    {
+      "name": "supplier_article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Артикул продавца",
+        "label_en": "Supplier Article",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": false },
+      "ai_hint": "Артикул продавца на WB. Соответствует полю article в a004_nomenclature."
+    },
+    {
+      "name": "nm_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "nmId WB",
+        "label_en": "WB nmId",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": false },
+      "ai_hint": "Числовой ID номенклатуры в системе Wildberries (nmId). Соответствует nm_id в таблице p908_wb_goods_prices."
+    },
+    {
+      "name": "product_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Название товара",
+        "label_en": "Product Name",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 300
+      },
+      "validation": { "required": false },
+      "ai_hint": "Название товара из WB API (денормализованное поле)."
+    },
+    {
+      "name": "qty",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Количество",
+        "label_en": "Quantity",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": false },
+      "ai_hint": "Количество проданных единиц. Обычно 1 для продаж, -1 для возвратов. Для суммы продаж: SUM(qty) WHERE event_type='Продажа'."
+    },
+    {
+      "name": "total_price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Цена",
+        "label_en": "Price",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": false },
+      "ai_hint": "Полная цена товара до скидок (розничная цена). В рублях."
+    },
+    {
+      "name": "finished_price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Итоговая сумма",
+        "label_en": "Finished Price",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": { "required": false },
+      "ai_hint": "Итоговая сумма к оплате покупателем после всех скидок (finishedPrice из WB API). Основной показатель выручки. Для SUM выручки: SUM(finished_price) WHERE event_type='Продажа'."
+    },
+    {
+      "name": "event_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип события",
+        "label_en": "Event Type",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": false },
+      "ai_hint": "Тип операции: 'Продажа' или 'Возврат'. Всегда фильтруй по этому полю при расчёте выручки или прибыли."
+    },
+    {
+      "name": "profit_fact",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Прибыль (факт)",
+        "label_en": "Profit (Fact)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": { "required": false },
+      "ai_hint": "Фактическая прибыль = выручка - себестоимость - комиссия WB - эквайринг. NULL если нет данных о себестоимости. Для анализа рентабельности: SUM(profit_fact) WHERE event_type='Продажа' AND profit_fact IS NOT NULL."
+    },
+    {
+      "name": "commission_fact",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Комиссия WB (факт)",
+        "label_en": "Commission (Fact)",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Фактический размер комиссии WB в рублях."
+    },
+    {
+      "name": "dealer_price_ut",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дилерская цена 1С",
+        "label_en": "Dealer Price (1C)",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Закупочная/дилерская цена товара из 1С:УТ (себестоимость). Заполняется при проведении документа."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a004_nomenclature",
+      "ui": {
+        "label": "Номенклатура 1С",
+        "label_en": "1C Nomenclature",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": false },
+      "ai_hint": "UUID номенклатуры из a004_nomenclature. Устанавливается при сопоставлении товаров. JOIN: a012_wb_sales.nomenclature_ref = a004_nomenclature.id."
+    },
+    {
+      "name": "sale_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID продажи WB",
+        "label_en": "WB Sale ID",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": false },
+      "ai_hint": "Уникальный ID продажи в системе WB (saleID). Используется для дедупликации."
+    }
+  ]
+}

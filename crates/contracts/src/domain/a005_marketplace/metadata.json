@@ -1,0 +1,104 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "Marketplace",
+  "entity_index": "a005",
+  "collection_name": "marketplace",
+  "table_name": "a005_marketplace",
+
+  "ui": {
+    "element_name": "Маркетплейс",
+    "element_name_en": "Marketplace",
+    "list_name": "Маркетплейсы",
+    "list_name_en": "Marketplaces",
+    "icon": "store"
+  },
+
+  "ai": {
+    "description": "Справочник торговых площадок: Wildberries, Ozon, Яндекс.Маркет. Системные записи, создаются при инициализации. Используется как справочник типов маркетплейсов. Конкретные магазины описываются в a006_connection_mp.",
+    "questions": [
+      "Какие маркетплейсы подключены?",
+      "Сколько магазинов на каждом маркетплейсе?"
+    ],
+    "related": [
+      "a006_connection_mp"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "MarketplaceId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса. Используется как FK в a006_connection_mp (поле marketplace_id)."
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "Название маркетплейса: 'Wildberries', 'Ozon', 'Яндекс.Маркет'."
+    },
+    {
+      "name": "marketplace_type",
+      "rust_type": "Option<MarketplaceType>",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Тип",
+        "label_en": "Type",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "enum_values": ["Wildberries", "Озон", "Яндекс.Маркет"],
+      "ai_hint": "Тип маркетплейса. Значения: 'Wildberries', 'Озон', 'Яндекс.Маркет'."
+    },
+    {
+      "name": "acquiring_fee_pro",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Процент эквайринга",
+        "label_en": "Acquiring Fee %",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Плановый процент комиссии за эквайринг (платёжную систему). Используется в расчёте плановой прибыли."
+    }
+  ]
+}

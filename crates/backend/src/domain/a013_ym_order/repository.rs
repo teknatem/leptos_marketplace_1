@@ -227,25 +227,32 @@ fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
         if let Some(amount) = line.amount_line {
             total_amount += amount;
         }
-        // Parse line subsidies
-        if let Some(ref subsidies_json) = line.subsidies_json {
-            if let Ok(subsidies) = serde_json::from_str::<Vec<serde_json::Value>>(subsidies_json) {
-                for sub in subsidies {
-                    if let Some(amount) = sub.get("amount").and_then(|a| a.as_f64()) {
-                        subsidies_total += amount;
-                    }
-                }
-            }
-        }
     }
 
-    // Parse header subsidies
+    // Используем ТОЛЬКО субсидии из заголовка: они содержат агрегированный итог
+    // по всему заказу (равен сумме item-level субсидий).
+    // Суммирование обоих источников приводит к двойному счёту.
     if let Some(ref header_subsidies_json) = aggregate.header.subsidies_json {
         if let Ok(subsidies) = serde_json::from_str::<Vec<serde_json::Value>>(header_subsidies_json)
         {
-            for sub in subsidies {
+            for sub in &subsidies {
                 if let Some(amount) = sub.get("amount").and_then(|a| a.as_f64()) {
                     subsidies_total += amount;
+                }
+            }
+        }
+    } else {
+        // Fallback: если header subsidies отсутствуют — суммируем по строкам
+        for line in &aggregate.lines {
+            if let Some(ref subsidies_json) = line.subsidies_json {
+                if let Ok(subsidies) =
+                    serde_json::from_str::<Vec<serde_json::Value>>(subsidies_json)
+                {
+                    for sub in subsidies {
+                        if let Some(amount) = sub.get("amount").and_then(|a| a.as_f64()) {
+                            subsidies_total += amount;
+                        }
+                    }
                 }
             }
         }

@@ -1,0 +1,185 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "YmOrder",
+  "entity_index": "a013",
+  "collection_name": "ym_order",
+  "table_name": "a013_ym_order",
+
+  "ui": {
+    "element_name": "Заказ Яндекс.Маркет",
+    "element_name_en": "Yandex Market Order",
+    "list_name": "Заказы Яндекс.Маркет",
+    "list_name_en": "Yandex Market Orders",
+    "icon": "shopping-cart"
+  },
+
+  "ai": {
+    "description": "Заказы с Яндекс.Маркет (YM). Каждая запись — один заказ, может содержать несколько товарных позиций (строк). Данные загружаются через YM API. Статусы: DELIVERED означает доставленный (выкупленный) заказ. Для аналитики продаж фильтруй по status_norm = 'DELIVERED'.",
+    "questions": [
+      "Какова выручка Яндекс.Маркет за период?",
+      "Топ товаров по заказам на YM",
+      "Сколько заказов доставлено за месяц?",
+      "Маржинальность по заказам YM"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a006_connection_mp",
+      "a002_organization"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "YmOrderId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер заказа YM",
+        "label_en": "YM Order Number",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Числовой ID заказа в системе Яндекс.Маркет (orderId из YM API)."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": {
+        "label": "Магазин YM",
+        "label_en": "YM Shop",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения YM из a006_connection_mp. JOIN: a013_ym_order.connection_id = a006_connection_mp.id."
+    },
+    {
+      "name": "status_norm",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Статус",
+        "label_en": "Status",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Нормализованный статус заказа: 'DELIVERED' — доставлен/выкуплен (считается продажей), 'CANCELLED' — отменён. Для подсчёта продаж: WHERE status_norm = 'DELIVERED'."
+    },
+    {
+      "name": "creation_date",
+      "rust_type": "Option<DateTime<Utc>>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата создания",
+        "label_en": "Creation Date",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "widget": "datetime"
+      },
+      "validation": { "required": false },
+      "ai_hint": "Дата создания заказа в YM. ISO 8601 TEXT. Для группировки по месяцам: strftime('%Y-%m', creation_date)."
+    },
+    {
+      "name": "total_amount",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма заказа",
+        "label_en": "Total Amount",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": { "required": false },
+      "ai_hint": "Общая сумма заказа из YM API. В рублях. Для выручки: SUM(total_amount) WHERE status_norm='DELIVERED'."
+    },
+    {
+      "name": "items_total",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Стоимость товаров",
+        "label_en": "Items Total",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": { "required": false },
+      "ai_hint": "Общая стоимость товаров в заказе без доставки (itemsTotal из YM API)."
+    },
+    {
+      "name": "margin_pro",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Маржа %",
+        "label_en": "Margin %",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": false },
+      "ai_hint": "Маржинальность заказа в процентах. Заполняется при проведении. NULL если нет данных о себестоимости. (total_amount - себестоимость) / total_amount * 100."
+    },
+    {
+      "name": "total_dealer_amount",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма по дилерским ценам",
+        "label_en": "Total Dealer Amount",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 180
+      },
+      "validation": { "required": false },
+      "ai_hint": "Итоговая сумма строк заказа по дилерским (закупочным) ценам из 1С. Заполняется при проведении."
+    },
+    {
+      "name": "campaign_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID кампании YM",
+        "label_en": "YM Campaign ID",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "ID кампании (магазина) в Яндекс.Маркет API."
+    }
+  ]
+}

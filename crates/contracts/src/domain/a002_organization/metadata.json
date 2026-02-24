@@ -1,0 +1,122 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "Organization",
+  "entity_index": "a002",
+  "collection_name": "organization",
+  "table_name": "a002_organization",
+
+  "ui": {
+    "element_name": "Организация",
+    "element_name_en": "Organization",
+    "list_name": "Организации",
+    "list_name_en": "Organizations",
+    "icon": "building"
+  },
+
+  "ai": {
+    "description": "Юридические лица и ИП, от имени которых ведётся торговля на маркетплейсах. Импортируются из 1С:УТ. Используются для группировки продаж и финансовой аналитики по юрлицам.",
+    "questions": [
+      "Какие организации есть в системе?",
+      "Какая выручка по каждой организации?",
+      "Какие подключения к маркетплейсам у организации?"
+    ],
+    "related": [
+      "a001_connection_1c",
+      "a006_connection_mp",
+      "a012_wb_sales"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "OrganizationId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": true, "max_length": 50 }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 250
+      },
+      "validation": { "required": true, "max_length": 255 },
+      "ai_hint": "Краткое название организации (используется в отчётах). JOIN с a012_wb_sales через поле organization_id."
+    },
+    {
+      "name": "full_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Полное наименование",
+        "label_en": "Full Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 350
+      },
+      "validation": { "required": true, "max_length": 500 },
+      "ai_hint": "Полное юридическое наименование организации."
+    },
+    {
+      "name": "inn",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ИНН",
+        "label_en": "INN",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": { "required": false, "max_length": 12 },
+      "ai_hint": "ИНН: 10 цифр для юридических лиц, 12 цифр для ИП."
+    },
+    {
+      "name": "kpp",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "КПП",
+        "label_en": "KPP",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": false, "max_length": 9 },
+      "ai_hint": "КПП: 9 цифр, только для юридических лиц. Пустой для ИП."
+    }
+  ]
+}

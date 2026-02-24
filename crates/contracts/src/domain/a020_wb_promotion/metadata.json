@@ -1,0 +1,173 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbPromotion",
+  "entity_index": "a020",
+  "collection_name": "wb_promotion",
+  "table_name": "a020_wb_promotion",
+
+  "ui": {
+    "element_name": "Акция WB",
+    "element_name_en": "WB Promotion",
+    "list_name": "Акции WB (Календарь)",
+    "list_name_en": "WB Calendar Promotions",
+    "icon": "tag"
+  },
+
+  "ai": {
+    "description": "Календарные акции Wildberries. Каждая запись — одна акция из WB Calendar API с датами проведения и списком товаров (nmId). Данные загружаются через WB Promotion API (/api/v1/calendar/promotions).",
+    "questions": [
+      "Какие акции WB проходят в текущем месяце?",
+      "В каких акциях участвует товар с nmId X?",
+      "Сколько товаров участвует в акции Y?",
+      "Список активных акций WB с датами",
+      "Акции WB с наибольшим числом товаров"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a007_marketplace_product"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbPromotionId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "promotion_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID акции WB",
+        "label_en": "WB Promotion ID",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Числовой ID акции в системе Wildberries (promotionID). Используется для дедупликации."
+    },
+    {
+      "name": "name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Название акции",
+        "label_en": "Promotion Name",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 300
+      },
+      "validation": { "required": true },
+      "ai_hint": "Название акции из WB Calendar API."
+    },
+    {
+      "name": "promotion_type",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип акции",
+        "label_en": "Promotion Type",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": { "required": false },
+      "ai_hint": "Тип/категория акции WB."
+    },
+    {
+      "name": "start_date_time",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата начала",
+        "label_en": "Start Date",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "widget": "datetime"
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата и время начала акции в формате ISO 8601."
+    },
+    {
+      "name": "end_date_time",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата окончания",
+        "label_en": "End Date",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "widget": "datetime"
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата и время окончания акции в формате ISO 8601."
+    },
+    {
+      "name": "in_promo_action_total",
+      "rust_type": "Option<i32>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Товаров в акции",
+        "label_en": "Products in Promo",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": false },
+      "ai_hint": "Общее число товаров участвующих в акции (inPromoActionTotal из WB API)."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": {
+        "label": "Подключение (магазин WB)",
+        "label_en": "Connection (WB shop)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения магазина WB из a006_connection_mp."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": {
+        "label": "Организация",
+        "label_en": "Organization",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    }
+  ]
+}

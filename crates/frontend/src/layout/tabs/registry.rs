@@ -33,6 +33,8 @@ use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
 use crate::domain::a019_llm_artifact::ui::details::LlmArtifactDetails;
 use crate::domain::a019_llm_artifact::ui::list::LlmArtifactList;
+use crate::domain::a020_wb_promotion::ui::details::WbPromotionDetail;
+use crate::domain::a020_wb_promotion::ui::list::WbPromotionList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -347,6 +349,28 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating LlmArtifactDetails with id: {}", id);
             view! {
                 <LlmArtifactDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a020: WB Calendar Promotions
+        "a020_wb_promotion" => view! { <WbPromotionList /> }.into_any(),
+        k if k.starts_with("a020_wb_promotion_detail_") => {
+            let id = k
+                .strip_prefix("a020_wb_promotion_detail_")
+                .unwrap()
+                .to_string();
+            log!("✅ Creating WbPromotionDetail with id: {}", id);
+            view! {
+                <WbPromotionDetail
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
