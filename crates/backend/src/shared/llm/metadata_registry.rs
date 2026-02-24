@@ -20,6 +20,7 @@ use contracts::domain::a013_ym_order::{ENTITY_METADATA as A013_META, FIELDS as A
 use contracts::domain::a017_llm_agent::{ENTITY_METADATA as A017_META, FIELDS as A017_FIELDS};
 use contracts::domain::a018_llm_chat::{ENTITY_METADATA as A018_META, FIELDS as A018_FIELDS};
 use contracts::domain::a019_llm_artifact::{ENTITY_METADATA as A019_META, FIELDS as A019_FIELDS};
+use contracts::domain::a020_wb_promotion::{ENTITY_METADATA as A020_META, FIELDS as A020_FIELDS};
 
 // ─── Структуры ──────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ impl MetadataRegistry {
                 RegistryEntry { meta: &A005_META, fields: A005_FIELDS, tags: &["ref"] },
                 RegistryEntry { meta: &A006_META, fields: A006_FIELDS, tags: &["ref", "wb", "ozon", "ym"] },
                 RegistryEntry { meta: &A012_META, fields: A012_FIELDS, tags: &["wb", "sales"] },
+                RegistryEntry { meta: &A020_META, fields: A020_FIELDS, tags: &["wb", "promotion"] },
                 RegistryEntry { meta: &A013_META, fields: A013_FIELDS, tags: &["ym", "sales"] },
                 RegistryEntry { meta: &A017_META, fields: A017_FIELDS, tags: &["llm"] },
                 RegistryEntry { meta: &A018_META, fields: A018_FIELDS, tags: &["llm"] },
