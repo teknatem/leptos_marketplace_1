@@ -55,6 +55,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             icon: "file-text",
             items: vec![
                 ("a015_wb_orders", "WB Orders", "file-text"),
+                ("a020_wb_promotion", "WB Акции (Календарь)", "tag"),
                 ("a013_ym_order", "YM Orders", "file-text"),
                 ("a010_ozon_fbs_posting", "OZON FBS Posting", "file-text"),
                 ("a011_ozon_fbo_posting", "OZON FBO Posting", "file-text"),

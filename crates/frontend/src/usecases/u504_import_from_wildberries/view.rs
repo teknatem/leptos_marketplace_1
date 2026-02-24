@@ -473,6 +473,14 @@ pub fn ImportWidget() -> impl IntoView {
                     aggregate="p908_wb_goods_prices"
                     selected_connection=selected_connection
                 />
+                <ServiceRow
+                    row_id="a020"
+                    title="Акции WB (Календарь)"
+                    description="a020_wb_promotion"
+                    aggregate="a020_wb_promotion"
+                    needs_period=true
+                    selected_connection=selected_connection
+                />
             </div>
             </div>
         </div>

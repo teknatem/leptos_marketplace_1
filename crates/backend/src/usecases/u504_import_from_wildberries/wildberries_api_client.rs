@@ -2395,6 +2395,278 @@ impl WildberriesApiClient {
 
         Ok(rows)
     }
+
+    /// GET /api/v1/calendar/promotions — список акций из WB Calendar API
+    pub async fn fetch_calendar_promotions(
+        &self,
+        connection: &ConnectionMP,
+        start_date_time: &str,
+        end_date_time: &str,
+        all_promo: bool,
+    ) -> Result<Vec<WbCalendarPromotion>> {
+        let url = format!(
+            "https://dp-calendar-api.wildberries.ru/api/v1/calendar/promotions?startDateTime={}&endDateTime={}&allPromo={}",
+            start_date_time, end_date_time, all_promo
+        );
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Promotion API");
+        }
+
+        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+
+        let response = match self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_msg = format!("HTTP request failed: {:?}", e);
+                self.log_to_file(&error_msg);
+                tracing::error!("WB Promotion API connection error: {}", e);
+                if e.is_timeout() {
+                    anyhow::bail!("Request timeout: WB Promotion API не ответил в течение 60 секунд");
+                } else if e.is_connect() {
+                    anyhow::bail!("Connection error: не удалось подключиться к dp-calendar-api.wildberries.ru");
+                } else {
+                    anyhow::bail!("Unknown error: {}", e);
+                }
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("WB Promotion API request failed: {}", body);
+            anyhow::bail!(
+                "WB Promotion Calendar API failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        let body_preview: String = body.chars().take(2000).collect();
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
+
+        let parsed: WbCalendarPromotionsResponse = serde_json::from_str(&body).map_err(|e| {
+            let snippet: String = body.chars().take(400).collect();
+            self.log_to_file(&format!("ERROR: Failed to parse JSON: {}\nRaw body: {}", e, snippet));
+            tracing::error!("WB Calendar Promotions parse error: {} | body: {}", e, snippet);
+            anyhow::anyhow!("Failed to parse WB Calendar Promotions response: {}", e)
+        })?;
+
+        let promotions = if let Some(data) = parsed.data {
+            let mut all = data.promotions;
+            all.extend(data.upcoming_promos);
+            all
+        } else {
+            vec![]
+        };
+        self.log_to_file(&format!("✓ Parsed {} promotions", promotions.len()));
+        tracing::info!("WB Calendar API: loaded {} promotions", promotions.len());
+
+        Ok(promotions)
+    }
+
+    /// GET /api/v1/calendar/promotions/details — детальная информация по списку акций (до 100 ID за раз)
+    pub async fn fetch_promotion_details(
+        &self,
+        connection: &ConnectionMP,
+        promotion_ids: &[i64],
+    ) -> Result<Vec<WbCalendarPromotionDetail>> {
+        if promotion_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Promotion Details API");
+        }
+
+        // Формируем query string: promotionIDs=1&promotionIDs=2&...
+        let query: String = promotion_ids
+            .iter()
+            .map(|id| format!("promotionIDs={}", id))
+            .collect::<Vec<_>>()
+            .join("&");
+
+        let url = format!(
+            "https://dp-calendar-api.wildberries.ru/api/v1/calendar/promotions/details?{}",
+            query
+        );
+
+        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+
+        let response = match self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("WB Promotion Details API connection error: {}", e);
+                anyhow::bail!("Promotion details request error: {}", e);
+            }
+        };
+
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                "WB Promotion Details API failed: {} - {}",
+                status,
+                err_body
+            );
+            return Ok(vec![]);
+        }
+
+        let body = response.text().await?;
+        let body_preview: String = body.chars().take(500).collect();
+        self.log_to_file(&format!("=== DETAILS RESPONSE ===\n{}\n", body_preview));
+
+        let parsed: WbCalendarPromotionDetailsResponse =
+            match serde_json::from_str(&body) {
+                Ok(p) => p,
+                Err(e) => {
+                    let snippet: String = body.chars().take(400).collect();
+                    tracing::error!(
+                        "WB Promotion Details parse error: {} | body: {}",
+                        e,
+                        snippet
+                    );
+                    return Ok(vec![]);
+                }
+            };
+
+        let details = parsed.data.map(|d| d.promotions).unwrap_or_default();
+        tracing::info!(
+            "WB Promotion Details: {} promotions loaded",
+            details.len()
+        );
+
+        Ok(details)
+    }
+
+    /// GET /api/v1/calendar/promotions/nomenclatures — список nmId товаров для акции
+    /// Обязательные параметры: promotionID + inAction
+    /// Не работает для акций типа "auto"
+    pub async fn fetch_promotion_nomenclatures(
+        &self,
+        connection: &ConnectionMP,
+        promotion_id: i64,
+        promotion_type: Option<&str>,
+    ) -> Result<Vec<i64>> {
+        // Автоматические акции не поддерживают этот эндпоинт
+        if promotion_type.map(|t| t == "auto").unwrap_or(false) {
+            tracing::debug!(
+                "Skipping nomenclatures for auto promotion {} (not supported)",
+                promotion_id
+            );
+            return Ok(vec![]);
+        }
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Promotion Nomenclatures API");
+        }
+
+        let mut all_nm_ids: Vec<i64> = Vec::new();
+        let page_size: u32 = 1000;
+
+        // Загружаем оба состояния: участвующие (inAction=true) и подходящие (inAction=false)
+        for in_action in [true, false] {
+            let mut offset: u32 = 0;
+            loop {
+                let url = format!(
+                    "https://dp-calendar-api.wildberries.ru/api/v1/calendar/promotions/nomenclatures?promotionID={}&inAction={}&limit={}&offset={}",
+                    promotion_id, in_action, page_size, offset
+                );
+
+                self.log_to_file(&format!(
+                    "=== REQUEST ===\nGET {}\nAuthorization: ****",
+                    url
+                ));
+
+                let response = match self
+                    .client
+                    .get(&url)
+                    .header("Authorization", &connection.api_key)
+                    .send()
+                    .await
+                {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        let error_msg = format!("HTTP request failed: {:?}", e);
+                        self.log_to_file(&error_msg);
+                        tracing::error!("WB Promotion Nomenclatures API connection error: {}", e);
+                        break;
+                    }
+                };
+
+                let status = response.status();
+                self.log_to_file(&format!("Response status: {}", status));
+
+                if !status.is_success() {
+                    let err_body = response.text().await.unwrap_or_default();
+                    self.log_to_file(&format!("ERROR Response body:\n{}", err_body));
+                    tracing::warn!(
+                        "WB Promotion Nomenclatures API failed for promotionID={} inAction={}: {} - {}",
+                        promotion_id, in_action, status, err_body
+                    );
+                    break;
+                }
+
+                let body = response.text().await.unwrap_or_default();
+                let body_preview: String = body.chars().take(500).collect();
+                self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
+
+                let parsed: WbPromotionNomenclaturesResponse =
+                    match serde_json::from_str(&body) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            let snippet: String = body.chars().take(400).collect();
+                            tracing::error!(
+                                "WB Promotion Nomenclatures parse error: {} | body: {}",
+                                e, snippet
+                            );
+                            break;
+                        }
+                    };
+
+                let items = parsed
+                    .data
+                    .map(|d| d.nomenclatures)
+                    .unwrap_or_default();
+
+                let page_len = items.len() as u32;
+                for item in items {
+                    if !all_nm_ids.contains(&item.nm_id) {
+                        all_nm_ids.push(item.nm_id);
+                    }
+                }
+
+                if page_len < page_size {
+                    break;
+                }
+                offset += page_size;
+            }
+        }
+
+        tracing::info!(
+            "WB Promotion Nomenclatures: {} unique nmIds for promotionID={}",
+            all_nm_ids.len(),
+            promotion_id
+        );
+
+        Ok(all_nm_ids)
+    }
+
 }
 
 impl Default for WildberriesApiClient {
@@ -3046,4 +3318,130 @@ pub struct WbGoodsSize {
     pub discounted_price: Option<f64>,
     #[serde(rename = "techSizeName", default)]
     pub tech_size_name: Option<String>,
+}
+
+// ============================================================================
+// WB Calendar Promotions API structures
+// ============================================================================
+
+/// Ответ GET /api/v1/calendar/promotions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotionsResponse {
+    #[serde(default)]
+    pub data: Option<WbCalendarPromotionsData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotionsData {
+    #[serde(default)]
+    pub promotions: Vec<WbCalendarPromotion>,
+    #[serde(rename = "upcomingPromos", default)]
+    pub upcoming_promos: Vec<WbCalendarPromotion>,
+}
+
+/// Одна акция из WB Calendar API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotion {
+    /// WB использует поле "id" (не "promotionID")
+    pub id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(rename = "startDateTime", default)]
+    pub start_date_time: Option<String>,
+    #[serde(rename = "endDateTime", default)]
+    pub end_date_time: Option<String>,
+    /// Тип акции: "auto", "regular", etc.
+    #[serde(rename = "type", default)]
+    pub promotion_type: Option<String>,
+    #[serde(rename = "exceptionProductsCount", default)]
+    pub exception_products_count: Option<i32>,
+    #[serde(rename = "inPromoActionTotal", default)]
+    pub in_promo_action_total: Option<i32>,
+}
+
+/// Ответ GET /api/v1/calendar/promotions/details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotionDetailsResponse {
+    #[serde(default)]
+    pub data: Option<WbCalendarPromotionDetailsData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotionDetailsData {
+    #[serde(default)]
+    pub promotions: Vec<WbCalendarPromotionDetail>,
+}
+
+/// Детальные данные акции из /details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbCalendarPromotionDetail {
+    pub id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub advantages: Vec<String>,
+    #[serde(rename = "startDateTime", default)]
+    pub start_date_time: Option<String>,
+    #[serde(rename = "endDateTime", default)]
+    pub end_date_time: Option<String>,
+    #[serde(rename = "inPromoActionLeftovers", default)]
+    pub in_promo_action_leftovers: Option<i32>,
+    #[serde(rename = "inPromoActionTotal", default)]
+    pub in_promo_action_total: Option<i32>,
+    #[serde(rename = "notInPromoActionLeftovers", default)]
+    pub not_in_promo_action_leftovers: Option<i32>,
+    #[serde(rename = "notInPromoActionTotal", default)]
+    pub not_in_promo_action_total: Option<i32>,
+    #[serde(rename = "participationPercentage", default)]
+    pub participation_percentage: Option<f64>,
+    #[serde(rename = "type", default)]
+    pub promotion_type: Option<String>,
+    #[serde(rename = "exceptionProductsCount", default)]
+    pub exception_products_count: Option<i32>,
+    #[serde(default)]
+    pub ranging: Vec<WbPromotionRanging>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbPromotionRanging {
+    #[serde(default)]
+    pub condition: Option<String>,
+    #[serde(rename = "participationRate", default)]
+    pub participation_rate: Option<f64>,
+    #[serde(default)]
+    pub boost: Option<f64>,
+}
+
+/// Ответ GET /api/v1/calendar/promotions/nomenclatures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbPromotionNomenclaturesResponse {
+    #[serde(default)]
+    pub data: Option<WbPromotionNomenclaturesData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbPromotionNomenclaturesData {
+    #[serde(default)]
+    pub nomenclatures: Vec<WbPromotionNmItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbPromotionNmItem {
+    /// API возвращает поле "id" (это nmId товара)
+    #[serde(rename = "id")]
+    pub nm_id: i64,
+    #[serde(rename = "inAction", default)]
+    pub in_action: bool,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(rename = "planPrice", default)]
+    pub plan_price: Option<f64>,
+    #[serde(default)]
+    pub discount: Option<f64>,
+    #[serde(rename = "planDiscount", default)]
+    pub plan_discount: Option<f64>,
 }

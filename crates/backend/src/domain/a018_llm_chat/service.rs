@@ -1,7 +1,8 @@
 use super::repository;
 use crate::domain::a017_llm_agent::repository as agent_repository;
 use crate::shared::llm::openai_provider::OpenAiProvider;
-use crate::shared::llm::types::{ChatMessage, LlmProvider};
+use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole, LlmProvider};
+use crate::shared::llm::{execute_tool_call, metadata_tool_definitions};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
@@ -11,6 +12,9 @@ use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+
+/// Максимальное число итераций tool calling в одном запросе
+const MAX_TOOL_ITERATIONS: usize = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatDto {
@@ -270,11 +274,13 @@ pub async fn send_message(
     for msg in &history {
         let chat_msg = ChatMessage {
             role: match msg.role {
-                ChatRole::System => crate::shared::llm::types::ChatRole::System,
-                ChatRole::User => crate::shared::llm::types::ChatRole::User,
-                ChatRole::Assistant => crate::shared::llm::types::ChatRole::Assistant,
+                ChatRole::System => LlmChatRole::System,
+                ChatRole::User => LlmChatRole::User,
+                ChatRole::Assistant => LlmChatRole::Assistant,
             },
-            content: msg.content.clone(),
+            content: Some(msg.content.clone()),
+            tool_calls: None,
+            tool_call_id: None,
         };
         llm_messages.push(chat_msg);
     }
@@ -288,13 +294,44 @@ pub async fn send_message(
         agent.max_tokens,
     );
 
-    // 9. Вызвать LLM и измерить время выполнения
+    // 9. Tool calling цикл: LLM вызывает инструменты метаданных по мере необходимости
+    let tool_defs = metadata_tool_definitions();
     let start = std::time::Instant::now();
-    let llm_response = provider
-        .chat_completion(llm_messages)
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+    let mut final_response = None;
+
+    for iteration in 0..MAX_TOOL_ITERATIONS {
+        let response = provider
+            .chat_completion_with_tools(llm_messages.clone(), tool_defs.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+
+        if !response.has_tool_calls() {
+            // Финальный ответ — LLM завершил работу
+            final_response = Some(response);
+            break;
+        }
+
+        tracing::debug!(
+            "Tool calling iteration {}: {} calls",
+            iteration + 1,
+            response.tool_calls.len()
+        );
+
+        // Добавить ответ ассистента с tool_calls в историю сообщений
+        llm_messages.push(ChatMessage::assistant_with_tool_calls(response.tool_calls.clone()));
+
+        // Выполнить каждый tool call и добавить результаты
+        for tool_call in &response.tool_calls {
+            let result = execute_tool_call(tool_call);
+            tracing::debug!("Tool '{}' result: {}", tool_call.name, &result[..result.len().min(200)]);
+            llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
+        }
+    }
+
     let duration_ms = start.elapsed().as_millis() as i64;
+
+    let llm_response = final_response
+        .ok_or_else(|| anyhow::anyhow!("LLM exceeded maximum tool calling iterations ({})", MAX_TOOL_ITERATIONS))?;
 
     // 10. Сохранить ответ ассистента с метаданными
     let assistant_msg = LlmChatMessage::new_with_metadata(

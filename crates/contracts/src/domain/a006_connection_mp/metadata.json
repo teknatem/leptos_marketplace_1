@@ -1,0 +1,141 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "ConnectionMP",
+  "entity_index": "a006",
+  "collection_name": "connection_mp",
+  "table_name": "a006_connection_mp",
+
+  "ui": {
+    "element_name": "Подключение маркетплейса",
+    "element_name_en": "Marketplace Connection",
+    "list_name": "Подключения маркетплейсов",
+    "list_name_en": "Marketplace Connections",
+    "icon": "plug"
+  },
+
+  "ai": {
+    "description": "Подключения к торговым площадкам — один магазин на WB, Ozon или Яндекс.Маркет. Содержит API-ключи и идентификаторы магазинов. Используется как основной идентификатор магазина во всех документах продаж. Поле description содержит понятное название магазина.",
+    "questions": [
+      "Сколько магазинов подключено?",
+      "Какие магазины WB есть в системе?",
+      "Какой connection_id у магазина X?",
+      "Какая выручка по каждому магазину?"
+    ],
+    "related": [
+      "a002_organization",
+      "a005_marketplace",
+      "a012_wb_sales",
+      "a013_ym_order"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "ConnectionMPId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения. Используется как FK в a012_wb_sales (connection_id), a013_ym_order (connection_id) и в проекциях (connection_mp_ref)."
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Название магазина",
+        "label_en": "Shop Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 250
+      },
+      "validation": { "required": true },
+      "ai_hint": "Понятное название магазина (например: 'WB - Основной магазин', 'Ozon - ИП Иванов'). Для отображения в отчётах: JOIN с a006_connection_mp по connection_id = id."
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": {
+        "label": "Маркетплейс",
+        "label_en": "Marketplace",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса из a005_marketplace. JOIN: a006_connection_mp.marketplace_id = a005_marketplace.id."
+    },
+    {
+      "name": "organization_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": {
+        "label": "Организация",
+        "label_en": "Organization",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization. JOIN: a006_connection_mp.organization_ref = a002_organization.id."
+    },
+    {
+      "name": "is_used",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Используется",
+        "label_en": "Is Used",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 100
+      },
+      "validation": { "required": false },
+      "ai_hint": "true если подключение активно и используется для получения данных."
+    },
+    {
+      "name": "planned_commission_percent",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Плановая комиссия %",
+        "label_en": "Planned Commission %",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Плановый процент комиссии маркетплейса для этого магазина. Используется в расчёте плановой прибыли."
+    }
+  ]
+}

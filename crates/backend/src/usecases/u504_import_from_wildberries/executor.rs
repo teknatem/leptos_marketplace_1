@@ -1,7 +1,7 @@
 use super::{
     progress_tracker::ProgressTracker,
     wildberries_api_client::WildberriesApiClient,
-    processors::{product, sales, order, finance_report, commission, goods_prices},
+    processors::{product, sales, order, finance_report, commission, goods_prices, promotion},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -51,6 +51,7 @@ impl ImportExecutor {
                 "p903_wb_finance_report" => "Финансовый отчет WB",
                 "p905_wb_commission_history" => "История комиссий WB",
                 "p908_wb_goods_prices" => "Цены товаров WB",
+                "a020_wb_promotion" => "Акции WB (Календарь)",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -147,6 +148,15 @@ impl ImportExecutor {
                 }
                 "p908_wb_goods_prices" => {
                     self.import_wb_goods_prices(session_id, connection).await?;
+                }
+                "a020_wb_promotion" => {
+                    self.import_wb_promotions(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -777,6 +787,164 @@ impl ImportExecutor {
             "WB goods prices import completed: processed={}, upserted={}",
             total_processed,
             total_upserted
+        );
+
+        Ok(())
+    }
+
+    /// Импорт акций WB Calendar в a020
+    async fn import_wb_promotions(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a020_wb_promotion";
+        let mut total_processed = 0i32;
+        let mut total_new = 0i32;
+        let mut total_updated = 0i32;
+
+        tracing::info!(
+            "Importing WB calendar promotions for session: {}, period: {} - {}",
+            session_id,
+            date_from,
+            date_to
+        );
+
+        // Получить organization_id из connection
+        let organization_id = {
+            use contracts::domain::common::AggregateId;
+            let org_id = connection.organization_ref.clone();
+            if org_id.is_empty() {
+                tracing::warn!("organization_ref is empty for connection {}", connection.base.id.as_string());
+            }
+            org_id
+        };
+
+        // Форматируем даты в RFC3339 (WB ожидает ISO 8601 с временной зоной)
+        let start_dt = format!("{}T00:00:00Z", date_from.format("%Y-%m-%d"));
+        let end_dt = format!("{}T23:59:59Z", date_to.format("%Y-%m-%d"));
+
+        // Загружаем список акций
+        let promotions = match self
+            .api_client
+            .fetch_calendar_promotions(connection, &start_dt, &end_dt, false)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to fetch WB calendar promotions: {}", e);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    "Failed to fetch promotions list".to_string(),
+                    Some(e.to_string()),
+                );
+                self.progress_tracker
+                    .complete_aggregate(session_id, aggregate_index);
+                return Ok(());
+            }
+        };
+
+        tracing::info!("Found {} WB promotions in period", promotions.len());
+
+        // Batch-fetch details для всех акций (по 100 за раз)
+        let mut details_map: std::collections::HashMap<i64, crate::usecases::u504_import_from_wildberries::wildberries_api_client::WbCalendarPromotionDetail> =
+            std::collections::HashMap::new();
+        {
+            let all_ids: Vec<i64> = promotions.iter().map(|p| p.id).collect();
+            for chunk in all_ids.chunks(100) {
+                match self
+                    .api_client
+                    .fetch_promotion_details(connection, chunk)
+                    .await
+                {
+                    Ok(details_list) => {
+                        for d in details_list {
+                            details_map.insert(d.id, d);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch promotion details batch: {}", e);
+                    }
+                }
+            }
+            tracing::info!(
+                "Loaded details for {}/{} promotions",
+                details_map.len(),
+                promotions.len()
+            );
+        }
+
+        for promo in &promotions {
+            let promo_name = promo.name.clone().unwrap_or_else(|| format!("{}", promo.id));
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("{} - {}", promo.id, promo_name)),
+            );
+
+            // Загружаем список nmId товаров для этой акции (не работает для type="auto")
+            let promo_type = promo.promotion_type.as_deref();
+            let nm_ids = match self
+                .api_client
+                .fetch_promotion_nomenclatures(connection, promo.id, promo_type)
+                .await
+            {
+                Ok(ids) => ids,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to fetch nomenclatures for promotion {}: {}",
+                        promo.id,
+                        e
+                    );
+                    vec![]
+                }
+            };
+
+            let details = details_map.get(&promo.id);
+
+            match promotion::process_promotion(connection, &organization_id, promo, nm_ids, details).await {
+                Ok(is_new) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_new += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to process promotion {}: {}",
+                        promo.id,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process promotion {}", promo.id),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                Some(promotions.len() as i32),
+                total_new,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB promotions import completed: new={}, updated={}",
+            total_new,
+            total_updated
         );
 
         Ok(())

@@ -382,6 +382,27 @@ pub fn configure_business_routes() -> Router {
             "/api/a016/ym-returns/batch-unpost",
             post(handlers::a016_ym_returns::batch_unpost_documents),
         )
+        // A020 WB Promotions handlers
+        .route(
+            "/api/a020/wb-promotions",
+            get(handlers::a020_wb_promotion::list_promotions),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id",
+            get(handlers::a020_wb_promotion::get_promotion_detail),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id/post",
+            post(handlers::a020_wb_promotion::post_promotion),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id/unpost",
+            post(handlers::a020_wb_promotion::unpost_promotion),
+        )
+        .route(
+            "/api/a020/raw/:ref_id",
+            get(handlers::a020_wb_promotion::get_raw_json),
+        )
         // A017 LLM Agent handlers
         .route(
             "/api/a017-llm-agent",

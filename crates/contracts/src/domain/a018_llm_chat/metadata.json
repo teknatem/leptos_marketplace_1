@@ -103,8 +103,9 @@
     {
       "name": "agent_id",
       "rust_type": "LlmAgentId",
-      "field_type": "reference",
-      "source": "custom",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a017_llm_agent",
       "ui": {
         "label": "Агент LLM",
         "label_en": "LLM Agent",
@@ -112,11 +113,7 @@
         "visible_in_list": true,
         "visible_in_form": true,
         "column_width": 200,
-        "input_type": "select"
-      },
-      "reference": {
-        "entity": "a017_llm_agent",
-        "display_field": "description"
+        "widget": "select"
       },
       "validation": {
         "required": true
@@ -127,7 +124,7 @@
       "name": "model_name",
       "rust_type": "String",
       "field_type": "primitive",
-      "source": "custom",
+      "source": "specific",
       "ui": {
         "label": "Модель по умолчанию",
         "label_en": "Default Model",

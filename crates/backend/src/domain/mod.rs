@@ -17,3 +17,4 @@ pub mod a016_ym_returns;
 pub mod a017_llm_agent;
 pub mod a018_llm_chat;
 pub mod a019_llm_artifact;
+pub mod a020_wb_promotion;

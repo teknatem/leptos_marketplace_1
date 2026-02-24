@@ -1,0 +1,187 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "Nomenclature",
+  "entity_index": "a004",
+  "collection_name": "nomenclature",
+  "table_name": "a004_nomenclature",
+
+  "ui": {
+    "element_name": "Номенклатура",
+    "element_name_en": "Nomenclature",
+    "list_name": "Номенклатура",
+    "list_name_en": "Nomenclature",
+    "icon": "package"
+  },
+
+  "ai": {
+    "description": "Справочник товаров и категорий из 1С:УТ. Является иерархическим — записи с is_folder=1 это папки-категории, is_folder=0 это конкретные товары. Связывает внутренние артикулы с товарами на маркетплейсах через a007_marketplace_product. Используется для сопоставления nmId WB и offerId YM с конкретными товарами.",
+    "questions": [
+      "Сколько товаров в справочнике?",
+      "Какие товары в категории X?",
+      "Есть ли товар с артикулом ABC?",
+      "Какой артикул у товара с таким nmId WB?"
+    ],
+    "related": [
+      "a001_connection_1c",
+      "a007_marketplace_product",
+      "a012_wb_sales",
+      "a013_ym_order"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "NomenclatureId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID номенклатуры 1С. Используется как FK в других таблицах (nomenclature_ref, ext_nomenklature_ref)."
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код 1С",
+        "label_en": "1C Code",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": true, "max_length": 50 },
+      "ai_hint": "Внутренний код номенклатуры из 1С:УТ."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": { "required": true },
+      "ai_hint": "Краткое наименование товара из 1С. Для поиска товара по названию используй LIKE '%...%'."
+    },
+    {
+      "name": "article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Артикул",
+        "label_en": "Article",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Артикул товара из 1С. Соответствует supplier_article в продажах WB и shop_sku в заказах YM."
+    },
+    {
+      "name": "is_folder",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Папка",
+        "label_en": "Is Folder",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 80
+      },
+      "validation": { "required": false },
+      "ai_hint": "1 (true) если запись является папкой-категорией, 0 (false) если это конкретный товар. Для фильтрации только товаров: WHERE is_folder = 0."
+    },
+    {
+      "name": "dim1_category",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Категория",
+        "label_en": "Category",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false, "max_length": 40 },
+      "ai_hint": "Измерение 1: категория товара (например: 'Смесители', 'Душевые кабины')."
+    },
+    {
+      "name": "dim2_line",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Линейка",
+        "label_en": "Line",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false, "max_length": 40 },
+      "ai_hint": "Измерение 2: линейка / серия товара."
+    },
+    {
+      "name": "dim3_model",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Модель",
+        "label_en": "Model",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 200
+      },
+      "validation": { "required": false, "max_length": 80 },
+      "ai_hint": "Измерение 3: модель товара."
+    },
+    {
+      "name": "mp_ref_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Кол-во на МП",
+        "label_en": "MP Refs",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": false },
+      "ai_hint": "Количество записей в a007_marketplace_product, ссылающихся на эту номенклатуру. 0 означает отсутствие товара на маркетплейсах."
+    },
+    {
+      "name": "is_assembly",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Комплект",
+        "label_en": "Assembly",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 80
+      },
+      "validation": { "required": false },
+      "ai_hint": "Признак того, что товар является комплектом (сборкой из нескольких позиций)."
+    }
+  ]
+}

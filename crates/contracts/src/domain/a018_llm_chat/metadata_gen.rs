@@ -1,6 +1,6 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-02-23T07:35:23Z
+// Generated: 2026-02-24T13:55:25Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -153,8 +153,8 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "agent_id",
         rust_type: "LlmAgentId",
-        field_type: FieldType::Reference,
-        source: FieldSource::Custom,
+        field_type: FieldType::AggregateRef,
+        source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Агент LLM",
             label_en: Some("LLM Agent"),
@@ -162,7 +162,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             hint: Some("Какой агент используется для этого чата"),
             visible_in_list: true,
             visible_in_form: true,
-            widget: None,
+            widget: Some("select"),
             column_width: Some(200),
         },
         validation: ValidationRules {
@@ -176,14 +176,14 @@ pub const FIELDS: &[FieldMetadata] = &[
         },
         ai_hint: Some("Ссылка на агента LLM (a017_llm_agent), который используется для генерации ответов в этом чате"),
         nested_fields: None,
-        ref_aggregate: None,
+        ref_aggregate: Some("a017_llm_agent"),
         enum_values: None,
     },
     FieldMetadata {
         name: "model_name",
         rust_type: "String",
         field_type: FieldType::Primitive,
-        source: FieldSource::Custom,
+        source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Модель по умолчанию",
             label_en: Some("Default Model"),
