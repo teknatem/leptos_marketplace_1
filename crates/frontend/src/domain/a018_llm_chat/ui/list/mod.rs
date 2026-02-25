@@ -34,9 +34,12 @@ pub fn LlmChatList() -> impl IntoView {
         show_create_modal.set(true);
     };
 
-    let handle_open_chat = move |id: String| {
+    let handle_open_chat = move |id: String, description: String| {
+        use crate::layout::tabs::{detail_tab_label, pick_identifier};
+        use contracts::domain::a018_llm_chat::ENTITY_METADATA as A018;
         let tab_key = format!("a018_llm_chat_detail_{}", id);
-        let tab_label = format!("Чат");
+        let identifier = pick_identifier(None, None, Some(&description), &id);
+        let tab_label = detail_tab_label(A018.ui.element_name, identifier);
         tabs_store.open_tab(&tab_key, &tab_label);
     };
 
@@ -101,6 +104,7 @@ pub fn LlmChatList() -> impl IntoView {
                         let id = item.id.clone();
                         let id_for_link = id.clone();
                         let id_for_delete = id.clone();
+                        let description_for_link = item.description.clone();
                         
                         let msg_count = item.message_count.unwrap_or(0);
                         let last_msg = item.last_message_at.map(|dt| {
@@ -117,7 +121,7 @@ pub fn LlmChatList() -> impl IntoView {
                                             style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                             on:click=move |e| {
                                                 e.prevent_default();
-                                                handle_open_chat(id_for_link.clone());
+                                                handle_open_chat(id_for_link.clone(), description_for_link.clone());
                                             }
                                         >
                                             {item.description.clone()}
@@ -170,7 +174,7 @@ pub fn LlmChatList() -> impl IntoView {
                                         let handle = handle.clone();
                                         move |chat_id: String| {
                                             handle.close();
-                                            handle_open_chat(chat_id);
+                                            handle_open_chat(chat_id, String::new());
                                             fetch();
                                         }
                                     })

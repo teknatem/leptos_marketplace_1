@@ -1,16 +1,15 @@
-pub mod state;
-
-use self::state::create_state;
 use crate::domain::a005_marketplace::ui::details::MarketplaceDetails;
 use crate::shared::api_utils::api_base;
-use crate::shared::components::table_checkbox::TableCheckbox;
+use crate::shared::components::table::TableCrosshairHighlight;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use thaw::*;
 
 #[derive(Clone, Debug)]
 pub struct MarketplaceRow {
@@ -46,7 +45,6 @@ fn format_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
 impl Sortable for MarketplaceRow {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
-            "code" => self.code.to_lowercase().cmp(&other.code.to_lowercase()),
             "description" => self
                 .description
                 .to_lowercase()
@@ -62,15 +60,18 @@ impl Sortable for MarketplaceRow {
     }
 }
 
+const TABLE_ID: &str = "a005-marketplace-table";
+const COLUMN_WIDTHS_KEY: &str = "a005_marketplace_column_widths";
+
 #[component]
 #[allow(non_snake_case)]
 pub fn MarketplaceList() -> impl IntoView {
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
-    let state = create_state();
     let (items, set_items) = signal::<Vec<MarketplaceRow>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected, set_selected) = signal::<HashSet<String>>(HashSet::new());
+    let (sort_field, set_sort_field) = signal::<String>("description".to_string());
+    let (sort_ascending, set_sort_ascending) = signal::<bool>(true);
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -85,35 +86,44 @@ pub fn MarketplaceList() -> impl IntoView {
         });
     };
 
+    let toggle_sort = move |field: &'static str| {
+        move |_| {
+            if sort_field.get() == field {
+                set_sort_ascending.update(|v| *v = !*v);
+            } else {
+                set_sort_field.set(field.to_string());
+                set_sort_ascending.set(true);
+            }
+        }
+    };
+
+    let sorted_items = move || {
+        let mut v = items.get();
+        sort_list(&mut v, &sort_field.get(), sort_ascending.get());
+        v
+    };
+
     let open_details_modal = move |id: Option<String>| {
-        let id_val = id.clone();
+        modal_stack.clear();
         modal_stack.push_with_frame(
             Some("max-width: min(1100px, 95vw); width: min(1100px, 95vw);".to_string()),
             Some("marketplace-modal".to_string()),
             move |handle| {
+                let handle_saved = handle.clone();
+                let handle_cancel = handle.clone();
                 view! {
                     <MarketplaceDetails
-                        id=id_val.clone()
-                        on_saved=Callback::new({
-                            let handle = handle.clone();
-                            move |_| {
-                                handle.close();
-                                fetch();
-                            }
+                        id=id.clone()
+                        on_saved=Callback::new(move |_| {
+                            handle_saved.close();
+                            fetch();
                         })
-                        on_cancel=Callback::new({
-                            let handle = handle.clone();
-                            move |_| handle.close()
-                        })
+                        on_cancel=Callback::new(move |_| handle_cancel.close())
                     />
                 }
                 .into_any()
             },
         );
-    };
-
-    let handle_create_new = move || {
-        open_details_modal(None);
     };
 
     let handle_edit = move |id: String| {
@@ -123,213 +133,131 @@ pub fn MarketplaceList() -> impl IntoView {
         }
     };
 
-    let toggle_select = move |id: String, checked: bool| {
-        set_selected.update(|s| {
-            if checked {
-                s.insert(id.clone());
-            } else {
-                s.remove(&id);
-            }
-        });
-    };
-
-    let clear_selection = move || set_selected.set(HashSet::new());
-
-    let toggle_sort = move |field: &'static str| {
-        move |_| {
-            state.update(|s| {
-                if s.sort_field == field {
-                    s.sort_ascending = !s.sort_ascending;
-                } else {
-                    s.sort_field = field.to_string();
-                    s.sort_ascending = true;
-                }
-            });
-        }
-    };
-
-    let sorted_items = move || {
-        let mut items_vec = items.get();
-        let s = state.get();
-        sort_list(&mut items_vec, &s.sort_field, s.sort_ascending);
-        items_vec
-    };
-
-    let delete_selected = move || {
-        let ids: Vec<String> = selected.get().into_iter().collect();
-        if ids.is_empty() {
-            return;
-        }
-
-        let count = ids.len();
-        // Simple confirm dialog via browser
-        let confirmed = {
-            if let Some(win) = web_sys::window() {
-                win.confirm_with_message(&format!(
-                    "Удалить выбранные элементы? Количество: {}",
-                    count
-                ))
-                .unwrap_or(false)
-            } else {
-                false
-            }
-        };
-        if !confirmed {
-            return;
-        }
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut all_ok = true;
-            for id in ids {
-                if let Err(_) = delete_marketplace(&id).await {
-                    all_ok = false;
-                }
-            }
-            if all_ok {
-                // refresh list and clear selection
-                // Use window setTimeout microtask to avoid borrowing issues
-                let _ = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(
-                    &wasm_bindgen::JsValue::UNDEFINED,
-                ))
-                .await;
-            }
-        });
-        // Immediately refetch and clear selection (optimistic)
-        fetch();
-        clear_selection();
-    };
-
     fetch();
 
+    let resize_initialized = leptos::prelude::StoredValue::new(false);
+    Effect::new(move |_| {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
+
     view! {
-        <div class="content">
+        <div class="page">
             <div class="page__header">
                 <div class="page__header-left">
-                    <h2 class="page__title">{"Маркетплейсы"}</h2>
+                    <h1 class="page__title">{"Маркетплейсы"}</h1>
                 </div>
                 <div class="page__header-right">
-                    <button class="button button--primary" on:click=move |_| handle_create_new()>
-                        {icon("plus")}
-                        {"Новый маркетплейс"}
-                    </button>
-                    <button class="button button--primary" on:click=move |_| {
-                        wasm_bindgen_futures::spawn_local(async move {
-                            match fill_test_data().await {
-                                Ok(_) => fetch(),
-                                Err(e) => set_error.set(Some(format!("Ошибка заполнения: {}", e))),
-                            }
-                        });
-                    }>
-                        {icon("download")}
-                        {"Заполнить"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| fetch()>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| fetch()
+                    >
                         {icon("refresh")}
-                        {"Обновить"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| delete_selected() disabled={move || selected.get().is_empty()}>
-                        {icon("delete")}
-                        {move || format!("Удалить ({})", selected.get().len())}
-                    </button>
+                        " Обновить"
+                    </Button>
                 </div>
             </div>
 
-            {move || error.get().map(|e| view! { <div class="error">{e}</div> })}
+            <div class="page__content">
+                {move || error.get().map(|e| view! {
+                    <div class="warning-box warning-box--error">
+                        <span class="warning-box__icon">"⚠"</span>
+                        <span class="warning-box__text">{e}</span>
+                    </div>
+                })}
 
-            <div class="table-container">
-                <table class="table__data table--striped">
-                    <thead class="table__head">
-                        <tr>
-                            <th class="table__header-cell table__header-cell--checkbox">
-                                <input
-                                    type="checkbox"
-                                    class="table__checkbox"
-                                    on:change=move |ev| {
-                                        let checked = event_target_checked(&ev);
-                                        let current_items = items.get();
-                                        if checked {
-                                            set_selected.update(|s| {
-                                                for item in current_items.iter() {
-                                                    s.insert(item.id.clone());
-                                                }
-                                            });
-                                        } else {
-                                            set_selected.set(HashSet::new());
-                                        }
-                                    }
-                                />
-                            </th>
-                            <th class="table__header-cell">{"Логотип"}</th>
-                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("code")>
-                                "Код"
-                                <span class={move || get_sort_class(&state.get().sort_field, "code")}>
-                                    {move || get_sort_indicator(&state.get().sort_field, "code", state.get().sort_ascending)}
-                                </span>
-                            </th>
-                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("description")>
-                                "Наименование"
-                                <span class={move || get_sort_class(&state.get().sort_field, "description")}>
-                                    {move || get_sort_indicator(&state.get().sort_field, "description", state.get().sort_ascending)}
-                                </span>
-                            </th>
-                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("url")>
-                                "URL"
-                                <span class={move || get_sort_class(&state.get().sort_field, "url")}>
-                                    {move || get_sort_indicator(&state.get().sort_field, "url", state.get().sort_ascending)}
-                                </span>
-                            </th>
-                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("comment")>
-                                "Комментарий"
-                                <span class={move || get_sort_class(&state.get().sort_field, "comment")}>
-                                    {move || get_sort_indicator(&state.get().sort_field, "comment", state.get().sort_ascending)}
-                                </span>
-                            </th>
-                            <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("created_at")>
-                                "Создано"
-                                <span class={move || get_sort_class(&state.get().sort_field, "created_at")}>
-                                    {move || get_sort_indicator(&state.get().sort_field, "created_at", state.get().sort_ascending)}
-                                </span>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {move || sorted_items().into_iter().map(|row| {
-                            let id = row.id.clone();
-                            let id_for_checkbox = id.clone();
-                            let id_for_toggle = id.clone();
-                            let id_for_selected = id.clone();
-                            let id_for_click = id.clone();
-                            let logo_path = row.logo_path.clone();
-                            view! {
-                                <tr
-                                    class="table__row"
-                                    class:table__row--selected={move || selected.get().contains(&id_for_selected)}
-                                    on:click=move |_| handle_edit(id_for_click.clone())
+                <div class="table-wrapper">
+                    <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 700px;">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHeaderCell
+                                    resizable=false
+                                    attr:style="width: 50px; min-width: 50px; max-width: 50px;"
                                 >
-                                    <TableCheckbox
-                                        checked=Signal::derive(move || selected.get().contains(&id_for_checkbox))
-                                        on_change=Callback::new(move |checked| toggle_select(id_for_toggle.clone(), checked))
-                                    />
-                                    <td class="table__cell">
-                                        {move || if let Some(ref path) = logo_path {
-                                            view! { <img src={path.clone()} alt="logo" style="max-width: 32px; max-height: 32px;" /> }.into_any()
-                                        } else {
-                                            view! { <span>{"-"}</span> }.into_any()
-                                        }}
-                                    </td>
-                                    <td class="table__cell">{row.code}</td>
-                                    <td class="table__cell">{row.description}</td>
-                                    <td class="table__cell">{row.url}</td>
-                                    <td class="table__cell">{row.comment}</td>
-                                    <td class="table__cell">{row.created_at}</td>
-                                </tr>
-                            }
-                        }).collect_view()}
-                    </tbody>
-                </table>
+                                    {"Лого"}
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=200.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("description")>
+                                        "Наименование"
+                                        <span class=move || get_sort_class(&sort_field.get(), "description")>
+                                            {move || get_sort_indicator(&sort_field.get(), "description", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=200.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("url")>
+                                        "URL"
+                                        <span class=move || get_sort_class(&sort_field.get(), "url")>
+                                            {move || get_sort_indicator(&sort_field.get(), "url", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("comment")>
+                                        "Комментарий"
+                                        <span class=move || get_sort_class(&sort_field.get(), "comment")>
+                                            {move || get_sort_indicator(&sort_field.get(), "comment", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("created_at")>
+                                        "Создано"
+                                        <span class=move || get_sort_class(&sort_field.get(), "created_at")>
+                                            {move || get_sort_indicator(&sort_field.get(), "created_at", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {move || sorted_items().into_iter().map(|row| {
+                                let id = row.id.clone();
+                                let id_for_link = id.clone();
+                                let logo_path = row.logo_path.clone();
+                                view! {
+                                    <TableRow on:click=move |_| handle_edit(id.clone())>
+                                        <TableCell attr:style="width: 60px; max-width: 60px; padding: 4px 8px;">
+                                            {if let Some(path) = logo_path {
+                                                view! {
+                                                    <img src={path} alt="logo" style="max-width: 40px; max-height: 24px; display: block; object-fit: contain;" />
+                                                }.into_any()
+                                            } else {
+                                                view! { <span style="color: var(--color-text-tertiary);">{"—"}</span> }.into_any()
+                                            }}
+                                        </TableCell>
+                                        <TableCell>
+                                            <TableCellLayout truncate=true>
+                                                <a
+                                                    href="#"
+                                                    style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                                    on:click=move |e| {
+                                                        e.prevent_default();
+                                                        e.stop_propagation();
+                                                        handle_edit(id_for_link.clone());
+                                                    }
+                                                >
+                                                    {row.description}
+                                                </a>
+                                            </TableCellLayout>
+                                        </TableCell>
+                                        <TableCell><TableCellLayout truncate=true>{row.url}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout truncate=true>{row.comment}</TableCellLayout></TableCell>
+                                        <TableCell><TableCellLayout truncate=true>{row.created_at}</TableCellLayout></TableCell>
+                                    </TableRow>
+                                }
+                            }).collect_view()}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
-
-            // Details is opened via ModalStackService
         </div>
     }
 }
@@ -363,56 +291,4 @@ async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: Vec<Marketplace> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
-}
-
-async fn delete_marketplace(id: &str) -> Result<(), String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let opts = RequestInit::new();
-    opts.set_method("DELETE");
-    opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/marketplace/{}", api_base(), id);
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    Ok(())
-}
-
-async fn fill_test_data() -> Result<(), String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let opts = RequestInit::new();
-    opts.set_method("POST");
-    opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/marketplace/testdata", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    Ok(())
 }

@@ -5,6 +5,7 @@
 Единый стандарт для всех модальных окон и форм в системе.
 
 **Приоритет**: Thaw-first + hybrid
+
 - По возможности используем **компоненты Thaw UI** и их стили.
 - Там, где Thaw не покрывает кейс/нужна точная разметка, используем **наши core-классы** из `crates/frontend/static/themes/core/components.css` (например `.modal-*`, `.form__*`, `.button`, `.card`).
 
@@ -12,15 +13,15 @@
 
 ## Эталонные файлы
 
-| Компонент           | Файл                                                          | Описание                    |
-| ------------------- | ------------------------------------------------------------- | --------------------------- |
-| CSS entrypoint      | `crates/frontend/index.html`                                  | Подключает core + theme CSS |
-| Core CSS слои       | `crates/frontend/static/themes/core/index.css`                | tokens/base/layout/components/utilities |
-| Стили модальных/форм| `crates/frontend/static/themes/core/components.css`           | `.modal-*`, `.form__*`, `.button`, `.card` |
-| Dark theme modals   | `crates/frontend/static/themes/dark/dark.css`                 | Темная тема (строки 275-298)|
-| Light theme modals  | `crates/frontend/static/themes/light/light.css`               | Светлая тема (строки 277-300)|
-| Modal stack         | `crates/frontend/src/shared/modal_stack/mod.rs`               | `ModalStackService`, `ModalHost` |
-| Modal frame         | `crates/frontend/src/shared/modal_frame/mod.rs`               | `ModalFrame` (overlay + surface) |
+| Компонент            | Файл                                                | Описание                                   |
+| -------------------- | --------------------------------------------------- | ------------------------------------------ |
+| CSS entrypoint       | `crates/frontend/index.html`                        | Подключает core + theme CSS                |
+| Core CSS слои        | `crates/frontend/static/themes/core/index.css`      | tokens/base/layout/components/utilities    |
+| Стили модальных/форм | `crates/frontend/static/themes/core/components.css` | `.modal-*`, `.form__*`, `.button`, `.card` |
+| Dark theme modals    | `crates/frontend/static/themes/dark/dark.css`       | Темная тема (строки 275-298)               |
+| Light theme modals   | `crates/frontend/static/themes/light/light.css`     | Светлая тема (строки 277-300)              |
+| Modal stack          | `crates/frontend/src/shared/modal_stack/mod.rs`     | `ModalStackService`, `ModalHost`           |
+| Modal frame          | `crates/frontend/src/shared/modal_frame/mod.rs`     | `ModalFrame` (overlay + surface)           |
 
 ---
 
@@ -44,7 +45,7 @@ let open_modal = move |_| {
             view! {
                 // ModalFrame уже рисует overlay + surface `.modal`.
                 // Здесь — содержимое модалки (header+body по необходимости).
-                <div class="modal-header modal-header--compact">
+                <div class="modal-header">
                     <h2 class="modal-title">"Заголовок"</h2>
                     <div class="modal-header-actions">
                         <Button appearance=ButtonAppearance::Primary on_click=move |_| {/* save */}>
@@ -65,6 +66,7 @@ let open_modal = move |_| {
 ```
 
 **Ключевые правила:**
+
 1. **Модалки открываем через `ModalStackService`** (централизованный стек, Escape закрывает верхнюю).
 2. `ModalFrame` рисует только overlay+surface. **Header/кнопки — внутри контента** (или в header detail-экрана).
 3. Для UI — **Thaw-first**, а для кастомной разметки используем `.modal-*` и `.form__*` из core CSS.
@@ -72,17 +74,22 @@ let open_modal = move |_| {
 ### HTML Структура Modal (обновлено 2025-12-10)
 
 ```html
-<div class="modal-overlay">                <!-- Полупрозрачный фон -->
-  <div class="modal">                       <!-- Само модальное окно -->
-    <div class="modal-header">              <!-- Заголовок + кнопки действий + кнопка X -->
+<div class="modal-overlay">
+  <!-- Полупрозрачный фон -->
+  <div class="modal">
+    <!-- Само модальное окно -->
+    <div class="modal-header">
+      <!-- Заголовок + кнопки действий + кнопка X -->
       <h2 class="modal-title">Title</h2>
-      <div class="modal-header-actions">    <!-- Контейнер для кнопок -->
+      <div class="modal-header-actions">
+        <!-- Контейнер для кнопок -->
         <!-- Предпочтительно Thaw Button, но допустимы `.button ...` -->
         <button class="button button--primary">Save</button>
         <button class="button button--secondary">Cancel</button>
       </div>
     </div>
-    <div class="modal-body">                <!-- Содержимое (только поля формы) -->
+    <div class="modal-body">
+      <!-- Содержимое (только поля формы) -->
       <!-- Поля формы здесь, БЕЗ кнопок -->
     </div>
   </div>
@@ -90,6 +97,7 @@ let open_modal = move |_| {
 ```
 
 **Важные классы:**
+
 - `.modal-header-actions` - контейнер для кнопок (flexbox с gap)
 
 ---
@@ -101,6 +109,7 @@ let open_modal = move |_| {
 **Кнопки действий ВСЕГДА располагаются ВВЕРХУ формы (в modal-header), НЕ внизу!**
 
 #### ❌ Неправильно (старый подход):
+
 ```rust
 view! {
     <div class="modal-body">
@@ -117,9 +126,10 @@ view! {
 ```
 
 #### ✅ Правильно (новый стандарт):
+
 ```rust
 view! {
-    <div class="modal-header modal-header--compact">
+    <div class="modal-header">
         <h2 class="modal-title">"Edit Item"</h2>
         <div class="modal-header-actions">
             <Button appearance=ButtonAppearance::Primary on_click=move |_| handle_save(())>
@@ -138,6 +148,7 @@ view! {
 ```
 
 **Обоснование:**
+
 - Кнопки видны сразу при открытии модального окна
 - Не нужно скроллить вниз при длинных формах
 - Следует паттерну из bolt-mpi-ui-redesign
@@ -148,7 +159,7 @@ view! {
 **Кнопка сохранения должна называться "Save" (или "Сохранить" для русского интерфейса)**
 
 - ✅ "Save" / "Сохранить"
-- ❌ "Update" / "Обновить" 
+- ❌ "Update" / "Обновить"
 - ❌ "Create" / "Создать"
 
 Кнопка должна иметь единое название независимо от режима (создание/редактирование).
@@ -166,23 +177,24 @@ view! {
 
 ```html
 <div class="form__group">
-    <label class="form__label" for="field">Label</label>
-    <input class="form__input" type="text" id="field" />
+  <label class="form__label" for="field">Label</label>
+  <input class="form__input" type="text" id="field" />
 </div>
 
 <div class="form__group">
-    <label class="form__label" for="select">Select</label>
-    <select class="form__select" id="select">...</select>
+  <label class="form__label" for="select">Select</label>
+  <select class="form__select" id="select">
+    ...
+  </select>
 </div>
 
 <div class="form__group">
-    <label class="form__label" for="textarea">Textarea</label>
-    <textarea class="form__textarea" id="textarea"></textarea>
+  <label class="form__label" for="textarea">Textarea</label>
+  <textarea class="form__textarea" id="textarea"></textarea>
 </div>
 ```
 
 **CSS стили:** см. `crates/frontend/static/themes/core/components.css` (секция Forms).
-
 
 ### Чекбоксы
 
@@ -200,7 +212,7 @@ view! {
 
 ```css
 .modal-overlay {
-    background-color: rgba(0, 0, 0, 0.5);  /* Полупрозрачный черный */
+  background-color: rgba(0, 0, 0, 0.5); /* Полупрозрачный черный */
 }
 ```
 
@@ -208,10 +220,10 @@ view! {
 
 ```css
 .modal {
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(200, 200, 200, 0.5);
-    backdrop-filter: blur(15px);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(200, 200, 200, 0.5);
+  backdrop-filter: blur(15px);
 }
 ```
 
@@ -219,10 +231,10 @@ view! {
 
 ```css
 .modal {
-    background: rgba(30, 41, 59, 0.85);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(30px);
+  background: rgba(30, 41, 59, 0.85);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(30px);
 }
 ```
 
@@ -244,27 +256,31 @@ Labels берут цвет из CSS переменных (например `--fo
 
 ```css
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-    from {
-        transform: translateY(20px);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .modal-overlay {
-    animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .modal {
-    animation: slideUp 0.2s ease;
+  animation: slideUp 0.2s ease;
 }
 ```
 
@@ -316,7 +332,7 @@ let handle_edit = move |id: String| {
 ✅ Следующие модули уже используют новый Modal компонент:
 
 - `a001_connection_1c` - 1C соединения
-- `a002_organization` - Организации  
+- `a002_organization` - Организации
 - `a005_marketplace` - Маркетплейсы
 - `a006_connection_mp` - Соединения с маркетплейсами
 - `a007_marketplace_product` - Товары маркетплейсов
@@ -342,13 +358,14 @@ let handle_edit = move |id: String| {
 
 Проект **bolt-mpi-ui-redesign** (`E:\\dev\\bolt\\bolt-mpi-ui-redesign`) остаётся визуальным референсом.\n
 Источник истины по CSS в этом репозитории:\n
+
 - `crates/frontend/static/themes/core/index.css`\n
 - `crates/frontend/static/themes/core/components.css`\n
 - `crates/frontend/static/themes/{theme}/{theme}.css`\n
 
 **Ключевые размеры из bolt:**
+
 - Input height: 30px
 - Input padding: 5px 12px
 - Form group margin-bottom: var(--spacing-md) = 16px
 - Border radius: var(--border-radius-md) = 6px
-

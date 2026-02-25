@@ -795,10 +795,13 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     // Открыть детальный просмотр
-    let open_detail = move |id: String, sale_id: String| {
+    let open_detail = move |id: String, document_no: String| {
+        use crate::layout::tabs::{detail_tab_label, pick_identifier};
+        use contracts::domain::a012_wb_sales::ENTITY_METADATA as A012;
+        let identifier = pick_identifier(Some(&document_no), None, None, &id);
         tabs_store.open_tab(
             &format!("a012_wb_sales_detail_{}", id),
-            &format!("WB Sales {}", sale_id),
+            &detail_tab_label(A012.ui.element_name, identifier),
         );
     };
 
@@ -1276,6 +1279,7 @@ pub fn WbSalesList() -> impl IntoView {
                                             key=|item| item.id.clone()
                                             children=move |item| {
                                                 let id = item.id.clone();
+                                                let document_no = item.document_no.clone();
                                                 let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
                                                 let date = format_date(&item.sale_date);
                                                 let op_date = item.operation_date.clone().unwrap_or_else(|| "—".to_string());
@@ -1291,7 +1295,7 @@ pub fn WbSalesList() -> impl IntoView {
                                                 let finished = item.finished_price;
 
                                                 let id_for_open = id.clone();
-                                                let sale_id_for_title = sale_id.clone();
+                                                let document_no_for_title = document_no.clone();
 
                                                 view! {
                                                 <TableRow>
@@ -1309,7 +1313,7 @@ pub fn WbSalesList() -> impl IntoView {
                                                                 style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                                 on:click=move |e| {
                                                                     e.prevent_default();
-                                                                    open_detail(id_for_open.clone(), sale_id_for_title.clone());
+                                                                    open_detail(id_for_open.clone(), document_no_for_title.clone());
                                                                 }
                                                             >
                                                                 {sale_id}

@@ -482,10 +482,13 @@ pub fn YmReturnsList() -> impl IntoView {
     };
 
     // Open detail view
-    let open_detail = move |id: String| {
+    let open_detail = move |id: String, return_id: i64| {
+        use crate::layout::tabs::{detail_tab_label, pick_identifier};
+        let return_id_str = return_id.to_string();
+        let identifier = pick_identifier(Some(&return_id_str), None, None, &id);
         global_ctx.open_tab(
             &format!("a016_ym_returns_detail_{}", id),
-            &format!("YM Return {}", &id[..8.min(id.len())]),
+            &detail_tab_label("YM Возврат", identifier),
         );
     };
 
@@ -916,6 +919,7 @@ pub fn YmReturnsList() -> impl IntoView {
                                     let id_for_click = id.clone();
                                     let id_for_checkbox = id.clone();
                                     let id_for_checkbox2 = id.clone();
+                                    let return_id = item.return_id;
                                     let is_selected = state.get().selected_ids.contains(&id);
 
                                     let return_type_style = match item.return_type.as_str() {
@@ -946,11 +950,11 @@ pub fn YmReturnsList() -> impl IntoView {
                                                 checked=Signal::derive(move || state.get().selected_ids.contains(&id_for_checkbox))
                                                 on_change=Callback::new(move |_checked| toggle_select(id_for_checkbox2.clone()))
                                             />
-                                            <td class="table__cell" style="cursor: pointer;" on:click=move |_| open_detail(id_for_click.clone())>
+                                            <td class="table__cell" style="cursor: pointer;" on:click=move |_| open_detail(id_for_click.clone(), return_id)>
                                                 {format_datetime(&item.created_at_source)}
                                             </td>
-                                            <td class="table__cell" style="cursor: pointer; font-weight: 600; color: var(--color-primary);" on:click=move |_| open_detail(id.clone())>
-                                                {item.return_id}
+                                            <td class="table__cell" style="cursor: pointer; font-weight: 600; color: var(--color-primary);" on:click=move |_| open_detail(id.clone(), return_id)>
+                                                {return_id}
                                             </td>
                                             <td class="table__cell">{item.order_id}</td>
                                             <td class="table__cell">

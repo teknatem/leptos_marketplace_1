@@ -366,8 +366,11 @@ pub fn NomenclatureList() -> impl IntoView {
     // Open details in tab
     let open_details_tab = {
         let tabs_store = tabs_store;
-        move |id: String| {
-            let title = format!("Номенклатура {}", id.chars().take(8).collect::<String>());
+        move |id: String, article: String, description: String| {
+            use crate::layout::tabs::{detail_tab_label, pick_identifier};
+            use contracts::domain::a004_nomenclature::ENTITY_METADATA as A004;
+            let identifier = pick_identifier(None, Some(&article), Some(&description), &id);
+            let title = detail_tab_label(A004.ui.element_name, identifier);
             tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", id), &title);
         }
     };
@@ -715,7 +718,11 @@ pub fn NomenclatureList() -> impl IntoView {
                                 let id = row.base.id.as_string();
                                 let id_for_checkbox = id.clone();
                                 let id_for_checkbox2 = id.clone();
+                                let article_for_tab = row.article.clone();
+                                let description_for_tab = row.base.description.clone();
                                 let id_for_open_article = id.clone();
+                                let article_for_open_article = article_for_tab.clone();
+                                let description_for_open_article = description_for_tab.clone();
                                 let id_for_open_desc = id.clone();
 
                                 view! {
@@ -724,8 +731,8 @@ pub fn NomenclatureList() -> impl IntoView {
                                                         <input
                                                             type="checkbox"
                                                             class="table__checkbox"
-                                                prop:checked=move || state.get().selected_ids.contains(&id_for_checkbox)
-                                                on:change=move |ev| {
+                                               prop:checked=move || state.get().selected_ids.contains(&id_for_checkbox)
+                                               on:change=move |ev| {
                                                     toggle_select(id_for_checkbox2.clone(), event_target_checked(&ev));
                                                 }
                                             />
@@ -738,7 +745,7 @@ pub fn NomenclatureList() -> impl IntoView {
                                                     style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        open_details_tab(id_for_open_article.clone());
+                                                        open_details_tab(id_for_open_article.clone(), article_for_open_article.clone(), description_for_open_article.clone());
                                                     }
                                                 >
                                                     {row.article}
@@ -753,7 +760,7 @@ pub fn NomenclatureList() -> impl IntoView {
                                                     style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        open_details_tab(id_for_open_desc.clone());
+                                                        open_details_tab(id_for_open_desc.clone(), article_for_tab.clone(), description_for_tab.clone());
                                                     }
                                                 >
                                                     {row.base.description}
