@@ -254,10 +254,12 @@ pub fn MarketplaceProductList() -> impl IntoView {
         }
     };
 
-    let open_detail = move |id: String| {
+    let open_detail = move |id: String, article: String, description: String| {
+        use crate::layout::tabs::{detail_tab_label, pick_identifier};
+        let identifier = pick_identifier(None, Some(&article), Some(&description), &id);
         global_ctx.open_tab(
             &format!("a007_marketplace_product_detail_{}", id),
-            &format!("MP Prod {}", &id[..8.min(id.len())]),
+            &detail_tab_label("Товар МП", identifier),
         );
     };
 
@@ -515,6 +517,8 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                     let id = item.id.clone();
                                     let id_for_click = id.clone();
                                     let id_for_checkbox = id.clone();
+                                    let article_for_tab = item.article.clone();
+                                    let description_for_tab = item.description.clone();
                                     let is_selected = state.get().selected_ids.contains(&id);
                                     let search = state.get().search;
 
@@ -536,7 +540,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                             </td>
                                             <td class="table__cell" style="cursor: pointer; color: var(--color-primary); font-weight: 600;" on:click={
                                                 let id = id_for_click.clone();
-                                                move |_| open_detail(id.clone())
+                                                move |_| open_detail(id.clone(), article_for_tab.clone(), description_for_tab.clone())
                                             }>
                                                 {highlight_matches(&item.code, &search)}
                                             </td>

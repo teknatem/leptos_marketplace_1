@@ -495,7 +495,7 @@ where
     view! {
         <div class="modal-overlay" on:click=move |_| on_close()>
             <div class="modal" on:click=move |ev| ev.stop_propagation()>
-                <div class="modal-header modal-header--compact">
+                <div class="modal-header">
                     <h3 class="modal-title">{format!("Редактирование: {}", user.username)}</h3>
                     <div class="modal-header-actions">
                         <button class="button button--ghost" on:click=move |_| on_close()>"×"</button>

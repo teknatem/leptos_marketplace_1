@@ -107,7 +107,7 @@
 
 .form__group {
   margin-bottom: 0px;
-  margin-top: 0px;
+  margin-top: 4px;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -1081,10 +1081,6 @@ th.resizable {
   align-items: center;
 }
 
-/* Modal Header Compact (without top padding) */
-.modal-header--compact {
-  padding-top: 0;
-}
 
 /* Wide modal variant */
 .modal-content-wide {

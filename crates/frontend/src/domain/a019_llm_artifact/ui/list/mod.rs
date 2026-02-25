@@ -87,9 +87,13 @@ pub fn LlmArtifactList() -> impl IntoView {
 
     let handle_open_artifact = {
         let global_ctx = global_ctx.clone();
-        move |id: String| {
+        move |id: String, description: String| {
+            use crate::layout::tabs::{detail_tab_label, pick_identifier};
+            use contracts::domain::a019_llm_artifact::ENTITY_METADATA as A019;
             let key = format!("a019_llm_artifact_detail_{}", id);
-            global_ctx.open_tab(&key, "Артефакт");
+            let identifier = pick_identifier(None, None, Some(&description), &id);
+            let title = detail_tab_label(A019.ui.element_name, identifier);
+            global_ctx.open_tab(&key, &title);
         }
     };
 
@@ -146,6 +150,7 @@ pub fn LlmArtifactList() -> impl IntoView {
                             let id = item.id.clone();
                             let id_for_link = id.clone();
                             let id_for_delete = id.clone();
+                            let description_for_link = item.description.clone();
                             let handle_open = handle_open_artifact.clone();
 
                             let comment_short = item.comment.as_ref()
@@ -177,7 +182,7 @@ pub fn LlmArtifactList() -> impl IntoView {
                                                 style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                 on:click=move |e: web_sys::MouseEvent| {
                                                     e.prevent_default();
-                                                    handle_open(id_for_link.clone());
+                                                    handle_open(id_for_link.clone(), description_for_link.clone());
                                                 }
                                             >
                                                 {item.description.clone()}
