@@ -224,7 +224,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
     };
 
     view! {
-        <div class="finance-realization-list">
+        <div id="p902_ozon_finance_realization--list" data-page-category="legacy" class="finance-realization-list">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <h2 style="margin: 0; font-size: var(--font-size-h3);">
                     "OZON Finance Realization (P902)"

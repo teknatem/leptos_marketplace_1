@@ -403,6 +403,41 @@ pub fn configure_business_routes() -> Router {
             "/api/a020/raw/:ref_id",
             get(handlers::a020_wb_promotion::get_raw_json),
         )
+        // A021 Production Output handlers
+        .route(
+            "/api/a021/production-output/list",
+            get(handlers::a021_production_output::list_paginated),
+        )
+        .route(
+            "/api/a021/production-output/:id",
+            get(handlers::a021_production_output::get_by_id),
+        )
+        .route(
+            "/api/a021/production-output/:id/post",
+            post(handlers::a021_production_output::post_production_output),
+        )
+        .route(
+            "/api/a021/production-output/:id/unpost",
+            post(handlers::a021_production_output::unpost_production_output),
+        )
+        // A022 Kit Variant handlers
+        .route(
+            "/api/a022/kit-variant/list",
+            get(handlers::a022_kit_variant::list_paginated),
+        )
+        .route(
+            "/api/a022/kit-variant/:id",
+            get(handlers::a022_kit_variant::get_by_id),
+        )
+        // A023 Purchase of Goods handlers
+        .route(
+            "/api/a023/purchase-of-goods/list",
+            get(handlers::a023_purchase_of_goods::list_paginated),
+        )
+        .route(
+            "/api/a023/purchase-of-goods/:id",
+            get(handlers::a023_purchase_of_goods::get_by_id),
+        )
         // A017 LLM Agent handlers
         .route(
             "/api/a017-llm-agent",
@@ -526,6 +561,15 @@ pub fn configure_business_routes() -> Router {
         .route(
             "/api/u506/import/:session_id/progress",
             get(handlers::usecases::u506_get_progress),
+        )
+        // UseCase u507: Import from ERP (Production Output)
+        .route(
+            "/api/u507/import/start",
+            post(handlers::usecases::u507_start_import),
+        )
+        .route(
+            "/api/u507/import/:session_id/progress",
+            get(handlers::usecases::u507_get_progress),
         )
         // ========================================
         // PROJECTIONS (P900-P906)

@@ -590,7 +590,7 @@ pub fn SalesDataList() -> impl IntoView {
     };
 
     view! {
-        <div class="sales-data-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div id="p904_sales_data--list" data-page-category="legacy" class="sales-data-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
             // Header - Row 1: Title with Settings Buttons
             <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
                 <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: white; letter-spacing: 0.5px;">"📊 Sales Data (P904)"</h2>

@@ -11,29 +11,22 @@ use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, PlanFactTab, Projectio
 use super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
 /// Main component for WB Sales details
 #[component]
 pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
-    // Create ViewModel
     let vm = WbSalesDetailsVm::new();
-
-    // Get tabs_store for updating tab title
     let tabs_store =
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
-
-    // Store ID for effects
     let stored_id = StoredValue::new(id.clone());
 
-    // Load main data
     vm.load(id);
 
-    // Update tab title when data is loaded
     Effect::new({
         let vm = vm.clone();
-        let tabs_store = tabs_store;
         move || {
             if let Some(sale_data) = vm.sale.get() {
                 let tab_key = format!("a012_wb_sales_detail_{}", stored_id.get_value());
@@ -48,7 +41,6 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         }
     });
 
-    // Lazy loading for tabs
     Effect::new({
         let vm = vm.clone();
         move || match vm.active_tab.get() {
@@ -59,15 +51,15 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         }
     });
 
-    // Clone for closures
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
     let vm_content = vm.clone();
 
     view! {
-        <div class="page page--detail">
-            // Header
-            <Header vm=vm_header.clone() on_close=on_close />
+        <PageFrame page_id="a012_wb_sales--detail" category="detail">
+            <Header vm=vm_header on_close=on_close />
+
+            <TabBar vm=vm_tabs />
 
             <div class="page__content">
                 {move || {
@@ -86,24 +78,19 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }.into_any()
                     } else if vm.sale.get().is_some() {
                         view! {
-                            <div  class="tabs__content">
-                                // Tab bar
-                                <TabBar vm=vm_tabs.clone() />
-
-                                // Tab content
-                                <TabContent vm=vm_content.clone() />
-                            </div>
+                            <TabContent vm=vm_content.clone() />
                         }.into_any()
                     } else {
                         view! { <div>"No data"</div> }.into_any()
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 
-/// Header component with title and action buttons
+// ── Header ────────────────────────────────────────────────────────────────────
+
 #[component]
 fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
     let is_posted = vm.is_posted();
@@ -113,9 +100,7 @@ fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
     view! {
         <div class="page__header">
             <div class="page__header-left">
-                <h2>
-                    {move || format!("WB Sales {}", sale_id.get())}
-                </h2>
+                <h1 class="page__title">{move || format!("WB Sales {}", sale_id.get())}</h1>
                 <Show when=move || sale.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -131,34 +116,31 @@ fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
                 </Show>
             </div>
             <div class="page__header-right">
-                // Post/Unpost buttons
                 <PostButtons vm=vm.clone() />
-
                 <Button
                     appearance=ButtonAppearance::Secondary
                     size=ButtonSize::Medium
                     on_click=move |_| on_close.run(())
                 >
-                    "Закрыть"
+                    {icon("x")} "Закрыть"
                 </Button>
             </div>
         </div>
     }
 }
 
-/// Post/Unpost buttons component
+// ── Post / Unpost ─────────────────────────────────────────────────────────────
+
 #[component]
 fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
     let is_posted = vm.is_posted();
     let posting = vm.posting;
     let sale = vm.sale;
 
-    // Create callbacks that can be called multiple times
     let on_post = {
         let vm = vm.clone();
         Callback::new(move |_: ()| vm.post())
     };
-
     let on_unpost = {
         let vm = vm;
         Callback::new(move |_: ()| vm.unpost())
@@ -166,7 +148,6 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
 
     view! {
         <Show when=move || sale.get().is_some()>
-            // Post button (shown when not posted)
             <Show when=move || !is_posted.get()>
                 <Button
                     appearance=ButtonAppearance::Primary
@@ -177,8 +158,6 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
                     {move || if posting.get() { "Проведение..." } else { "✓ Post" }}
                 </Button>
             </Show>
-
-            // Unpost button (shown when posted)
             <Show when=move || is_posted.get()>
                 <Button
                     appearance=ButtonAppearance::Secondary
@@ -193,122 +172,69 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
     }
 }
 
-/// Tab bar component using THAW buttons
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
 #[component]
 fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let projections_count = vm.projections_count();
     let finance_reports_count = vm.finance_reports_count();
 
-    // Helper to create tab button content with proper icon spacing
-    let tab_icon = |name: &str| {
-        view! { <span class="tab-icon">{icon(name)}</span> }
-    };
-
     view! {
-        <Flex
-            gap=FlexGap::Small
-            align=FlexAlign::Center
-            style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--color-bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--color-border);"
-        >
-            // General tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "general" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("general")
                 }
             >
-                {tab_icon("file-text")}
-                "Общие"
-            </Button>
+                {icon("file-text")} "Общие"
+            </button>
 
-            // Plan/Fact tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "planfact" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "planfact"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("planfact")
                 }
             >
-                {tab_icon("trending-up")}
-                "План/Факт"
-            </Button>
+                {icon("trending-up")} "План/Факт"
+            </button>
 
-            // Line tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "line" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "line"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("line")
                 }
             >
-                {tab_icon("list")}
-                "Подробно"
-            </Button>
+                {icon("list")} "Подробно"
+            </button>
 
-            // JSON tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "json" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "json"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("json")
                 }
             >
-                {tab_icon("code")}
-                "JSON"
-            </Button>
+                {icon("code")} "JSON"
+            </button>
 
-            // Links tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "links" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "links"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("links")
                 }
             >
-                {tab_icon("link")}
-                "Связи"
+                {icon("link")} "Связи"
                 <Badge
                     appearance=BadgeAppearance::Tint
                     color=Signal::derive({
@@ -323,26 +249,14 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                 >
                     {move || finance_reports_count.get().to_string()}
                 </Badge>
-            </Button>
+            </button>
 
-            // Projections tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "projections" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("projections")
-                }
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "projections"
+                on:click=move |_| vm.set_tab("projections")
             >
-                {tab_icon("layers")}
-                "Проекции"
+                {icon("layers")} "Проекции"
                 <Badge
                     appearance=BadgeAppearance::Tint
                     color=Signal::derive({
@@ -357,12 +271,13 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                 >
                     {move || projections_count.get().to_string()}
                 </Badge>
-            </Button>
-        </Flex>
+            </button>
+        </div>
     }
 }
 
-/// Tab content component - routes to the appropriate tab
+// ── Tab content ───────────────────────────────────────────────────────────────
+
 #[component]
 fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
@@ -375,13 +290,13 @@ fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
 
     view! {
         {move || match active_tab.get() {
-            "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
-            "planfact" => view! { <PlanFactTab vm=vm_planfact.clone() /> }.into_any(),
-            "line" => view! { <LineTab vm=vm_line.clone() /> }.into_any(),
-            "json" => view! { <JsonTab vm=vm_json.clone() /> }.into_any(),
-            "links" => view! { <LinksTab vm=vm_links.clone() /> }.into_any(),
+            "general"     => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
+            "planfact"    => view! { <PlanFactTab    vm=vm_planfact.clone()    /> }.into_any(),
+            "line"        => view! { <LineTab       vm=vm_line.clone()        /> }.into_any(),
+            "json"        => view! { <JsonTab       vm=vm_json.clone()        /> }.into_any(),
+            "links"       => view! { <LinksTab      vm=vm_links.clone()       /> }.into_any(),
             "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
-            _ => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            _             => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
         }}
     }
 }

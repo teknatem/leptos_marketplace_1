@@ -1,6 +1,7 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{TableCellMoney, TableCrosshairHighlight};
 use crate::shared::icons::icon;
@@ -431,7 +432,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="p903_wb_finance_report--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"WB Finance Report (P903)"</h1>
@@ -887,7 +888,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
             </div>
         </div>
 
-        </div>
+        </PageFrame>
     }
 }
 

@@ -9,6 +9,7 @@ use thaw::*;
 
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::page_header::PageHeader;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::universal_dashboard::api;
 
 // ============================================================================
@@ -88,7 +89,7 @@ pub fn SchemaBrowser() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="schema_browser--system" category="system">
             <PageHeader title="Схемы данных" subtitle="Просмотр и тестирование схем для сводных таблиц">
                 <Button
                     appearance=ButtonAppearance::Primary
@@ -124,7 +125,7 @@ pub fn SchemaBrowser() -> impl IntoView {
                     />
                 </Show>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

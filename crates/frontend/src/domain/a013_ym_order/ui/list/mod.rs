@@ -10,6 +10,7 @@ use crate::shared::components::table::{
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a013_ym_order::aggregate::YmOrderListDto;
 use gloo_net::http::Request;
@@ -515,7 +516,7 @@ pub fn YmOrderList() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a013_ym_order--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Заказы Yandex Market"</h1>
@@ -997,7 +998,7 @@ pub fn YmOrderList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

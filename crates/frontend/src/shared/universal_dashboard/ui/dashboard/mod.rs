@@ -23,6 +23,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::{Button, ButtonAppearance, Select, Space};
 
+use crate::shared::page_frame::PageFrame;
 use super::pivot_table;
 use super::SaveConfigDialog;
 use super::SchemaPicker;
@@ -393,7 +394,7 @@ pub fn UniversalDashboard(
     let display_subtitle = subtitle.clone();
 
     view! {
-        <div class="page">
+        <PageFrame page_id="universal_dashboard--dashboard" category="dashboard">
             // ── HEADER ──
             <div class="page__header">
                 <div class="page__header-left" style="display: flex; flex-direction: row; gap: 16px; align-items: center;">
@@ -519,6 +520,6 @@ pub fn UniversalDashboard(
                 on_save=Callback::new(save_config)
                 on_cancel=Callback::new(move |_| set_show_save_dialog.set(false))
             />
-        </div>
+        </PageFrame>
     }
 }

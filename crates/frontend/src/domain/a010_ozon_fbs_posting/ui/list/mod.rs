@@ -2,6 +2,7 @@ use super::details::OzonFbsPostingDetail;
 use crate::shared::api_utils::api_base;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -696,7 +697,7 @@ pub fn OzonFbsPostingList() -> impl IntoView {
     load_postings();
 
     view! {
-        <div class="ozon-fbs-posting-list">
+        <PageFrame page_id="a010_ozon_fbs_posting--list" category="list">
             {move || {
                 if let Some(id) = selected_id.get() {
                     open_detail_modal(id);
@@ -1050,6 +1051,6 @@ pub fn OzonFbsPostingList() -> impl IntoView {
                     }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }

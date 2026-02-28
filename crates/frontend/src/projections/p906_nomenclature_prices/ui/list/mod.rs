@@ -1,5 +1,6 @@
 mod state;
 
+use crate::shared::page_frame::PageFrame;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::excel_importer::{ColumnDef, DataType, ExcelImporter};
 use crate::shared::icons::icon;
@@ -284,7 +285,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
     };
 
     view! {
-        <div class="page page--wide">
+        <PageFrame page_id="p906_nomenclature_prices--list" category="list" class="page--wide">
             <P906Header
                 total_count=Signal::derive(move || state.get().total_count)
                 is_loading=Signal::derive(move || is_loading.get())
@@ -470,7 +471,7 @@ pub fn NomenclaturePricesList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

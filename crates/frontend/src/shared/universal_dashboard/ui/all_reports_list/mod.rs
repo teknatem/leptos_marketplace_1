@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use thaw::{Button, ButtonAppearance, Input, Table, TableBody, TableCell, TableCellLayout, TableHeader, TableHeaderCell, TableRow};
 use uuid::Uuid;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::universal_dashboard::api;
 
 /// Format ISO datetime string to human-readable format (DD.MM.YYYY HH:MM)
@@ -173,7 +174,7 @@ pub fn AllReportsList() -> impl IntoView {
     };
     
     view! {
-        <div class="page">
+        <PageFrame page_id="all_reports--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Все отчеты"</h1>
@@ -357,6 +358,6 @@ pub fn AllReportsList() -> impl IntoView {
                     </Show>
                 </Show>
             </div>
-        </div>
+        </PageFrame>
     }
 }

@@ -1,4 +1,5 @@
 use crate::domain::a020_wb_promotion::ui::details::view_model::WbPromotionDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -63,13 +64,13 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
             let version = promo.metadata.version.to_string();
 
             view! {
-                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; align-content: start;">
+                <div class="detail-grid">
 
                     // Левая колонка
-                    <Flex vertical=true gap=FlexGap::Medium>
+                    <div class="detail-grid__col">
 
                         // Данные акции
-                        <Card attr:style="width: 600px; margin: 0px;">
+                        <CardAnimated delay_ms=0>
                             <h4 class="details-section__title">"Данные акции"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -105,18 +106,18 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(exceptions) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
+                        </CardAnimated>
 
                         // Описание (если есть)
                         {
                             if !desc.is_empty() {
                                 view! {
-                                    <Card attr:style="width: 600px; margin: 0px;">
+                                    <CardAnimated delay_ms=80>
                                         <h4 class="details-section__title">"Описание"</h4>
                                         <p style="font-size: 13px; color: var(--colorNeutralForeground1); line-height: 1.5; margin: 0;">
                                             {desc}
                                         </p>
-                                    </Card>
+                                    </CardAnimated>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
@@ -127,7 +128,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                         {
                             if !advantages.is_empty() {
                                 view! {
-                                    <Card attr:style="width: 600px; margin: 0px;">
+                                    <CardAnimated delay_ms=160>
                                         <h4 class="details-section__title">"Преимущества участия"</h4>
                                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                                             {advantages.into_iter().map(|adv| view! {
@@ -136,20 +137,20 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                                 </span>
                                             }).collect::<Vec<_>>()}
                                         </div>
-                                    </Card>
+                                    </CardAnimated>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
                             }
                         }
 
-                    </Flex>
+                    </div>
 
                     // Правая колонка
-                    <Flex vertical=true gap=FlexGap::Medium>
+                    <div class="detail-grid__col">
 
                         // Статистика участия
-                        <Card attr:style="width: 600px; margin: 0px;">
+                        <CardAnimated delay_ms=40>
                             <h4 class="details-section__title">"Статистика участия"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -175,13 +176,13 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                 <label class="form__label">"% участия"</label>
                                 <Input value=RwSignal::new(participation) attr:readonly=true />
                             </div>
-                        </Card>
+                        </CardAnimated>
 
                         // Условия рейтингового буста (если есть)
                         {
                             if !ranging.is_empty() {
                                 view! {
-                                    <Card attr:style="width: 600px; margin: 0px;">
+                                    <CardAnimated delay_ms=120>
                                         <h4 class="details-section__title">"Условия рейтингового буста"</h4>
                                         <table style="width: 100%; border-collapse: collapse;">
                                             <thead>
@@ -206,7 +207,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                                 }).collect::<Vec<_>>()}
                                             </tbody>
                                         </table>
-                                    </Card>
+                                    </CardAnimated>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()
@@ -214,7 +215,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                         }
 
                         // Подключение
-                        <Card attr:style="width: 600px; margin: 0px;">
+                        <CardAnimated delay_ms=200>
                             <h4 class="details-section__title">"Подключение"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Номер документа"</label>
@@ -240,9 +241,9 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(version) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
+                        </CardAnimated>
 
-                    </Flex>
+                    </div>
 
                 </div>
             }.into_any()

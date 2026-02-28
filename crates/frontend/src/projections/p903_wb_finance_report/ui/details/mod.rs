@@ -1,5 +1,6 @@
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -485,7 +486,7 @@ pub fn WbFinanceReportDetail(
     };
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="p903_wb_finance_report--detail" category="detail">
             <div class="modal-header">
                 <h3 class="modal-title">"WB Finance Report Details"</h3>
                 <Button
@@ -747,7 +748,7 @@ pub fn WbFinanceReportDetail(
                     view! { <div></div> }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }
 

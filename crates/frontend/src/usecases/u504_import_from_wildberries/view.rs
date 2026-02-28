@@ -7,6 +7,7 @@ use contracts::usecases::u504_import_from_wildberries::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
@@ -388,7 +389,7 @@ pub fn ImportWidget() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="u504_import_from_wildberries--usecase" category="usecase">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">{"u504: Импорт Wildberries"}</h1>
@@ -483,6 +484,6 @@ pub fn ImportWidget() -> impl IntoView {
                 />
             </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

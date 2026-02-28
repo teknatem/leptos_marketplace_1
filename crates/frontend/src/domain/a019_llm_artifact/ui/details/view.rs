@@ -72,7 +72,7 @@ pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     };
 
     view! {
-        <div style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
+        <div id="a019_llm_artifact--detail" data-page-category="legacy" style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
             // Header
             <Flex
                 justify=FlexJustify::SpaceBetween
@@ -129,7 +129,7 @@ pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             })}
 
             // Tabs
-            <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white;">
+            <div class="page__tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white;">
                 <button
                     on:click=move |_| active_tab.set("general".to_string())
                     style=move || format!(

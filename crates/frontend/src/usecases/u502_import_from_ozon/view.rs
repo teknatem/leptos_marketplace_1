@@ -1,4 +1,5 @@
 use super::api;
+use crate::shared::page_frame::PageFrame;
 use chrono::Utc;
 use contracts::domain::common::AggregateId;
 use contracts::enums::marketplace_type::MarketplaceType;
@@ -237,7 +238,7 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div style="padding: 20px; max-width: 900px; margin: 0 auto;">
+        <PageFrame page_id="u502_import_from_ozon--usecase" category="usecase">
             <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px;">
                 "u502: Импорт из OZON"
             </h1>
@@ -547,6 +548,6 @@ pub fn ImportWidget() -> impl IntoView {
                 } else { view! { <div></div> }.into_any()                 }
             }}
             </Space>
-        </div>
+        </PageFrame>
     }
 }

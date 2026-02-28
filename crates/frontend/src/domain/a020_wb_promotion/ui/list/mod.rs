@@ -7,6 +7,7 @@ use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -307,7 +308,7 @@ pub fn WbPromotionList() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a020_wb_promotion--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Акции WB (Календарь)"</h1>
@@ -568,6 +569,6 @@ pub fn WbPromotionList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

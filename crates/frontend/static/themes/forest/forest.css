@@ -117,6 +117,7 @@
 
   /* Header Colors */
   --header-bg: rgba(4, 84, 4, 0.30);
+  --page-header-bg-solid: rgba(4, 84, 4, 0.45);
   --header-text: #ffffff;
   --header-border: rgba(255, 255, 255, 0.15);
   --header-noise-opacity: 0.05;

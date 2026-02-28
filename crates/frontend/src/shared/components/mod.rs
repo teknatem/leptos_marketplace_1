@@ -1,3 +1,4 @@
+pub mod card_animated;
 pub mod date_input;
 pub mod date_range_picker;
 pub mod filter_panel;

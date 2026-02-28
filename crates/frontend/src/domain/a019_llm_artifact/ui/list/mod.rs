@@ -113,7 +113,7 @@ pub fn LlmArtifactList() -> impl IntoView {
     };
 
     view! {
-        <div style="padding: 20px;">
+        <div id="a019_llm_artifact--list" data-page-category="legacy" style="padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h1 style="font-size: 24px; font-weight: bold;">"Артефакты LLM"</h1>
                 <Button appearance=ButtonAppearance::Secondary on_click=move |_| fetch()>

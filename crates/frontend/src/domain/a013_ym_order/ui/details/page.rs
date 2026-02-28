@@ -4,6 +4,7 @@ use super::tabs::{CampaignTab, GeneralTab, JsonTab, LinesTab, LinksTab, Projecti
 use super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -42,8 +43,10 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
     let vm_content = vm.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a013_ym_order--detail" category="detail">
             <Header vm=vm_header on_close=on_close />
+
+            <TabBar vm=vm_tabs />
 
             <div class="page__content">
                 {move || {
@@ -64,10 +67,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         .into_any()
                     } else if vm.order.get().is_some() {
                         view! {
-                            <div class="tabs__content">
-                                <TabBar vm=vm_tabs.clone() />
-                                <TabContent vm=vm_content.clone() />
-                            </div>
+                            <TabContent vm=vm_content.clone() />
                         }
                         .into_any()
                     } else {
@@ -75,9 +75,11 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
+
+// ── Header ────────────────────────────────────────────────────────────────────
 
 #[component]
 fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
@@ -88,7 +90,7 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
     view! {
         <div class="page__header">
             <div class="page__header-left">
-                <h2>{move || format!("YM Order {}", document_no.get())}</h2>
+                <h1 class="page__title">{move || format!("YM Order {}", document_no.get())}</h1>
                 <Show when=move || order.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -110,12 +112,14 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
                     size=ButtonSize::Medium
                     on_click=move |_| on_close.run(())
                 >
-                    "Закрыть"
+                    {icon("x")} "Закрыть"
                 </Button>
             </div>
         </div>
     }
 }
+
+// ── Post / Unpost ─────────────────────────────────────────────────────────────
 
 #[component]
 fn PostButtons(vm: YmOrderDetailsVm) -> impl IntoView {
@@ -158,132 +162,111 @@ fn PostButtons(vm: YmOrderDetailsVm) -> impl IntoView {
     }
 }
 
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
 #[component]
 fn TabBar(vm: YmOrderDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let projections_count = vm.projections_count();
     let payment_reports_count = vm.payment_reports_count();
-    let tab_icon = |name: &str| view! { <span class="tab-icon">{icon(name)}</span> };
 
     view! {
-        <Flex
-            gap=FlexGap::Small
-            align=FlexAlign::Center
-            style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--color-bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--color-border);"
-        >
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "general" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click={
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("general")
                 }
             >
-                {tab_icon("file-text")}
-                "Общие"
-            </Button>
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "lines" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click={
+                {icon("file-text")} "Общие"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "lines"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("lines")
                 }
             >
-                {tab_icon("list")}
-                "Строки"
-            </Button>
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "campaign" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click={
+                {icon("list")} "Строки"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "campaign"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("campaign")
                 }
             >
-                {tab_icon("building")}
-                "Кампания"
-            </Button>
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "links" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click={
+                {icon("building")} "Кампания"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "links"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("links")
                 }
             >
-                {tab_icon("link")}
-                "Связи"
-                {move || {
-                    let count = payment_reports_count.get();
-                    if count > 0 {
-                        view! {
-                            <Badge
-                                appearance=BadgeAppearance::Tint
-                                color=Signal::derive({
-                                    let active_tab = active_tab;
-                                    move || if active_tab.get() == "links" { BadgeColor::Brand } else { BadgeColor::Informative }
-                                })
-                                attr:style="margin-left: 6px;"
-                            >
-                                {count.to_string()}
-                            </Badge>
-                        }.into_any()
-                    } else {
-                        view! { <></> }.into_any()
-                    }
-                }}
-            </Button>
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "json" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("json")
-                }
-            >
-                {tab_icon("code")}
-                "JSON"
-            </Button>
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "projections" { ButtonAppearance::Primary } else { ButtonAppearance::Subtle }
-                })
-                size=ButtonSize::Small
-                on_click=move |_| vm.set_tab("projections")
-            >
-                {tab_icon("layers")}
-                "Проекции"
+                {icon("link")} "Связи"
                 <Badge
                     appearance=BadgeAppearance::Tint
                     color=Signal::derive({
                         let active_tab = active_tab;
-                        move || if active_tab.get() == "projections" { BadgeColor::Brand } else { BadgeColor::Informative }
+                        move || if active_tab.get() == "links" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || payment_reports_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "json"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("json")
+                }
+            >
+                {icon("code")} "JSON"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "projections"
+                on:click=move |_| vm.set_tab("projections")
+            >
+                {icon("layers")} "Проекции"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "projections" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
                     })
                     attr:style="margin-left: 6px;"
                 >
                     {move || projections_count.get().to_string()}
                 </Badge>
-            </Button>
-        </Flex>
+            </button>
+        </div>
     }
 }
+
+// ── Tab content ───────────────────────────────────────────────────────────────
 
 #[component]
 fn TabContent(vm: YmOrderDetailsVm) -> impl IntoView {
@@ -297,13 +280,13 @@ fn TabContent(vm: YmOrderDetailsVm) -> impl IntoView {
 
     view! {
         {move || match active_tab.get() {
-            "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
-            "lines" => view! { <LinesTab vm=vm_lines.clone() /> }.into_any(),
-            "campaign" => view! { <CampaignTab vm=vm_campaign.clone() /> }.into_any(),
-            "links" => view! { <LinksTab vm=vm_links.clone() /> }.into_any(),
-            "json" => view! { <JsonTab vm=vm_json.clone() /> }.into_any(),
+            "general"     => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
+            "lines"       => view! { <LinesTab       vm=vm_lines.clone()       /> }.into_any(),
+            "campaign"    => view! { <CampaignTab    vm=vm_campaign.clone()    /> }.into_any(),
+            "links"       => view! { <LinksTab       vm=vm_links.clone()       /> }.into_any(),
+            "json"        => view! { <JsonTab        vm=vm_json.clone()        /> }.into_any(),
             "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
-            _ => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            _             => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
         }}
     }
 }

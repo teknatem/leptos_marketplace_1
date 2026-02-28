@@ -4,6 +4,7 @@ use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, SalesTab};
 use super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -42,8 +43,10 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     let vm_content = vm.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a015_wb_orders--detail" category="detail">
             <Header vm=vm_header on_close=on_close />
+
+            <TabBar vm=vm_tabs />
 
             <div class="page__content">
                 {move || {
@@ -64,10 +67,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                         .into_any()
                     } else if vm.order.get().is_some() {
                         view! {
-                            <div class="tabs__content">
-                                <TabBar vm=vm_tabs.clone() />
-                                <TabContent vm=vm_content.clone() />
-                            </div>
+                            <TabContent vm=vm_content.clone() />
                         }
                         .into_any()
                     } else {
@@ -75,7 +75,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 
@@ -88,7 +88,7 @@ fn Header(vm: WbOrdersDetailsVm, on_close: Callback<()>) -> impl IntoView {
     view! {
         <div class="page__header">
             <div class="page__header-left">
-                <h2>{move || format!("WB Order {}", document_no.get())}</h2>
+                <h1 class = "page__title">{move || format!("WB Order {}", document_no.get())}</h1>
                 <Show when=move || order.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -165,88 +165,51 @@ fn TabBar(vm: WbOrdersDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let finance_reports_count = vm.finance_reports_count();
     let wb_sales_count = vm.wb_sales_count();
-    let tab_icon = |name: &str| view! { <span class="tab-icon">{icon(name)}</span> };
 
     view! {
-        <Flex
-            gap=FlexGap::Small
-            align=FlexAlign::Center
-            style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--color-bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--color-border);"
-        >
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "general" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("general")
                 }
             >
-                {tab_icon("file-text")}
-                "Общие"
-            </Button>
+                {icon("file-text")} "Общие"
+            </button>
 
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "line" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "line"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("line")
                 }
             >
-                {tab_icon("list")}
-                "Подробно"
-            </Button>
+                {icon("list")} "Подробно"
+            </button>
 
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "json" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "json"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("json")
                 }
             >
-                {tab_icon("code")}
-                "JSON"
-            </Button>
+                {icon("code")} "JSON"
+            </button>
 
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "links" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "links"
+                on:click={
                     let vm = vm.clone();
                     move |_| vm.set_tab("links")
                 }
             >
-                {tab_icon("link")}
-                "Связи"
+                {icon("link")} "Связи"
                 <Badge
                     appearance=BadgeAppearance::Tint
                     color=Signal::derive({
@@ -261,22 +224,14 @@ fn TabBar(vm: WbOrdersDetailsVm) -> impl IntoView {
                 >
                     {move || finance_reports_count.get().to_string()}
                 </Badge>
-            </Button>
+            </button>
 
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "sales" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click=move |_| vm.set_tab("sales")
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "sales"
+                on:click=move |_| vm.set_tab("sales")
             >
-                {tab_icon("shopping-cart")}
-                "Sales"
+                {icon("shopping-cart")} "Sales"
                 <Badge
                     appearance=BadgeAppearance::Tint
                     color=Signal::derive({
@@ -291,8 +246,8 @@ fn TabBar(vm: WbOrdersDetailsVm) -> impl IntoView {
                 >
                     {move || wb_sales_count.get().to_string()}
                 </Badge>
-            </Button>
-        </Flex>
+            </button>
+        </div>
     }
 }
 

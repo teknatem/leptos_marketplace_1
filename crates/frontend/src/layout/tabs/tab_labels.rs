@@ -53,6 +53,10 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "u504_import_from_wildberries" => "Импорт из Wildberries",
         "u505_match_nomenclature" => "Сопоставление",
         "u506_import_from_lemanapro" => "Импорт из ЛеманаПро",
+        "u507_import_from_erp" => "Импорт из ERP",
+        "a021_production_output" => "Выпуск продукции",
+        "a022_kit_variant" => "Варианты комплектации",
+        "a023_purchase_of_goods" => "Приобретение товаров",
 
         // ── Projections (p9xx) ────────────────────────────────────────────
         "p900_sales_register" => "Регистр продаж",

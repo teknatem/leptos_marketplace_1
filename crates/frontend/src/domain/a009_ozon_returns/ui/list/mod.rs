@@ -2,6 +2,7 @@ use super::details::OzonReturnsDetail;
 use crate::shared::api_utils::api_base;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -488,7 +489,7 @@ pub fn OzonReturnsList() -> impl IntoView {
     load_returns();
 
     view! {
-        <div class="ozon-returns-list">
+        <PageFrame page_id="a009_ozon_returns--list" category="list">
             {move || {
                 if let Some(id) = selected_id.get() {
                     open_detail_modal(id);
@@ -837,6 +838,6 @@ pub fn OzonReturnsList() -> impl IntoView {
                     }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }

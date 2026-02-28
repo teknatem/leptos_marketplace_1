@@ -269,7 +269,7 @@ pub fn MetadataDashboard() -> impl IntoView {
     let is_aggregate_selected = move || matches!(selected.get(), SelectedNode::Aggregate { .. });
 
     view! {
-        <div class="d401-root">
+        <div id="d401_metadata_dashboard--dashboard" data-page-category="legacy" class="d401-root">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center class="d401-header">
                 <div>
                     <div class="d401-title">"Метаданные (POC)"</div>

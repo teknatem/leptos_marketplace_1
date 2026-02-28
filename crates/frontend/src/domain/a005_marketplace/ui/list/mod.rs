@@ -4,6 +4,7 @@ use crate::shared::components::table::TableCrosshairHighlight;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use leptos::prelude::*;
@@ -147,7 +148,7 @@ pub fn MarketplaceList() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a005_marketplace--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">{"Маркетплейсы"}</h1>
@@ -258,7 +259,7 @@ pub fn MarketplaceList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

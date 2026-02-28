@@ -1,6 +1,7 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{format_number_with_decimals, TableCellMoney};
 use crate::shared::components::ui::badge::Badge as UiBadge;
@@ -282,7 +283,7 @@ pub fn WbGoodsPricesList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="p908_wb_goods_prices--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Цены товаров Wildberries"</h1>
@@ -647,6 +648,6 @@ pub fn WbGoodsPricesList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

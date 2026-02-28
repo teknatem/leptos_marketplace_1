@@ -11,6 +11,7 @@ use crate::shared::components::ui::button::Button;
 use crate::shared::date_utils::format_datetime;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -493,7 +494,7 @@ pub fn YmReturnsList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a016_ym_returns--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <div class="page__icon">{icon("refresh")}</div>
@@ -980,6 +981,6 @@ pub fn YmReturnsList() -> impl IntoView {
                     </table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

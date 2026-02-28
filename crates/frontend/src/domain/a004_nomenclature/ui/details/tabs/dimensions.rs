@@ -4,6 +4,7 @@
 
 use super::super::dimension_input::DimensionInput;
 use super::super::view_model::NomenclatureDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -11,8 +12,7 @@ use thaw::*;
 #[component]
 pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
-        <div style="max-width:700px">
-        <Card>
+        <CardAnimated delay_ms=0>
             <h4 class="details-section__title">"Измерения"</h4>
             <DimensionInput
                 id="dim1_category"
@@ -109,7 +109,6 @@ pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                 })
                 options=vm.get_dim_options("dim6_size")
             />
-        </Card>
-        </div>
+        </CardAnimated>
     }
 }

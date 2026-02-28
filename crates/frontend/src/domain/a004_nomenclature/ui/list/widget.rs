@@ -17,6 +17,7 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 
 use super::state::create_state;
+use crate::shared::page_frame::PageFrame;
 
 #[derive(Debug, Clone, Deserialize)]
 struct PaginatedResponse {
@@ -408,7 +409,7 @@ pub fn NomenclatureList() -> impl IntoView {
     };
 
     view! {
-        <div class="page page--wide">
+        <PageFrame page_id="a004_nomenclature--list" category="list" class="page--wide">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Номенклатура"</h1>
@@ -781,6 +782,6 @@ pub fn NomenclatureList() -> impl IntoView {
                 </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

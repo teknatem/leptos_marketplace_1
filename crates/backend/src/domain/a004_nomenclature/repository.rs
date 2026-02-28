@@ -283,16 +283,25 @@ async fn find_by_article_with_conn<C: ConnectionTrait>(
 /// Найти номенклатуру по артикулу (без учета регистра)
 /// Возвращает только элементы (не папки) и не удаленные
 /// ВАЖНО: article должен быть уже trimmed
+///
+/// Примечание: SQLite lower() работает только с ASCII.
+/// Для кириллических артикулов (например "515.1-1.4.1.Р") используем
+/// комбинированный OR: точное совпадение (trim) + ASCII case-insensitive (lower).
 pub async fn find_by_article_ignore_case(article: &str) -> anyhow::Result<Vec<Nomenclature>> {
-    let article_lower = article.to_lowercase();
+    let article_trimmed = article.trim();
+    let article_lower = article_trimmed.to_lowercase();
 
-    // IMPORTANT: don't load the whole table. Use SQL TRIM() + lower().
     use sea_orm::sea_query::Expr;
 
     find_by_article_with_conn(
         conn(),
-        &article_lower,
-        Expr::cust_with_values("lower(trim(article)) = ?", [article_lower.clone()]),
+        article_trimmed,
+        // trim(article) = ? — точное совпадение (покрывает Unicode/кириллицу)
+        // lower(trim(article)) = ? — ASCII case-insensitive (покрывает латинские артикулы)
+        Expr::cust_with_values(
+            "trim(article) = ? OR lower(trim(article)) = ?",
+            [article_trimmed.to_string(), article_lower],
+        ),
     )
     .await
 }

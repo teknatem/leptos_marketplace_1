@@ -7,6 +7,9 @@
 crates/frontend/dist/
 dist/
 
+# Release build artifacts
+deploy/
+
 # IDE
 .vscode/
 .claude/

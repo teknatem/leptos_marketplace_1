@@ -1,5 +1,6 @@
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
+use crate::shared::page_frame::PageFrame;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -385,7 +386,7 @@ pub fn YmPaymentReportDetail(
     let title = record_key.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="p907_ym_payment_report--detail" category="detail">
             <div class="modal-header">
                 <h3 class="modal-title">"ЯМ Платёж: " {title}</h3>
                 <Button
@@ -486,7 +487,7 @@ pub fn YmPaymentReportDetail(
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

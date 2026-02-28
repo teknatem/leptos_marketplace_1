@@ -180,7 +180,7 @@ pub fn OzonReturnsDetail(
     });
 
     view! {
-        <div class="ozon-returns-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
+        <div id="a009_ozon_returns--detail" data-page-category="legacy" class="ozon-returns-detail" style="padding: 20px; height: 100%; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
                 <h2 style="margin: 0;">"Возврат OZON"</h2>
                 <button
@@ -209,7 +209,7 @@ pub fn OzonReturnsDetail(
                         view! {
                             <div style="height: 100%; display: flex; flex-direction: column;">
                                 // Tabs
-                                <div class="tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
+                                <div class="page__tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white; position: sticky; top: 0; z-index: 10;">
                                     <button
                                         on:click=move |_| set_active_tab.set("general")
                                         style=move || format!(

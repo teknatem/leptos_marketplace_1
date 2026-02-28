@@ -80,7 +80,7 @@ pub fn MarketplaceDetails(
     let vm_for_error = vm.clone();
 
     view! {
-        <div class="details-container marketplace-details">
+        <div id="a005_marketplace--detail" data-page-category="legacy" class="details-container marketplace-details">
             <div class="modal-header">
                 <h3 class="modal-title">
                     {move || if readonly {

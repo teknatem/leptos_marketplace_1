@@ -3,6 +3,7 @@
 //! Shows prices for current nomenclature and base nomenclature (if derivative)
 
 use super::super::view_model::NomenclatureDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -41,7 +42,7 @@ pub fn DealerPricesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     let dealer_prices_loading = vm.dealer_prices_loading;
 
     view! {
-        <div class="details-section">
+        <CardAnimated delay_ms=0>
             <h4 class="details-section__title">
                 {move || format!("Дилерские цены ({})", dealer_prices.get().len())}
             </h4>
@@ -109,6 +110,6 @@ pub fn DealerPricesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                     </Table>
                 </Show>
             </Show>
-        </div>
+        </CardAnimated>
     }
 }

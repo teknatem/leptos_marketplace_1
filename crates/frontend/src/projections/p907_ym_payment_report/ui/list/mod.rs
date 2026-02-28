@@ -1,6 +1,7 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::TableCellMoney;
@@ -317,7 +318,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="p907_ym_payment_report--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Отчёт по платежам Яндекс Маркет"</h1>
@@ -672,6 +673,6 @@ pub fn YmPaymentReportList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

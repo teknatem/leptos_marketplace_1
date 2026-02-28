@@ -2,6 +2,7 @@ use super::tabs::{GeneralTab, JsonTab, NomenclaturesTab};
 use super::view_model::WbPromotionDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -39,7 +40,7 @@ pub fn WbPromotionDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
     let vm_content = vm.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a020_wb_promotion--detail" category="detail">
             <Header vm=vm_header on_close=on_close />
             <div class="page__content">
                 {move || {
@@ -58,17 +59,17 @@ pub fn WbPromotionDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                         }.into_any()
                     } else if vm.promotion.get().is_some() {
                         view! {
-                            <div class="tabs__content">
+                            <div class="page__tab-content">
                                 <TabBar vm=vm_tabs.clone() />
                                 <TabContent vm=vm_content.clone() />
                             </div>
                         }.into_any()
                     } else {
-                        view! { <div>"Нет данных"</div> }.into_any()
-                    }
-                }}
+                    view! { <div>"Нет данных"</div> }.into_any()
+                }
+            }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

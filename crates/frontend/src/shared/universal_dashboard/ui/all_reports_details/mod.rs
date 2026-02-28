@@ -1,5 +1,6 @@
 //! All Reports Details - просмотр и редактирование настройки отчета
 
+use crate::shared::page_frame::PageFrame;
 use crate::shared::universal_dashboard::api;
 use contracts::shared::universal_dashboard::{SavedDashboardConfig, UpdateDashboardConfigRequest};
 use leptos::logging::log;
@@ -114,7 +115,7 @@ pub fn AllReportsDetails(
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="all_reports--detail" category="detail">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Настройка отчета"</h1>
@@ -264,9 +265,9 @@ pub fn AllReportsDetails(
                                 </div>
                             }
                         })}
-                    </Show>
-                </Show>
+            </Show>
+            </Show>
             </div>
-        </div>
+        </PageFrame>
     }
 }

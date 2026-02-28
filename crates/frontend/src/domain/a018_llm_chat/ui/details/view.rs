@@ -123,7 +123,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     });
 
     view! {
-        <div style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
+        <div id="a018_llm_chat--detail" data-page-category="legacy" style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
             // Header - 1 строка
             <Flex
                 justify=FlexJustify::SpaceBetween

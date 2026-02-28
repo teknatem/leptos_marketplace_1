@@ -2,6 +2,7 @@
 
 use super::super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use thaw::*;
@@ -79,9 +80,9 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let line = order_data.line;
 
             view! {
-                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; align-content: start;">
-                    <Flex vertical=true gap=FlexGap::Medium>
-                        <Card attr:style="width: 600px; margin: 0;">
+                <div class="detail-grid">
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=0>
                             <h4 class="details-section__title">"Документ"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -107,9 +108,9 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
+                        </CardAnimated>
 
-                        <Card attr:style="width: 600px; margin: 0;">
+                        <CardAnimated delay_ms=80>
                             <h4 class="details-section__title">"Связанные объекты"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Товар маркетплейса"</label>
@@ -216,9 +217,9 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     }}
                                 </a>
                             </div>
-                        </Card>
+                        </CardAnimated>
 
-                        <Card attr:style="width: 600px; margin: 0;">
+                        <CardAnimated delay_ms=160>
                             <h4 class="details-section__title">"Позиция заказа"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -258,11 +259,11 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(line.subject.unwrap_or_else(|| "—".to_string())) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
-                    </Flex>
+                        </CardAnimated>
+                    </div>
 
-                    <Flex vertical=true gap=FlexGap::Medium>
-                        <Card attr:style="width: 600px; margin: 0;">
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=40>
                             <h4 class="details-section__title">"Статус и склад"</h4>
                             <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md); flex-wrap: wrap;">
                                 <Badge appearance=BadgeAppearance::Tint color=if is_cancel { BadgeColor::Danger } else { BadgeColor::Success }>
@@ -303,9 +304,9 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 <label class="form__label">"Дата отмены"</label>
                                 <Input value=RwSignal::new(cancel_dt) attr:readonly=true />
                             </div>
-                        </Card>
+                        </CardAnimated>
 
-                        <Card attr:style="width: 600px; margin: 0;">
+                        <CardAnimated delay_ms=120>
                             <h4 class="details-section__title">"Технические связи"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Подключение"</label>
@@ -378,8 +379,8 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(version) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
-                    </Flex>
+                        </CardAnimated>
+                    </div>
                 </div>
             }
             .into_any()

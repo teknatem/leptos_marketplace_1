@@ -3,6 +3,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
 use leptos::prelude::*;
 use std::cmp::Ordering;
@@ -201,7 +202,7 @@ pub fn Connection1CList() -> impl IntoView {
     fetch();
 
     view! {
-        <div style="padding: 20px;">
+        <PageFrame page_id="a001_connection_1c--list" category="list">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
                 <h1 style="font-size: 24px; font-weight: bold;">{"1C Подключения"}</h1>
                 <Space>
@@ -406,7 +407,7 @@ pub fn Connection1CList() -> impl IntoView {
                     view! { <></> }
                 }}
             </Show>
-        </div>
+        </PageFrame>
     }
 }
 

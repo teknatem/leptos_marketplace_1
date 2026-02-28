@@ -112,6 +112,7 @@ pub fn LoginPage() -> impl IntoView {
                         />
                     </div>
 
+                <div class="login__footer">
                     <button
                         type="submit"
                         class="button button--primary login__button"
@@ -131,13 +132,10 @@ pub fn LoginPage() -> impl IntoView {
                             <div class="loading-spinner"></div>
                         </Show>
                     </button>
-                </form>
-
-                <div class="login__footer">
-                    <p class="login__footer-text">
-                        "Введите любые данные для входа в демо-режим"
-                    </p>
                 </div>
+            </form>
+
+
             </div>
         </div>
     }

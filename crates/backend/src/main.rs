@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("\n");
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║           MARKETPLACE BACKEND STARTING...               ║");
+    println!("║           MARKETPLACE BACKEND STARTING...                ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!("\n");
 
@@ -86,14 +86,21 @@ async fn main() -> anyhow::Result<()> {
     let scheduled_task_worker_enabled = match shared::config::load_config() {
         Ok(cfg) => cfg.scheduled_tasks.enabled,
         Err(e) => {
-            println!("✗ ERROR: Failed to load config for scheduled tasks: {}\n", e);
+            println!(
+                "✗ ERROR: Failed to load config for scheduled tasks: {}\n",
+                e
+            );
             return Err(e);
         }
     };
 
     println!(
         "Step 5: Scheduled task worker is {} (config.toml -> [scheduled_tasks].enabled)",
-        if scheduled_task_worker_enabled { "ENABLED" } else { "DISABLED" }
+        if scheduled_task_worker_enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
     );
 
     if scheduled_task_worker_enabled {
@@ -226,10 +233,10 @@ async fn main() -> anyhow::Result<()> {
     };
 
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║           SERVER STARTED SUCCESSFULLY!                  ║");
+    println!("║           SERVER STARTED SUCCESSFULLY!                   ║");
     println!("╠══════════════════════════════════════════════════════════╣");
-    println!("║  Server listening on: http://{}              ║", addr);
-    println!("║  Press Ctrl+C to stop                                   ║");
+    println!("║  Server listening on: http://{}                ║", addr);
+    println!("║  Press Ctrl+C to stop                                    ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!("\n");
 

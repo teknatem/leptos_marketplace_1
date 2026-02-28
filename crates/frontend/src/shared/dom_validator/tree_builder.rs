@@ -65,7 +65,13 @@ fn build_node_tree(element: &Element, depth: usize) -> DomNode {
     let mut data_attributes = HashMap::new();
 
     // Проверяем основные data-атрибуты вручную
-    let data_attrs_to_check = vec!["data-tab-key", "data-component", "data-id", "data-state"];
+    let data_attrs_to_check = vec![
+        "data-tab-key",
+        "data-component",
+        "data-id",
+        "data-state",
+        "data-page-category",
+    ];
     for attr_name in data_attrs_to_check {
         if let Some(value) = element.get_attribute(attr_name) {
             data_attributes.insert(attr_name.to_string(), value);
