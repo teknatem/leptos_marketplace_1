@@ -35,6 +35,12 @@ use crate::domain::a019_llm_artifact::ui::details::LlmArtifactDetails;
 use crate::domain::a019_llm_artifact::ui::list::LlmArtifactList;
 use crate::domain::a020_wb_promotion::ui::details::WbPromotionDetail;
 use crate::domain::a020_wb_promotion::ui::list::WbPromotionList;
+use crate::domain::a021_production_output::ui::details::ProductionOutputDetail;
+use crate::domain::a021_production_output::ui::list::ProductionOutputList;
+use crate::domain::a022_kit_variant::ui::details::KitVariantDetail;
+use crate::domain::a022_kit_variant::ui::list::KitVariantList;
+use crate::domain::a023_purchase_of_goods::ui::details::PurchaseOfGoodsDetail;
+use crate::domain::a023_purchase_of_goods::ui::list::PurchaseOfGoodsList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -59,6 +65,7 @@ use crate::usecases::u503_import_from_yandex;
 use crate::usecases::u504_import_from_wildberries;
 use crate::usecases::u505_match_nomenclature;
 use crate::usecases::u506_import_from_lemanapro;
+use crate::usecases::u507_import_from_erp;
 use leptos::logging::log;
 use leptos::prelude::*;
 
@@ -362,6 +369,69 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // a020: WB Calendar Promotions
+        // a021: Выпуск продукции
+        "a021_production_output" => view! { <ProductionOutputList /> }.into_any(),
+
+        // a022: Варианты комплектации
+        "a022_kit_variant" => view! { <KitVariantList /> }.into_any(),
+        k if k.starts_with("a022_kit_variant_detail_") => {
+            let id = k
+                .strip_prefix("a022_kit_variant_detail_")
+                .unwrap()
+                .to_string();
+            view! {
+                <KitVariantDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a023: Приобретение товаров и услуг
+        "a023_purchase_of_goods" => view! { <PurchaseOfGoodsList /> }.into_any(),
+        k if k.starts_with("a023_purchase_of_goods_detail_") => {
+            let id = k
+                .strip_prefix("a023_purchase_of_goods_detail_")
+                .unwrap()
+                .to_string();
+            view! {
+                <PurchaseOfGoodsDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        k if k.starts_with("a021_production_output_detail_") => {
+            let id = k
+                .strip_prefix("a021_production_output_detail_")
+                .unwrap()
+                .to_string();
+            view! {
+                <ProductionOutputDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
         "a020_wb_promotion" => view! { <WbPromotionList /> }.into_any(),
         k if k.starts_with("a020_wb_promotion_detail_") => {
             let id = k
@@ -397,6 +467,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
         "u506_import_from_lemanapro" => {
             view! { <u506_import_from_lemanapro::ImportWidget /> }.into_any()
+        }
+        "u507_import_from_erp" => {
+            view! { <u507_import_from_erp::ImportWidget /> }.into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

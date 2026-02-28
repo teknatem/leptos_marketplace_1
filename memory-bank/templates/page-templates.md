@@ -615,113 +615,260 @@ fn render_tree_nodes(
 }
 ```
 
-## Template 4: Details/Form View
+## Template 4: Detail/Edit Page (MVVM Standard)
 
-**Use for:** Create/Edit forms
+**Use for:** Full-page detail views with tabs — both read-only (viewer) and editable (form).
+
+**Reference implementations:**
+- `a015_wb_orders/ui/details/` — read-only, 5 tabs, lazy load
+- `a004_nomenclature/ui/details/` — editable form, Save/Cancel, disabled tabs
+
+**File structure:**
+```
+ui/details/
+  page.rs        ← PageFrame + Header + TabBar + TabContent
+  view_model.rs  ← MyDetailsVm (RwSignal fields, commands)
+  model.rs       ← DTO structs + API calls
+  tabs/
+    mod.rs       ← pub use re-exports
+    general.rs
+    json.rs
+    ...
+```
+
+### page.rs
 
 ```rust
+use super::tabs::{GeneralTab, OtherTab};
+use super::view_model::MyDetailsVm;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
 #[component]
-pub fn EntityDetails(
-    #[prop(into)] id: Signal<Option<String>>,
-    on_saved: Callback<()>,
-    on_cancel: Callback<()>,
+pub fn MyDetail(
+    id: Option<String>,
+    #[prop(into)] on_saved: Callback<()>,
+    #[prop(into)] on_cancel: Callback<()>,
 ) -> impl IntoView {
-    let (code, set_code) = signal(String::new());
-    let (description, set_description) = signal(String::new());
-    let (comment, set_comment) = signal(String::new());
-    let (loading, set_loading) = signal(false);
-    let (error, set_error) = signal::<Option<String>>(None);
+    let vm = MyDetailsVm::new();
 
-    // Load existing data if editing
-    Effect::new(move |_| {
-        if let Some(entity_id) = id.get() {
-            // Fetch entity data
+    if let Some(existing_id) = id {
+        vm.load(existing_id);
+    }
+
+    // Lazy loading for heavy tabs
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "other" && !vm.other_loaded.get() {
+                vm.load_other();
+            }
         }
     });
 
-    let save = move |_| {
-        set_loading.set(true);
-        set_error.set(None);
+    let vm_header  = vm.clone();
+    let vm_tabs    = vm.clone();
+    let vm_content = vm.clone();
 
-        let entity_id = id.get();
-        // Save logic (create or update)
+    view! {
+        <PageFrame page_id="aXXX_entity--detail" category="detail">
+            <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
 
-        on_saved.call(());
+            <TabBar vm=vm_tabs />
+
+            <div class="page__content">
+                <ErrorDisplay vm=vm.clone() />
+                <TabContent vm=vm_content />
+            </div>
+        </PageFrame>
+    }
+}
+
+// ── Header ────────────────────────────────────────────────────────────────────
+
+#[component]
+fn Header(
+    vm: MyDetailsVm,
+    on_saved: Callback<()>,
+    on_cancel: Callback<()>,
+) -> impl IntoView {
+    let is_edit_mode    = vm.is_edit_mode();
+    let is_save_disabled = vm.is_save_disabled();
+
+    let handle_save = {
+        let vm = vm.clone();
+        move |_| vm.save(on_saved)
     };
 
     view! {
-        <Card>
-            <div class="form">
-                <div class="form__header">
-                    <h2 class="form__title">
-                        {move || if id.get().is_some() { "Редактирование" } else { "Создание" }}
-                    </h2>
-                </div>
-
-                <div class="form__body">
-                    {move || error.get().map(|e| view! {
-                        <div class="alert alert--error">
-                            {icon("alert-circle")}
-                            {e}
-                        </div>
-                    })}
-
-                    <div class="form__group">
-                        <Label>{"Код"}</Label>
-                        <Input 
-                            value=Signal::derive(move || code.get())
-                            on_input=move |val| set_code.set(val)
-                            placeholder="Введите код"
-                        />
-                    </div>
-
-                    <div class="form__group">
-                        <Label>{"Наименование"}</Label>
-                        <Input 
-                            value=Signal::derive(move || description.get())
-                            on_input=move |val| set_description.set(val)
-                            placeholder="Введите наименование"
-                        />
-                    </div>
-
-                    <div class="form__group">
-                        <Label>{"Комментарий"}</Label>
-                        <Textarea 
-                            value=Signal::derive(move || comment.get())
-                            on_input=move |val| set_comment.set(val)
-                            placeholder="Опциональный комментарий"
-                            rows=3
-                        />
-                    </div>
-                </div>
-
-                <div class="form__footer">
-                    <Space>
-                        <Button 
-                            appearance=ButtonAppearance::Primary
-                            on_click=save
-                            loading=Signal::derive(move || loading.get())
-                        >
-                            {icon("save")}
-                            "Сохранить"
-                        </Button>
-                        <Button 
-                            appearance=ButtonAppearance::Secondary
-                            on_click=move |_| on_cancel.call(())
-                        >
-                            {icon("x")}
-                            "Отмена"
-                        </Button>
-                    </Space>
-                </div>
+        <div class="page__header">
+            <div class="page__header-left">
+                <h2>
+                    {move || if is_edit_mode.get() {
+                        "Редактирование"
+                    } else {
+                        "Новая запись"
+                    }}
+                </h2>
             </div>
-        </Card>
+            <div class="page__header-right">
+                <Button
+                    appearance=ButtonAppearance::Primary
+                    on_click=handle_save
+                    disabled=is_save_disabled
+                >
+                    {icon("save")} "Сохранить"
+                </Button>
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    on_click=move |_| on_cancel.run(())
+                >
+                    {icon("x")} "Закрыть"
+                </Button>
+            </div>
+        </div>
     }
 }
+
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+#[component]
+fn TabBar(vm: MyDetailsVm) -> impl IntoView {
+    let active_tab   = vm.active_tab;
+    let is_edit_mode = vm.is_edit_mode();
+
+    view! {
+        <div class="page__tabs">
+            // Always-enabled tab
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={ let vm = vm.clone(); move |_| vm.set_tab("general") }
+            >
+                {icon("file-text")} "Основная"
+            </button>
+
+            // Disabled tab (only available after save)
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "other"
+                disabled=move || !is_edit_mode.get()
+                on:click=move |_| vm.set_tab("other")
+            >
+                {icon("list")} "Дополнительно"
+            </button>
+        </div>
+    }
+}
+
+// ── Tab content ───────────────────────────────────────────────────────────────
+
+#[component]
+fn TabContent(vm: MyDetailsVm) -> impl IntoView {
+    let active_tab = vm.active_tab;
+    let vm_general = vm.clone();
+    let vm_other   = vm.clone();
+
+    view! {
+        {move || match active_tab.get() {
+            "other"   => view! { <OtherTab   vm=vm_other.clone()   /> }.into_any(),
+            _         => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+        }}
+    }
+}
+
+// ── Error display ─────────────────────────────────────────────────────────────
+
+#[component]
+fn ErrorDisplay(vm: MyDetailsVm) -> impl IntoView {
+    let error = vm.error;
+    view! {
+        {move || error.get().map(|e| view! {
+            <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
+                <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+            </div>
+        })}
+    }
+}
+```
+
+### view_model.rs (skeleton)
+
+```rust
+use leptos::prelude::*;
+
+#[derive(Clone)]
+pub struct MyDetailsVm {
+    pub id:         RwSignal<Option<String>>,
+    pub code:       RwSignal<String>,
+    pub description: RwSignal<String>,
+    pub active_tab: RwSignal<&'static str>,
+    pub loading:    RwSignal<bool>,
+    pub saving:     RwSignal<bool>,
+    pub error:      RwSignal<Option<String>>,
+    // nested data flags
+    pub other_loaded:  RwSignal<bool>,
+}
+
+impl MyDetailsVm {
+    pub fn new() -> Self {
+        Self {
+            id:          RwSignal::new(None),
+            code:        RwSignal::new(String::new()),
+            description: RwSignal::new(String::new()),
+            active_tab:  RwSignal::new("general"),
+            loading:     RwSignal::new(false),
+            saving:      RwSignal::new(false),
+            error:       RwSignal::new(None),
+            other_loaded: RwSignal::new(false),
+        }
+    }
+
+    pub fn is_edit_mode(&self) -> Signal<bool> {
+        let id = self.id;
+        Signal::derive(move || id.get().is_some())
+    }
+
+    pub fn is_save_disabled(&self) -> Signal<bool> {
+        let saving = self.saving;
+        let description = self.description;
+        Signal::derive(move || saving.get() || description.get().trim().is_empty())
+    }
+
+    pub fn set_tab(&self, tab: &'static str) {
+        self.active_tab.set(tab);
+    }
+
+    pub fn load(&self, id: String) {
+        let this = self.clone();
+        this.loading.set(true);
+        this.id.set(Some(id.clone()));
+        leptos::task::spawn_local(async move {
+            match super::model::fetch_by_id(id).await {
+                Ok(item) => { /* populate fields */ this.loading.set(false); }
+                Err(e)   => { this.error.set(Some(e)); this.loading.set(false); }
+            }
+        });
+    }
+
+    pub fn save(&self, on_saved: Callback<()>) {
+        let this = self.clone();
+        this.saving.set(true);
+        leptos::task::spawn_local(async move {
+            // call save API
+            this.saving.set(false);
+            on_saved.run(());
+        });
+    }
+
+    pub fn load_other(&self) {
+        // lazy load for "other" tab
+    }
+}
+```
 ```
 
 ## Quick Reference
@@ -765,8 +912,12 @@ use std::collections::HashSet;
 - `.page__header` - Sticky header
 - `.page__header-left` - Left section
 - `.page__header-right` - Right section
-- `.page__title` - H1 title
-- `.page-content` - Main content area
+- `.page__title` - H1/H2 title
+- `.page__tabs` - Tab bar strip (32px, sits between header and content)
+- `.page__tab` - Individual tab button (native `<button>`)
+- `.page__tab--active` - Active/selected tab modifier
+- `.page__tab:disabled` - Unavailable tab state (opacity 0.35, no pointer-events)
+- `.page__content` - Main content area
 
 **Table (Native):**
 - `.table` - Container wrapper

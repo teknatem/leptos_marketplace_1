@@ -66,7 +66,7 @@ pub fn MatchNomenclatureView() -> impl IntoView {
     });
 
     view! {
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto;">
+        <div id="u505_match_nomenclature--usecase" data-page-category="legacy" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto;">
             <h2>"u505: Сопоставление номенклатуры"</h2>
 
             <div style="margin: 20px 0;">

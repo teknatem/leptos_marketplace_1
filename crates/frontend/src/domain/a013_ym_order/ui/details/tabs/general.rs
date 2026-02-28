@@ -2,6 +2,7 @@
 
 use super::super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use thaw::*;
@@ -52,11 +53,13 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let created_at = format_datetime(&order_data.metadata.created_at);
             let updated_at = format_datetime(&order_data.metadata.updated_at);
             let version = order_data.metadata.version.to_string();
+            let is_error = order_data.is_error;
 
             view! {
-                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); max-width: 1250px; align-items: start; align-content: start;">
-                    <Flex vertical=true gap=FlexGap::Medium>
-                        <Card attr:style="width: 600px; margin: 0;">
+                <div class="detail-grid">
+                    // ── Левая колонка ────────────────────────────────────────
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=0>
                             <h4 class="details-section__title">"Документ"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -84,39 +87,44 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                 <label class="form__label">"Substatus"</label>
                                 <Input value=RwSignal::new(order_data.state.substatus_raw.clone().unwrap_or_else(|| "—".to_string())) attr:readonly=true />
                             </div>
-                            <Show when=move || order_data.is_error>
+                            <Show when=move || is_error>
                                 <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Danger>
                                     "Есть строки без сопоставления номенклатуры"
                                 </Badge>
                             </Show>
-                        </Card>
-                    </Flex>
+                        </CardAnimated>
+                    </div>
 
-                    <Flex vertical=true gap=FlexGap::Medium>
-                        <Card attr:style="width: 600px; margin: 0;">
-                            <h4 class="details-section__title">"Даты и связи"</h4>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
-                                <div class="form__group">
-                                    <label class="form__label">"Изменение статуса"</label>
-                                    <Input value=RwSignal::new(status_changed_at) attr:readonly=true />
-                                </div>
-                                <div class="form__group">
-                                    <label class="form__label">"Обновлено в источнике"</label>
-                                    <Input value=RwSignal::new(updated_at_source) attr:readonly=true />
-                                </div>
-                            </div>
+                    // ── Правая колонка ───────────────────────────────────────
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=40>
+                            <h4 class="details-section__title">"Даты"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Создан в источнике"</label>
                                     <Input value=RwSignal::new(creation_date) attr:readonly=true />
                                 </div>
                                 <div class="form__group">
+                                    <label class="form__label">"Изменение статуса"</label>
+                                    <Input value=RwSignal::new(status_changed_at) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Обновлено в источнике"</label>
+                                    <Input value=RwSignal::new(updated_at_source) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
                                     <label class="form__label">"Доставка"</label>
                                     <Input value=RwSignal::new(delivery_date) attr:readonly=true />
                                 </div>
                             </div>
+                        </CardAnimated>
+
+                        <CardAnimated delay_ms=120>
+                            <h4 class="details-section__title">"Связи"</h4>
                             <div class="form__group">
-                                <label class="form__label">"Connection"</label>
+                                <label class="form__label">"Подключение"</label>
                                 <Button
                                     appearance=ButtonAppearance::Subtle
                                     size=ButtonSize::Small
@@ -171,8 +179,8 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(version) attr:readonly=true />
                                 </div>
                             </div>
-                        </Card>
-                    </Flex>
+                        </CardAnimated>
+                    </div>
                 </div>
             }
             .into_any()

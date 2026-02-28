@@ -1,4 +1,5 @@
 use super::api;
+use crate::shared::page_frame::PageFrame;
 use chrono::Utc;
 use contracts::domain::common::AggregateId;
 use contracts::enums::marketplace_type::MarketplaceType;
@@ -212,7 +213,7 @@ pub fn ImportWidget() -> impl IntoView {
     };
 
     view! {
-        <div class="import-widget" style="padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 800px; margin: 20px auto; max-height: 80vh; overflow-y: auto;">
+        <PageFrame page_id="u506_import_from_lemanapro--usecase" category="usecase">
             <h2>"u506: Импорт из ЛеманаПро"</h2>
 
             // Выбор подключения
@@ -504,6 +505,6 @@ pub fn ImportWidget() -> impl IntoView {
                     }
                 } else { view! { <div></div> }.into_any() }
             }}
-        </div>
+        </PageFrame>
     }
 }

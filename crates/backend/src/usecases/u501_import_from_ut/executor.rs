@@ -1,8 +1,12 @@
 use super::{
-    odata_models_counterparty::*, odata_models_nomenclature::*, odata_models_organization::*,
-    progress_tracker::ProgressTracker, ut_odata_client::UtODataClient,
+    odata_models_counterparty::*, odata_models_kit_variant::*, odata_models_nomenclature::*,
+    odata_models_organization::*, odata_models_purchase_of_goods::*, progress_tracker::ProgressTracker,
+    ut_odata_client::UtODataClient,
 };
-use crate::domain::{a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature};
+use crate::domain::{
+    a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature,
+    a022_kit_variant, a023_purchase_of_goods,
+};
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
 use contracts::usecases::u501_import_from_ut::{
@@ -48,6 +52,8 @@ impl ImportExecutor {
                 "a002_organization" => "Организации",
                 "a003_counterparty" => "Контрагенты",
                 "a004_nomenclature" => "Номенклатура",
+                "a022_kit_variant" => "Варианты комплектации",
+                "a023_purchase_of_goods" => "Приобретение товаров и услуг",
                 "p901_barcodes" => "Штрихкоды номенклатуры",
                 "p906_prices" => "Цены номенклатуры",
                 _ => "Unknown",
@@ -117,6 +123,21 @@ impl ImportExecutor {
                 }
                 "a004_nomenclature" => {
                     self.import_nomenclature(session_id, connection, request.delete_obsolete)
+                        .await?;
+                }
+                "a022_kit_variant" => {
+                    self.import_kit_variants(session_id, connection).await?;
+                }
+                "a023_purchase_of_goods" => {
+                    let period_from = request
+                        .period_from
+                        .clone()
+                        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                    let period_to = request
+                        .period_to
+                        .clone()
+                        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                    self.import_purchase_of_goods(session_id, connection, &period_from, &period_to)
                         .await?;
                 }
                 "p901_barcodes" => {
@@ -1284,6 +1305,322 @@ impl ImportExecutor {
         );
 
         Ok(())
+    }
+
+    /// Импорт вариантов комплектации из УТ (только с признаком ОсновнойВариант = true)
+    async fn import_kit_variants(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+    ) -> Result<()> {
+        tracing::info!("Importing kit variants for session: {}", session_id);
+
+        let aggregate_index = "a022_kit_variant";
+
+        let page_size = 100;
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+        let mut skip = 0;
+
+        loop {
+            // Табличная часть Товары возвращается автоматически в теле ответа 1С OData.
+            // $expand для табличных частей не поддерживается (только для полей-ссылок).
+            let response: UtKitVariantListResponse = self
+                .odata_client
+                .fetch_collection_with_filter(
+                    connection,
+                    "Catalog_ВариантыКомплектацииНоменклатуры",
+                    Some(page_size),
+                    Some(skip),
+                    Some("Основной eq true"),
+                )
+                .await?;
+
+            if response.value.is_empty() {
+                break;
+            }
+
+            let batch_size = response.value.len();
+            tracing::info!(
+                "Kit variants batch: skip={}, size={}",
+                skip,
+                batch_size
+            );
+
+            for odata_item in response.value {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("{} - {}", odata_item.code, odata_item.description)),
+                );
+
+                match self
+                    .process_kit_variant(&odata_item, &connection.base.id.as_string())
+                    .await
+                {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to process kit variant {}: {}",
+                            odata_item.ref_key,
+                            e
+                        );
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process kit variant {}", odata_item.ref_key),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            self.progress_tracker
+                .set_current_item(session_id, aggregate_index, None);
+
+            skip += page_size;
+
+            if batch_size < page_size as usize {
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Kit variants import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    async fn process_kit_variant(
+        &self,
+        odata: &UtKitVariantOData,
+        connection_id: &str,
+    ) -> Result<bool> {
+        use uuid::Uuid;
+
+        let existing = if !odata.ref_key.is_empty() {
+            if let Ok(uuid) = Uuid::parse_str(&odata.ref_key) {
+                a022_kit_variant::repository::get_by_id(uuid).await?
+            } else {
+                tracing::warn!("Invalid kit variant ref_key: {}", odata.ref_key);
+                None
+            }
+        } else {
+            None
+        };
+
+        let new_agg = odata
+            .to_aggregate(connection_id)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        if existing.is_some() {
+            a022_kit_variant::repository::upsert(&new_agg).await?;
+            Ok(false)
+        } else {
+            a022_kit_variant::repository::upsert(&new_agg).await?;
+            Ok(true)
+        }
+    }
+
+    /// Импорт документов ПриобретениеТоваровУслуг из УТ 11
+    async fn import_purchase_of_goods(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+        period_from: &str,
+        period_to: &str,
+    ) -> Result<()> {
+        tracing::info!(
+            "Importing purchase of goods for session: {}, period: {} - {}",
+            session_id,
+            period_from,
+            period_to
+        );
+
+        let aggregate_index = "a023_purchase_of_goods";
+
+        // Склад "Московская область" — фиксированный фильтр
+        const WAREHOUSE_KEY: &str = "7ffe0867-47cb-11e8-a402-b06ebfcee9c3";
+        // Исключаемые контрагенты
+        const EXCLUDED_COUNTERPARTY_1: &str = "491fc071-4a1d-11e8-a402-b06ebfcee9c3";
+        const EXCLUDED_COUNTERPARTY_2: &str = "18696a6b-c59b-11ea-82d7-ac1f6b446ea1";
+
+        // Склад_Key в ПриобретениеТоваровУслуг не поддерживает сравнение guid через OData $filter
+        // (составной тип или несовместимый тип поля), поэтому фильтруем по складу в Rust после получения.
+        let filter = format!(
+            "Posted eq true \
+             and DeletionMark eq false \
+             and Date ge datetime'{period_from}T00:00:00' \
+             and Date le datetime'{period_to}T23:59:59' \
+             and Контрагент_Key ne guid'{excl1}' \
+             and Контрагент_Key ne guid'{excl2}'",
+            period_from = period_from,
+            period_to = period_to,
+            excl1 = EXCLUDED_COUNTERPARTY_1,
+            excl2 = EXCLUDED_COUNTERPARTY_2,
+        );
+
+        let page_size = 100i32;
+        let mut skip = 0i32;
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        loop {
+            // Табличная часть Товары возвращается автоматически в теле ответа 1С OData.
+            // $expand для табличных частей не поддерживается (только для ссылочных реквизитов).
+            let response: UtPurchaseOfGoodsListResponse = self
+                .odata_client
+                .fetch_collection_full(
+                    connection,
+                    "Document_ПриобретениеТоваровУслуг",
+                    Some(page_size),
+                    Some(skip),
+                    Some(&filter),
+                    None,
+                    None,
+                    Some("Ref_Key asc"),
+                )
+                .await?;
+
+            if response.value.is_empty() {
+                break;
+            }
+
+            let batch_size = response.value.len();
+            tracing::info!(
+                "Purchase of goods batch: skip={}, size={}",
+                skip,
+                batch_size
+            );
+
+            for odata_item in response.value {
+                // Постфильтр по складу: пропускаем документы с другим складом
+                if !odata_item.warehouse_key.is_empty()
+                    && odata_item.warehouse_key.to_lowercase() != WAREHOUSE_KEY
+                {
+                    tracing::debug!(
+                        "Skipping purchase {} — warehouse {} != {}",
+                        odata_item.number,
+                        odata_item.warehouse_key,
+                        WAREHOUSE_KEY
+                    );
+                    continue;
+                }
+
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "{} от {}",
+                        odata_item.number,
+                        odata_item.document_date()
+                    )),
+                );
+
+                let connection_id = connection.base.id.as_string();
+                match self
+                    .process_purchase_of_goods(&odata_item, &connection_id)
+                    .await
+                {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to process purchase {} {}: {}",
+                            odata_item.number,
+                            odata_item.ref_key,
+                            e
+                        );
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!(
+                                "Failed to process purchase {} {}",
+                                odata_item.number, odata_item.ref_key
+                            ),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
+
+            self.progress_tracker
+                .set_current_item(session_id, aggregate_index, None);
+
+            skip += page_size;
+
+            if batch_size < page_size as usize {
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Purchase of goods import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    async fn process_purchase_of_goods(
+        &self,
+        odata: &UtPurchaseOfGoodsOData,
+        connection_id: &str,
+    ) -> Result<bool> {
+        let doc = odata
+            .to_aggregate(connection_id)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        a023_purchase_of_goods::repository::upsert_document(&doc).await
     }
 }
 

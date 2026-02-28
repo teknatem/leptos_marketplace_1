@@ -3,6 +3,7 @@
 //! Shows barcodes associated with the nomenclature from WB, OZON, YM, 1C
 
 use super::super::view_model::NomenclatureDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -14,7 +15,7 @@ pub fn BarcodesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     let barcodes_loading = vm.barcodes_loading;
 
     view! {
-        <div class="details-section">
+        <CardAnimated delay_ms=0>
             <h4 class="details-section__title">
                 {move || format!("Штрихкоды ({})", barcodes_count.get())}
             </h4>
@@ -104,6 +105,6 @@ pub fn BarcodesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
                     </Table>
                 </Show>
             </Show>
-        </div>
+        </CardAnimated>
     }
 }

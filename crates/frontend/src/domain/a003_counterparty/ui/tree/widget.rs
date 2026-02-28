@@ -2,6 +2,7 @@ use super::super::details::CounterpartyDetails;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a003_counterparty::aggregate::Counterparty;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
@@ -423,7 +424,7 @@ pub fn CounterpartyTree() -> impl IntoView {
     load();
 
     view! {
-        <div class="content">
+        <PageFrame page_id="a003_counterparty--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h2 class="page__title">{"Контрагенты"}</h2>
@@ -516,6 +517,6 @@ pub fn CounterpartyTree() -> impl IntoView {
                 set_editing_id.set(None);
                 view! { <></> }.into_any()
             } else { view! { <></> }.into_any() }}
-        </div>
+        </PageFrame>
     }
 }

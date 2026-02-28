@@ -17,6 +17,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 use crate::shared::api_utils::api_base;
+use crate::shared::page_frame::PageFrame;
 
 /// Форматирует дату из "2025-10-11 00:00:00" в dd.mm.yyyy
 fn format_date(date_str: &str) -> String {
@@ -568,7 +569,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
     };
 
     view! {
-        <div class="ozon-transactions-list" style="background: #f8f9fa; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <PageFrame page_id="a014_ozon_transactions--list" category="list">
             // Header - Row 1: Title with Post/Unpost and Settings Buttons
             <div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); padding: 8px 12px; border-radius: 6px 6px 0 0; margin: -12px -12px 0 -12px; display: flex; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -851,7 +852,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                     }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }
 

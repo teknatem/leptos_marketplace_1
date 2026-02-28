@@ -4,6 +4,7 @@ use super::tabs::GeneralTab;
 use super::view_model::ConnectionMPDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use std::rc::Rc;
 use thaw::*;
@@ -36,7 +37,7 @@ pub fn ConnectionMPDetail(
     let vm_content = vm.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a006_connection_mp--detail" category="detail">
             <Header vm=vm_header id=id on_close=on_close />
 
             <div class="page__content">
@@ -59,7 +60,7 @@ pub fn ConnectionMPDetail(
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

@@ -64,7 +64,7 @@ pub fn LlmChatList() -> impl IntoView {
     fetch();
 
     view! {
-        <div style="padding: 20px;">
+        <div id="a018_llm_chat--list" data-page-category="legacy" style="padding: 20px;">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
                 <h1 style="font-size: 24px; font-weight: bold;">{"LLM Чаты"}</h1>
                 <Space>

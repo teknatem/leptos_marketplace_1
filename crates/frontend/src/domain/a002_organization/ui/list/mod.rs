@@ -3,6 +3,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::components::table::{TableCrosshairHighlight, TableHeaderCheckbox, TableCellCheckbox};
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a002_organization::aggregate::Organization;
 use leptos::prelude::*;
@@ -188,7 +189,7 @@ pub fn OrganizationList() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a002_organization--list" category="list">
             // Page header with title and action buttons
             <div class="page__header">
                 <div class="page__header-left">
@@ -295,7 +296,7 @@ pub fn OrganizationList() -> impl IntoView {
                             view! { <></> }
                         }}
                     </Show>
-        </div>
+        </PageFrame>
     }
 }
 

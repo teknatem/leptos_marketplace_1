@@ -116,6 +116,7 @@
 
   /* Header Colors */
   --header-bg: linear-gradient(135deg, #dddddd  0%, #cccccc 100%);
+  --page-header-bg-solid: #d4d4d4;
   --header-text: #ffffff;
   --header-border: rgba(0, 0, 0, 0.1);
   --header-noise-opacity: 0.04;

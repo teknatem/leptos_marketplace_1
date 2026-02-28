@@ -8,6 +8,7 @@ use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::components::ui::button::Button as UiButton;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -806,7 +807,7 @@ pub fn WbSalesList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a012_wb_sales--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Продажи Wildberries"</h1>
@@ -1346,7 +1347,7 @@ pub fn WbSalesList() -> impl IntoView {
                                 </Table>
             </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

@@ -3,6 +3,7 @@ use crate::shared::icons::icon;
 use crate::shared::list_utils::{
     get_sort_indicator, highlight_matches, SearchInput, Searchable, Sortable,
 };
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a002_organization::aggregate::Organization;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
@@ -276,7 +277,7 @@ pub fn MarketplaceSalesList() -> impl IntoView {
     fetch();
 
     view! {
-        <div class="content">
+        <PageFrame page_id="a008_marketplace_sales--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h2 class="page__title">{"Продажи маркетплейсов"}</h2>
@@ -352,7 +353,7 @@ pub fn MarketplaceSalesList() -> impl IntoView {
                     </tbody>
                 </table>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

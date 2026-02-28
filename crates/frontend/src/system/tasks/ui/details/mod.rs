@@ -1,3 +1,4 @@
+use crate::shared::page_frame::PageFrame;
 use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
 use contracts::system::tasks::response::ScheduledTaskResponse;
 use contracts::system::tasks::progress::TaskProgressResponse;
@@ -151,7 +152,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
     });
 
     view! {
-        <div class="page page--wide scheduled-task-details">
+        <PageFrame page_id="sys_scheduled_tasks--detail" category="system" class="page--wide scheduled-task-details">
             <div class="scheduled-task-details__header">
                 <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
                     <h2 class="scheduled-task-details__title">
@@ -300,6 +301,6 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
             } else {
                 view! { <></> }.into_any()
             }}
-        </div>
+        </PageFrame>
     }
 }

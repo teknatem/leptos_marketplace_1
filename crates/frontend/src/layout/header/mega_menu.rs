@@ -97,6 +97,9 @@ pub fn MegaMenuBar() -> impl IntoView {
         MegaMenuItem { key: "a010_ozon_fbs_posting", title: tab_label_for_key("a010_ozon_fbs_posting"), icon_name: "file-text" },
         MegaMenuItem { key: "a011_ozon_fbo_posting", title: tab_label_for_key("a011_ozon_fbo_posting"), icon_name: "file-text" },
         MegaMenuItem { key: "a015_wb_orders", title: tab_label_for_key("a015_wb_orders"), icon_name: "file-text" },
+        MegaMenuItem { key: "a021_production_output", title: tab_label_for_key("a021_production_output"), icon_name: "package" },
+        MegaMenuItem { key: "a022_kit_variant", title: tab_label_for_key("a022_kit_variant"), icon_name: "layers" },
+        MegaMenuItem { key: "a023_purchase_of_goods", title: tab_label_for_key("a023_purchase_of_goods"), icon_name: "shopping-cart" },
         MegaMenuItem { key: "a012_wb_sales", title: tab_label_for_key("a012_wb_sales"), icon_name: "file-text" },
         MegaMenuItem { key: "a013_ym_order", title: tab_label_for_key("a013_ym_order"), icon_name: "file-text" },
         MegaMenuItem { key: "a009_ozon_returns", title: tab_label_for_key("a009_ozon_returns"), icon_name: "package-x" },
@@ -113,6 +116,7 @@ pub fn MegaMenuBar() -> impl IntoView {
         MegaMenuItem { key: "u503_import_from_yandex", title: tab_label_for_key("u503_import_from_yandex"), icon_name: "import" },
         MegaMenuItem { key: "u504_import_from_wildberries", title: tab_label_for_key("u504_import_from_wildberries"), icon_name: "import" },
         MegaMenuItem { key: "u506_import_from_lemanapro", title: tab_label_for_key("u506_import_from_lemanapro"), icon_name: "import" },
+        MegaMenuItem { key: "u507_import_from_erp", title: tab_label_for_key("u507_import_from_erp"), icon_name: "import" },
     ];
 
     // Операции

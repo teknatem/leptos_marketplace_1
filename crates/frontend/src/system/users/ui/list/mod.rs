@@ -185,7 +185,7 @@ fn UsersList() -> impl IntoView {
     };
 
     view! {
-        <div class="list-container">
+        <div id="sys_users--list" data-page-category="legacy" class="list-container">
             // Header row 1
             <div class="list-header-row gradient-header">
                 <div class="header-left">

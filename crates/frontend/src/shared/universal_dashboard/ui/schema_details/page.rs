@@ -2,6 +2,7 @@
 
 use super::tabs::{FieldsTab, SettingsTab, SqlTab, TestTab};
 use super::view_model::SchemaDetailsVm;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -31,7 +32,7 @@ pub fn SchemaDetails(schema_id: String, #[prop(into)] on_close: Callback<()>) ->
     let vm_schema = vm.clone();
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="schema_details--detail" category="detail">
             // Header
             <Header vm=vm_header on_close=on_close />
 
@@ -67,7 +68,7 @@ pub fn SchemaDetails(schema_id: String, #[prop(into)] on_close: Callback<()>) ->
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

@@ -19,6 +19,7 @@ use crate::shared::icons::icon;
 use crate::shared::list_utils::{
     format_number, get_sort_class, get_sort_indicator, sort_list, Sortable,
 };
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,7 +352,7 @@ pub fn SalesRegisterList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="p900_mp_sales_register--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <div class="page__icon">{icon("trending-up")}</div>
@@ -761,7 +762,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                         }.into_any()
                     }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

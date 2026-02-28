@@ -241,3 +241,40 @@ pub async fn u506_get_progress(
         None => Err(axum::http::StatusCode::NOT_FOUND),
     }
 }
+
+// ============================================================================
+// UseCase u507: Import from ERP (Production Output)
+// ============================================================================
+
+static ERP_IMPORT_EXECUTOR: Lazy<Arc<usecases::u507_import_from_erp::ImportExecutor>> =
+    Lazy::new(|| {
+        let tracker = Arc::new(usecases::u507_import_from_erp::ProgressTracker::new());
+        Arc::new(usecases::u507_import_from_erp::ImportExecutor::new(tracker))
+    });
+
+/// POST /api/u507/import/start
+pub async fn u507_start_import(
+    Json(request): Json<contracts::usecases::u507_import_from_erp::ImportRequest>,
+) -> Result<Json<contracts::usecases::u507_import_from_erp::ImportResponse>, axum::http::StatusCode>
+{
+    match ERP_IMPORT_EXECUTOR.start_import(request).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            tracing::error!("Failed to start ERP import: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /api/u507/import/:session_id/progress
+pub async fn u507_get_progress(
+    Path(session_id): Path<String>,
+) -> Result<
+    Json<contracts::usecases::u507_import_from_erp::progress::ImportProgress>,
+    axum::http::StatusCode,
+> {
+    match ERP_IMPORT_EXECUTOR.get_progress(&session_id) {
+        Some(progress) => Ok(Json(progress)),
+        None => Err(axum::http::StatusCode::NOT_FOUND),
+    }
+}

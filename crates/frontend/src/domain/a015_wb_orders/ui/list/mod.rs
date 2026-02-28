@@ -10,6 +10,7 @@ use crate::shared::components::table::{
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use gloo_net::http::Request;
 use leptos::logging::log;
@@ -648,7 +649,7 @@ pub fn WbOrdersList() -> impl IntoView {
     let selected_signal = Signal::derive(move || selected.get());
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a015_wb_orders--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Заказы Wildberries"</h1>
@@ -1075,7 +1076,7 @@ pub fn WbOrdersList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

@@ -2,6 +2,7 @@ use crate::domain::a017_llm_agent::ui::details::LlmAgentDetails;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
 use leptos::prelude::*;
 use thaw::*;
@@ -60,7 +61,7 @@ pub fn LlmAgentList() -> impl IntoView {
     fetch();
 
     view! {
-        <div style="padding: 20px;">
+        <PageFrame page_id="a017_llm_agent--list" category="list">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
                 <h1 style="font-size: 24px; font-weight: bold;">{"Агенты LLM"}</h1>
                 <Space>
@@ -188,7 +189,7 @@ pub fn LlmAgentList() -> impl IntoView {
                     view! { <></> }
                 }}
             </Show>
-        </div>
+        </PageFrame>
     }
 }
 

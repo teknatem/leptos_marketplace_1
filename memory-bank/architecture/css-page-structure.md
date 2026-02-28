@@ -64,6 +64,8 @@ tags: [frontend, css, bem, structure, app-shell]
     │               │   │   ├── .page__subtitle
     │               │   │   └── .page__badge
     │               │   └── .page__header-right
+    │               ├── .page__tabs [layout.css]  (опционально, только для страниц с вкладками)
+    │               │   └── button.page__tab / button.page__tab--active / button.page__tab:disabled
     │               └── .page__content [layout.css]
     └── .app-panel                 (правая панель) [app-shell.css]
         ├── .app-panel__resizer
@@ -172,7 +174,9 @@ tags: [frontend, css, bem, structure, app-shell]
 - `.page__subtitle` — подзаголовок страницы
 - `.page__badge` — badge/счетчик
 - `.page__actions` — альтернативное имя для `.page__header-right`
-- `.page__content` — основной контент страницы (опционально)
+- `.page__tabs` — полоса вкладок (32px, фон = header), между header и content
+- `.page__tab` — отдельная кнопка-вкладка внутри `.page__tabs` (нативный `<button>`)
+- `.page__content` — основной контент страницы
 
 **Modifiers:**
 
@@ -180,6 +184,8 @@ tags: [frontend, css, bem, structure, app-shell]
 - `.page--detail` — модификатор для детальных страниц
 - `.page--dashboard` — модификатор для дашбордов
 - `.page--wide` — модификатор для широких страниц
+- `.page__tab--active` — активная (выбранная) вкладка
+- `.page__tab:disabled` — недоступная вкладка (opacity 0.35, pointer-events none)
 
 **Example:**
 
@@ -297,20 +303,27 @@ view! {
 
 ### Detail Page
 
-Страница с детальной информацией об элементе (форма)
+Страница с детальной информацией об элементе. Структура: header → tabs (опционально) → content.
 
 ```html
 <div class="page page--detail">
   <div class="page__header">
     <div class="page__header-left">
-      <h1 class="page__title">Редактирование: Организация #123</h1>
+      <h2>Редактирование номенклатуры</h2>
     </div>
     <div class="page__header-right">
       <button class="button button--primary">Сохранить</button>
-      <button class="button button--secondary">Отмена</button>
+      <button class="button button--secondary">Закрыть</button>
     </div>
   </div>
-  <form>...</form>
+  <div class="page__tabs">
+    <button class="page__tab page__tab--active">Основная</button>
+    <button class="page__tab">Штрихкоды</button>
+    <button class="page__tab" disabled>Дилерские цены</button>
+  </div>
+  <div class="page__content">
+    <!-- detail-grid, CardAnimated, form fields -->
+  </div>
 </div>
 ```
 

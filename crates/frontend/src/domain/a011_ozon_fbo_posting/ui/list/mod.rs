@@ -3,6 +3,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::date_utils::format_datetime;
 use crate::shared::list_utils::{get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -661,7 +662,7 @@ pub fn OzonFboPostingList() -> impl IntoView {
     load_postings();
 
     view! {
-        <div class="ozon-fbo-posting-list">
+        <PageFrame page_id="a011_ozon_fbo_posting--list" category="list">
             {move || {
                 if let Some(id) = selected_id.get() {
                     open_detail_modal(id);
@@ -1008,6 +1009,6 @@ pub fn OzonFboPostingList() -> impl IntoView {
                     }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }

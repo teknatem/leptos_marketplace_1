@@ -17,6 +17,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use thaw::*;
+use crate::shared::page_frame::PageFrame;
 
 impl ExcelExportable for MarketplaceProductListItemDto {
     fn headers() -> Vec<&'static str> {
@@ -328,7 +329,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a007_marketplace_product--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">"Товары маркетплейсов"</h1>
@@ -566,6 +567,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     </table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

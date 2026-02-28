@@ -128,7 +128,7 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
     });
 
     view! {
-        <div class="d400-dashboard">
+        <div id="d400_monthly_summary--dashboard" data-page-category="legacy" class="d400-dashboard">
             {move || {
                 if loading.get() {
                     view! {

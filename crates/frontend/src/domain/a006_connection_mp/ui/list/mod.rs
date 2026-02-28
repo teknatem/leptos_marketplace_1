@@ -15,6 +15,7 @@ use leptos::task::spawn_local;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use thaw::*;
+use crate::shared::page_frame::PageFrame;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionMPRow {
@@ -214,7 +215,7 @@ pub fn ConnectionMPList() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="a006_connection_mp--list" category="list">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">{"Подключения маркетплейсов"}</h1>
@@ -436,7 +437,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                     </Table>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

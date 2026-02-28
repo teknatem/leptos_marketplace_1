@@ -1,4 +1,5 @@
 use crate::shared::api_utils::api_url;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::indicator_set::IndicatorSetView;
 use chrono::{Datelike, Utc};
@@ -149,7 +150,7 @@ pub fn IndicatorsDashboard() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
+        <PageFrame page_id="d403_indicators--dashboard" category="dashboard">
             <div class="page__header">
                 <h2 class="page__title">"Показатели"</h2>
             </div>
@@ -215,6 +216,6 @@ pub fn IndicatorsDashboard() -> impl IntoView {
                     })
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }

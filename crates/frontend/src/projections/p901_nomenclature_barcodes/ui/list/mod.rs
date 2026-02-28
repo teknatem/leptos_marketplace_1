@@ -257,7 +257,7 @@ pub fn BarcodesList() -> impl IntoView {
     };
 
     view! {
-        <div class="document-container">
+        <div id="p901_nomenclature_barcodes--list" data-page-category="legacy" class="document-container">
             <div class="document-content">
                 <div class="document-inner">
                     // Заголовок страницы

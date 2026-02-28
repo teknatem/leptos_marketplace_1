@@ -102,12 +102,45 @@ Copy-Item "crates\backend\target\db\app.db" "data\app.db"
 
 ## All Scripts
 
-| File                | Purpose                                                    |
-| ------------------- | ---------------------------------------------------------- |
-| `collect_crates.py` | Collects all code files from crates/ into single text file |
-| `backup_db.ps1`     | Creates timestamped database backup                        |
-| `restore_db.ps1`    | Restores database from backup                              |
-| `auto_backup.ps1`   | Auto-backup if database changed                            |
+| File                  | Purpose                                                    |
+| --------------------- | ---------------------------------------------------------- |
+| `build-release.ps1`   | Build backend + frontend, pack into deploy/ for deployment |
+| `collect_crates.py`   | Collects all code files from crates/ into single text file |
+| `backup_db.ps1`       | Creates timestamped database backup                        |
+| `restore_db.ps1`      | Restores database from backup                              |
+| `auto_backup.ps1`     | Auto-backup if database changed                            |
+
+---
+
+## Release Build Script
+
+### Purpose
+
+`build-release.ps1` собирает полный релиз и упаковывает его в папку `deploy/`, готовую к копированию на сервер.
+
+### Usage
+
+```powershell
+# Запуск из корня проекта
+.\scripts\build-release.ps1
+```
+
+### Output
+
+```
+deploy/
+├── backend.exe            # скомпилированный сервер
+├── dist/                  # фронтенд (WASM + CSS + JS)
+├── knowledge/             # база знаний (MD-файлы), если папка существует
+├── config.toml.template   # шаблон конфигурации для сервера
+└── DEPLOY.md              # инструкция по установке
+```
+
+### Workflow
+
+1. Запустить `.\scripts\build-release.ps1`
+2. Открыть `deploy\config.toml.template`, отредактировать пути, сохранить как `deploy\config.toml` (первый раз)
+3. Скопировать папку `deploy\` на сервер (или нужные файлы при обновлении)
 
 ### Backup Location
 

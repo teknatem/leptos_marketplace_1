@@ -3,7 +3,7 @@
 //! Thin wrapper that:
 //! - Creates ViewModel
 //! - Renders header with action buttons
-//! - Renders tab bar
+//! - Renders tab bar (Основная | Штрихкоды | Дилерские цены)
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
@@ -11,6 +11,7 @@ use super::tabs::{BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab};
 use super::view_model::NomenclatureDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -21,13 +22,10 @@ pub fn NomenclatureDetails(
     #[prop(into)] on_saved: Callback<()>,
     #[prop(into)] on_cancel: Callback<()>,
 ) -> impl IntoView {
-    // Create ViewModel
     let vm = NomenclatureDetailsVm::new();
 
-    // Load dimension options (always needed)
     vm.load_dimension_options();
 
-    // Load entity data if editing
     if let Some(existing_id) = id {
         vm.load(existing_id);
     }
@@ -52,36 +50,27 @@ pub fn NomenclatureDetails(
         }
     });
 
-    // Clone for closures
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
     let vm_content = vm.clone();
 
     view! {
-        <div class="details-container nomenclature-details">
-            // Header
-            <Header vm=vm_header.clone() on_saved=on_saved on_cancel=on_cancel />
+        <PageFrame page_id="a004_nomenclature--detail" category="detail">
+            <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
 
-            <div class="modal-body">
-                // Error display
+            <TabBar vm=vm_tabs />
+
+            <div class="page__content">
                 <ErrorDisplay vm=vm.clone() />
-
-                // Tab bar
-                <TabBar vm=vm_tabs.clone() />
-
-                // Derivative warning (between tabs and content)
                 <DerivativeWarning vm=vm.clone() />
-
-                // Tab content
-                <div style="height: 60vh; overflow-y: auto; overflow-x: hidden;">
-                    <TabContent vm=vm_content.clone() />
-                </div>
+                <TabContent vm=vm_content />
             </div>
-        </div>
+        </PageFrame>
     }
 }
 
-/// Header component with title and action buttons
+// ── Header ────────────────────────────────────────────────────────────────────
+
 #[component]
 fn Header(
     vm: NomenclatureDetailsVm,
@@ -93,42 +82,143 @@ fn Header(
 
     let handle_save = {
         let vm = vm.clone();
-        move |_| {
-            vm.save(on_saved);
-        }
+        move |_| vm.save(on_saved)
     };
 
     view! {
-        <div class="modal-header">
-            <h3 class="modal-title">
-                {move || if is_edit_mode.get() {
-                    "Редактирование номенклатуры"
-                } else {
-                    "Новая номенклатура"
-                }}
-            </h3>
-            <div class="modal-header-actions">
+        <div class="page__header">
+            <div class="page__header-left">
+                <h1 class = "page__title">
+                    {move || if is_edit_mode.get() {
+                        "Редактирование номенклатуры"
+                    } else {
+                        "Новая номенклатура"
+                    }}
+                </h1>
+            </div>
+            <div class="page__header-right">
                 <Button
                     appearance=ButtonAppearance::Primary
                     on_click=handle_save
                     disabled=is_save_disabled
                 >
-                    {icon("save")}
-                    " Сохранить"
+                    {icon("save")} "Сохранить"
                 </Button>
                 <Button
                     appearance=ButtonAppearance::Secondary
                     on_click=move |_| on_cancel.run(())
                 >
-                    {icon("x")}
-                    " Закрыть"
+                    {icon("x")} "Закрыть"
                 </Button>
             </div>
         </div>
     }
 }
 
-/// Error display component
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+#[component]
+fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
+    let active_tab = vm.active_tab;
+    let is_edit_mode = vm.is_edit_mode();
+    let barcodes_count = vm.barcodes_count;
+    let dealer_prices_count = vm.dealer_prices_count;
+
+    view! {
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("general")
+                }
+            >
+                {icon("file-text")} "Основная"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "barcodes"
+                disabled=move || !is_edit_mode.get()
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("barcodes")
+                }
+            >
+                {icon("barcode")} "Штрихкоды"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "barcodes" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || barcodes_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "dealer_prices"
+                disabled=move || !is_edit_mode.get()
+                on:click=move |_| vm.set_tab("dealer_prices")
+            >
+                {icon("dollar-sign")} "Дилерские цены"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "dealer_prices" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || dealer_prices_count.get().to_string()}
+                </Badge>
+            </button>
+        </div>
+    }
+}
+
+// ── Tab content ───────────────────────────────────────────────────────────────
+
+#[component]
+fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
+    let active_tab = vm.active_tab;
+    let vm_general = vm.clone();
+    let vm_dimensions = vm.clone();
+    let vm_barcodes = vm.clone();
+    let vm_dealer_prices = vm.clone();
+
+    view! {
+        {move || match active_tab.get() {
+            "barcodes" => view! {
+                <BarcodesTab vm=vm_barcodes.clone() />
+            }.into_any(),
+            "dealer_prices" => view! {
+                <DealerPricesTab vm=vm_dealer_prices.clone() />
+            }.into_any(),
+            _ => view! {
+                <div class="detail-grid">
+                    <GeneralTab vm=vm_general.clone() />
+                    <DimensionsTab vm=vm_dimensions.clone() />
+                </div>
+            }.into_any(),
+        }}
+    }
+}
+
+// ── Error display ─────────────────────────────────────────────────────────────
+
 #[component]
 fn ErrorDisplay(vm: NomenclatureDetailsVm) -> impl IntoView {
     let error = vm.error;
@@ -143,7 +233,8 @@ fn ErrorDisplay(vm: NomenclatureDetailsVm) -> impl IntoView {
     }
 }
 
-/// Derivative warning component - displays warning when this is a derivative nomenclature
+// ── Derivative warning ────────────────────────────────────────────────────────
+
 #[component]
 fn DerivativeWarning(vm: NomenclatureDetailsVm) -> impl IntoView {
     let tabs_store =
@@ -189,188 +280,12 @@ fn DerivativeWarning(vm: NomenclatureDetailsVm) -> impl IntoView {
                                     <span>{name}</span>
                                 }.into_any()
                             } else {
-                                view! {
-                                    <span>{base_id}</span>
-                                }.into_any()
+                                view! { <span>{base_id}</span> }.into_any()
                             }
                         }}
                     </div>
                 </MessageBar>
             </div>
         </Show>
-    }
-}
-
-/// Tab bar component using THAW buttons for better visual clarity
-#[component]
-fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
-    let active_tab = vm.active_tab;
-    let is_edit_mode = vm.is_edit_mode();
-    let barcodes_count = vm.barcodes_count;
-    let dealer_prices_count = vm.dealer_prices_count;
-
-    // Helper to create tab button content with proper icon spacing
-    let tab_icon = |name: &str| {
-        view! { <span class="tab-icon">{icon(name)}</span> }
-    };
-
-    view! {
-        <Flex
-            gap=FlexGap::Small
-            align=FlexAlign::Center
-            style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--color-bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--color-border);"
-        >
-            // General tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "general" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("general")
-                }
-            >
-                {tab_icon("file-text")}
-                "Основная"
-            </Button>
-
-            // Dimensions tab
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "dimensions" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("dimensions")
-                }
-            >
-                {tab_icon("sliders")}
-                "Измерения"
-            </Button>
-
-            // Barcodes tab (disabled for new records)
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "barcodes" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("barcodes")
-                }
-                disabled=Signal::derive(move || !is_edit_mode.get())
-            >
-                {tab_icon("barcode")}
-                "Штрихкоды"
-                <Badge
-                    appearance=BadgeAppearance::Tint
-                    color=Signal::derive({
-                        let active_tab = active_tab;
-                        move || if active_tab.get() == "barcodes" {
-                            BadgeColor::Brand
-                        } else {
-                            BadgeColor::Informative
-                        }
-                    })
-                    attr:style="margin-left: 6px;"
-                >
-                    {move || barcodes_count.get().to_string()}
-                </Badge>
-            </Button>
-
-            // Dealer prices tab (disabled for new records)
-            <Button
-                appearance=Signal::derive({
-                    let active_tab = active_tab;
-                    move || if active_tab.get() == "dealer_prices" {
-                        ButtonAppearance::Primary
-                    } else {
-                        ButtonAppearance::Subtle
-                    }
-                })
-                size=ButtonSize::Small
-                on_click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("dealer_prices")
-                }
-                disabled=Signal::derive(move || !is_edit_mode.get())
-            >
-                {tab_icon("dollar-sign")}
-                "Дилерские цены"
-                <Badge
-                    appearance=BadgeAppearance::Tint
-                    color=Signal::derive({
-                        let active_tab = active_tab;
-                        move || if active_tab.get() == "dealer_prices" {
-                            BadgeColor::Brand
-                        } else {
-                            BadgeColor::Informative
-                        }
-                    })
-                    attr:style="margin-left: 6px;"
-                >
-                    {move || dealer_prices_count.get().to_string()}
-                </Badge>
-            </Button>
-        </Flex>
-    }
-}
-
-/// Tab content component - routes to the appropriate tab
-#[component]
-fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
-    let active_tab = vm.active_tab;
-    let vm_general = vm.clone();
-    let vm_dimensions = vm.clone();
-    let vm_barcodes = vm.clone();
-    let vm_dealer_prices = vm.clone();
-
-    view! {
-        {move || match active_tab.get() {
-            "general" => view! {
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md); height: 100%; overflow-y: auto; align-items: start; align-content: start;">
-                   <GeneralTab vm=vm_general.clone() />
-                   <DimensionsTab vm=vm_dimensions.clone() />
-                </div>
-            }.into_any(),
-            "dimensions" => view! {
-                <div style="height: 100%; overflow-y: auto;">
-                    <DimensionsTab vm=vm_dimensions.clone() />
-                </div>
-            }.into_any(),
-            "barcodes" => view! {
-                <div style="height: 100%; overflow-y: auto;">
-                    <BarcodesTab vm=vm_barcodes.clone() />
-                </div>
-            }.into_any(),
-            "dealer_prices" => view! {
-                <div style="height: 100%; overflow-y: auto;">
-                    <DealerPricesTab vm=vm_dealer_prices.clone() />
-                </div>
-            }.into_any(),
-            _ => view! {
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); height: 100%; overflow-y: auto;">
-                    <GeneralTab vm=vm_general.clone() />
-                    <DimensionsTab vm=vm_dimensions.clone() />
-                </div>
-            }.into_any(),
-        }}
     }
 }

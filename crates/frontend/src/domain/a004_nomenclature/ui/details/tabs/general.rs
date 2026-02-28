@@ -3,6 +3,7 @@
 //! Contains: description, full_description, code, article, parent_id, comment, is_folder
 
 use super::super::view_model::NomenclatureDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -10,72 +11,56 @@ use thaw::*;
 #[component]
 pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
-        <Card>
-        <h4 class="details-section__title">"Основные поля"</h4>
-        <div class="details-section">
+        <CardAnimated delay_ms=0>
+            <h4 class="details-section__title">"Основные поля"</h4>
             <div class="details-grid--3col">
-                // Description (required)
                 <div class="form__group" style="grid-column: 1 / -1;">
                     <label class="form__label">"Наименование *"</label>
                     <Input value=vm.description placeholder="Введите наименование" />
                 </div>
 
-                // Full description
                 <div class="form__group" style="grid-column: 1 / -1;">
                     <label class="form__label">"Полное наименование"</label>
                     <Input value=vm.full_description placeholder="Опционально" />
                 </div>
 
-                // Code
                 <div class="form__group">
                     <label class="form__label">"Код"</label>
                     <Input value=vm.code placeholder="Опционально" />
                 </div>
 
-                // Article
                 <div class="form__group">
                     <label class="form__label">"Артикул"</label>
                     <Input value=vm.article placeholder="Опционально" />
                 </div>
 
-                // Parent ID
                 <div class="form__group">
                     <label class="form__label">"Родитель (UUID)"</label>
                     <Input value=vm.parent_id placeholder="Опционально" />
                 </div>
 
-                // Comment
                 <div class="form__group" style="grid-column: 1 / -1;">
                     <label class="form__label">"Комментарий"</label>
                     <Textarea value=vm.comment placeholder="Опционально" attr:rows=3 />
                 </div>
 
-                // Flags
                 <div class="details-flags" style="grid-column: 1 / 2;">
                     <Checkbox checked=vm.is_folder label="Это папка" />
                 </div>
 
-                // Is derivative (readonly checkbox)
                 <div class="details-flags" style="grid-column: 2 / -1;">
                     <Checkbox
                         checked=vm.is_derivative
-                        attr:disabled = true
+                        attr:disabled=true
                         label="Производная позиция"
                     />
                 </div>
 
-                // Base nomenclature reference (readonly)
                 <div class="form__group" style="grid-column: 1 / -1;">
                     <label class="form__label">"Базовая номенклатура (UUID)"</label>
-                    <Input
-                        value=vm.base_nomenclature_ref
-                        disabled=true
-                        placeholder="Не задано"
-                    />
+                    <Input value=vm.base_nomenclature_ref disabled=true placeholder="Не задано" />
                 </div>
-
             </div>
-        </div>
-        </Card>
+        </CardAnimated>
     }
 }

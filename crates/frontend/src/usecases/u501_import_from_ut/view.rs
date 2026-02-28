@@ -1,9 +1,10 @@
 use super::api;
-use chrono::Utc;
+use chrono::{Datelike, Utc};
 use contracts::usecases::u501_import_from_ut::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
@@ -25,6 +26,15 @@ pub fn ImportWidget() -> impl IntoView {
 
     // Дополнительные загрузки
     let (import_p906, set_import_p906) = signal(false);
+    let (import_a022, set_import_a022) = signal(true);
+    let (import_a023, set_import_a023) = signal(false);
+
+    // Период для a023_purchase_of_goods
+    let today = chrono::Utc::now().date_naive();
+    let month_start = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+        .unwrap_or(today);
+    let (period_from, set_period_from) = signal(Some(month_start.format("%Y-%m-%d").to_string()));
+    let (period_to, set_period_to) = signal(Some(today.format("%Y-%m-%d").to_string()));
 
     // Ключи для localStorage
     const SESSION_KEY: &str = "u501_session_id";
@@ -171,9 +181,15 @@ pub fn ImportWidget() -> impl IntoView {
             if import_p901.get() {
                 targets.push("p901_barcodes".to_string());
             }
+            if import_a022.get() {
+                targets.push("a022_kit_variant".to_string());
+            }
             // Дополнительные загрузки
             if import_p906.get() {
                 targets.push("p906_prices".to_string());
+            }
+            if import_a023.get() {
+                targets.push("a023_purchase_of_goods".to_string());
             }
 
             if targets.is_empty() {
@@ -182,13 +198,19 @@ pub fn ImportWidget() -> impl IntoView {
                 return;
             }
 
+            let (period_from_val, period_to_val) = if import_a023.get() {
+                (period_from.get(), period_to.get())
+            } else {
+                (None, None)
+            };
+
             let request = ImportRequest {
                 connection_id: conn_id,
                 target_aggregates: targets,
                 mode: ImportMode::Interactive,
                 delete_obsolete: delete_obsolete.get(),
-                period_from: None,
-                period_to: None,
+                period_from: period_from_val,
+                period_to: period_to_val,
             };
 
             match api::start_import(request).await {
@@ -210,7 +232,7 @@ pub fn ImportWidget() -> impl IntoView {
     let start_disabled = Signal::derive(move || is_loading.get() || session_id.get().is_some());
 
     view! {
-        <div class="page page--wide">
+        <PageFrame page_id="u501_import_from_ut--usecase" category="usecase" class="page--wide">
             <div class="card">
                 <div class="card__body">
                     <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
@@ -296,9 +318,18 @@ pub fn ImportWidget() -> impl IntoView {
                                 />
                                 <label class="form__checkbox-label">"InformationRegister_ШтрихкодыНоменклатуры"</label>
                             </div>
+                            <div class="form__checkbox-wrapper">
+                                <input
+                                    class="form__checkbox"
+                                type="checkbox"
+                                    prop:checked=move || import_a022.get()
+                                    on:change=move |ev| { set_import_a022.set(event_target_checked(&ev)); }
+                                />
+                                <label class="form__checkbox-label">"Catalog_ВариантыКомплектацииНоменклатуры (только ОсновнойВариант)"</label>
+                            </div>
                         </div>
                         <div class="info-box">
-                            "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры"
+                            "OData коллекции: Catalog_Организации, Catalog_Контрагенты, Catalog_Номенклатура, InformationRegister_ШтрихкодыНоменклатуры, Catalog_ВариантыКомплектацииНоменклатуры"
                         </div>
                     </div>
 
@@ -314,7 +345,47 @@ pub fn ImportWidget() -> impl IntoView {
                                 />
                                 <label class="form__checkbox-label">"p906_prices - Дилерские цены номенклатуры (УТ)"</label>
                             </div>
+                            <div class="form__checkbox-wrapper">
+                                <input
+                                    class="form__checkbox"
+                                    type="checkbox"
+                                    prop:checked=move || import_a023.get()
+                                    on:change=move |ev| { set_import_a023.set(event_target_checked(&ev)); }
+                                />
+                                <label class="form__checkbox-label">"a023_purchase_of_goods - Приобретение товаров и услуг"</label>
+                            </div>
                         </div>
+                        <Show when=move || import_a023.get()>
+                            <div style="margin-top:var(--spacing-sm);display:flex;gap:var(--spacing-md);align-items:center;flex-wrap:wrap;">
+                                <div>
+                                    <label class="form__label">"Дата с:"</label>
+                                    <input
+                                        class="form__input"
+                                        type="date"
+                                        prop:value=move || period_from.get().unwrap_or_default()
+                                        on:change=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            set_period_from.set(if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                </div>
+                                <div>
+                                    <label class="form__label">"Дата по:"</label>
+                                    <input
+                                        class="form__input"
+                                        type="date"
+                                        prop:value=move || period_to.get().unwrap_or_default()
+                                        on:change=move |ev| {
+                                            let v = event_target_value(&ev);
+                                            set_period_to.set(if v.is_empty() { None } else { Some(v) });
+                                        }
+                                    />
+                                </div>
+                            </div>
+                            <div class="code-box" style="margin-top:var(--spacing-sm);">
+                                "OData: Document_ПриобретениеТоваровУслуг | Склад: Московская область | Только проведённые"
+                            </div>
+                        </Show>
                         <div class="code-box">
                             "HTTP: /hs/mpi_api/prices_dealer"
                         </div>
@@ -536,6 +607,6 @@ pub fn ImportWidget() -> impl IntoView {
                     </div> // form-section-group
                 </div> // card__body
             </div> // card
-        </div> // page
+        </PageFrame>
     }
 }

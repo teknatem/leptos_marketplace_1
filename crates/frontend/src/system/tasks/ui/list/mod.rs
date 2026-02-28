@@ -76,7 +76,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
     };
 
     view! {
-        <div class="scheduled-task-list" style="padding: 20px;">
+        <div id="sys_scheduled_tasks--list" data-page-category="legacy" class="scheduled-task-list" style="padding: 20px;">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center style="margin-bottom: 16px;">
                 <h2 style="margin: 0; font-size: 24px; font-weight: bold;">"📅 Регламентные задания"</h2>
                 <Space>

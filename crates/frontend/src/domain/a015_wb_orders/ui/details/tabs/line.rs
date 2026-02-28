@@ -1,6 +1,7 @@
 //! Line tab - line-level fields and finance summary
 
 use super::super::view_model::WbOrdersDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCellMoney;
 use leptos::prelude::*;
 use thaw::*;
@@ -21,10 +22,10 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let total_ppvz_for_pay: f64 = reports.iter().filter_map(|r| r.ppvz_for_pay).sum();
 
             view! {
-                <div style="display: grid; grid-template-columns: 600px 600px; gap: var(--spacing-md); align-items: start;">
+                <div class="detail-grid">
                     // Left column
-                    <div style="display: flex; flex-direction: column; gap: var(--spacing-md);">
-                        <Card>
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=0>
                             <h4 class="details-section__title">"Суммы и проценты"</h4>
                             <Table>
                                 <TableHeader>
@@ -74,9 +75,9 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     </TableRow>
                                 </TableBody>
                             </Table>
-                        </Card>
+                        </CardAnimated>
 
-                        <Card>
+                        <CardAnimated delay_ms=80>
                             <h4 class="details-section__title">"Расчет маржи"</h4>
                             <Table>
                                 <TableHeader>
@@ -102,9 +103,12 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     </TableRow>
                                 </TableBody>
                             </Table>
-                        </Card>
+                        </CardAnimated>
+                    </div>
 
-                        <Card>
+                    // Right column
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=40>
                             <h4 class="details-section__title">"Сводка по финансовым отчетам (p903)"</h4>
                             <Flex gap=FlexGap::Medium style="flex-wrap: wrap;">
                                 <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
@@ -115,11 +119,7 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 <span>"Retail: " <strong>{format!("{:.2}", total_retail)}</strong></span>
                                 <span>"For Pay: " <strong>{format!("{:.2}", total_ppvz_for_pay)}</strong></span>
                             </Flex>
-                        </Card>
-                    </div>
-
-                    // Right column
-                    <div>
+                        </CardAnimated>
                         <SalesDetailsCard vm=vm.clone() />
                     </div>
                 </div>
@@ -143,7 +143,7 @@ fn SalesDetailsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
             let line = first_sale.line.clone();
             
             view! {
-                <Card>
+                <CardAnimated delay_ms=120>
                     <h4 class="details-section__title">"Детализация Sales WB"</h4>
                     <Table>
                         <TableHeader>
@@ -211,7 +211,7 @@ fn SalesDetailsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                             </TableRow>
                         </TableBody>
                     </Table>
-                </Card>
+                </CardAnimated>
             }.into_any()
         }}
     }

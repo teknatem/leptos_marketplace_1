@@ -11,6 +11,8 @@ pub mod json_viewer;
 pub mod list_utils;
 pub mod modal_frame;
 pub mod modal_stack;
+pub mod page_frame;
+pub mod page_standard;
 pub mod picker_aggregate;
 pub mod state;
 pub mod table_utils;

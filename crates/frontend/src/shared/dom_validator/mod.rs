@@ -1,6 +1,7 @@
 pub mod page;
 pub mod tree_builder;
 pub mod tree_view;
+pub mod validator;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

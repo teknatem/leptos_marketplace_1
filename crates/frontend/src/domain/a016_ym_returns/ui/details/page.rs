@@ -7,6 +7,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 
 use crate::shared::api_utils::api_base;
+use crate::shared::page_frame::PageFrame;
 
 #[component]
 pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
@@ -145,7 +146,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     });
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a016_ym_returns--detail" category="detail">
             <div class="page__header">
                 <div class="page__header-left">
                     <h2>"Yandex Market Return"</h2>
@@ -261,11 +262,11 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                         }
                             .into_any()
                     } else {
-                        view! { <div>"No data"</div> }.into_any()
-                    }
-                }}
+                view! { <div>"No data"</div> }.into_any()
+            }
+        }}
 
-            </div>
         </div>
+        </PageFrame>
     }
 }

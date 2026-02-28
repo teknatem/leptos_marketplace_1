@@ -1,3 +1,4 @@
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use std::collections::HashSet;
 use thaw::*;
@@ -14,7 +15,7 @@ pub fn ThawTestPage() -> impl IntoView {
     let switch_value = RwSignal::new(false);
 
     view! {
-        <div style="padding: 20px; max-width: 1200px; margin: 0 auto;">
+        <PageFrame page_id="sys_thaw_test--system" category="system">
             <h1 style="margin-bottom: 20px; font-size: 24px; font-weight: bold;">
                 "Тестирование компонентов Thaw UI"
             </h1>
@@ -278,6 +279,6 @@ pub fn ThawTestPage() -> impl IntoView {
                     </Flex>
                 </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

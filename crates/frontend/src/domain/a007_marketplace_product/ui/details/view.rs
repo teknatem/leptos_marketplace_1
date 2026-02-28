@@ -2,6 +2,7 @@ use super::view_model::MarketplaceProductDetailsViewModel;
 use crate::domain::a004_nomenclature::ui::picker::NomenclaturePicker;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use std::rc::Rc;
 use thaw::*;
@@ -141,7 +142,7 @@ pub fn MarketplaceProductDetails(
     });
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a007_marketplace_product--detail" category="detail">
             <div class="page__header">
                 <div class="page__header-left">
                     <h2>
@@ -430,10 +431,10 @@ pub fn MarketplaceProductDetails(
                         vm.show_picker.set(false);
                         view! { <></> }.into_any()
                     } else {
-                        view! {}.into_any()
-                    }
-                }
+                view! {}.into_any()
             }
-        </div>
+        }
+    }
+        </PageFrame>
     }
 }

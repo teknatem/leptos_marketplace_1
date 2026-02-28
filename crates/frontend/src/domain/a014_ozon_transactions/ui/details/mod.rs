@@ -8,6 +8,7 @@ use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
 use crate::domain::a011_ozon_fbo_posting::ui::details::OzonFboPostingDetail;
 use crate::shared::api_utils::api_base;
 use crate::shared::date_utils::format_datetime_space as format_datetime;
+use crate::shared::page_frame::PageFrame;
 
 // DTO структуры для детального представления
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,7 +183,7 @@ pub fn OzonTransactionsDetail(
     });
 
     view! {
-        <div class="page page--detail">
+        <PageFrame page_id="a014_ozon_transactions--detail" category="detail">
             <div class="page__header">
                 <div class="page__header-left">
                     <h2>
@@ -846,6 +847,6 @@ pub fn OzonTransactionsDetail(
                     view! { <div></div> }.into_any()
                 }
             }}
-        </div>
+        </PageFrame>
     }
 }

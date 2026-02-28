@@ -52,6 +52,9 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             icon: "file-text",
             items: vec![
                 ("a015_wb_orders", tab_label_for_key("a015_wb_orders"), "file-text"),
+                ("a021_production_output", tab_label_for_key("a021_production_output"), "package"),
+                ("a022_kit_variant", tab_label_for_key("a022_kit_variant"), "layers"),
+                ("a023_purchase_of_goods", tab_label_for_key("a023_purchase_of_goods"), "shopping-cart"),
                 ("a020_wb_promotion", tab_label_for_key("a020_wb_promotion"), "tag"),
                 ("a013_ym_order", tab_label_for_key("a013_ym_order"), "file-text"),
                 ("a010_ozon_fbs_posting", tab_label_for_key("a010_ozon_fbs_posting"), "file-text"),
@@ -76,6 +79,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 ("u503_import_from_yandex", tab_label_for_key("u503_import_from_yandex"), "import"),
                 ("u504_import_from_wildberries", tab_label_for_key("u504_import_from_wildberries"), "import"),
                 ("u506_import_from_lemanapro", tab_label_for_key("u506_import_from_lemanapro"), "import"),
+                ("u507_import_from_erp", tab_label_for_key("u507_import_from_erp"), "import"),
             ],
             admin_only: false,
         },
