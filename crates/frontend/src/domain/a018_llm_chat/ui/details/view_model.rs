@@ -1,6 +1,6 @@
 //! LLM Chat Details - View Model
 
-use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatMessage};
+use contracts::domain::a018_llm_chat::aggregate::{LlmChatDetail, LlmChatMessage};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ pub struct FileInfo {
 
 #[derive(Clone, Copy)]
 pub struct LlmChatDetailsVm {
-    pub chat: RwSignal<Option<LlmChat>>,
+    pub chat: RwSignal<Option<LlmChatDetail>>,
     pub messages: RwSignal<Vec<LlmChatMessage>>,
     pub new_message: RwSignal<String>,
     pub error: RwSignal<Option<String>>,

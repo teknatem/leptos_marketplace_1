@@ -14,6 +14,7 @@ use contracts::domain::a017_llm_agent::ENTITY_METADATA as A017;
 use contracts::domain::a018_llm_chat::ENTITY_METADATA as A018;
 use contracts::domain::a019_llm_artifact::ENTITY_METADATA as A019;
 use contracts::domain::a020_wb_promotion::ENTITY_METADATA as A020;
+use contracts::domain::a024_bi_indicator::ENTITY_METADATA as A024;
 
 /// Возвращает читаемый заголовок таба для данного ключа.
 ///
@@ -34,6 +35,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a018_llm_chat" => A018.ui.list_name,
         "a019_llm_artifact" => A019.ui.list_name,
         "a020_wb_promotion" => A020.ui.list_name,
+        "a024_bi_indicator" => A024.ui.list_name,
 
         // ── Aggregates без metadata_gen ───────────────────────────────────
         "a003_counterparty" => "Контрагенты",
@@ -128,6 +130,7 @@ pub fn entity_element_name(aggregate_key: &str) -> &'static str {
         "a018_llm_chat" => A018.ui.element_name,
         "a019_llm_artifact" => A019.ui.element_name,
         "a020_wb_promotion" => A020.ui.element_name,
+        "a024_bi_indicator" => A024.ui.element_name,
         _ => "",
     }
 }

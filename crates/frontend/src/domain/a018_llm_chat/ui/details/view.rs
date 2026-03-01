@@ -1,9 +1,14 @@
 //! LLM Chat Details - View Component
+//!
+//! Унифицирован с detail-страницами: PageFrame, page__header, page__content.
+//! Агент отображается по имени (agent_name из API), а не по UUID.
 
 use super::artifact_card::ArtifactCard;
 use super::model::{fetch_chat, fetch_messages, send_message};
 use super::view_model::LlmChatDetailsVm;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
+use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use contracts::domain::a018_llm_chat::aggregate::LlmChatMessage;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
@@ -123,66 +128,64 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     });
 
     view! {
-        <div id="a018_llm_chat--detail" data-page-category="legacy" style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
-            // Header - 1 строка
-            <Flex
-                justify=FlexJustify::SpaceBetween
-                align=FlexAlign::Center
-                style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--colorNeutralStroke2);"
-            >
-                <Flex align=FlexAlign::Center style="gap: 16px;">
-                    <h2 style="font-size: 18px; font-weight: bold;">
+        <PageFrame page_id="a018_llm_chat--detail" category=PAGE_CAT_DETAIL class="a018-llm-chat-detail">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">
                         {move || {
                             vm.chat
                                 .get()
-                                .map(|c| c.base.description.clone())
+                                .map(|c| c.chat.base.description.clone())
                                 .unwrap_or_else(|| "Загрузка...".to_string())
                         }}
-                    </h2>
-                    <span style="color: var(--colorNeutralForeground3); font-size: 14px;">
+                    </h1>
+                    <span class="page__header-meta">
+                        {move || {
+                            vm.chat.get().map(|c| {
+                                let agent_display = c.agent_name.clone().unwrap_or_else(|| c.chat.agent_id.as_string());
+                                format!("Агент: {}", agent_display)
+                            }).unwrap_or_default()
+                        }}
+                    </span>
+                    <span class="page__header-meta">
                         {move || {
                             vm.chat
                                 .get()
-                                .map(|c| format!("Агент: {}", c.agent_id.as_string()))
+                                .map(|c| format!("Модель: {}", c.chat.model_name))
                                 .unwrap_or_default()
                         }}
                     </span>
-                    <span style="color: var(--colorNeutralForeground3); font-size: 14px;">
-                        {move || {
-                            vm.chat
-                                .get()
-                                .map(|c| format!("Модель: {}", c.model_name))
-                                .unwrap_or_default()
-                        }}
-                    </span>
-                    <span style="color: var(--colorNeutralForeground3); font-size: 14px;">
+                    <span class="page__header-meta">
                         {move || format!("Сообщений: {}", vm.messages.get().len())}
                     </span>
-                </Flex>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    on_click=move |_| on_close.run(())
-                >
-                    {icon("close")}
-                    " Закрыть"
-                </Button>
-            </Flex>
+                </div>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| on_close.run(())
+                    >
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
+                </div>
+            </div>
 
-            // Error display
-            {move || {
-                vm.error
-                    .get()
-                    .map(|e| {
-                        view! {
-                            <div style="padding: 12px; margin-bottom: 16px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px;">
-                                <span style="color: var(--color-error);">{e}</span>
-                            </div>
-                        }
-                    })
-            }}
+            <div class="page__content" style="display: flex; flex-direction: column; min-height: 0;">
+                // Error display
+                {move || {
+                    vm.error
+                        .get()
+                        .map(|e| {
+                            view! {
+                                <div class="warning-box" style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);">
+                                    <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+                                </div>
+                            }
+                        })
+                }}
 
-            // Messages area
-            <div
+                // Messages area
+                <div
                 node_ref=messages_container_ref
                 style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--colorNeutralBackground1); border: 1px solid var(--colorNeutralStroke2); border-radius: 8px;"
             >
@@ -254,10 +257,10 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         }
                     }}
                 </For>
-            </div>
+                </div>
 
-            // Input area
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+                // Input area
+                <div style="display: flex; flex-direction: column; gap: 8px;">
                 // File attachments display
                 {move || {
                     let files = vm.uploaded_files.get();
@@ -376,7 +379,8 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         {move || if vm.is_sending.get() { " Отправка..." } else { " Отправить" }}
                     </Button>
                 </Flex>
+                </div>
             </div>
-        </div>
+        </PageFrame>
     }
 }

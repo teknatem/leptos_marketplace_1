@@ -505,6 +505,27 @@ pub fn configure_business_routes() -> Router {
             "/api/a019-llm-artifact/:id",
             get(handlers::a019_llm_artifact::get_by_id).delete(handlers::a019_llm_artifact::delete),
         )
+        // A024 BI Indicator handlers
+        .route(
+            "/api/a024-bi-indicator",
+            get(handlers::a024_bi_indicator::list_all).post(handlers::a024_bi_indicator::upsert),
+        )
+        .route(
+            "/api/a024-bi-indicator/list",
+            get(handlers::a024_bi_indicator::list_paginated),
+        )
+        .route(
+            "/api/a024-bi-indicator/public",
+            get(handlers::a024_bi_indicator::list_public),
+        )
+        .route(
+            "/api/a024-bi-indicator/owner/:user_id",
+            get(handlers::a024_bi_indicator::list_by_owner),
+        )
+        .route(
+            "/api/a024-bi-indicator/:id",
+            get(handlers::a024_bi_indicator::get_by_id).delete(handlers::a024_bi_indicator::delete),
+        )
         // ========================================
         // USECASES (U501-U506)
         // ========================================

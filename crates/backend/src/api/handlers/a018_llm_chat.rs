@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a018_llm_chat;
-use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatMessage, LlmChatListItem};
+use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatDetail, LlmChatMessage, LlmChatListItem};
 
 #[derive(Deserialize)]
 pub struct LlmChatListParams {
@@ -66,7 +66,7 @@ pub async fn list_paginated(
 }
 
 /// GET /api/a018-llm-chat/:id
-pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<LlmChat>, axum::http::StatusCode> {
+pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<LlmChatDetail>, axum::http::StatusCode> {
     match a018_llm_chat::service::get_by_id(&id).await {
         Ok(Some(v)) => Ok(Json(v)),
         Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),

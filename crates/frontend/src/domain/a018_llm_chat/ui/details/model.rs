@@ -2,10 +2,10 @@
 
 use super::view_model::FileInfo;
 use crate::shared::api_utils::api_base;
-use contracts::domain::a018_llm_chat::aggregate::{LlmChat, LlmChatMessage};
+use contracts::domain::a018_llm_chat::aggregate::{LlmChatDetail, LlmChatMessage};
 
-/// Получить чат по ID
-pub async fn fetch_chat(id: &str) -> Result<LlmChat, String> {
+/// Получить чат по ID (с именем агента)
+pub async fn fetch_chat(id: &str) -> Result<LlmChatDetail, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -34,7 +34,7 @@ pub async fn fetch_chat(id: &str) -> Result<LlmChat, String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: LlmChat = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let data: LlmChatDetail = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
 
     Ok(data)
 }

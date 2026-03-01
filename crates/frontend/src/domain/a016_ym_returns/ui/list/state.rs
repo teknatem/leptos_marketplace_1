@@ -1,6 +1,7 @@
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct YmReturnsState {
@@ -14,7 +15,7 @@ pub struct YmReturnsState {
     pub sort_ascending: bool,
 
     // Множественный выбор
-    pub selected_ids: Vec<String>,
+    pub selected_ids: HashSet<String>,
 
     // Флаг загрузки
     pub is_loaded: bool,
@@ -67,7 +68,7 @@ impl Default for YmReturnsState {
             filter_type: None,
             sort_field: "created_at_source".to_string(),
             sort_ascending: false,
-            selected_ids: Vec::new(),
+            selected_ids: HashSet::new(),
             is_loaded: false,
             // Пагинация
             page: 0,

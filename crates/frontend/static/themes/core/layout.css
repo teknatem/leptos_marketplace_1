@@ -19,10 +19,12 @@
   top: 0;
   z-index: var(--z-header);
   width: 100%;
-  border-bottom: 1px solid var(--header-bg);
+  /*border-bottom: 1px solid var(--header-bg);*/
   background: var(--header-bg);
   color: var(--header-text);
   overflow: hidden;
+  /*border-top-left-radius: 8px;
+  border-top-right-radius: 8px;*/
 }
 
 .page__header-left {
@@ -39,6 +41,11 @@
   gap: var(--spacing-sm);
   flex-shrink: 0;
   flex-wrap: nowrap;
+}
+
+.page__header-meta {
+  color: var(--colorNeutralForeground3, var(--header-text));
+  font-size: var(--font-size-sm, 14px);
 }
 
 .page__icon {
@@ -103,6 +110,7 @@
    ──────────────────────────────────────────────────────────────────────────── */
 
 .page__tabs {
+  position: relative;
   display: flex;
   height: 32px;
   min-height: 32px;
@@ -112,6 +120,8 @@
 }
 
 .page__tab {
+  position: relative;
+  z-index: 2;  
   height: 32px;
   align-self: stretch;
   display: inline-flex;

@@ -8,6 +8,7 @@ use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use std::collections::HashMap;
 use std::rc::Rc;
+use thaw::*;
 
 async fn fetch_counterparties() -> Result<Vec<Counterparty>, String> {
     use wasm_bindgen::JsCast;
@@ -424,52 +425,61 @@ pub fn CounterpartyTree() -> impl IntoView {
     load();
 
     view! {
-        <PageFrame page_id="a003_counterparty--list" category="list">
+        <PageFrame page_id="a003_counterparty--list" category="custom">
             <div class="page__header">
                 <div class="page__header-left">
-                    <h2 class="page__title">{"Контрагенты"}</h2>
+                    <h1 class="page__title">"Контрагенты"</h1>
                 </div>
                 <div class="page__header-right">
-                    <button class="button button--primary" on:click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| { set_editing_id.set(None); set_show_modal.set(true); }
+                    >
                         {icon("plus")}
-                        {"Новый"}
-                    </button>
-                    <button class="button button--secondary" on:click=move |_| load()>
+                        " Новый"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| load()
+                        disabled=Signal::derive(move || is_loading.get())
+                    >
                         {icon("refresh")}
-                        {"Обновить"}
-                    </button>
+                        {move || if is_loading.get() { " Загрузка..." } else { " Обновить" }}
+                    </Button>
                 </div>
             </div>
-            {move || error.get().map(|e| view! { <div class="error" style="background: #fee; color: #c33; padding: 12px; border-radius: 4px; margin: 12px 0;">{e}</div> })}
+
+            <div class="page__content">
+                {move || error.get().map(|e| view! { <div class="alert alert--error">{e}</div> })}
+
+                <div style="margin-bottom: 8px; position: relative; display: inline-flex; align-items: center; width: 100%;">
+                    <input
+                        type="text"
+                        placeholder="Поиск по наименованию, коду, ИНН или КПП..."
+                        style="width: 100%; padding: 8px 32px 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: 14px; background: var(--color-background);"
+                        prop:value=move || filter_text.get()
+                        on:input=move |ev| set_filter_text.set(event_target_value(&ev))
+                    />
+                    {move || if !filter_text.get().is_empty() {
+                        view! {
+                            <button
+                                style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #666; line-height: 1;"
+                                on:click=move |_| set_filter_text.set(String::new())
+                                title="Очистить"
+                            >
+                                {icon("x")}
+                            </button>
+                        }.into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }}
+                </div>
 
             {move || if is_loading.get() {
-                view! { <div style="text-align: center; padding: 20px; color: #666;">{"⏳ Загрузка..."}</div> }.into_any()
+                view! { <div style="text-align: center; padding: 20px; color: #666;">"Загрузка..."</div> }.into_any()
             } else {
                 view! {
                     <>
-                        <div style="margin-top: 12px; margin-bottom: 8px; position: relative; display: inline-flex; align-items: center; width: 100%;">
-                            <input
-                                type="text"
-                                placeholder="Поиск по наименованию, коду, ИНН или КПП..."
-                                style="width: 100%; padding: 8px 32px 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
-                                prop:value=move || filter_text.get()
-                                on:input=move |ev| set_filter_text.set(event_target_value(&ev))
-                            />
-                            {move || if !filter_text.get().is_empty() {
-                                view! {
-                                    <button
-                                        style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #666; line-height: 1;"
-                                        on:click=move |_| set_filter_text.set(String::new())
-                                        title="Очистить"
-                                    >
-                                        {icon("x")}
-                                    </button>
-                                }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                        </div>
-
                         <div class="table-container">
                             <table>
                                 <thead>
@@ -517,6 +527,7 @@ pub fn CounterpartyTree() -> impl IntoView {
                 set_editing_id.set(None);
                 view! { <></> }.into_any()
             } else { view! { <></> }.into_any() }}
+            </div>
         </PageFrame>
     }
 }

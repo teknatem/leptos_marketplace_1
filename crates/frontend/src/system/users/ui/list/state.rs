@@ -4,6 +4,7 @@ use leptos::prelude::*;
 #[derive(Clone, Debug)]
 pub struct UsersListState {
     pub items: Vec<User>,
+    pub search_query: String,
     pub sort_field: String,
     pub sort_ascending: bool,
     pub page: usize,
@@ -17,6 +18,7 @@ impl Default for UsersListState {
     fn default() -> Self {
         Self {
             items: Vec::new(),
+            search_query: String::new(),
             sort_field: "username".to_string(),
             sort_ascending: true,
             page: 0,

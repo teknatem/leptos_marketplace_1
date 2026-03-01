@@ -119,13 +119,13 @@
   --page-header-bg-solid: #d4d4d4;
   --header-text: #ffffff;
   --header-border: rgba(0, 0, 0, 0.1);
-  --header-noise-opacity: 0.04;
+  --header-noise-opacity: 0.05;
 
   /* Top Header Colors */
   --top-header-bg: #e8eaed;
   --top-header-text: #171717;
   --top-header-border: rgba(0, 0, 0, 0.08);
-  --top-header-btn-hover: rgba(0, 0, 0, 0.05);
+  --top-header-btn-hover: rgba(0, 0, 0, 0.01);
 
   /* Panel Colors */
   --panel-bg: #e8eaed;

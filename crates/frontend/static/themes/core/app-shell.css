@@ -53,14 +53,17 @@
   gap: var(--spacing-sm);
 }
 
-.app-header::after {
+/*.app-header::after, 
+.app-sidebar::after, 
+.page__header::after,*/
+.app-layout::after {
   content: '';
   pointer-events: none;
   user-select: none;
   position: absolute;
   inset: 0;
-  background-image: url('/assets/images/noise.png');
-  background-size: 180px;
+  background-image: url('/assets/images/pattern5.jpg');
+  /*background-size: 180px;*/
   background-repeat: repeat;
   opacity: var(--header-noise-opacity, 0);
   z-index: 1;
