@@ -1,26 +1,38 @@
+pub mod state;
+
 use super::details::OzonReturnsDetail;
+use self::state::create_state;
 use crate::shared::api_utils::api_base;
-use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
+};
+use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::icons::icon;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
+use crate::shared::table_utils::init_column_resize;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use thaw::*;
 
 /// Форматирует ISO 8601 дату в dd.mm.yyyy
 fn format_date(iso_date: &str) -> String {
-    // Парсим ISO 8601: "2025-11-05"
     if let Some((year, rest)) = iso_date.split_once('-') {
         if let Some((month, day)) = rest.split_once('-') {
             return format!("{}.{}.{}", day, month, year);
         }
     }
-    iso_date.to_string() // fallback
+    iso_date.to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OzonReturnsDto {
     pub id: String,
     #[serde(rename = "returnId")]
@@ -41,7 +53,7 @@ pub struct OzonReturnsDto {
     pub quantity: i32,
     pub price: f64,
     #[serde(rename = "isPosted")]
-    pub is_posted: bool, // Флаг проведения
+    pub is_posted: bool,
 }
 
 impl Sortable for OzonReturnsDto {
@@ -84,35 +96,114 @@ impl Sortable for OzonReturnsDto {
     }
 }
 
+const TABLE_ID: &str = "a009-ozon-returns-table";
+const COLUMN_WIDTHS_KEY: &str = "a009_ozon_returns_column_widths";
+
 #[component]
 pub fn OzonReturnsList() -> impl IntoView {
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
-    let (returns, set_returns) = signal::<Vec<OzonReturnsDto>>(Vec::new());
+    let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (is_filter_expanded, set_is_filter_expanded) = signal(false);
+    let (posting_in_progress, set_posting_in_progress) = signal(false);
+    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None);
     let (detail_reload_trigger, set_detail_reload_trigger) = signal::<u32>(0);
 
-    // Сортировка
-    let (sort_field, set_sort_field) = signal::<String>("return_date".to_string());
-    let (sort_ascending, set_sort_ascending) = signal(false); // По умолчанию - новые сначала
+    // All loaded rows (unfiltered source of truth for client-side filtering)
+    let all_rows: RwSignal<Vec<OzonReturnsDto>> = RwSignal::new(Vec::new());
 
-    // Множественный выбор
-    let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
+    let refresh_view = move || {
+        let source = all_rows.get_untracked();
+        let date_from = state.with_untracked(|s| s.date_from.clone());
+        let date_to = state.with_untracked(|s| s.date_to.clone());
+        let field = state.with_untracked(|s| s.sort_field.clone());
+        let ascending = state.with_untracked(|s| s.sort_ascending);
+        let page_size = state.with_untracked(|s| s.page_size);
+        let page = state.with_untracked(|s| s.page);
 
-    // Фильтр по периоду
-    let (date_from, set_date_from) = signal::<Option<String>>(None);
-    let (date_to, set_date_to) = signal::<Option<String>>(None);
+        let mut filtered: Vec<OzonReturnsDto> = source
+            .into_iter()
+            .filter(|item| {
+                if !date_from.is_empty() && item.return_date < date_from {
+                    return false;
+                }
+                if !date_to.is_empty() && item.return_date > date_to {
+                    return false;
+                }
+                true
+            })
+            .collect();
 
-    // Статус массовых операций
-    let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (operation_results, set_operation_results) =
-        signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
-    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
+        filtered.sort_by(|a, b| {
+            let cmp = a.compare_by_field(b, &field);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+
+        let total = filtered.len();
+        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
+        let start = page * page_size;
+        let end = (start + page_size).min(total);
+        let page_items = if start < total { filtered[start..end].to_vec() } else { vec![] };
+
+        state.update(|s| {
+            s.items = page_items;
+            s.total_count = total;
+            s.total_pages = total_pages;
+            s.page = page;
+        });
+    };
+
+    let load_returns = move || {
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            let url = format!("{}/api/ozon_returns", api_base());
+            match Request::get(&url).send().await {
+                Ok(response) => {
+                    if response.status() == 200 {
+                        match response.json::<Vec<OzonReturnsDto>>().await {
+                            Ok(items) => {
+                                log!("Loaded {} OZON returns", items.len());
+                                all_rows.set(items);
+                                state.update(|s| { s.page = 0; s.is_loaded = true; });
+                                refresh_view();
+                            }
+                            Err(e) => set_error.set(Some(format!("Ошибка парсинга: {}", e))),
+                        }
+                    } else {
+                        set_error.set(Some(format!("Ошибка сервера: {}", response.status())));
+                    }
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Ошибка сети: {}", e)));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        if !state.with_untracked(|s| s.is_loaded) {
+            load_returns();
+        }
+    });
+
+    let resize_initialized = StoredValue::new(false);
+    Effect::new(move |_| {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
 
     let open_detail_modal = move |id: String| {
-        let id_val = id.clone();
         let reload = detail_reload_trigger;
         modal_stack.push_with_frame(
             Some("max-width: min(1200px, 95vw); width: min(1200px, 95vw); height: calc(100vh - 80px); overflow: hidden;".to_string()),
@@ -120,7 +211,7 @@ pub fn OzonReturnsList() -> impl IntoView {
             move |handle| {
                 view! {
                     <OzonReturnsDetail
-                        id=id_val.clone()
+                        id=id.clone()
                         on_close=Callback::new({
                             let handle = handle.clone();
                             move |_| handle.close()
@@ -133,711 +224,383 @@ pub fn OzonReturnsList() -> impl IntoView {
         );
     };
 
-    let open_results_modal = move |results: Vec<(String, bool, Option<String>)>| {
-        modal_stack.push_with_frame(
-            Some("max-width: min(800px, 95vw); width: min(800px, 95vw); max-height: 80vh; overflow-y: auto;".to_string()),
-            Some("operation-results-modal".to_string()),
-            move |handle| {
-                let results = results.clone();
-                view! {
-                    <div class="details-container">
-                        <div class="modal-header">
-                            <h3 class="modal-title">"Результаты операции"</h3>
-                            <div class="modal-header-actions">
-                                <button class="button button--secondary" on:click=move |_| handle.close()>
-                                    "Закрыть"
-                                </button>
-                            </div>
-                        </div>
-                        <div class="modal-body">
-                            <table class="results-table">
-                                <thead>
-                                    <tr>
-                                        <th>"ID"</th>
-                                        <th>"Статус"</th>
-                                        <th>"Ошибка"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <For
-                                        each=move || results.clone()
-                                        key=|r| r.0.clone()
-                                        let:result
-                                    >
-                                        {
-                                            let short_id = result.0.chars().take(8).collect::<String>();
-                                            let success = result.1;
-                                            let error_msg = result.2.clone().unwrap_or_default();
-
-                                            view! {
-                                                <tr>
-                                                    <td class="results-table__id">
-                                                        <code>{short_id}"..."</code>
-                                                    </td>
-                                                    <td>
-                                                        {if success {
-                                                            view! { <span class="text-success">"✓ Успешно"</span> }
-                                                        } else {
-                                                            view! { <span class="text-error">"✗ Ошибка"</span> }
-                                                        }}
-                                                    </td>
-                                                    <td class="text-muted">
-                                                        {error_msg}
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }
-                                    </For>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                }
-                .into_any()
-            },
-        );
-    };
-
-    let load_returns = move || {
-        let set_returns = set_returns.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/ozon_returns", api_base());
-
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    let status = response.status();
-                    if status == 200 {
-                        match response.text().await {
-                            Ok(text) => {
-                                log!(
-                                    "Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>()
-                                );
-
-                                match serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
-                                    Ok(items) => {
-                                        log!("Successfully parsed {} OZON returns", items.len());
-                                        set_returns.set(items);
-                                        set_loading.set(false);
-                                    }
-                                    Err(e) => {
-                                        log!("Failed to parse response: {:?}", e);
-                                        set_error
-                                            .set(Some(format!("Failed to parse response: {}", e)));
-                                        set_loading.set(false);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                log!("Failed to read response text: {:?}", e);
-                                set_error.set(Some(format!("Failed to read response: {}", e)));
-                                set_loading.set(false);
-                            }
-                        }
-                    } else {
-                        set_error.set(Some(format!("Server error: {}", status)));
-                        set_loading.set(false);
-                    }
-                }
-                Err(e) => {
-                    log!("Failed to fetch returns: {:?}", e);
-                    set_error.set(Some(format!("Failed to fetch returns: {}", e)));
-                    set_loading.set(false);
-                }
-            }
-        });
-    };
-
-    // Функция для получения отфильтрованных и отсортированных данных
-    let get_filtered_sorted_items = move || -> Vec<OzonReturnsDto> {
-        let mut result = returns.get();
-
-        // Фильтр по периоду
-        let from = date_from.get();
-        let to = date_to.get();
-        if from.is_some() || to.is_some() {
-            result.retain(|item| {
-                let item_date = &item.return_date;
-                if let Some(ref from_date) = from {
-                    if item_date < from_date {
-                        return false;
-                    }
-                }
-                if let Some(ref to_date) = to {
-                    if item_date > to_date {
-                        return false;
-                    }
-                }
-                true
-            });
+    let post_batch = move |post: bool| {
+        let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
+        if ids.is_empty() {
+            return;
         }
-
-        // Сортировка
-        let field = sort_field.get();
-        let ascending = sort_ascending.get();
-        result.sort_by(|a, b| {
-            let cmp = a.compare_by_field(b, &field);
-            if ascending {
-                cmp
-            } else {
-                cmp.reverse()
+        let total = ids.len();
+        set_posting_in_progress.set(true);
+        set_current_operation.set(Some((0, total)));
+        spawn_local(async move {
+            let action = if post { "post" } else { "unpost" };
+            for (index, id) in ids.iter().enumerate() {
+                set_current_operation.set(Some((index + 1, total)));
+                let url = format!("{}/api/a009/ozon-returns/{}/{}", api_base(), id, action);
+                let _ = Request::post(&url).send().await;
             }
+            set_posting_in_progress.set(false);
+            set_current_operation.set(None);
+            state.update(|s| s.selected_ids.clear());
+            set_detail_reload_trigger.update(|v| *v += 1);
+            // Reload the list
+            load_returns();
         });
-
-        result
     };
 
-    // Обработчик переключения сортировки
+    let active_filters_count = Signal::derive(move || {
+        let s = state.get();
+        let mut count = 0;
+        if !s.date_from.is_empty() { count += 1; }
+        if !s.date_to.is_empty() { count += 1; }
+        count
+    });
+
     let toggle_sort = move |field: &'static str| {
-        move |_| {
-            if sort_field.get() == field {
-                set_sort_ascending.update(|v| *v = !*v);
+        state.update(|s| {
+            if s.sort_field == field {
+                s.sort_ascending = !s.sort_ascending;
             } else {
-                set_sort_field.set(field.to_string());
-                set_sort_ascending.set(true);
+                s.sort_field = field.to_string();
+                s.sort_ascending = true;
             }
-        }
+            s.page = 0;
+        });
+        refresh_view();
     };
 
-    // Переключение выбора одного документа
-    let toggle_selection = move |id: String| {
-        set_selected_ids.update(|ids| {
-            if ids.contains(&id) {
-                ids.retain(|x| x != &id);
-            } else {
-                ids.push(id);
-            }
+    let go_to_page = move |new_page: usize| {
+        state.update(|s| s.page = new_page);
+        refresh_view();
+    };
+
+    let change_page_size = move |new_size: usize| {
+        state.update(|s| {
+            s.page_size = new_size;
+            s.page = 0;
+        });
+        refresh_view();
+    };
+
+    let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
+
+    let toggle_selection = move |id: String, checked: bool| {
+        selected.update(|s| {
+            if checked { s.insert(id.clone()); } else { s.remove(&id); }
+        });
+        state.update(|s| {
+            if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); }
         });
     };
 
-    // Выбрать все / снять все
-    let toggle_all = move |_| {
-        let items = get_filtered_sorted_items();
-        let selected = selected_ids.get();
-        if selected.len() == items.len() && !items.is_empty() {
-            set_selected_ids.set(Vec::new()); // Снять все
+    let toggle_all = move |check_all: bool| {
+        let items = state.get().items;
+        if check_all {
+            selected.update(|s| {
+                s.clear();
+                for item in items.iter() { s.insert(item.id.clone()); }
+            });
+            state.update(|s| {
+                s.selected_ids.clear();
+                for item in items.iter() { s.selected_ids.insert(item.id.clone()); }
+            });
         } else {
-            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect());
-            // Выбрать все
+            selected.update(|s| s.clear());
+            state.update(|s| s.selected_ids.clear());
         }
     };
 
-    // Проверка, выбраны ли все
-    let all_selected = move || {
-        let items = get_filtered_sorted_items();
-        let selected = selected_ids.get();
-        !items.is_empty() && selected.len() == items.len()
-    };
-
-    // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| selected_ids.get().contains(&id.to_string());
-
-    // Массовое проведение
-    let post_selected = move |_| {
-        let ids = selected_ids.get();
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        let set_returns = set_returns.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        let set_posting_in_progress = set_posting_in_progress.clone();
-        let set_operation_results = set_operation_results.clone();
-        let set_selected_ids = set_selected_ids.clone();
-        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
-        let set_current_operation = set_current_operation.clone();
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            for (index, id) in ids.iter().enumerate() {
-                set_current_operation.set(Some((index + 1, total)));
-                let url = format!("{}/api/a009/ozon-returns/{}/post", api_base(), id);
-                match Request::post(&url).send().await {
-                    Ok(response) => {
-                        if response.status() == 200 {
-                            results.push((id.clone(), true, None));
-                        } else {
-                            results.push((
-                                id.clone(),
-                                false,
-                                Some(format!("HTTP {}", response.status())),
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        results.push((id.clone(), false, Some(format!("{:?}", e))));
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
-
-            // Перезагрузить список
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/ozon_returns", api_base());
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    if response.status() == 200 {
-                        if let Ok(text) = response.text().await {
-                            if let Ok(items) = serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
-                                set_returns.set(items);
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            set_loading.set(false);
-
-            // Инкрементируем триггер для перезагрузки детальной формы
-            set_detail_reload_trigger.update(|v| *v += 1);
-        });
-    };
-
-    // Массовая отмена проведения
-    let unpost_selected = move |_| {
-        let ids = selected_ids.get();
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        let set_returns = set_returns.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        let set_posting_in_progress = set_posting_in_progress.clone();
-        let set_operation_results = set_operation_results.clone();
-        let set_selected_ids = set_selected_ids.clone();
-        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
-        let set_current_operation = set_current_operation.clone();
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            for (index, id) in ids.iter().enumerate() {
-                set_current_operation.set(Some((index + 1, total)));
-                let url = format!("{}/api/a009/ozon-returns/{}/unpost", api_base(), id);
-                match Request::post(&url).send().await {
-                    Ok(response) => {
-                        if response.status() == 200 {
-                            results.push((id.clone(), true, None));
-                        } else {
-                            results.push((
-                                id.clone(),
-                                false,
-                                Some(format!("HTTP {}", response.status())),
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        results.push((id.clone(), false, Some(format!("{:?}", e))));
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
-
-            // Перезагрузить список
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/ozon_returns", api_base());
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    if response.status() == 200 {
-                        if let Ok(text) = response.text().await {
-                            if let Ok(items) = serde_json::from_str::<Vec<OzonReturnsDto>>(&text) {
-                                set_returns.set(items);
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            set_loading.set(false);
-
-            // Инкрементируем триггер для перезагрузки детальной формы
-            set_detail_reload_trigger.update(|v| *v += 1);
-        });
-    };
-
-    // Автоматическая загрузка при открытии
-    load_returns();
+    let items_signal = Signal::derive(move || state.get().items);
+    let selected_signal = Signal::derive(move || selected.get());
+    let selected_count = Signal::derive(move || selected.get().len());
 
     view! {
         <PageFrame page_id="a009_ozon_returns--list" category="list">
-            {move || {
-                if let Some(id) = selected_id.get() {
-                    open_detail_modal(id);
-                    set_selected_id.set(None);
-                    view! { <></> }.into_any()
-                } else {
-                    view! {
-                        <div>
-                            <div class="doc-list__toolbar">
-                                <h2 class="doc-list__title">"OZON Returns (A009)"</h2>
-                                <button class="button button--secondary" on:click=move |_| load_returns()>
-                                    "Обновить"
-                                </button>
-                            </div>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Возвраты OZON"</h1>
+                    <UiBadge variant="primary".to_string()>
+                        {move || state.get().total_count.to_string()}
+                    </UiBadge>
+                </div>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| post_batch(true)
+                        disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
+                    >
+                        {move || format!("Провести ({})", selected_count.get())}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| post_batch(false)
+                        disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
+                    >
+                        {move || format!("Отменить ({})", selected_count.get())}
+                    </Button>
+                    {move || {
+                        current_operation.get().map(|(cur, total)| view! {
+                            <span class="page__status">{format!("Обработка {}/{} ...", cur, total)}</span>
+                        })
+                    }}
+                </div>
+            </div>
 
-                            // Панель фильтров и массовых операций
-                            <div class="doc-filters">
-                                <div class="doc-filters__row">
-                                    // Фильтр периода
-                                    <div class="doc-filter">
-                                        <label class="doc-filter__label">"Период:"</label>
-                                        <input
-                                            type="date"
-                                            on:input=move |e| {
-                                                let value = event_target_value(&e);
-                                                set_date_from.set(if value.is_empty() { None } else { Some(value) });
-                                            }
-                                            class="doc-filter__input"
-                                        />
-                                        <span>"—"</span>
-                                        <input
-                                            type="date"
-                                            on:input=move |e| {
-                                                let value = event_target_value(&e);
-                                                set_date_to.set(if value.is_empty() { None } else { Some(value) });
-                                            }
-                                            class="doc-filter__input"
-                                        />
-                                    </div>
-
-                                    // Кнопки массовых операций
-                                    <div style="display: flex; gap: 10px;">
-                                        <button
-                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
-                                            on:click=post_selected
-                                            class="button button--info"
-                                        >
-                                            {move || format!("Провести ({})", selected_ids.get().len())}
-                                        </button>
-                                        <button
-                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
-                                            on:click=unpost_selected
-                                            class="button button--warning"
-                                        >
-                                            {move || format!("Отменить ({})", selected_ids.get().len())}
-                                        </button>
-                                    </div>
-
-                                    // Индикатор прогресса
-                                    <Show when=move || posting_in_progress.get()>
-                                        {move || {
-                                            if let Some((current, total)) = current_operation.get() {
-                                                view! {
-                                                    <span class="doc-list__progress">
-                                                        {format!("Обработка {}/{} документов...", current, total)}
-                                                    </span>
-                                                }.into_any()
-                                            } else {
-                                                view! {
-                                                    <span class="doc-list__progress">"Обработка..."</span>
-                                                }.into_any()
-                                            }
-                                        }}
-                                    </Show>
-                                </div>
-                            </div>
-
-                            // Результаты операции открываем через ModalStackService
-                            {move || {
-                                let results = operation_results.get();
-                                if results.is_empty() {
-                                    view! { <></> }.into_any()
+            <div class="page__content">
+                <div class="filter-panel">
+                    <div class="filter-panel-header">
+                        <div
+                            class="filter-panel-header__left"
+                            on:click=move |_| set_is_filter_expanded.update(|e| *e = !*e)
+                        >
+                            <svg
+                                width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round"
+                                class=move || if is_filter_expanded.get() {
+                                    "filter-panel__chevron filter-panel__chevron--expanded"
                                 } else {
-                                    open_results_modal(results);
-                                    set_operation_results.set(Vec::new());
+                                    "filter-panel__chevron"
+                                }
+                            >
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            {icon("filter")}
+                            <span class="filter-panel__title">"Фильтры"</span>
+                            {move || {
+                                let count = active_filters_count.get();
+                                if count > 0 {
+                                    view! { <span class="filter-panel__badge">{count}</span> }.into_any()
+                                } else {
                                     view! { <></> }.into_any()
                                 }
                             }}
+                        </div>
 
-            {move || {
-                let msg = if loading.get() {
-                    "Loading...".to_string()
-                } else if let Some(err) = error.get() {
-                    err.clone()
-                } else {
-                    let filtered = get_filtered_sorted_items();
-                    format!("Показано: {} записей", filtered.len())
-                };
+                        <div class="filter-panel-header__center">
+                            <PaginationControls
+                                current_page=Signal::derive(move || state.get().page)
+                                total_pages=Signal::derive(move || state.get().total_pages)
+                                total_count=Signal::derive(move || state.get().total_count)
+                                page_size=Signal::derive(move || state.get().page_size)
+                                on_page_change=Callback::new(go_to_page)
+                                on_page_size_change=Callback::new(change_page_size)
+                                page_size_options=vec![50, 100, 200, 500]
+                            />
+                        </div>
 
-                // Render summary and table
-                if !loading.get() && error.get().is_none() {
-                    view! {
-                        <div>
-                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
-                            <div class="table-container">
-                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
-                                    <thead>
-                                        <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px; text-align: center;">
-                                                <input
-                                                    type="checkbox"
-                                                    on:change=toggle_all
-                                                    prop:checked=all_selected
-                                                />
-                                            </th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("return_id")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Return ID{}", get_sort_indicator(&sort_field.get(), "return_id", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("return_date")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Дата возврата{}", get_sort_indicator(&sort_field.get(), "return_date", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("posting_number")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Номер постинга{}", get_sort_indicator(&sort_field.get(), "posting_number", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("return_type")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Тип возврата{}", get_sort_indicator(&sort_field.get(), "return_type", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("product_name")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Товар{}", get_sort_indicator(&sort_field.get(), "product_name", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none; text-align: center;"
-                                                on:click=toggle_sort("is_posted")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Статус{}", get_sort_indicator(&sort_field.get(), "is_posted", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("quantity")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Кол-во{}", get_sort_indicator(&sort_field.get(), "quantity", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("price")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Цена{}", get_sort_indicator(&sort_field.get(), "price", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("return_reason")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Причина{}", get_sort_indicator(&sort_field.get(), "return_reason", sort_ascending.get()))}
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {move || get_filtered_sorted_items().into_iter().map(|ret| {
-                                            let short_id = ret.id.chars().take(8).collect::<String>();
-                                            let formatted_date = format_date(&ret.return_date);
-                                            let formatted_price = format!("{:.2} ₽", ret.price);
-                                            let is_posted_flag = ret.is_posted;
-                                            let posting_number_display = ret.posting_number.clone();
-                                            let return_type_display = ret.return_type.clone();
+                        <div class="filter-panel-header__right">
+                            <Button
+                                appearance=ButtonAppearance::Primary
+                                on_click=move |_| load_returns()
+                                disabled=Signal::derive(move || loading.get())
+                            >
+                                {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                            </Button>
+                        </div>
+                    </div>
 
-                                            // Создаем отдельные клоны для каждого обработчика
-                                            let id_for_checkbox_change = ret.id.clone();
-                                            let id_for_checkbox_check = ret.id.clone();
-                                            let id1 = ret.id.clone();
-                                            let id2 = ret.id.clone();
-                                            let id3 = ret.id.clone();
-                                            let id4 = ret.id.clone();
-                                            let id5 = ret.id.clone();
-                                            let id6 = ret.id.clone();
-                                            let id7 = ret.id.clone();
-                                            let id8 = ret.id.clone();
-                                            let id9 = ret.id.clone();
-                                            let id10 = ret.id.clone();
+                    <Show when=move || is_filter_expanded.get()>
+                        <div class="filter-panel-content">
+                            <Flex gap=FlexGap::Small align=FlexAlign::End>
+                                <div style="min-width: 420px;">
+                                    <DateRangePicker
+                                        date_from=Signal::derive(move || state.with(|s| s.date_from.clone()))
+                                        date_to=Signal::derive(move || state.with(|s| s.date_to.clone()))
+                                        on_change=Callback::new(move |(from, to)| {
+                                            state.update(|s| {
+                                                s.date_from = from;
+                                                s.date_to = to;
+                                                s.page = 0;
+                                            });
+                                            refresh_view();
+                                        })
+                                        label="Период:".to_string()
+                                    />
+                                </div>
+                            </Flex>
+                        </div>
+                    </Show>
+                </div>
 
-                                            view! {
-                                                <tr
-                                                    style="transition: background 0.2s;"
-                                                    onmouseenter="this.style.background='#f5f5f5'"
-                                                    onmouseleave="this.style.background='white'"
-                                                >
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center;"
+                {move || {
+                    error.get().map(|err| view! {
+                        <div class="alert alert--error">{err}</div>
+                    })
+                }}
+
+                <div class="table-wrapper">
+                    <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1000px;">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHeaderCheckbox
+                                    items=items_signal
+                                    selected=selected_signal
+                                    get_id=Callback::new(|row: OzonReturnsDto| row.id.clone())
+                                    on_change=Callback::new(toggle_all)
+                                />
+
+                                <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("return_date")>
+                                        "Дата"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "return_date"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "return_date", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("return_id")>
+                                        "Return ID"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "return_id"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "return_id", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=170.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("posting_number")>
+                                        "Номер постинга"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "posting_number"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "posting_number", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("return_type")>
+                                        "Тип"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "return_type"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "return_type", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=200.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("product_name")>
+                                        "Товар"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "product_name"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "product_name", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=80.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("quantity")>
+                                        "Кол-во"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "quantity"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "quantity", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("price")>
+                                        "Цена"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "price"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "price", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=170.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("return_reason")>
+                                        "Причина"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "return_reason"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "return_reason", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("is_posted")>
+                                        "Статус"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "is_posted"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "is_posted", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                            </TableRow>
+                        </TableHeader>
+
+                        <TableBody>
+                            <For
+                                each=move || state.get().items
+                                key=|item| item.id.clone()
+                                children=move |item| {
+                                    let item_id = item.id.clone();
+                                    let item_id_for_click = item.id.clone();
+                                    let formatted_date = format_date(&item.return_date);
+                                    let is_posted = item.is_posted;
+                                    view! {
+                                        <TableRow>
+                                            <TableCellCheckbox
+                                                item_id=item_id.clone()
+                                                selected=selected_signal
+                                                on_change=Callback::new(move |(id, checked)| toggle_selection(id, checked))
+                                            />
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <a href="#" class="table__link"
                                                         on:click=move |e| {
-                                                            e.stop_propagation();
-                                                        }
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            on:change=move |_| toggle_selection(id_for_checkbox_change.clone())
-                                                            prop:checked=move || is_selected(&id_for_checkbox_check)
-                                                        />
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id1.clone()));
-                                                        }
-                                                    >
-                                                        <code style="font-size: 0.85em;">{format!("{}...", short_id)}</code>
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id2.clone()));
-                                                        }
-                                                    >
-                                                        {ret.return_id}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id3.clone()));
+                                                            e.prevent_default();
+                                                            open_detail_modal(item_id_for_click.clone());
                                                         }
                                                     >
                                                         {formatted_date}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id4.clone()));
-                                                        }
-                                                    >
-                                                        {posting_number_display}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id9.clone()));
-                                                        }
-                                                    >
-                                                        {return_type_display}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id10.clone()));
-                                                        }
-                                                    >
-                                                        {ret.product_name}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id5.clone()));
-                                                        }
-                                                    >
-                                                        {if is_posted_flag {
-                                                            view! { <span style="color: green; font-weight: 500;">"✓ Проведен"</span> }
-                                                        } else {
-                                                            view! { <span style="color: #999;">"○ Не проведен"</span> }
-                                                        }}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id6.clone()));
-                                                        }
-                                                    >
-                                                        {ret.quantity}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id7.clone()));
-                                                        }
-                                                    >
-                                                        {formatted_price}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id8.clone()));
-                                                        }
-                                                    >
-                                                        {ret.return_reason_name}
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }).collect_view()}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }.into_any()
-                } else {
-                    view! {
-                        <div>
-                            <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg}</p>
-                            <div class="table-container">
-                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
-                                    <thead>
-                                        <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px;"></th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Return ID"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Дата"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Номер постинга"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Тип возврата"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Товар"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Статус"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Кол-во"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Цена"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Причина"</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr><td colspan="11"></td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }.into_any()
-                }
-            }}
-                        </div>
-                    }.into_any()
-                }
-            }}
+                                                    </a>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>{item.return_id.clone()}</TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {item.posting_number.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>{item.return_type.clone()}</TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {item.product_name.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <span style="font-variant-numeric: tabular-nums;">{item.quantity}</span>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCellMoney
+                                                value=Signal::derive(move || Some(item.price))
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {item.return_reason_name.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {if is_posted {
+                                                        view! { <span class="badge badge--success">"Проведен"</span> }.into_any()
+                                                    } else {
+                                                        view! { <span class="badge badge--neutral">"Не проведен"</span> }.into_any()
+                                                    }}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                        </TableRow>
+                                    }
+                                }
+                            />
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
         </PageFrame>
     }
 }

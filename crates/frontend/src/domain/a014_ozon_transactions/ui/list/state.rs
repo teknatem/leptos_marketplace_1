@@ -1,6 +1,7 @@
 use super::OzonTransactionsDto;
 use chrono::{Datelike, Utc};
 use leptos::prelude::*;
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct TransactionsState {
@@ -12,13 +13,16 @@ pub struct TransactionsState {
     pub posting_number_filter: String,
     pub sort_field: String,
     pub sort_ascending: bool,
-    pub selected_ids: Vec<String>,
+    pub selected_ids: HashSet<String>,
     pub is_loaded: bool,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_count: usize,
+    pub total_pages: usize,
 }
 
 impl Default for TransactionsState {
     fn default() -> Self {
-        // Default period: current month
         let now = Utc::now().date_naive();
         let year = now.year();
         let month = now.month();
@@ -38,19 +42,21 @@ impl Default for TransactionsState {
             transactions: Vec::new(),
             date_from: month_start.format("%Y-%m-%d").to_string(),
             date_to: month_end.format("%Y-%m-%d").to_string(),
-            transaction_type_filter: "".to_string(),
-            operation_type_name_filter: "".to_string(),
-            posting_number_filter: "".to_string(),
+            transaction_type_filter: String::new(),
+            operation_type_name_filter: String::new(),
+            posting_number_filter: String::new(),
             sort_field: "operation_date".to_string(),
             sort_ascending: false,
-            selected_ids: Vec::new(),
+            selected_ids: HashSet::new(),
             is_loaded: false,
+            page: 0,
+            page_size: 200,
+            total_count: 0,
+            total_pages: 0,
         }
     }
 }
 
-// Create state within component scope instead of thread-local
-// This ensures state is properly disposed when component unmounts
 pub fn create_state() -> RwSignal<TransactionsState> {
     RwSignal::new(TransactionsState::default())
 }

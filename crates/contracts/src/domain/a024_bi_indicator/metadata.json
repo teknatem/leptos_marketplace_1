@@ -1,0 +1,313 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "BiIndicator",
+  "entity_index": "a024",
+  "collection_name": "bi_indicator",
+  "table_name": "a024_bi_indicator",
+  "ui": {
+    "element_name": "BI Индикатор",
+    "element_name_en": "BI Indicator",
+    "list_name": "BI Индикаторы",
+    "list_name_en": "BI Indicators",
+    "icon": "activity"
+  },
+  "ai": {
+    "description": "Индикаторы BI-дашбордов. Каждый индикатор содержит спецификацию источника данных (DataSpec), типизированные параметры (Params), настройки отображения (ViewSpec) и конфигурацию drill-down (DrillSpec). Создаются и редактируются пользователями при поддержке LLM.",
+    "questions": [
+      "Какие индикаторы доступны в системе?",
+      "Как создать новый BI индикатор?",
+      "Как настроить источник данных для индикатора?",
+      "Как добавить пороговые значения к индикатору?",
+      "Как настроить drill-down для индикатора?"
+    ],
+    "related": [
+      "a019_llm_artifact"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "BiIndicatorId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "IND-001",
+        "hint": "Уникальный код индикатора",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "Выручка за период",
+        "hint": "Название индикатора",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 280
+      },
+      "validation": {
+        "required": true,
+        "min_length": 2,
+        "max_length": 500
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Описание индикатора и его назначения",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 2000
+      }
+    },
+    {
+      "name": "status",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "enum_values": ["draft", "active", "archived"],
+      "ui": {
+        "label": "Статус",
+        "label_en": "Status",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "select",
+        "column_width": 100
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус индикатора: draft (черновик), active (активен), archived (в архиве)"
+    },
+    {
+      "name": "owner_user_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Владелец",
+        "label_en": "Owner",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "ID пользователя-владельца индикатора"
+    },
+    {
+      "name": "is_public",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Публичный",
+        "label_en": "Public",
+        "hint": "Доступен другим пользователям",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 90
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "data_spec",
+      "rust_type": "DataSpec",
+      "field_type": "nested_struct",
+      "source": "specific",
+      "ui": {
+        "label": "Источник данных",
+        "label_en": "Data Spec",
+        "hint": "Конфигурация источника данных (schema_id + query_config)",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "ai_hint": "Сериализованная спецификация источника данных: schema_id и конфигурация DashboardConfig"
+    },
+    {
+      "name": "params",
+      "rust_type": "Vec<ParamDef>",
+      "field_type": "nested_table",
+      "source": "specific",
+      "ui": {
+        "label": "Параметры",
+        "label_en": "Parameters",
+        "hint": "Типизированные параметры индикатора",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "ai_hint": "Список параметров индикатора: дата/период, кабинет, организация и т.д."
+    },
+    {
+      "name": "view_spec",
+      "rust_type": "ViewSpec",
+      "field_type": "nested_struct",
+      "source": "specific",
+      "ui": {
+        "label": "Настройки отображения",
+        "label_en": "View Spec",
+        "hint": "HTML/CSS шаблон, форматирование, пороги алертов",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "ai_hint": "Спецификация отображения: custom_html (без JS), custom_css, format, thresholds"
+    },
+    {
+      "name": "drill_spec",
+      "rust_type": "Option<DrillSpec>",
+      "field_type": "nested_struct",
+      "source": "specific",
+      "ui": {
+        "label": "Drill-down",
+        "label_en": "Drill Spec",
+        "hint": "Конфигурация провала в детализацию",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "ai_hint": "Куда переходить при клике и какие фильтры передавать"
+    },
+    {
+      "name": "created_by",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создал",
+        "label_en": "Created By",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "updated_by",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновил",
+        "label_en": "Updated By",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "created_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Создан",
+        "label_en": "Created",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Обновлён",
+        "label_en": "Updated",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "is_deleted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Удалён",
+        "label_en": "Deleted",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "version",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Версия",
+        "label_en": "Version",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

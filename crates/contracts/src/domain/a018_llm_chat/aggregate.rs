@@ -125,6 +125,15 @@ impl LlmChat {
     }
 }
 
+/// Чат с подставленным именем агента (для детальной страницы / API get by id).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmChatDetail {
+    #[serde(flatten)]
+    pub chat: LlmChat,
+    /// Имя агента (description из a017_llm_agent), если известно.
+    pub agent_name: Option<String>,
+}
+
 impl AggregateRoot for LlmChat {
     type Id = LlmChatId;
 

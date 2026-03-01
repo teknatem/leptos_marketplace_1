@@ -6,7 +6,7 @@ use crate::shared::llm::{execute_tool_call, metadata_tool_definitions};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
-    ChatRole, LlmChat, LlmChatAttachment, LlmChatId, LlmChatListItem, LlmChatMessage,
+    ChatRole, LlmChat, LlmChatDetail, LlmChatAttachment, LlmChatId, LlmChatListItem, LlmChatMessage,
 };
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
@@ -140,15 +140,27 @@ pub async fn delete(id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Получить чат по ID
-pub async fn get_by_id(id: &str) -> anyhow::Result<Option<LlmChat>> {
+/// Получить чат по ID с именем агента
+pub async fn get_by_id(id: &str) -> anyhow::Result<Option<LlmChatDetail>> {
     let chat_uuid = Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
     let chat_id = LlmChatId::new(chat_uuid);
 
     let db = crate::shared::data::db::get_connection();
-    let chat = repository::find_by_id(&db, &chat_id).await?;
+    let chat = match repository::find_by_id(&db, &chat_id).await? {
+        Some(c) => c,
+        None => return Ok(None),
+    };
 
-    Ok(chat)
+    let agent_name = agent_repository::find_by_id(&chat.agent_id.as_string())
+        .await
+        .ok()
+        .flatten()
+        .map(|a| a.base.description.clone());
+
+    Ok(Some(LlmChatDetail {
+        chat,
+        agent_name,
+    }))
 }
 
 /// Получить список всех чатов

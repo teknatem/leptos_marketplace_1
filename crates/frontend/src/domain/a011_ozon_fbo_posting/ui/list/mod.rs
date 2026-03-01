@@ -1,27 +1,50 @@
+pub mod state;
+
 use super::details::OzonFboPostingDetail;
+use self::state::create_state;
 use crate::shared::api_utils::api_base;
-use crate::shared::date_utils::format_datetime;
-use crate::shared::list_utils::{get_sort_indicator, Sortable};
+use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::pagination_controls::PaginationControls;
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
+};
+use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::icons::icon;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
+use crate::shared::table_utils::init_column_resize;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use thaw::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn format_date(iso_date: &str) -> String {
+    if let Some(date_part) = iso_date.split('T').next() {
+        if let Some((year, rest)) = date_part.split_once('-') {
+            if let Some((month, day)) = rest.split_once('-') {
+                return format!("{}.{}.{}", day, month, year);
+            }
+        }
+    }
+    iso_date.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OzonFboPostingDto {
     pub id: String,
     pub code: String,
     pub description: String,
     pub document_no: String,
-    pub status_norm: String, // Статус постинга (DELIVERED, CANCELLED и т.д.)
-    pub substatus_raw: Option<String>, // Подстатус
-    pub created_at_source: Option<String>, // Дата создания заказа в источнике
+    pub status_norm: String,
+    pub substatus_raw: Option<String>,
+    pub created_at_source: Option<String>,
     pub total_amount: f64,
     pub line_count: usize,
-    pub is_posted: bool, // Флаг проведения
+    pub is_posted: bool,
 }
 
 impl Sortable for OzonFboPostingDto {
@@ -35,15 +58,12 @@ impl Sortable for OzonFboPostingDto {
                 .status_norm
                 .to_lowercase()
                 .cmp(&other.status_norm.to_lowercase()),
-            "substatus_raw" => {
-                // Сортировка с учетом None (None идут в конец)
-                match (&self.substatus_raw, &other.substatus_raw) {
-                    (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
-                    (Some(_), None) => Ordering::Less,
-                    (None, Some(_)) => Ordering::Greater,
-                    (None, None) => Ordering::Equal,
-                }
-            }
+            "substatus_raw" => match (&self.substatus_raw, &other.substatus_raw) {
+                (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             "created_at_source" => match (&self.created_at_source, &other.created_at_source) {
                 (Some(a), Some(b)) => a.cmp(b),
                 (Some(_), None) => Ordering::Less,
@@ -65,34 +85,174 @@ impl Sortable for OzonFboPostingDto {
     }
 }
 
+const TABLE_ID: &str = "a011-ozon-fbo-posting-table";
+const COLUMN_WIDTHS_KEY: &str = "a011_ozon_fbo_posting_column_widths";
+
 #[component]
 pub fn OzonFboPostingList() -> impl IntoView {
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
-    let (postings, set_postings) = signal::<Vec<OzonFboPostingDto>>(Vec::new());
+    let state = create_state();
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
-    let (selected_id, set_selected_id) = signal::<Option<String>>(None);
+    let (is_filter_expanded, set_is_filter_expanded) = signal(false);
+    let (posting_in_progress, set_posting_in_progress) = signal(false);
+    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None);
     let (detail_reload_trigger, set_detail_reload_trigger) = signal::<u32>(0);
 
-    // Сортировка
-    let (sort_field, set_sort_field) = signal::<String>("document_no".to_string());
-    let (sort_ascending, set_sort_ascending) = signal(true);
+    let all_rows: RwSignal<Vec<OzonFboPostingDto>> = RwSignal::new(Vec::new());
+    let status_filter = RwSignal::new(String::new());
+    let date_from = RwSignal::new(String::new());
+    let date_to = RwSignal::new(String::new());
 
-    // Множественный выбор
-    let (selected_ids, set_selected_ids) = signal::<Vec<String>>(Vec::new());
+    let refresh_view = move || {
+        let source = all_rows.get_untracked();
+        let df = date_from.get_untracked();
+        let dt = date_to.get_untracked();
+        let status = status_filter.get_untracked();
+        let field = state.with_untracked(|s| s.sort_field.clone());
+        let ascending = state.with_untracked(|s| s.sort_ascending);
+        let page_size = state.with_untracked(|s| s.page_size);
+        let page = state.with_untracked(|s| s.page);
 
-    // Фильтр по статусу
-    let (status_filter, set_status_filter) = signal::<Option<String>>(None);
+        let mut filtered: Vec<OzonFboPostingDto> = source
+            .into_iter()
+            .filter(|item| {
+                if !df.is_empty() || !dt.is_empty() {
+                    if let Some(ref d) = item.created_at_source {
+                        let date_part = d.split('T').next().unwrap_or(d.as_str());
+                        if !df.is_empty() && date_part < df.as_str() { return false; }
+                        if !dt.is_empty() && date_part > dt.as_str() { return false; }
+                    } else {
+                        return false;
+                    }
+                }
+                if !status.is_empty() && item.status_norm != status { return false; }
+                true
+            })
+            .collect();
 
-    // Статус массовых операций
-    let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (operation_results, set_operation_results) =
-        signal::<Vec<(String, bool, Option<String>)>>(Vec::new());
-    let (current_operation, set_current_operation) = signal::<Option<(usize, usize)>>(None); // (current, total)
+        filtered.sort_by(|a, b| {
+            let cmp = a.compare_by_field(b, &field);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+
+        let total = filtered.len();
+        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
+        let start = page * page_size;
+        let end = (start + page_size).min(total);
+        let page_items = if start < total { filtered[start..end].to_vec() } else { vec![] };
+
+        state.update(|s| {
+            s.items = page_items;
+            s.total_count = total;
+            s.total_pages = total_pages;
+            s.page = page;
+        });
+    };
+
+    let load_postings = move || {
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
+            match Request::get(&url).send().await {
+                Ok(response) => {
+                    if response.status() == 200 {
+                        match response.text().await {
+                            Ok(text) => {
+                                match serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+                                    Ok(data) => {
+                                        let items: Vec<OzonFboPostingDto> = data
+                                            .into_iter()
+                                            .enumerate()
+                                            .filter_map(|(idx, v)| {
+                                                let status_norm = v
+                                                    .get("state")
+                                                    .and_then(|s| s.get("status_norm"))
+                                                    .and_then(|d| d.as_str())
+                                                    .map(|s| s.to_string())
+                                                    .unwrap_or_else(|| "UNKNOWN".to_string());
+                                                let substatus_raw = v
+                                                    .get("state")
+                                                    .and_then(|s| s.get("substatus_raw"))
+                                                    .and_then(|d| d.as_str())
+                                                    .map(|s| s.to_string());
+                                                let created_at_source = v
+                                                    .get("state")
+                                                    .and_then(|s| s.get("created_at"))
+                                                    .and_then(|d| d.as_str())
+                                                    .map(|s| s.to_string());
+                                                let lines = v.get("lines")?.as_array()?;
+                                                let line_count = lines.len();
+                                                let total_amount: f64 = lines
+                                                    .iter()
+                                                    .filter_map(|line| line.get("amount_line")?.as_f64())
+                                                    .sum();
+                                                let is_posted = v
+                                                    .get("is_posted")
+                                                    .and_then(|p| p.as_bool())
+                                                    .unwrap_or(false);
+                                                let result = Some(OzonFboPostingDto {
+                                                    id: v.get("id")?.as_str()?.to_string(),
+                                                    code: v.get("code")?.as_str()?.to_string(),
+                                                    description: v.get("description")?.as_str()?.to_string(),
+                                                    document_no: v.get("header")?.get("document_no")?.as_str()?.to_string(),
+                                                    status_norm,
+                                                    substatus_raw,
+                                                    created_at_source,
+                                                    total_amount,
+                                                    line_count,
+                                                    is_posted,
+                                                });
+                                                if result.is_none() {
+                                                    log!("Failed to parse item {}", idx);
+                                                }
+                                                result
+                                            })
+                                            .collect();
+                                        log!("Loaded {} FBO postings", items.len());
+                                        all_rows.set(items);
+                                        state.update(|s| { s.page = 0; s.is_loaded = true; });
+                                        refresh_view();
+                                    }
+                                    Err(e) => set_error.set(Some(format!("Ошибка парсинга: {}", e))),
+                                }
+                            }
+                            Err(e) => set_error.set(Some(format!("Ошибка чтения ответа: {}", e))),
+                        }
+                    } else {
+                        set_error.set(Some(format!("Ошибка сервера: {}", response.status())));
+                    }
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Ошибка сети: {}", e)));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        if !state.with_untracked(|s| s.is_loaded) {
+            load_postings();
+        }
+    });
+
+    let resize_initialized = StoredValue::new(false);
+    Effect::new(move |_| {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
 
     let open_detail_modal = move |id: String| {
-        let id_val = id.clone();
         let reload = detail_reload_trigger;
         modal_stack.push_with_frame(
             Some("max-width: min(1200px, 95vw); width: min(1200px, 95vw); height: calc(100vh - 80px); overflow: hidden;".to_string()),
@@ -100,7 +260,7 @@ pub fn OzonFboPostingList() -> impl IntoView {
             move |handle| {
                 view! {
                     <OzonFboPostingDetail
-                        id=id_val.clone()
+                        id=id.clone()
                         on_close=Callback::new({
                             let handle = handle.clone();
                             move |_| handle.close()
@@ -113,902 +273,354 @@ pub fn OzonFboPostingList() -> impl IntoView {
         );
     };
 
-    let open_results_modal = move |results: Vec<(String, bool, Option<String>)>| {
-        modal_stack.push_with_frame(
-            Some("max-width: min(800px, 95vw); width: min(800px, 95vw); max-height: 80vh; overflow-y: auto;".to_string()),
-            Some("operation-results-modal".to_string()),
-            move |handle| {
-                let results = results.clone();
-                view! {
-                    <div class="details-container">
-                        <div class="modal-header">
-                            <h3 class="modal-title">"Результаты операции"</h3>
-                            <div class="modal-header-actions">
-                                <button class="button button--secondary" on:click=move |_| handle.close()>
-                                    "Закрыть"
-                                </button>
-                            </div>
-                        </div>
-                        <div class="modal-body">
-                            <table class="results-table">
-                                <thead>
-                                    <tr>
-                                        <th>"ID"</th>
-                                        <th>"Статус"</th>
-                                        <th>"Ошибка"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <For
-                                        each=move || results.clone()
-                                        key=|r| r.0.clone()
-                                        let:result
-                                    >
-                                        {
-                                            let short_id = result.0.chars().take(8).collect::<String>();
-                                            let success = result.1;
-                                            let error_msg = result.2.clone().unwrap_or_default();
-
-                                            view! {
-                                                <tr>
-                                                    <td class="results-table__id">
-                                                        <code>{short_id}"..."</code>
-                                                    </td>
-                                                    <td>
-                                                        {if success {
-                                                            view! { <span class="text-success">"✓ Успешно"</span> }
-                                                        } else {
-                                                            view! { <span class="text-error">"✗ Ошибка"</span> }
-                                                        }}
-                                                    </td>
-                                                    <td class="text-muted">
-                                                        {error_msg}
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }
-                                    </For>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                }
-                .into_any()
-            },
-        );
-    };
-
-    let load_postings = move || {
-        let set_postings = set_postings.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
-
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    let status = response.status();
-                    if status == 200 {
-                        match response.text().await {
-                            Ok(text) => {
-                                log!(
-                                    "Received response text (first 500 chars): {}",
-                                    text.chars().take(500).collect::<String>()
-                                );
-
-                                match serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                                    Ok(data) => {
-                                        let total_count = data.len();
-                                        log!("Parsed {} items from JSON", total_count);
-
-                                        // Упрощенная десериализация - берем только нужные поля
-                                        let items: Vec<OzonFboPostingDto> = data
-                                            .into_iter()
-                                            .enumerate()
-                                            .filter_map(|(idx, v)| {
-                                                // Поля из base сериализуются на верхнем уровне благодаря #[serde(flatten)]
-
-                                                // Статус (status_norm из state)
-                                                let status_norm = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("status_norm"))
-                                                    .and_then(|d| d.as_str())
-                                                    .map(|s| s.to_string())
-                                                    .unwrap_or_else(|| "UNKNOWN".to_string());
-
-                                                // Подстатус (substatus_raw из state)
-                                                let substatus_raw = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("substatus_raw"))
-                                                    .and_then(|d| d.as_str())
-                                                    .map(|s| s.to_string());
-
-                                                // Дата создания заказа (created_at из state)
-                                                let created_at_source = v
-                                                    .get("state")
-                                                    .and_then(|s| s.get("created_at"))
-                                                    .and_then(|d| d.as_str())
-                                                    .map(|s| s.to_string());
-
-                                                let lines = v.get("lines")?.as_array()?;
-                                                let line_count = lines.len();
-                                                let total_amount: f64 = lines
-                                                    .iter()
-                                                    .filter_map(|line| {
-                                                        line.get("amount_line")?.as_f64()
-                                                    })
-                                                    .sum();
-
-                                                let is_posted = v
-                                                    .get("is_posted")
-                                                    .and_then(|p| p.as_bool())
-                                                    .unwrap_or(false);
-
-                                                let result = Some(OzonFboPostingDto {
-                                                    id: v.get("id")?.as_str()?.to_string(),
-                                                    code: v.get("code")?.as_str()?.to_string(),
-                                                    description: v
-                                                        .get("description")?
-                                                        .as_str()?
-                                                        .to_string(),
-                                                    document_no: v
-                                                        .get("header")?
-                                                        .get("document_no")?
-                                                        .as_str()?
-                                                        .to_string(),
-                                                    status_norm,
-                                                    substatus_raw,
-                                                    created_at_source,
-                                                    total_amount,
-                                                    line_count,
-                                                    is_posted,
-                                                });
-
-                                                if result.is_none() {
-                                                    log!("Failed to parse item {}", idx);
-                                                }
-
-                                                result
-                                            })
-                                            .collect();
-
-                                        log!(
-                                            "Successfully parsed {} postings out of {}",
-                                            items.len(),
-                                            total_count
-                                        );
-                                        set_postings.set(items);
-                                        set_loading.set(false);
-                                    }
-                                    Err(e) => {
-                                        log!("Failed to parse response: {:?}", e);
-                                        set_error
-                                            .set(Some(format!("Failed to parse response: {}", e)));
-                                        set_loading.set(false);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                log!("Failed to read response text: {:?}", e);
-                                set_error.set(Some(format!("Failed to read response: {}", e)));
-                                set_loading.set(false);
-                            }
-                        }
-                    } else {
-                        set_error.set(Some(format!("Server error: {}", status)));
-                        set_loading.set(false);
-                    }
-                }
-                Err(e) => {
-                    log!("Failed to fetch postings: {:?}", e);
-                    set_error.set(Some(format!("Failed to fetch postings: {}", e)));
-                    set_loading.set(false);
-                }
+    let post_batch = move |post: bool| {
+        let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
+        if ids.is_empty() { return; }
+        let total = ids.len();
+        set_posting_in_progress.set(true);
+        set_current_operation.set(Some((0, total)));
+        spawn_local(async move {
+            let action = if post { "post" } else { "unpost" };
+            for (index, id) in ids.iter().enumerate() {
+                set_current_operation.set(Some((index + 1, total)));
+                let url = format!("{}/api/a011/ozon-fbo-posting/{}/{}", api_base(), id, action);
+                let _ = Request::post(&url).send().await;
             }
+            set_posting_in_progress.set(false);
+            set_current_operation.set(None);
+            state.update(|s| s.selected_ids.clear());
+            set_detail_reload_trigger.update(|v| *v += 1);
+            load_postings();
         });
     };
 
-    // Функция для получения отфильтрованных и отсортированных данных
-    let get_filtered_sorted_items = move || -> Vec<OzonFboPostingDto> {
-        let mut result = postings.get();
+    let active_filters_count = Signal::derive(move || {
+        let mut count = 0;
+        if !date_from.get().is_empty() { count += 1; }
+        if !date_to.get().is_empty() { count += 1; }
+        if !status_filter.get().is_empty() { count += 1; }
+        count
+    });
 
-        // Фильтр по статусу
-        if let Some(ref status) = status_filter.get() {
-            if !status.is_empty() {
-                result.retain(|item| &item.status_norm == status);
-            }
-        }
-
-        // Сортировка
-        let field = sort_field.get();
-        let ascending = sort_ascending.get();
-        result.sort_by(|a, b| {
-            let cmp = a.compare_by_field(b, &field);
-            if ascending {
-                cmp
-            } else {
-                cmp.reverse()
-            }
-        });
-
-        result
-    };
-
-    // Вычисление итогов по сумме и количеству позиций
-    let get_totals = move || -> (f64, usize) {
-        let items = get_filtered_sorted_items();
-        let total_sum: f64 = items.iter().map(|p| p.total_amount).sum();
-        let total_qty: usize = items.iter().map(|p| p.line_count).sum();
-        (total_sum, total_qty)
-    };
-
-    // Обработчик переключения сортировки
     let toggle_sort = move |field: &'static str| {
-        move |_| {
-            if sort_field.get() == field {
-                set_sort_ascending.update(|v| *v = !*v);
-            } else {
-                set_sort_field.set(field.to_string());
-                set_sort_ascending.set(true);
-            }
-        }
-    };
-
-    // Переключение выбора одного документа
-    let toggle_selection = move |id: String| {
-        set_selected_ids.update(|ids| {
-            if ids.contains(&id) {
-                ids.retain(|x| x != &id);
-            } else {
-                ids.push(id);
-            }
+        state.update(|s| {
+            if s.sort_field == field { s.sort_ascending = !s.sort_ascending; }
+            else { s.sort_field = field.to_string(); s.sort_ascending = true; }
+            s.page = 0;
         });
+        refresh_view();
     };
 
-    // Выбрать все / снять все
-    let toggle_all = move |_| {
-        let items = get_filtered_sorted_items();
-        let selected = selected_ids.get();
-        if selected.len() == items.len() && !items.is_empty() {
-            set_selected_ids.set(Vec::new()); // Снять все
+    let go_to_page = move |new_page: usize| {
+        state.update(|s| s.page = new_page);
+        refresh_view();
+    };
+
+    let change_page_size = move |new_size: usize| {
+        state.update(|s| { s.page_size = new_size; s.page = 0; });
+        refresh_view();
+    };
+
+    let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
+
+    let toggle_selection = move |id: String, checked: bool| {
+        selected.update(|s| { if checked { s.insert(id.clone()); } else { s.remove(&id); } });
+        state.update(|s| { if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); } });
+    };
+
+    let toggle_all = move |check_all: bool| {
+        let items = state.get().items;
+        if check_all {
+            selected.update(|s| { s.clear(); for item in items.iter() { s.insert(item.id.clone()); } });
+            state.update(|s| { s.selected_ids.clear(); for item in items.iter() { s.selected_ids.insert(item.id.clone()); } });
         } else {
-            set_selected_ids.set(items.iter().map(|item| item.id.clone()).collect());
-            // Выбрать все
+            selected.update(|s| s.clear());
+            state.update(|s| s.selected_ids.clear());
         }
     };
 
-    // Проверка, выбраны ли все
-    let all_selected = move || {
-        let items = get_filtered_sorted_items();
-        let selected = selected_ids.get();
-        !items.is_empty() && selected.len() == items.len()
-    };
-
-    // Проверка, выбран ли конкретный документ
-    let is_selected = move |id: &str| selected_ids.get().contains(&id.to_string());
-
-    // Массовое проведение
-    let post_selected = move |_| {
-        let ids = selected_ids.get();
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        let set_postings = set_postings.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        let set_posting_in_progress = set_posting_in_progress.clone();
-        let set_operation_results = set_operation_results.clone();
-        let set_selected_ids = set_selected_ids.clone();
-        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
-        let set_current_operation = set_current_operation.clone();
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            for (index, id) in ids.iter().enumerate() {
-                set_current_operation.set(Some((index + 1, total)));
-                let url = format!(
-                    "{}/api/a011/ozon-fbo-posting/{}/post",
-                    api_base(),
-                    id
-                );
-                match Request::post(&url).send().await {
-                    Ok(response) => {
-                        if response.status() == 200 {
-                            results.push((id.clone(), true, None));
-                        } else {
-                            results.push((
-                                id.clone(),
-                                false,
-                                Some(format!("HTTP {}", response.status())),
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        results.push((id.clone(), false, Some(format!("{:?}", e))));
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
-
-            // Перезагрузить список
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    if response.status() == 200 {
-                        if let Ok(text) = response.text().await {
-                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
-                            {
-                                let items: Vec<OzonFboPostingDto> = data
-                                    .into_iter()
-                                    .filter_map(|v| {
-                                        let status_norm = v
-                                            .get("state")
-                                            .and_then(|s| s.get("status_norm"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string())
-                                            .unwrap_or_else(|| "UNKNOWN".to_string());
-
-                                        let substatus_raw = v
-                                            .get("state")
-                                            .and_then(|s| s.get("substatus_raw"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string());
-
-                                        let created_at_source = v
-                                            .get("state")
-                                            .and_then(|s| s.get("created_at"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string());
-
-                                        let lines = v.get("lines")?.as_array()?;
-                                        let line_count = lines.len();
-                                        let total_amount: f64 = lines
-                                            .iter()
-                                            .filter_map(|line| line.get("amount_line")?.as_f64())
-                                            .sum();
-
-                                        let is_posted = v
-                                            .get("is_posted")
-                                            .and_then(|p| p.as_bool())
-                                            .unwrap_or(false);
-
-                                        Some(OzonFboPostingDto {
-                                            id: v.get("id")?.as_str()?.to_string(),
-                                            code: v.get("code")?.as_str()?.to_string(),
-                                            description: v
-                                                .get("description")?
-                                                .as_str()?
-                                                .to_string(),
-                                            document_no: v
-                                                .get("header")?
-                                                .get("document_no")?
-                                                .as_str()?
-                                                .to_string(),
-                                            status_norm,
-                                            substatus_raw,
-                                            created_at_source,
-                                            total_amount,
-                                            line_count,
-                                            is_posted,
-                                        })
-                                    })
-                                    .collect();
-                                set_postings.set(items);
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            set_loading.set(false);
-
-            // Инкрементируем триггер для перезагрузки детальной формы
-            set_detail_reload_trigger.update(|v| *v += 1);
-        });
-    };
-
-    // Массовая отмена проведения
-    let unpost_selected = move |_| {
-        let ids = selected_ids.get();
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_results.set(Vec::new());
-        set_current_operation.set(Some((0, ids.len())));
-
-        let set_postings = set_postings.clone();
-        let set_loading = set_loading.clone();
-        let set_error = set_error.clone();
-        let set_posting_in_progress = set_posting_in_progress.clone();
-        let set_operation_results = set_operation_results.clone();
-        let set_selected_ids = set_selected_ids.clone();
-        let set_detail_reload_trigger = set_detail_reload_trigger.clone();
-        let set_current_operation = set_current_operation.clone();
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let mut results = Vec::new();
-            let total = ids.len();
-
-            for (index, id) in ids.iter().enumerate() {
-                set_current_operation.set(Some((index + 1, total)));
-                let url = format!(
-                    "{}/api/a011/ozon-fbo-posting/{}/unpost",
-                    api_base(),
-                    id
-                );
-                match Request::post(&url).send().await {
-                    Ok(response) => {
-                        if response.status() == 200 {
-                            results.push((id.clone(), true, None));
-                        } else {
-                            results.push((
-                                id.clone(),
-                                false,
-                                Some(format!("HTTP {}", response.status())),
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        results.push((id.clone(), false, Some(format!("{:?}", e))));
-                    }
-                }
-            }
-
-            set_operation_results.set(results);
-            set_posting_in_progress.set(false);
-            set_current_operation.set(None);
-            set_selected_ids.set(Vec::new());
-
-            // Перезагрузить список
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/a011/ozon-fbo-posting", api_base());
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    if response.status() == 200 {
-                        if let Ok(text) = response.text().await {
-                            if let Ok(data) = serde_json::from_str::<Vec<serde_json::Value>>(&text)
-                            {
-                                let items: Vec<OzonFboPostingDto> = data
-                                    .into_iter()
-                                    .filter_map(|v| {
-                                        let status_norm = v
-                                            .get("state")
-                                            .and_then(|s| s.get("status_norm"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string())
-                                            .unwrap_or_else(|| "UNKNOWN".to_string());
-
-                                        let substatus_raw = v
-                                            .get("state")
-                                            .and_then(|s| s.get("substatus_raw"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string());
-
-                                        let created_at_source = v
-                                            .get("state")
-                                            .and_then(|s| s.get("created_at"))
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string());
-
-                                        let lines = v.get("lines")?.as_array()?;
-                                        let line_count = lines.len();
-                                        let total_amount: f64 = lines
-                                            .iter()
-                                            .filter_map(|line| line.get("amount_line")?.as_f64())
-                                            .sum();
-
-                                        let is_posted = v
-                                            .get("is_posted")
-                                            .and_then(|p| p.as_bool())
-                                            .unwrap_or(false);
-
-                                        Some(OzonFboPostingDto {
-                                            id: v.get("id")?.as_str()?.to_string(),
-                                            code: v.get("code")?.as_str()?.to_string(),
-                                            description: v
-                                                .get("description")?
-                                                .as_str()?
-                                                .to_string(),
-                                            document_no: v
-                                                .get("header")?
-                                                .get("document_no")?
-                                                .as_str()?
-                                                .to_string(),
-                                            status_norm,
-                                            substatus_raw,
-                                            created_at_source,
-                                            total_amount,
-                                            line_count,
-                                            is_posted,
-                                        })
-                                    })
-                                    .collect();
-                                set_postings.set(items);
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            set_loading.set(false);
-
-            // Инкрементируем триггер для перезагрузки детальной формы
-            set_detail_reload_trigger.update(|v| *v += 1);
-        });
-    };
-
-    // Автоматическая загрузка при открытии
-    load_postings();
+    let items_signal = Signal::derive(move || state.get().items);
+    let selected_signal = Signal::derive(move || selected.get());
+    let selected_count = Signal::derive(move || selected.get().len());
 
     view! {
         <PageFrame page_id="a011_ozon_fbo_posting--list" category="list">
-            {move || {
-                if let Some(id) = selected_id.get() {
-                    open_detail_modal(id);
-                    set_selected_id.set(None);
-                    view! { <></> }.into_any()
-                } else {
-                    view! {
-                        <div>
-                            <div class="doc-list__toolbar">
-                                <h2 class="doc-list__title">"OZON FBO Posting (A011)"</h2>
-                                <button class="button button--secondary" on:click=move |_| load_postings()>
-                                    "Обновить"
-                                </button>
-                            </div>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">"Постинги FBO (OZON)"</h1>
+                    <UiBadge variant="primary".to_string()>
+                        {move || state.get().total_count.to_string()}
+                    </UiBadge>
+                </div>
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| post_batch(true)
+                        disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
+                    >
+                        {move || format!("Провести ({})", selected_count.get())}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| post_batch(false)
+                        disabled=Signal::derive(move || selected_count.get() == 0 || posting_in_progress.get())
+                    >
+                        {move || format!("Отменить ({})", selected_count.get())}
+                    </Button>
+                    {move || {
+                        current_operation.get().map(|(cur, total)| view! {
+                            <span class="page__status">{format!("Обработка {}/{} ...", cur, total)}</span>
+                        })
+                    }}
+                </div>
+            </div>
 
-                            // Панель фильтров и массовых операций
-                            <div class="doc-filters">
-                                <div class="doc-filters__row">
-                                    // Фильтр по статусу
-                                    <div class="doc-filter">
-                                        <label class="doc-filter__label">"Статус:"</label>
-                                        <select
-                                            on:change=move |e| {
-                                                let value = event_target_value(&e);
-                                                set_status_filter.set(if value.is_empty() { None } else { Some(value) });
-                                            }
-                                            class="doc-filter__select"
-                                        >
-                                            <option value="">"Все"</option>
-                                            <option value="DELIVERED">"DELIVERED"</option>
-                                            <option value="CANCELLED">"CANCELLED"</option>
-                                            <option value="DELIVERING">"DELIVERING"</option>
-                                            <option value="AWAITING_DELIVER">"AWAITING_DELIVER"</option>
-                                        </select>
-                                    </div>
-
-                                    // Кнопки массовых операций
-                                    <div style="display: flex; gap: 10px;">
-                                        <button
-                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
-                                            on:click=post_selected
-                                            class="button button--info"
-                                        >
-                                            {move || format!("Post ({})", selected_ids.get().len())}
-                                        </button>
-                                        <button
-                                            disabled=move || selected_ids.get().is_empty() || posting_in_progress.get()
-                                            on:click=unpost_selected
-                                            class="button button--warning"
-                                        >
-                                            {move || format!("Unpost ({})", selected_ids.get().len())}
-                                        </button>
-                                    </div>
-
-                                    // Индикатор прогресса
-                                    <Show when=move || posting_in_progress.get()>
-                                        {move || {
-                                            if let Some((current, total)) = current_operation.get() {
-                                                view! {
-                                                    <span class="doc-list__progress">
-                                                        {format!("Обработка {}/{} документов...", current, total)}
-                                                    </span>
-                                                }.into_any()
-                                            } else {
-                                                view! {
-                                                    <span class="doc-list__progress">"Обработка..."</span>
-                                                }.into_any()
-                                            }
-                                        }}
-                                    </Show>
-                                </div>
-
-                                // Строка с итогами
-                                {move || if !loading.get() && error.get().is_none() {
-                                    let filtered = get_filtered_sorted_items();
-                                    let (total_sum, total_qty) = get_totals();
-                                    view! {
-                                        <div class="doc-list__summary">
-                                            "Показано: " {filtered.len()} " записей | "
-                                            "Сумма: " {format!("{:.2}", total_sum)} " | "
-                                            "Количество позиций: " {total_qty}
-                                        </div>
-                                    }.into_any()
+            <div class="page__content">
+                <div class="filter-panel">
+                    <div class="filter-panel-header">
+                        <div
+                            class="filter-panel-header__left"
+                            on:click=move |_| set_is_filter_expanded.update(|e| *e = !*e)
+                        >
+                            <svg
+                                width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round"
+                                class=move || if is_filter_expanded.get() {
+                                    "filter-panel__chevron filter-panel__chevron--expanded"
                                 } else {
-                                    view! { <></> }.into_any()
-                                }}
-                            </div>
-
-                            // Результаты операции открываем через ModalStackService
+                                    "filter-panel__chevron"
+                                }
+                            >
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            {icon("filter")}
+                            <span class="filter-panel__title">"Фильтры"</span>
                             {move || {
-                                let results = operation_results.get();
-                                if results.is_empty() {
-                                    view! { <></> }.into_any()
+                                let count = active_filters_count.get();
+                                if count > 0 {
+                                    view! { <span class="filter-panel__badge">{count}</span> }.into_any()
                                 } else {
-                                    open_results_modal(results);
-                                    set_operation_results.set(Vec::new());
                                     view! { <></> }.into_any()
                                 }
                             }}
+                        </div>
 
-            {move || {
-                // Render summary and table; render filled rows only when not loading and no error
-                if !loading.get() && error.get().is_none() {
-                    view! {
-                        <div>
-                            <div class="table-container">
-                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
-                                    <thead>
-                                        <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px; text-align: center;">
-                                                <input
-                                                    type="checkbox"
-                                                    on:change=toggle_all
-                                                    prop:checked=all_selected
-                                                />
-                                            </th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("document_no")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Document №{}", get_sort_indicator(&sort_field.get(), "document_no", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("created_at_source")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Дата создания{}", get_sort_indicator(&sort_field.get(), "created_at_source", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("status_norm")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Status{}", get_sort_indicator(&sort_field.get(), "status_norm", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("substatus_raw")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Substatus{}", get_sort_indicator(&sort_field.get(), "substatus_raw", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none; text-align: center;"
-                                                on:click=toggle_sort("is_posted")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Проведен{}", get_sort_indicator(&sort_field.get(), "is_posted", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("total_amount")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Сумма{}", get_sort_indicator(&sort_field.get(), "total_amount", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer; user-select: none; width: 80px;"
-                                                on:click=toggle_sort("line_count")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Кол-во{}", get_sort_indicator(&sort_field.get(), "line_count", sort_ascending.get()))}
-                                            </th>
-                                            <th
-                                                style="border: 1px solid #ddd; padding: 8px; cursor: pointer; user-select: none;"
-                                                on:click=toggle_sort("description")
-                                                title="Сортировать"
-                                            >
-                                                {move || format!("Description{}", get_sort_indicator(&sort_field.get(), "description", sort_ascending.get()))}
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {move || get_filtered_sorted_items().into_iter().map(|posting| {
-                                            let short_id = posting.id.chars().take(8).collect::<String>();
-                                            let substatus = posting.substatus_raw.clone().unwrap_or_else(|| "-".to_string());
-                                            let formatted_created_at = posting.created_at_source
-                                                .as_ref()
-                                                .map(|d| format_datetime(d))
-                                                .unwrap_or_else(|| "-".to_string());
-                                            let formatted_amount = format!("{:.2}", posting.total_amount);
-                                            let is_posted_flag = posting.is_posted;
+                        <div class="filter-panel-header__center">
+                            <PaginationControls
+                                current_page=Signal::derive(move || state.get().page)
+                                total_pages=Signal::derive(move || state.get().total_pages)
+                                total_count=Signal::derive(move || state.get().total_count)
+                                page_size=Signal::derive(move || state.get().page_size)
+                                on_page_change=Callback::new(go_to_page)
+                                on_page_size_change=Callback::new(change_page_size)
+                                page_size_options=vec![50, 100, 200, 500]
+                            />
+                        </div>
 
-                                            // Создаем отдельные клоны для каждого обработчика
-                                            let id_for_checkbox_change = posting.id.clone();
-                                            let id_for_checkbox_check = posting.id.clone();
-                                            let id1 = posting.id.clone();
-                                            let id2 = posting.id.clone();
-                                            let id3 = posting.id.clone();
-                                            let id4 = posting.id.clone();
-                                            let id5 = posting.id.clone();
-                                            let id6 = posting.id.clone();
-                                            let id7 = posting.id.clone();
-                                            let id8 = posting.id.clone();
-                                            let id9 = posting.id.clone();
+                        <div class="filter-panel-header__right">
+                            <Button
+                                appearance=ButtonAppearance::Primary
+                                on_click=move |_| load_postings()
+                                disabled=Signal::derive(move || loading.get())
+                            >
+                                {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                            </Button>
+                        </div>
+                    </div>
 
-                                            view! {
-                                                <tr
-                                                    style="transition: background 0.2s;"
-                                                    onmouseenter="this.style.background='#f5f5f5'"
-                                                    onmouseleave="this.style.background='white'"
-                                                >
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center;"
+                    <Show when=move || is_filter_expanded.get()>
+                        <div class="filter-panel-content">
+                            <Flex gap=FlexGap::Small align=FlexAlign::End>
+                                <div style="min-width: 420px;">
+                                    <DateRangePicker
+                                        date_from=Signal::derive(move || date_from.get())
+                                        date_to=Signal::derive(move || date_to.get())
+                                        on_change=Callback::new(move |(from, to)| {
+                                            date_from.set(from);
+                                            date_to.set(to);
+                                            state.update(|s| s.page = 0);
+                                            refresh_view();
+                                        })
+                                        label="Период (дата создания):".to_string()
+                                    />
+                                </div>
+
+                                <div style="flex: 1; max-width: 220px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Статус:"</Label>
+                                        <Input
+                                            value=status_filter
+                                            placeholder="DELIVERED, CANCELLED..."
+                                        />
+                                    </Flex>
+                                </div>
+
+                                <Button
+                                    appearance=ButtonAppearance::Secondary
+                                    on_click=move |_| {
+                                        state.update(|s| { s.status_filter = status_filter.get_untracked(); s.page = 0; });
+                                        refresh_view();
+                                    }
+                                    disabled=Signal::derive(move || loading.get())
+                                >
+                                    "Применить"
+                                </Button>
+                            </Flex>
+                        </div>
+                    </Show>
+                </div>
+
+                {move || error.get().map(|err| view! { <div class="alert alert--error">{err}</div> })}
+
+                <div class="table-wrapper">
+                    <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
+
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 950px;">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHeaderCheckbox
+                                    items=items_signal
+                                    selected=selected_signal
+                                    get_id=Callback::new(|row: OzonFboPostingDto| row.id.clone())
+                                    on_change=Callback::new(toggle_all)
+                                />
+
+                                <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("created_at_source")>
+                                        "Дата создания"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "created_at_source"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "created_at_source", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=160.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
+                                        "Номер"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "document_no", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=200.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("description")>
+                                        "Описание"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "description"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "description", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("status_norm")>
+                                        "Статус"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "status_norm"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "status_norm", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=80.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("line_count")>
+                                        "Строк"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "line_count"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "line_count", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("total_amount")>
+                                        "Сумма"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_amount"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_amount", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("is_posted")>
+                                        "Проведен"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "is_posted"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "is_posted", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                            </TableRow>
+                        </TableHeader>
+
+                        <TableBody>
+                            <For
+                                each=move || state.get().items
+                                key=|item| item.id.clone()
+                                children=move |item| {
+                                    let item_id = item.id.clone();
+                                    let item_id_click = item.id.clone();
+                                    let created_str = item.created_at_source.as_deref().map(format_date).unwrap_or_else(|| "—".to_string());
+                                    let is_posted = item.is_posted;
+                                    view! {
+                                        <TableRow>
+                                            <TableCellCheckbox
+                                                item_id=item_id.clone()
+                                                selected=selected_signal
+                                                on_change=Callback::new(move |(id, checked)| toggle_selection(id, checked))
+                                            />
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <a href="#" class="table__link"
                                                         on:click=move |e| {
-                                                            e.stop_propagation();
+                                                            e.prevent_default();
+                                                            open_detail_modal(item_id_click.clone());
                                                         }
                                                     >
-                                                        <input
-                                                            type="checkbox"
-                                                            on:change=move |_| toggle_selection(id_for_checkbox_change.clone())
-                                                            prop:checked=move || is_selected(&id_for_checkbox_check)
-                                                        />
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id1.clone()));
-                                                        }
-                                                    >
-                                                        <code style="font-size: 0.85em;">{format!("{}...", short_id)}</code>
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id2.clone()));
-                                                        }
-                                                    >
-                                                        {posting.document_no}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id3.clone()));
-                                                        }
-                                                    >
-                                                        {formatted_created_at}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id4.clone()));
-                                                        }
-                                                    >
-                                                        {posting.status_norm.clone()}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id5.clone()));
-                                                        }
-                                                    >
-                                                        {substatus}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id6.clone()));
-                                                        }
-                                                    >
-                                                        {if is_posted_flag {
-                                                            view! { <span style="color: green; font-weight: 500;">"✓ Проведен"</span> }
-                                                        } else {
-                                                            view! { <span style="color: #999;">"○ Не проведен"</span> }
-                                                        }}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: right; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id7.clone()));
-                                                        }
-                                                    >
-                                                        {formatted_amount}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id8.clone()));
-                                                        }
-                                                    >
-                                                        {posting.line_count}
-                                                    </td>
-                                                    <td
-                                                        style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
-                                                        on:click=move |_| {
-                                                            set_selected_id.set(Some(id9.clone()));
-                                                        }
-                                                    >
-                                                        {posting.description}
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }).collect_view()}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }.into_any()
-                } else {
-                    let msg = if loading.get() {
-                        "Loading...".to_string()
-                    } else if let Some(err) = error.get() {
-                        err.clone()
-                    } else {
-                        String::new()
-                    };
-
-                    view! {
-                        <div>
-                            {move || if !msg.is_empty() {
-                                view! {
-                                    <p style="margin: 4px 0 8px 0; font-size: 13px; color: #666;">{msg.clone()}</p>
-                                }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                            <div class="table-container">
-                                <table class="table__data" style="width: 100%; border-collapse: collapse;">
-                                    <thead>
-                                        <tr style="background: #f5f5f5;">
-                                            <th style="border: 1px solid #ddd; padding: 8px; width: 40px;"></th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"ID"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Document №"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Дата"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Статус"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">"Сумма"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">"Количество позиций"</th>
-                                            <th style="border: 1px solid #ddd; padding: 8px;">"Description"</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr><td colspan="8"></td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }.into_any()
-                }
-            }}
-                        </div>
-                    }.into_any()
-                }
-            }}
+                                                        {created_str}
+                                                    </a>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {item.document_no.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {item.description.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {item.status_norm.clone()}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <span style="font-variant-numeric: tabular-nums;">{item.line_count}</span>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCellMoney
+                                                value=Signal::derive(move || Some(item.total_amount))
+                                                show_currency=false
+                                                color_by_sign=false
+                                            />
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {if is_posted {
+                                                        view! { <span class="badge badge--success">"Проведен"</span> }.into_any()
+                                                    } else {
+                                                        view! { <span class="badge badge--neutral">"Не проведен"</span> }.into_any()
+                                                    }}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                        </TableRow>
+                                    }
+                                }
+                            />
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
         </PageFrame>
     }
 }

@@ -1,5 +1,7 @@
-use crate::domain::a004_nomenclature::ui::details::NomenclatureDetails;
+use crate::layout::global_context::AppGlobalContext;
+use crate::layout::tabs::{detail_tab_label, pick_identifier};
 use crate::shared::date_utils::format_datetime;
+use contracts::domain::a004_nomenclature::ENTITY_METADATA as A004;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -42,12 +44,11 @@ enum SortDirection {
 
 #[component]
 pub fn BarcodesList() -> impl IntoView {
+    let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+
     let (barcodes, set_barcodes) = signal(Vec::<NomenclatureBarcodeDto>::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None::<String>);
-
-    // Состояние модального окна для номенклатуры
-    let (selected_nomenclature_id, set_selected_nomenclature_id) = signal::<Option<String>>(None);
 
     // Состояние сортировки
     let (sort_column, set_sort_column) = signal::<Option<SortColumn>>(Some(SortColumn::Barcode));
@@ -279,30 +280,6 @@ pub fn BarcodesList() -> impl IntoView {
                         </div>
                     </div>
 
-            // Модальное окно для деталей номенклатуры
-            {move || {
-                if let Some(nomenclature_id) = selected_nomenclature_id.get() {
-                    view! {
-                        <div class="modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding-top: 40px;">
-                            <div class="modal-content" style="background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 800px; width: 90%; max-height: calc(100vh - 80px); overflow-y: auto; margin: 0;">
-                                <NomenclatureDetails
-                                    id=Some(nomenclature_id.clone())
-                                    on_saved=move || {
-                                        set_selected_nomenclature_id.set(None);
-                                        load_barcodes();
-                                    }
-                                    on_cancel=move || {
-                                        set_selected_nomenclature_id.set(None);
-                                    }
-                                />
-                            </div>
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                }
-            }}
-
             // Фильтры
             <div class="form-section" style="background: var(--color-background-secondary); padding: var(--spacing-md); border-radius: var(--radius-md); margin-bottom: var(--spacing-lg);">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
@@ -512,13 +489,24 @@ pub fn BarcodesList() -> impl IntoView {
                                         <td class="table__cell">
                                             {if let Some(nom_ref) = nomenclature_ref_for_link {
                                                 if let Some(name) = item.nomenclature_name.clone() {
+                                                    let article = item.article.clone();
+                                                    let name_for_tab = name.clone();
+                                                    let nom_ref_for_tab = nom_ref.clone();
                                                     view! {
                                                         <a
                                                             href="#"
                                                             style="color: var(--color-primary); text-decoration: none; cursor: pointer;"
                                                             on:click=move |ev| {
                                                                 ev.prevent_default();
-                                                                set_selected_nomenclature_id.set(Some(nom_ref.clone()));
+                                                                let tab_key = format!("a004_nomenclature_detail_{}", nom_ref_for_tab);
+                                                                let identifier = pick_identifier(
+                                                                    None,
+                                                                    article.as_deref(),
+                                                                    Some(name_for_tab.as_str()),
+                                                                    &nom_ref_for_tab,
+                                                                );
+                                                                let title = detail_tab_label(A004.ui.element_name, identifier);
+                                                                tabs_store.open_tab(&tab_key, &title);
                                                             }
                                                         >
                                                             {name}

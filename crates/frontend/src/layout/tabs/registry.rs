@@ -41,6 +41,8 @@ use crate::domain::a022_kit_variant::ui::details::KitVariantDetail;
 use crate::domain::a022_kit_variant::ui::list::KitVariantList;
 use crate::domain::a023_purchase_of_goods::ui::details::PurchaseOfGoodsDetail;
 use crate::domain::a023_purchase_of_goods::ui::list::PurchaseOfGoodsList;
+use crate::domain::a024_bi_indicator::ui::details::BiIndicatorDetails;
+use crate::domain::a024_bi_indicator::ui::list::BiIndicatorList;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -422,6 +424,34 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 <ProductionOutputDetail
                     id=id
                     on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a024: BI Indicators
+        "a024_bi_indicator" => view! { <BiIndicatorList /> }.into_any(),
+        k if k.starts_with("a024_bi_indicator_detail_") => {
+            let raw_id = k
+                .strip_prefix("a024_bi_indicator_detail_")
+                .unwrap()
+                .to_string();
+            let id = if raw_id == "new" { None } else { Some(raw_id) };
+            view! {
+                <BiIndicatorDetails
+                    id=id
+                    on_saved=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                    on_cancel=Callback::new({
                         let key_for_close = key_for_close.clone();
                         move |_| {
                             tabs_store.close_tab(&key_for_close);
