@@ -257,6 +257,14 @@
                       "children": []
                     },
                     {
+                      "name": "crates/backend/src/api/handlers/a025_bi_dashboard.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
                       "name": "crates/backend/src/api/handlers/d400_monthly_summary.rs",
                       "kind": "file",
                       "origins": [
@@ -15358,6 +15366,1470 @@
               }
             },
             {
+              "name": "a025_bi_dashboard",
+              "kind": "domain_unit",
+              "origins": [
+                "backend",
+                "contracts",
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "entity",
+                  "kind": "entity",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "$schema: ../../../schemas/metadata.schema.json",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "schema_version: 1.0",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_type: aggregate",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_name: BiDashboard",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "entity_index: a025",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "collection_name: bi_dashboard",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "table_name: a025_bi_dashboard",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ui",
+                  "kind": "ui",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "element_name: BI Дашборд",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "element_name_en: BI Dashboard",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name: BI Дашборды",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "list_name_en: BI Dashboards",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "icon: layout-dashboard",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "ai",
+                  "kind": "ai",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "description: BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оце…",
+                      "kind": "kv",
+                      "origins": [],
+                      "children": []
+                    },
+                    {
+                      "name": "questions (5)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "Какие дашборды доступны в системе?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как создать новый BI дашборд?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как добавить индикатор в дашборд?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как организовать индикаторы по категориям?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "Как настроить глобальные фильтры для дашборда?",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "related (1)",
+                      "kind": "list",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "a024_bi_indicator",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fields (16)",
+                  "kind": "fields",
+                  "origins": [],
+                  "children": [
+                    {
+                      "name": "id: BiDashboardId",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: ID",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "code: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Код",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Code",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 50",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "description: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Наименование",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Name",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 500",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.min_length: 2",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "comment: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: base",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Комментарий",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Comment",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.max_length: 2000",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "status: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: enum",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Статус",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Status",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "owner_user_id: String",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Владелец",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Owner",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_public: bool",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Публичный",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Public",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "rating: Option<u8>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Оценка",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Rating",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "layout: DashboardLayout",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: nested_struct",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Раскладка",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Layout",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "global_filters: Vec<GlobalFilter>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: nested_table",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Глобальные фильтры",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Global Filters",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "created_by: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Создал",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Created By",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "updated_by: Option<String>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: specific",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Обновил",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Updated By",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "created_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Создан",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Created",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "updated_at: DateTime<Utc>",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Обновлён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Updated",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_deleted: bool",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Удалён",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Deleted",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "name": "version: i32",
+                      "kind": "field",
+                      "origins": [],
+                      "children": [
+                        {
+                          "name": "field_type: primitive",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "source: metadata",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label: Версия",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.label_en: Version",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_list: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "ui.visible_in_form: false",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        },
+                        {
+                          "name": "validation.required: true",
+                          "kind": "kv",
+                          "origins": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "backend",
+                    "contracts",
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/backend/src/domain/a025_bi_dashboard/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a025_bi_dashboard/repository.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/backend/src/domain/a025_bi_dashboard/service.rs",
+                      "kind": "file",
+                      "origins": [
+                        "backend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a025_bi_dashboard/aggregate.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a025_bi_dashboard/metadata.json",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a025_bi_dashboard/metadata_gen.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/contracts/src/domain/a025_bi_dashboard/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "contracts"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/dashboard/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/dashboard/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/page.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/tabs/filters.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/tabs/general.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/tabs/layout.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/tabs/meta.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/tabs/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/details/view_model.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/list/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/list/state.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/list/widget.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/domain/a025_bi_dashboard/ui/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ],
+              "data": {
+                "$schema": "../../../schemas/metadata.schema.json",
+                "ai": {
+                  "description": "BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оценку пользователя (1-5 звёзд) и статус. Дашборды могут быть персональными или публичными.",
+                  "questions": [
+                    "Какие дашборды доступны в системе?",
+                    "Как создать новый BI дашборд?",
+                    "Как добавить индикатор в дашборд?",
+                    "Как организовать индикаторы по категориям?",
+                    "Как настроить глобальные фильтры для дашборда?"
+                  ],
+                  "related": [
+                    "a024_bi_indicator"
+                  ]
+                },
+                "collection_name": "bi_dashboard",
+                "entity_index": "a025",
+                "entity_name": "BiDashboard",
+                "entity_type": "aggregate",
+                "fields": [
+                  {
+                    "field_type": "primitive",
+                    "name": "id",
+                    "rust_type": "BiDashboardId",
+                    "source": "base",
+                    "ui": {
+                      "label": "ID",
+                      "label_en": "ID",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "code",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 120,
+                      "hint": "Уникальный код дашборда",
+                      "label": "Код",
+                      "label_en": "Code",
+                      "placeholder": "DASH-001",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "text"
+                    },
+                    "validation": {
+                      "max_length": 50,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "description",
+                    "rust_type": "String",
+                    "source": "base",
+                    "ui": {
+                      "column_width": 280,
+                      "hint": "Название дашборда",
+                      "label": "Наименование",
+                      "label_en": "Name",
+                      "placeholder": "Операционный дашборд",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "text"
+                    },
+                    "validation": {
+                      "max_length": 500,
+                      "min_length": 2,
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "comment",
+                    "rust_type": "Option<String>",
+                    "source": "base",
+                    "ui": {
+                      "label": "Комментарий",
+                      "label_en": "Comment",
+                      "placeholder": "Описание дашборда и его назначения",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "textarea"
+                    },
+                    "validation": {
+                      "max_length": 2000,
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Статус дашборда: draft (черновик), active (активен), archived (в архиве)",
+                    "enum_values": [
+                      "draft",
+                      "active",
+                      "archived"
+                    ],
+                    "field_type": "enum",
+                    "name": "status",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 100,
+                      "label": "Статус",
+                      "label_en": "Status",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "select"
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "ID пользователя-владельца дашборда",
+                    "field_type": "primitive",
+                    "name": "owner_user_id",
+                    "rust_type": "String",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 150,
+                      "label": "Владелец",
+                      "label_en": "Owner",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "text"
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "is_public",
+                    "rust_type": "bool",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 90,
+                      "hint": "Доступен другим пользователям",
+                      "label": "Публичный",
+                      "label_en": "Public",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "checkbox"
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "ai_hint": "Оценка пользователя: 1-5 звёзд, null = не оценён",
+                    "field_type": "primitive",
+                    "name": "rating",
+                    "rust_type": "Option<u8>",
+                    "source": "specific",
+                    "ui": {
+                      "column_width": 120,
+                      "hint": "Оценка дашборда от 1 до 5 звёзд",
+                      "label": "Оценка",
+                      "label_en": "Rating",
+                      "visible_in_form": true,
+                      "visible_in_list": true,
+                      "widget": "rate"
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  },
+                  {
+                    "ai_hint": "Иерархическое дерево категорий (DashboardGroup) с индикаторами (DashboardItem)",
+                    "field_type": "nested_struct",
+                    "name": "layout",
+                    "rust_type": "DashboardLayout",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "Дерево групп с индикаторами",
+                      "label": "Раскладка",
+                      "label_en": "Layout",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "tree_editor"
+                    }
+                  },
+                  {
+                    "ai_hint": "Список глобальных фильтров: key совпадает с ParamDef.global_filter_key из a024",
+                    "field_type": "nested_table",
+                    "name": "global_filters",
+                    "rust_type": "Vec<GlobalFilter>",
+                    "source": "specific",
+                    "ui": {
+                      "hint": "Фильтры, применяемые ко всем индикаторам дашборда",
+                      "label": "Глобальные фильтры",
+                      "label_en": "Global Filters",
+                      "visible_in_form": true,
+                      "visible_in_list": false,
+                      "widget": "table"
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "created_by",
+                    "rust_type": "Option<String>",
+                    "source": "specific",
+                    "ui": {
+                      "label": "Создал",
+                      "label_en": "Created By",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "updated_by",
+                    "rust_type": "Option<String>",
+                    "source": "specific",
+                    "ui": {
+                      "label": "Обновил",
+                      "label_en": "Updated By",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": false
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "created_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "column_width": 160,
+                      "format": "datetime",
+                      "label": "Создан",
+                      "label_en": "Created",
+                      "visible_in_form": false,
+                      "visible_in_list": true
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "updated_at",
+                    "rust_type": "DateTime<Utc>",
+                    "source": "metadata",
+                    "ui": {
+                      "format": "datetime",
+                      "label": "Обновлён",
+                      "label_en": "Updated",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "is_deleted",
+                    "rust_type": "bool",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Удалён",
+                      "label_en": "Deleted",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  },
+                  {
+                    "field_type": "primitive",
+                    "name": "version",
+                    "rust_type": "i32",
+                    "source": "metadata",
+                    "ui": {
+                      "label": "Версия",
+                      "label_en": "Version",
+                      "visible_in_form": false,
+                      "visible_in_list": false
+                    },
+                    "validation": {
+                      "required": true
+                    }
+                  }
+                ],
+                "schema_version": "1.0",
+                "table_name": "a025_bi_dashboard",
+                "ui": {
+                  "element_name": "BI Дашборд",
+                  "element_name_en": "BI Dashboard",
+                  "icon": "layout-dashboard",
+                  "list_name": "BI Дашборды",
+                  "list_name_en": "BI Dashboards"
+                }
+              }
+            },
+            {
               "name": "common",
               "kind": "domain_unit",
               "origins": [
@@ -16994,6 +18466,48 @@
                     },
                     {
                       "name": "crates/frontend/src/shared/table_utils.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "bi_card",
+              "kind": "domain_unit",
+              "origins": [
+                "frontend"
+              ],
+              "children": [
+                {
+                  "name": "src",
+                  "kind": "src",
+                  "origins": [
+                    "frontend"
+                  ],
+                  "children": [
+                    {
+                      "name": "crates/frontend/src/shared/bi_card/mod.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/shared/bi_card/renderer.rs",
+                      "kind": "file",
+                      "origins": [
+                        "frontend"
+                      ],
+                      "children": []
+                    },
+                    {
+                      "name": "crates/frontend/src/shared/bi_card/spark.rs",
                       "kind": "file",
                       "origins": [
                         "frontend"

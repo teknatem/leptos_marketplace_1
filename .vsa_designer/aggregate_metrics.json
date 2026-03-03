@@ -145,7 +145,7 @@
           "misc": 20
         },
         "frontend": {
-          "details": 37634,
+          "details": 37638,
           "list": 26237,
           "misc": 46,
           "picker": 0,
@@ -211,7 +211,7 @@
           "misc": 22
         },
         "frontend": {
-          "details": 59349,
+          "details": 59347,
           "list": 34743,
           "misc": 43,
           "picker": 0,
@@ -299,7 +299,7 @@
           "misc": 20
         },
         "frontend": {
-          "details": 82144,
+          "details": 82438,
           "list": 51783,
           "misc": 44,
           "picker": 0,
@@ -343,7 +343,7 @@
           "misc": 22
         },
         "frontend": {
-          "details": 56143,
+          "details": 56182,
           "list": 38134,
           "misc": 43,
           "picker": 0,
@@ -515,13 +515,35 @@
           "service.rs": 15347
         },
         "contracts": {
-          "aggregate.rs": 13558,
+          "aggregate.rs": 13847,
           "misc": 27730
         },
         "frontend": {
-          "details": 57719,
+          "details": 65638,
           "list": 26752,
           "misc": 258,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a025_bi_dashboard": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 8935,
+          "service.rs": 12156
+        },
+        "contracts": {
+          "aggregate.rs": 10045,
+          "misc": 25798
+        },
+        "frontend": {
+          "details": 49908,
+          "list": 20545,
+          "misc": 13087,
           "picker": 0,
           "tree": 0
         },
@@ -1067,13 +1089,35 @@
           "service.rs": 306
         },
         "contracts": {
-          "aggregate.rs": 401,
+          "aggregate.rs": 409,
           "misc": 861
         },
         "frontend": {
-          "details": 1505,
+          "details": 1662,
           "list": 604,
           "misc": 7,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a025_bi_dashboard": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 237,
+          "service.rs": 343
+        },
+        "contracts": {
+          "aggregate.rs": 314,
+          "misc": 816
+        },
+        "frontend": {
+          "details": 1157,
+          "list": 494,
+          "misc": 341,
           "picker": 0,
           "tree": 0
         },
