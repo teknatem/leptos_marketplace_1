@@ -216,6 +216,8 @@
 
 .details-section {
   margin-bottom: var(--spacing-lg);
+  min-width: 900px;
+  max-width: 900px;
 }
 
 .details-section__title {
@@ -3367,4 +3369,452 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-md);
+}
+
+/* ============================================
+   Layout Tree Editor (a025 BI Dashboard)
+   ============================================ */
+
+/* Section header: extra vertical padding for "Новая категория" button */
+.ltree-section-header {
+  padding-top: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+}
+
+/* Dim hint, sits between the header and the tree */
+.ltree__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  margin: 0 0 var(--spacing-sm);
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ltree__hint-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ltree__hint-badge--green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ltree__hint-badge--red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.ltree {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ltree__empty {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+/* Category wrap: header + items block */
+.ltree-cat-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Category header row */
+.ltree-cat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+  cursor: grab;
+  transition: background var(--transition-fast), outline var(--transition-fast);
+}
+
+.ltree-cat:active { cursor: grabbing; }
+
+.ltree-cat--dragging { opacity: 0.45; }
+
+.ltree-cat--drop-target {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 8%, var(--color-bg-secondary));
+}
+
+.ltree-cat__grip {
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity var(--transition-fast);
+}
+.ltree-cat:hover .ltree-cat__grip { opacity: 1; }
+
+.ltree-cat__icon {
+  color: #f59e0b; /* amber — folder icon */
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ltree-cat__title-input {
+  flex: 1;
+  min-width: 80px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+.ltree-cat__title-input:focus {
+  background: var(--color-surface);
+  outline: 1px solid var(--color-border);
+}
+
+.ltree-cat__count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0 7px;
+  height: 18px;
+  line-height: 18px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* ── Colored action buttons (native) ── */
+.ltree-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  height: 26px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ltree-btn--green {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+.ltree-btn--green:hover { background: #bbf7d0; }
+
+.ltree-btn--red {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+.ltree-btn--red:hover { background: #fecaca; }
+
+/* Subtle × for indicator rows */
+.ltree-btn--ghost-red {
+  background: transparent;
+  color: var(--color-text-tertiary);
+  border-color: transparent;
+  padding: 2px 5px;
+  height: 22px;
+}
+.ltree-btn--ghost-red:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Items area */
+.ltree-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.ltree-items__empty {
+  padding: 12px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Indicator row */
+.ltree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 7px 28px;
+  border-top: 1px solid var(--color-border-lighter, #f0f0f0);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  cursor: grab;
+  transition: background var(--transition-fast), outline var(--transition-fast);
+}
+
+.ltree-item:active { cursor: grabbing; }
+
+.ltree-item:hover { background: var(--color-hover-bg); }
+
+.ltree-item--dragging { opacity: 0.4; }
+
+.ltree-item--drop-target {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 6%, var(--color-surface));
+}
+
+.ltree-item__grip {
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  flex-shrink: 0;
+  opacity: 0.45;
+  transition: opacity var(--transition-fast);
+}
+.ltree-item:hover .ltree-item__grip { opacity: 1; }
+
+.ltree-item__icon {
+  color: var(--color-primary, #2563eb);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Read-only indicator name label */
+.ltree-item__name {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ltree-item__remove {
+  margin-left: auto;
+}
+
+/* ============================================
+   Indicator Picker (inside OverlayDrawer)
+   ============================================ */
+
+.ind-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+  padding: 4px 0;
+}
+
+.ind-picker__search {
+  padding: 0 0 12px;
+}
+
+.ind-picker__search .form__input {
+  width: 100%;
+}
+
+/* Summary bar: "X of Y selected" + deselect-all */
+.ind-picker__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px 10px;
+  min-height: 28px;
+}
+
+.ind-picker__summary-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ind-picker__summary-text--active {
+  color: var(--color-primary, #2563eb);
+  font-weight: var(--font-weight-medium);
+}
+
+.ind-picker__clear-btn {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.ind-picker__clear-btn:hover {
+  background: var(--color-hover-bg);
+}
+
+.ind-picker__loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ind-picker__error {
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--color-error, #ef4444);
+  background: #fee2e2;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.ind-picker__list {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  min-height: 0;
+}
+
+.ind-picker__list-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+/* Row is a <label> for accessible checkbox click */
+.ind-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-lighter, #f0f0f0);
+  transition: background var(--transition-fast);
+  user-select: none;
+}
+
+.ind-picker__row:last-child { border-bottom: none; }
+.ind-picker__row:hover { background: var(--color-hover-bg); }
+
+.ind-picker__row--selected {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 7%, var(--color-surface));
+}
+.ind-picker__row--selected:hover {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, var(--color-surface));
+}
+
+.ind-picker__row--already {
+  opacity: 0.6;
+  cursor: default;
+}
+.ind-picker__row--already:hover {
+  background: transparent;
+}
+
+.ind-picker__already-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* Native checkbox — accent-color makes it match the theme */
+.ind-picker__checkbox {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary, #2563eb);
+  cursor: pointer;
+}
+
+.ind-picker__row-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ind-picker__code {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.ind-picker__desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status badges */
+.ind-picker__status {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.ind-picker__status--active {
+  background: #dcfce7;
+  color: #15803d;
+}
+.ind-picker__status--archived {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.ind-picker__status--draft {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.ind-picker__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--spacing-sm);
 }

@@ -42,11 +42,16 @@ impl AggregateId for BiDashboardId {
 pub struct DashboardItem {
     /// UUID-ссылка на BiIndicator (a024)
     pub indicator_id: String,
+    /// Кэшированное отображаемое имя индикатора (code — description).
+    /// Хранится для отображения без дополнительных запросов.
+    #[serde(default)]
+    pub indicator_name: String,
     /// Порядок сортировки внутри группы
     pub sort_order: i32,
     /// Класс колонки для grid-layout (например "1x1", "2x1", "1x2", "2x2")
     pub col_class: String,
     /// Переопределение значений параметров для этого конкретного экземпляра
+    #[serde(default)]
     pub param_overrides: HashMap<String, String>,
 }
 
@@ -54,6 +59,7 @@ impl DashboardItem {
     pub fn new(indicator_id: String) -> Self {
         Self {
             indicator_id,
+            indicator_name: String::new(),
             sort_order: 0,
             col_class: "1x1".to_string(),
             param_overrides: HashMap::new(),
