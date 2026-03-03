@@ -110,6 +110,28 @@ async fn fetch_paginated(
     Ok((rows, parsed.total, parsed.page, parsed.page_size, parsed.total_pages))
 }
 
+async fn load_testdata() -> Result<(), String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/a024-bi-indicator/testdata", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
 async fn delete_indicator(id: &str) -> Result<(), String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -269,6 +291,24 @@ pub fn BiIndicatorList() -> impl IntoView {
         }
     };
 
+    let (testdata_loading, set_testdata_loading) = signal(false);
+    let on_load_testdata = move |_| {
+        set_testdata_loading.set(true);
+        set_error.set(None);
+        leptos::task::spawn_local(async move {
+            match load_testdata().await {
+                Ok(_) => {
+                    set_testdata_loading.set(false);
+                    load();
+                }
+                Err(e) => {
+                    set_testdata_loading.set(false);
+                    set_error.set(Some(format!("Ошибка загрузки тест. данных: {}", e)));
+                }
+            }
+        });
+    };
+
     view! {
         <PageFrame page_id="a024_bi_indicator--list" category="list" class="page--wide">
             <div class="page__header">
@@ -279,6 +319,14 @@ pub fn BiIndicatorList() -> impl IntoView {
                     </Badge>
                 </div>
                 <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=on_load_testdata
+                        disabled=move || testdata_loading.get()
+                    >
+                        {icon("database")}
+                        {move || if testdata_loading.get() { " Загрузка..." } else { " Тест. данные" }}
+                    </Button>
                     <Button
                         appearance=ButtonAppearance::Secondary
                         on_click=move |_| load()

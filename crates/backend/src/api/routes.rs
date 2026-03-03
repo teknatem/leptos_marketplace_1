@@ -510,6 +510,11 @@ pub fn configure_business_routes() -> Router {
             "/api/a024-bi-indicator",
             get(handlers::a024_bi_indicator::list_all).post(handlers::a024_bi_indicator::upsert),
         )
+        // alias for frontend which calls /upsert explicitly
+        .route(
+            "/api/a024-bi-indicator/upsert",
+            post(handlers::a024_bi_indicator::upsert),
+        )
         .route(
             "/api/a024-bi-indicator/list",
             get(handlers::a024_bi_indicator::list_paginated),
@@ -521,6 +526,14 @@ pub fn configure_business_routes() -> Router {
         .route(
             "/api/a024-bi-indicator/owner/:user_id",
             get(handlers::a024_bi_indicator::list_by_owner),
+        )
+        .route(
+            "/api/a024-bi-indicator/testdata",
+            post(handlers::a024_bi_indicator::insert_test_data),
+        )
+        .route(
+            "/api/a024-bi-indicator/generate-view",
+            post(handlers::a024_bi_indicator::generate_view),
         )
         .route(
             "/api/a024-bi-indicator/:id",
@@ -905,5 +918,37 @@ pub fn configure_business_routes() -> Router {
             get(handlers::ds02_mp_sales_register::get_config)
                 .put(handlers::ds02_mp_sales_register::update_config)
                 .delete(handlers::ds02_mp_sales_register::delete_config),
+        )
+        // ========================================
+        // A025 BI Dashboard handlers
+        // ========================================
+        .route(
+            "/api/a025-bi-dashboard",
+            get(handlers::a025_bi_dashboard::list_all).post(handlers::a025_bi_dashboard::upsert),
+        )
+        .route(
+            "/api/a025-bi-dashboard/upsert",
+            post(handlers::a025_bi_dashboard::upsert),
+        )
+        .route(
+            "/api/a025-bi-dashboard/list",
+            get(handlers::a025_bi_dashboard::list_paginated),
+        )
+        .route(
+            "/api/a025-bi-dashboard/public",
+            get(handlers::a025_bi_dashboard::list_public),
+        )
+        .route(
+            "/api/a025-bi-dashboard/testdata",
+            post(handlers::a025_bi_dashboard::insert_test_data),
+        )
+        .route(
+            "/api/a025-bi-dashboard/owner/:user_id",
+            get(handlers::a025_bi_dashboard::list_by_owner),
+        )
+        .route(
+            "/api/a025-bi-dashboard/:id",
+            get(handlers::a025_bi_dashboard::get_by_id)
+                .delete(handlers::a025_bi_dashboard::delete),
         )
 }

@@ -457,7 +457,7 @@ pub fn ImportWidget() -> impl IntoView {
                                                 } else { 0 };
 
                                                 view! {
-                                                    <div style="border: 1px solid var(--border-color); background: var(--color-bg-body); padding: var(--spacing-md); border-radius: var(--radius-sm);">
+                                                    <div style="border: 1px solid var(--color-border); background: var(--color-bg-primary); padding: var(--spacing-md); border-radius: var(--radius-sm);">
                                                         <div style="font-weight: 600; color: var(--color-text-primary); font-size: var(--font-size-base);">
                                                             {agg.aggregate_index.clone()} " - " {agg.aggregate_name.clone()}
                                                         </div>

@@ -220,7 +220,7 @@ pub fn MarketplaceProductDetails(
                     })
                 }
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--space-xl);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--spacing-xl);">
                     <Card>
                         <Flex vertical=true gap=FlexGap::Medium>
                             <h3 style="margin: 0; font-size: var(--font-size-base); font-weight: 600;">"Основная информация"</h3>
@@ -351,7 +351,7 @@ pub fn MarketplaceProductDetails(
                     </Card>
                 </div>
 
-                <div style="margin-top: var(--space-xl);">
+                <div style="margin-top: var(--spacing-xl);">
                     <Card>
                         <Flex vertical=true gap=FlexGap::Small>
                             <Label>"Комментарий"</Label>

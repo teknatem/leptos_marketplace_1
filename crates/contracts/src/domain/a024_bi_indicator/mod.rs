@@ -13,5 +13,6 @@ pub use metadata_gen::{ENTITY_METADATA, FIELDS};
 
 pub use aggregate::{
     BiIndicator, BiIndicatorId, BiIndicatorListItem, BiIndicatorStatus, DataSpec, DrillSpec,
-    DrillTarget, ParamDef, ParamType, Threshold, ViewSpec,
+    DrillTarget, GenerateViewRequest, GenerateViewResponse, ParamDef, ParamType, Threshold,
+    ViewSpec,
 };

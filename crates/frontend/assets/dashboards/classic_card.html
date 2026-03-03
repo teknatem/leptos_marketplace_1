@@ -1,0 +1,33 @@
+<button class="indicator {{col_class}}" data-status="{{status}}" type="button" aria-label="{{name}}">
+  <span class="accent" aria-hidden="true"></span>
+
+  <div class="head">
+    <div class="title">
+      <div class="name">{{name}}</div>
+      <div class="meta">
+        <span>{{meta_1}}</span>
+        <span>{{meta_2}}</span>
+      </div>
+    </div>
+    <span class="pill">{{chip}}</span>
+  </div>
+
+  <div class="value-row">
+    <div>
+      <span class="value">{{value}}</span><span class="unit">{{unit}}</span>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="delta {{delta_neutral_class}}" title="Изменение к прошлому периоду">
+      {{delta_arrow_svg}}
+      {{delta}}
+    </div>
+
+    <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Тренд {{name}}">
+      <path class="grid" d="M0 29H100" />
+      <path class="fill" d="{{spark_fill}}" />
+      <path class="line" d="{{spark_line}}" />
+    </svg>
+  </div>
+</button>

@@ -6,7 +6,7 @@
           "misc": 39,
           "posting.rs": 0,
           "repository.rs": 8071,
-          "service.rs": 6890
+          "service.rs": 7047
         },
         "contracts": {
           "aggregate.rs": 6176,
@@ -14,7 +14,7 @@
         },
         "frontend": {
           "details": 14382,
-          "list": 21300,
+          "list": 21383,
           "misc": 93,
           "picker": 0,
           "tree": 0
@@ -32,11 +32,11 @@
         },
         "contracts": {
           "aggregate.rs": 6698,
-          "misc": 106
+          "misc": 11343
         },
         "frontend": {
           "details": 12809,
-          "list": 14135,
+          "list": 14939,
           "misc": 123,
           "picker": 4624,
           "tree": 0
@@ -57,11 +57,11 @@
           "misc": 91
         },
         "frontend": {
-          "details": 15998,
+          "details": 16004,
           "list": 0,
           "misc": 46,
           "picker": 0,
-          "tree": 20540
+          "tree": 20887
         },
         "handlers": {
           "handler_file": 0
@@ -71,19 +71,19 @@
         "backend": {
           "misc": 6122,
           "posting.rs": 0,
-          "repository.rs": 15995,
+          "repository.rs": 16845,
           "service.rs": 1934
         },
         "contracts": {
-          "aggregate.rs": 9703,
-          "misc": 715
+          "aggregate.rs": 10709,
+          "misc": 19191
         },
         "frontend": {
-          "details": 47773,
-          "list": 39354,
+          "details": 68427,
+          "list": 37421,
           "misc": 74,
           "picker": 11623,
-          "tree": 29652
+          "tree": 29756
         },
         "handlers": {
           "handler_file": 0
@@ -93,16 +93,16 @@
         "backend": {
           "misc": 39,
           "posting.rs": 0,
-          "repository.rs": 5284,
-          "service.rs": 4300
+          "repository.rs": 5530,
+          "service.rs": 4517
         },
         "contracts": {
-          "aggregate.rs": 6277,
-          "misc": 20
+          "aggregate.rs": 6523,
+          "misc": 10105
         },
         "frontend": {
-          "details": 19709,
-          "list": 18259,
+          "details": 14565,
+          "list": 13779,
           "misc": 126,
           "picker": 8363,
           "tree": 0
@@ -115,17 +115,17 @@
         "backend": {
           "misc": 39,
           "posting.rs": 0,
-          "repository.rs": 6531,
-          "service.rs": 4986
+          "repository.rs": 6840,
+          "service.rs": 4840
         },
         "contracts": {
-          "aggregate.rs": 9655,
-          "misc": 163
+          "aggregate.rs": 9714,
+          "misc": 14430
         },
         "frontend": {
-          "details": 37348,
-          "list": 23934,
-          "misc": 176,
+          "details": 44982,
+          "list": 26050,
+          "misc": 174,
           "picker": 0,
           "tree": 0
         },
@@ -145,8 +145,8 @@
           "misc": 20
         },
         "frontend": {
-          "details": 37339,
-          "list": 26186,
+          "details": 37634,
+          "list": 26237,
           "misc": 46,
           "picker": 0,
           "tree": 0
@@ -168,7 +168,7 @@
         },
         "frontend": {
           "details": 0,
-          "list": 22004,
+          "list": 34835,
           "misc": 28,
           "picker": 0,
           "tree": 0
@@ -180,7 +180,7 @@
       "a009_ozon_returns": {
         "backend": {
           "misc": 57,
-          "posting.rs": 2122,
+          "posting.rs": 2436,
           "repository.rs": 7904,
           "service.rs": 1941
         },
@@ -189,8 +189,8 @@
           "misc": 20
         },
         "frontend": {
-          "details": 44971,
-          "list": 44809,
+          "details": 45096,
+          "list": 31763,
           "misc": 44,
           "picker": 0,
           "tree": 0
@@ -202,7 +202,7 @@
       "a010_ozon_fbs_posting": {
         "backend": {
           "misc": 59,
-          "posting.rs": 2196,
+          "posting.rs": 2527,
           "repository.rs": 8520,
           "service.rs": 2719
         },
@@ -211,8 +211,8 @@
           "misc": 22
         },
         "frontend": {
-          "details": 59241,
-          "list": 57202,
+          "details": 59349,
+          "list": 34743,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -224,7 +224,7 @@
       "a011_ozon_fbo_posting": {
         "backend": {
           "misc": 59,
-          "posting.rs": 1847,
+          "posting.rs": 2196,
           "repository.rs": 7992,
           "service.rs": 1997
         },
@@ -233,8 +233,8 @@
           "misc": 22
         },
         "frontend": {
-          "details": 62458,
-          "list": 56762,
+          "details": 62575,
+          "list": 34648,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -246,17 +246,17 @@
       "a012_wb_sales": {
         "backend": {
           "misc": 59,
-          "posting.rs": 2310,
-          "repository.rs": 17165,
-          "service.rs": 5424
+          "posting.rs": 4858,
+          "repository.rs": 24448,
+          "service.rs": 17932
         },
         "contracts": {
-          "aggregate.rs": 8822,
-          "misc": 22
+          "aggregate.rs": 10159,
+          "misc": 28855
         },
         "frontend": {
-          "details": 71292,
-          "list": 77191,
+          "details": 97350,
+          "list": 81545,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -268,17 +268,17 @@
       "a013_ym_order": {
         "backend": {
           "misc": 59,
-          "posting.rs": 3412,
-          "repository.rs": 24255,
-          "service.rs": 14794
+          "posting.rs": 3769,
+          "repository.rs": 25335,
+          "service.rs": 26170
         },
         "contracts": {
-          "aggregate.rs": 11399,
-          "misc": 22
+          "aggregate.rs": 11666,
+          "misc": 18812
         },
         "frontend": {
-          "details": 78130,
-          "list": 122335,
+          "details": 84172,
+          "list": 116631,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -299,8 +299,8 @@
           "misc": 20
         },
         "frontend": {
-          "details": 81895,
-          "list": 55018,
+          "details": 82144,
+          "list": 51783,
           "misc": 44,
           "picker": 0,
           "tree": 0
@@ -312,17 +312,17 @@
       "a015_wb_orders": {
         "backend": {
           "misc": 59,
-          "posting.rs": 1907,
-          "repository.rs": 11217,
-          "service.rs": 5228
+          "posting.rs": 4683,
+          "repository.rs": 19897,
+          "service.rs": 13611
         },
         "contracts": {
-          "aggregate.rs": 9474,
+          "aggregate.rs": 9831,
           "misc": 185
         },
         "frontend": {
-          "details": 97541,
-          "list": 40110,
+          "details": 90746,
+          "list": 60414,
           "misc": 105,
           "picker": 0,
           "tree": 0
@@ -343,8 +343,8 @@
           "misc": 22
         },
         "frontend": {
-          "details": 55988,
-          "list": 51256,
+          "details": 56143,
+          "list": 38134,
           "misc": 43,
           "picker": 0,
           "tree": 0
@@ -362,11 +362,11 @@
         },
         "contracts": {
           "aggregate.rs": 6633,
-          "misc": 24264
+          "misc": 24244
         },
         "frontend": {
           "details": 31028,
-          "list": 10671,
+          "list": 10750,
           "misc": 160,
           "picker": 0,
           "tree": 0
@@ -377,18 +377,18 @@
       },
       "a018_llm_chat": {
         "backend": {
-          "misc": 39,
+          "misc": 2431,
           "posting.rs": 0,
-          "repository.rs": 11340,
-          "service.rs": 9096
+          "repository.rs": 14694,
+          "service.rs": 18230
         },
         "contracts": {
-          "aggregate.rs": 8792,
-          "misc": 17235
+          "aggregate.rs": 10388,
+          "misc": 17344
         },
         "frontend": {
-          "details": 21366,
-          "list": 25985,
+          "details": 31629,
+          "list": 26438,
           "misc": 46,
           "picker": 0,
           "tree": 0
@@ -406,12 +406,122 @@
         },
         "contracts": {
           "aggregate.rs": 7502,
-          "misc": 29687
+          "misc": 29801
         },
         "frontend": {
-          "details": 19229,
-          "list": 9654,
+          "details": 19331,
+          "list": 10185,
           "misc": 172,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a020_wb_promotion": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 15208,
+          "service.rs": 1671
+        },
+        "contracts": {
+          "aggregate.rs": 7263,
+          "misc": 16169
+        },
+        "frontend": {
+          "details": 34794,
+          "list": 31438,
+          "misc": 117,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a021_production_output": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 11404,
+          "service.rs": 3189
+        },
+        "contracts": {
+          "aggregate.rs": 4596,
+          "misc": 82
+        },
+        "frontend": {
+          "details": 18583,
+          "list": 39357,
+          "misc": 127,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a022_kit_variant": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 7972,
+          "service.rs": 711
+        },
+        "contracts": {
+          "aggregate.rs": 3855,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 24583,
+          "list": 25759,
+          "misc": 115,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a023_purchase_of_goods": {
+        "backend": {
+          "misc": 39,
+          "posting.rs": 0,
+          "repository.rs": 9318,
+          "service.rs": 774
+        },
+        "contracts": {
+          "aggregate.rs": 4627,
+          "misc": 20
+        },
+        "frontend": {
+          "details": 13951,
+          "list": 27307,
+          "misc": 46,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a024_bi_indicator": {
+        "backend": {
+          "misc": 5517,
+          "posting.rs": 0,
+          "repository.rs": 9621,
+          "service.rs": 15347
+        },
+        "contracts": {
+          "aggregate.rs": 13558,
+          "misc": 27730
+        },
+        "frontend": {
+          "details": 57719,
+          "list": 26752,
+          "misc": 258,
           "picker": 0,
           "tree": 0
         },
@@ -448,7 +558,7 @@
           "misc": 2,
           "posting.rs": 0,
           "repository.rs": 243,
-          "service.rs": 204
+          "service.rs": 208
         },
         "contracts": {
           "aggregate.rs": 214,
@@ -456,7 +566,7 @@
         },
         "frontend": {
           "details": 344,
-          "list": 509,
+          "list": 510,
           "misc": 4,
           "picker": 0,
           "tree": 0
@@ -474,11 +584,11 @@
         },
         "contracts": {
           "aggregate.rs": 233,
-          "misc": 4
+          "misc": 342
         },
         "frontend": {
           "details": 329,
-          "list": 330,
+          "list": 358,
           "misc": 6,
           "picker": 134,
           "tree": 0
@@ -503,7 +613,7 @@
           "list": 0,
           "misc": 3,
           "picker": 0,
-          "tree": 522
+          "tree": 536
         },
         "handlers": {
           "handler_file": 0
@@ -513,19 +623,19 @@
         "backend": {
           "misc": 173,
           "posting.rs": 0,
-          "repository.rs": 429,
+          "repository.rs": 443,
           "service.rs": 70
         },
         "contracts": {
-          "aggregate.rs": 313,
-          "misc": 25
+          "aggregate.rs": 334,
+          "misc": 544
         },
         "frontend": {
-          "details": 1282,
-          "list": 877,
+          "details": 1751,
+          "list": 838,
           "misc": 5,
           "picker": 246,
-          "tree": 721
+          "tree": 723
         },
         "handlers": {
           "handler_file": 0
@@ -535,16 +645,16 @@
         "backend": {
           "misc": 2,
           "posting.rs": 0,
-          "repository.rs": 153,
-          "service.rs": 129
+          "repository.rs": 156,
+          "service.rs": 135
         },
         "contracts": {
-          "aggregate.rs": 224,
-          "misc": 1
+          "aggregate.rs": 228,
+          "misc": 292
         },
         "frontend": {
-          "details": 452,
-          "list": 436,
+          "details": 373,
+          "list": 295,
           "misc": 6,
           "picker": 204,
           "tree": 0
@@ -557,16 +667,16 @@
         "backend": {
           "misc": 2,
           "posting.rs": 0,
-          "repository.rs": 174,
+          "repository.rs": 182,
           "service.rs": 150
         },
         "contracts": {
-          "aggregate.rs": 326,
-          "misc": 6
+          "aggregate.rs": 334,
+          "misc": 392
         },
         "frontend": {
-          "details": 774,
-          "list": 543,
+          "details": 1086,
+          "list": 585,
           "misc": 8,
           "picker": 0,
           "tree": 0
@@ -587,8 +697,8 @@
           "misc": 1
         },
         "frontend": {
-          "details": 842,
-          "list": 613,
+          "details": 858,
+          "list": 618,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -610,7 +720,7 @@
         },
         "frontend": {
           "details": 0,
-          "list": 495,
+          "list": 705,
           "misc": 2,
           "picker": 0,
           "tree": 0
@@ -622,7 +732,7 @@
       "a009_ozon_returns": {
         "backend": {
           "misc": 3,
-          "posting.rs": 55,
+          "posting.rs": 60,
           "repository.rs": 201,
           "service.rs": 74
         },
@@ -631,8 +741,8 @@
           "misc": 1
         },
         "frontend": {
-          "details": 730,
-          "list": 841,
+          "details": 732,
+          "list": 663,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -644,7 +754,7 @@
       "a010_ozon_fbs_posting": {
         "backend": {
           "misc": 4,
-          "posting.rs": 54,
+          "posting.rs": 59,
           "repository.rs": 228,
           "service.rs": 77
         },
@@ -653,8 +763,8 @@
           "misc": 2
         },
         "frontend": {
-          "details": 802,
-          "list": 1052,
+          "details": 805,
+          "list": 684,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -666,7 +776,7 @@
       "a011_ozon_fbo_posting": {
         "backend": {
           "misc": 4,
-          "posting.rs": 50,
+          "posting.rs": 55,
           "repository.rs": 211,
           "service.rs": 60
         },
@@ -675,8 +785,8 @@
           "misc": 2
         },
         "frontend": {
-          "details": 834,
-          "list": 1010,
+          "details": 837,
+          "list": 665,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -688,17 +798,17 @@
       "a012_wb_sales": {
         "backend": {
           "misc": 4,
-          "posting.rs": 56,
-          "repository.rs": 464,
-          "service.rs": 136
+          "posting.rs": 128,
+          "repository.rs": 636,
+          "service.rs": 417
         },
         "contracts": {
-          "aggregate.rs": 287,
-          "misc": 2
+          "aggregate.rs": 319,
+          "misc": 785
         },
         "frontend": {
-          "details": 1687,
-          "list": 1576,
+          "details": 2180,
+          "list": 1674,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -710,17 +820,17 @@
       "a013_ym_order": {
         "backend": {
           "misc": 4,
-          "posting.rs": 77,
-          "repository.rs": 631,
-          "service.rs": 388
+          "posting.rs": 83,
+          "repository.rs": 662,
+          "service.rs": 658
         },
         "contracts": {
-          "aggregate.rs": 351,
-          "misc": 2
+          "aggregate.rs": 363,
+          "misc": 518
         },
         "frontend": {
-          "details": 1126,
-          "list": 2409,
+          "details": 1798,
+          "list": 2344,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -741,8 +851,8 @@
           "misc": 1
         },
         "frontend": {
-          "details": 846,
-          "list": 1077,
+          "details": 852,
+          "list": 923,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -754,17 +864,17 @@
       "a015_wb_orders": {
         "backend": {
           "misc": 4,
-          "posting.rs": 50,
-          "repository.rs": 298,
-          "service.rs": 132
+          "posting.rs": 126,
+          "repository.rs": 515,
+          "service.rs": 349
         },
         "contracts": {
-          "aggregate.rs": 312,
+          "aggregate.rs": 321,
           "misc": 7
         },
         "frontend": {
-          "details": 1269,
-          "list": 727,
+          "details": 1984,
+          "list": 1308,
           "misc": 6,
           "picker": 0,
           "tree": 0
@@ -785,8 +895,8 @@
           "misc": 2
         },
         "frontend": {
-          "details": 1035,
-          "list": 1068,
+          "details": 1040,
+          "list": 783,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -804,11 +914,11 @@
         },
         "contracts": {
           "aggregate.rs": 250,
-          "misc": 702
+          "misc": 704
         },
         "frontend": {
           "details": 712,
-          "list": 250,
+          "list": 251,
           "misc": 8,
           "picker": 0,
           "tree": 0
@@ -819,18 +929,18 @@
       },
       "a018_llm_chat": {
         "backend": {
-          "misc": 2,
+          "misc": 31,
           "posting.rs": 0,
-          "repository.rs": 316,
-          "service.rs": 252
+          "repository.rs": 409,
+          "service.rs": 476
         },
         "contracts": {
-          "aggregate.rs": 326,
-          "misc": 540
+          "aggregate.rs": 379,
+          "misc": 542
         },
         "frontend": {
-          "details": 511,
-          "list": 564,
+          "details": 719,
+          "list": 568,
           "misc": 3,
           "picker": 0,
           "tree": 0
@@ -848,12 +958,122 @@
         },
         "contracts": {
           "aggregate.rs": 272,
-          "misc": 882
+          "misc": 886
         },
         "frontend": {
-          "details": 438,
-          "list": 220,
+          "details": 439,
+          "list": 226,
           "misc": 8,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a020_wb_promotion": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 391,
+          "service.rs": 56
+        },
+        "contracts": {
+          "aggregate.rs": 245,
+          "misc": 481
+        },
+        "frontend": {
+          "details": 789,
+          "list": 632,
+          "misc": 6,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a021_production_output": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 306,
+          "service.rs": 93
+        },
+        "contracts": {
+          "aggregate.rs": 169,
+          "misc": 3
+        },
+        "frontend": {
+          "details": 348,
+          "list": 809,
+          "misc": 6,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a022_kit_variant": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 227,
+          "service.rs": 20
+        },
+        "contracts": {
+          "aggregate.rs": 145,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 388,
+          "list": 543,
+          "misc": 6,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a023_purchase_of_goods": {
+        "backend": {
+          "misc": 2,
+          "posting.rs": 0,
+          "repository.rs": 254,
+          "service.rs": 21
+        },
+        "contracts": {
+          "aggregate.rs": 168,
+          "misc": 1
+        },
+        "frontend": {
+          "details": 225,
+          "list": 586,
+          "misc": 3,
+          "picker": 0,
+          "tree": 0
+        },
+        "handlers": {
+          "handler_file": 0
+        }
+      },
+      "a024_bi_indicator": {
+        "backend": {
+          "misc": 156,
+          "posting.rs": 0,
+          "repository.rs": 252,
+          "service.rs": 306
+        },
+        "contracts": {
+          "aggregate.rs": 401,
+          "misc": 861
+        },
+        "frontend": {
+          "details": 1505,
+          "list": 604,
+          "misc": 7,
           "picker": 0,
           "tree": 0
         },

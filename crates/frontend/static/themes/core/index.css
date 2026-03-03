@@ -4,7 +4,7 @@
    ============================================ */
 
 /* Define layer order (lower layers have lower priority) */
-@layer tokens, base, layout, components, utilities, compatibility;
+@layer tokens, base, layout, components, utilities;
 
 /* Import design tokens and core styles */
 @import url("./variables.css") layer(tokens);
@@ -17,6 +17,3 @@
 
 /* Thaw patches */
 @import url("./thaw-patches.css") layer(thaw-patches);
-
-/* Temporary compatibility layer for legacy variables */
-@import url("./compatibility.css") layer(compatibility);

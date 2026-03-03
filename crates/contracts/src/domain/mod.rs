@@ -22,4 +22,5 @@ pub mod a021_production_output;
 pub mod a022_kit_variant;
 pub mod a023_purchase_of_goods;
 pub mod a024_bi_indicator;
+pub mod a025_bi_dashboard;
 pub mod common;

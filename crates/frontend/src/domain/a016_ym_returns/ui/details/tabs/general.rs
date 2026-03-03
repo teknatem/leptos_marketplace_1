@@ -28,8 +28,8 @@ pub fn GeneralTab(data: YmReturnDetailDto) -> impl IntoView {
 
     view! {
         <div class="general-info" style="max-width: 1400px;">
-            <div style="background: var(--color-bg-body); padding: var(--space-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
-                <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--space-md); align-items: start; font-size: var(--font-size-sm);">
+            <div style="background: var(--color-bg-primary); padding: var(--spacing-xl); border-radius: var(--radius-md); border: 1px solid var(--color-border-lighter);">
+                <div style="display: grid; grid-template-columns: 180px 1fr; gap: var(--spacing-md); align-items: start; font-size: var(--font-size-sm);">
                     <div class="field-label">"Return №:"</div>
                     <div style="font-family: monospace; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: #1976d2;">
                         {data.header.return_id}

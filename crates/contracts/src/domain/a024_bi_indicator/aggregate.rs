@@ -132,12 +132,19 @@ pub struct Threshold {
     pub label: Option<std::string::String>,
 }
 
+fn default_style_name() -> std::string::String {
+    "classic".to_string()
+}
+
 /// Спецификация отображения индикатора
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewSpec {
-    /// Пользовательский HTML (санитизируется: без JS, только {{value}}/{{delta}}/{{title}})
+    /// Стиль карточки: "classic" | "modern" | "custom"
+    #[serde(default = "default_style_name")]
+    pub style_name: std::string::String,
+    /// Пользовательский HTML (только для style_name = "custom")
     pub custom_html: Option<std::string::String>,
-    /// Пользовательский CSS
+    /// Пользовательский CSS (только для style_name = "custom")
     pub custom_css: Option<std::string::String>,
     /// Формат числового значения
     pub format: ValueFormat,
@@ -148,6 +155,7 @@ pub struct ViewSpec {
 impl Default for ViewSpec {
     fn default() -> Self {
         Self {
+            style_name: default_style_name(),
             custom_html: None,
             custom_css: None,
             format: ValueFormat::Number { decimals: 2 },
@@ -355,6 +363,33 @@ pub struct BiIndicatorListItem {
     pub is_public: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ============================================================================
+// DTOs для LLM-генерации ViewSpec
+// ============================================================================
+
+/// Запрос на генерацию HTML/CSS для индикатора через LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateViewRequest {
+    /// Текстовое описание желаемого вида индикатора
+    pub prompt: String,
+    /// Текущий HTML (для итеративной доработки)
+    pub current_html: Option<String>,
+    /// Текущий CSS
+    pub current_css: Option<String>,
+    /// Описание индикатора (контекст для LLM)
+    pub indicator_description: String,
+    /// ID агента (a017), если не задан — используется primary agent
+    pub agent_id: Option<String>,
+}
+
+/// Ответ с сгенерированным HTML/CSS
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateViewResponse {
+    pub custom_html: String,
+    pub custom_css: String,
+    pub explanation: String,
 }
 
 impl From<BiIndicator> for BiIndicatorListItem {

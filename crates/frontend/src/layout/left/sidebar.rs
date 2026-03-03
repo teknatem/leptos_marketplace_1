@@ -27,6 +27,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 ("d400_monthly_summary", tab_label_for_key("d400_monthly_summary"), "bar-chart"),
                 ("d401_metadata_dashboard", tab_label_for_key("d401_metadata_dashboard"), "layout-dashboard"),
                 ("a024_bi_indicator", tab_label_for_key("a024_bi_indicator"), "activity"),
+                ("a025_bi_dashboard", tab_label_for_key("a025_bi_dashboard"), "layout-dashboard"),
                 ("universal_dashboard", tab_label_for_key("universal_dashboard"), "table-pivot"),
                 ("all_reports", tab_label_for_key("all_reports"), "table"),
                 ("schema_browser", tab_label_for_key("schema_browser"), "database-cog"),

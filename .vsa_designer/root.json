@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1768943168",
+  "generated_at_utc": "unix:1772458506",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -8,40 +8,40 @@
   ],
   "totals": {
     "backend": {
-      "files": 225,
-      "lines": 39316
+      "files": 289,
+      "lines": 52615
     },
     "contracts": {
-      "files": 121,
-      "lines": 11744
+      "files": 165,
+      "lines": 18745
     },
     "frontend": {
-      "files": 289,
-      "lines": 51605
+      "files": 448,
+      "lines": 73142
     },
     "total": {
-      "files": 635,
-      "lines": 102665
+      "files": 902,
+      "lines": 144502
     }
   },
   "aggregates": {
-    "count": 20,
+    "count": 25,
     "totals": {
       "backend": {
-        "files": 67,
-        "lines": 9062
+        "files": 84,
+        "lines": 12890
       },
       "contracts": {
-        "files": 54,
-        "lines": 8551
+        "files": 80,
+        "lines": 14006
       },
       "frontend": {
-        "files": 140,
-        "lines": 30929
+        "files": 215,
+        "lines": 39629
       },
       "total": {
-        "files": 261,
-        "lines": 48542
+        "files": 379,
+        "lines": 66525
       }
     },
     "items": [
@@ -53,7 +53,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 449
+            "lines": 453
           },
           "contracts": {
             "files": 4,
@@ -61,11 +61,11 @@
           },
           "frontend": {
             "files": 7,
-            "lines": 857
+            "lines": 858
           },
           "total": {
             "files": 14,
-            "lines": 1989
+            "lines": 1994
           }
         }
       },
@@ -80,16 +80,16 @@
             "lines": 267
           },
           "contracts": {
-            "files": 2,
-            "lines": 237
+            "files": 4,
+            "lines": 575
           },
           "frontend": {
             "files": 8,
-            "lines": 799
+            "lines": 827
           },
           "total": {
-            "files": 13,
-            "lines": 1303
+            "files": 15,
+            "lines": 1669
           }
         }
       },
@@ -109,11 +109,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 934
+            "lines": 948
           },
           "total": {
             "files": 13,
-            "lines": 1348
+            "lines": 1362
           }
         }
       },
@@ -125,19 +125,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 672
+            "lines": 686
           },
           "contracts": {
-            "files": 3,
-            "lines": 338
+            "files": 5,
+            "lines": 878
           },
           "frontend": {
-            "files": 17,
-            "lines": 3131
+            "files": 18,
+            "lines": 3563
           },
           "total": {
-            "files": 24,
-            "lines": 4141
+            "files": 27,
+            "lines": 5127
           }
         }
       },
@@ -149,19 +149,19 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 284
+            "lines": 293
           },
           "contracts": {
-            "files": 2,
-            "lines": 225
+            "files": 4,
+            "lines": 520
           },
           "frontend": {
-            "files": 9,
-            "lines": 1098
+            "files": 8,
+            "lines": 878
           },
           "total": {
-            "files": 14,
-            "lines": 1607
+            "files": 15,
+            "lines": 1691
           }
         }
       },
@@ -173,19 +173,19 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 326
+            "lines": 334
           },
           "contracts": {
-            "files": 2,
-            "lines": 332
+            "files": 4,
+            "lines": 726
           },
           "frontend": {
-            "files": 5,
-            "lines": 1325
+            "files": 10,
+            "lines": 1679
           },
           "total": {
-            "files": 10,
-            "lines": 1983
+            "files": 17,
+            "lines": 2739
           }
         }
       },
@@ -205,11 +205,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 1458
+            "lines": 1479
           },
           "total": {
             "files": 13,
-            "lines": 2422
+            "lines": 2443
           }
         }
       },
@@ -228,12 +228,12 @@
             "lines": 277
           },
           "frontend": {
-            "files": 3,
-            "lines": 497
+            "files": 4,
+            "lines": 707
           },
           "total": {
-            "files": 8,
-            "lines": 1013
+            "files": 9,
+            "lines": 1223
           }
         }
       },
@@ -245,19 +245,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 333
+            "lines": 338
           },
           "contracts": {
             "files": 2,
             "lines": 500
           },
           "frontend": {
-            "files": 4,
-            "lines": 1574
+            "files": 5,
+            "lines": 1398
           },
           "total": {
-            "files": 10,
-            "lines": 2407
+            "files": 11,
+            "lines": 2236
           }
         }
       },
@@ -269,19 +269,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 363
+            "lines": 368
           },
           "contracts": {
             "files": 2,
             "lines": 253
           },
           "frontend": {
-            "files": 4,
-            "lines": 1857
+            "files": 5,
+            "lines": 1492
           },
           "total": {
-            "files": 10,
-            "lines": 2473
+            "files": 11,
+            "lines": 2113
           }
         }
       },
@@ -293,19 +293,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 325
+            "lines": 330
           },
           "contracts": {
             "files": 2,
             "lines": 254
           },
           "frontend": {
-            "files": 4,
-            "lines": 1847
+            "files": 5,
+            "lines": 1505
           },
           "total": {
-            "files": 10,
-            "lines": 2426
+            "files": 11,
+            "lines": 2089
           }
         }
       },
@@ -317,19 +317,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 660
+            "lines": 1185
           },
           "contracts": {
-            "files": 2,
-            "lines": 289
+            "files": 4,
+            "lines": 1104
           },
           "frontend": {
-            "files": 14,
-            "lines": 3266
+            "files": 15,
+            "lines": 3857
           },
           "total": {
-            "files": 20,
-            "lines": 4215
+            "files": 23,
+            "lines": 6146
           }
         }
       },
@@ -341,19 +341,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 1100
+            "lines": 1407
           },
           "contracts": {
-            "files": 2,
-            "lines": 353
+            "files": 4,
+            "lines": 881
           },
           "frontend": {
-            "files": 6,
-            "lines": 3538
+            "files": 16,
+            "lines": 4145
           },
           "total": {
-            "files": 12,
-            "lines": 4991
+            "files": 24,
+            "lines": 6433
           }
         }
       },
@@ -373,11 +373,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 1926
+            "lines": 1778
           },
           "total": {
             "files": 12,
-            "lines": 3163
+            "lines": 3015
           }
         }
       },
@@ -389,19 +389,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 484
+            "lines": 994
           },
           "contracts": {
             "files": 2,
-            "lines": 319
+            "lines": 328
           },
           "frontend": {
-            "files": 4,
-            "lines": 2002
+            "files": 14,
+            "lines": 3298
           },
           "total": {
-            "files": 10,
-            "lines": 2805
+            "files": 20,
+            "lines": 4620
           }
         }
       },
@@ -421,11 +421,11 @@
           },
           "frontend": {
             "files": 12,
-            "lines": 2106
+            "lines": 1826
           },
           "total": {
             "files": 18,
-            "lines": 2891
+            "lines": 2611
           }
         }
       },
@@ -441,15 +441,15 @@
           },
           "contracts": {
             "files": 4,
-            "lines": 952
+            "lines": 954
           },
           "frontend": {
             "files": 7,
-            "lines": 970
+            "lines": 971
           },
           "total": {
             "files": 14,
-            "lines": 2317
+            "lines": 2320
           }
         }
       },
@@ -460,20 +460,20 @@
         "frontend_path": "crates/frontend/src\\domain\\a018_llm_chat",
         "counts": {
           "backend": {
-            "files": 3,
-            "lines": 570
+            "files": 4,
+            "lines": 916
           },
           "contracts": {
             "files": 4,
-            "lines": 866
+            "lines": 921
           },
           "frontend": {
             "files": 8,
-            "lines": 1078
+            "lines": 1290
           },
           "total": {
-            "files": 15,
-            "lines": 2514
+            "files": 16,
+            "lines": 3127
           }
         }
       },
@@ -489,15 +489,135 @@
           },
           "contracts": {
             "files": 4,
-            "lines": 1154
+            "lines": 1158
           },
           "frontend": {
             "files": 7,
-            "lines": 666
+            "lines": 673
           },
           "total": {
             "files": 14,
-            "lines": 2213
+            "lines": 2224
+          }
+        }
+      },
+      {
+        "name": "a020_wb_promotion",
+        "backend_path": "crates/backend/src\\domain\\a020_wb_promotion",
+        "contracts_path": "crates/contracts/src\\domain\\a020_wb_promotion",
+        "frontend_path": "crates/frontend/src\\domain\\a020_wb_promotion",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 449
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 726
+          },
+          "frontend": {
+            "files": 12,
+            "lines": 1427
+          },
+          "total": {
+            "files": 19,
+            "lines": 2602
+          }
+        }
+      },
+      {
+        "name": "a021_production_output",
+        "backend_path": "crates/backend/src\\domain\\a021_production_output",
+        "contracts_path": "crates/contracts/src\\domain\\a021_production_output",
+        "frontend_path": "crates/frontend/src\\domain\\a021_production_output",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 401
+          },
+          "contracts": {
+            "files": 2,
+            "lines": 172
+          },
+          "frontend": {
+            "files": 5,
+            "lines": 1163
+          },
+          "total": {
+            "files": 10,
+            "lines": 1736
+          }
+        }
+      },
+      {
+        "name": "a022_kit_variant",
+        "backend_path": "crates/backend/src\\domain\\a022_kit_variant",
+        "contracts_path": "crates/contracts/src\\domain\\a022_kit_variant",
+        "frontend_path": "crates/frontend/src\\domain\\a022_kit_variant",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 249
+          },
+          "contracts": {
+            "files": 2,
+            "lines": 146
+          },
+          "frontend": {
+            "files": 5,
+            "lines": 937
+          },
+          "total": {
+            "files": 10,
+            "lines": 1332
+          }
+        }
+      },
+      {
+        "name": "a023_purchase_of_goods",
+        "backend_path": "crates/backend/src\\domain\\a023_purchase_of_goods",
+        "contracts_path": "crates/contracts/src\\domain\\a023_purchase_of_goods",
+        "frontend_path": "crates/frontend/src\\domain\\a023_purchase_of_goods",
+        "counts": {
+          "backend": {
+            "files": 3,
+            "lines": 277
+          },
+          "contracts": {
+            "files": 2,
+            "lines": 169
+          },
+          "frontend": {
+            "files": 5,
+            "lines": 814
+          },
+          "total": {
+            "files": 10,
+            "lines": 1260
+          }
+        }
+      },
+      {
+        "name": "a024_bi_indicator",
+        "backend_path": "crates/backend/src\\domain\\a024_bi_indicator",
+        "contracts_path": "crates/contracts/src\\domain\\a024_bi_indicator",
+        "frontend_path": "crates/frontend/src\\domain\\a024_bi_indicator",
+        "counts": {
+          "backend": {
+            "files": 4,
+            "lines": 714
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 1262
+          },
+          "frontend": {
+            "files": 18,
+            "lines": 2116
+          },
+          "total": {
+            "files": 26,
+            "lines": 4092
           }
         }
       },
@@ -526,23 +646,23 @@
     ]
   },
   "usecases": {
-    "count": 7,
+    "count": 8,
     "totals": {
       "backend": {
-        "files": 45,
-        "lines": 13673
+        "files": 54,
+        "lines": 16539
       },
       "contracts": {
-        "files": 33,
-        "lines": 1601
+        "files": 37,
+        "lines": 1695
       },
       "frontend": {
-        "files": 18,
-        "lines": 3812
+        "files": 21,
+        "lines": 4161
       },
       "total": {
-        "files": 96,
-        "lines": 19086
+        "files": 112,
+        "lines": 22395
       }
     },
     "items": [
@@ -575,8 +695,8 @@
         "frontend_path": "crates/frontend/src\\usecases\\u501_import_from_ut",
         "counts": {
           "backend": {
-            "files": 9,
-            "lines": 2438
+            "files": 11,
+            "lines": 3059
           },
           "contracts": {
             "files": 5,
@@ -584,11 +704,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 664
+            "lines": 735
           },
           "total": {
-            "files": 17,
-            "lines": 3376
+            "files": 19,
+            "lines": 4068
           }
         }
       },
@@ -600,7 +720,7 @@
         "counts": {
           "backend": {
             "files": 11,
-            "lines": 3447
+            "lines": 3365
           },
           "contracts": {
             "files": 5,
@@ -608,11 +728,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 723
+            "lines": 727
           },
           "total": {
             "files": 19,
-            "lines": 4426
+            "lines": 4348
           }
         }
       },
@@ -623,8 +743,8 @@
         "frontend_path": "crates/frontend/src\\usecases\\u503_import_from_yandex",
         "counts": {
           "backend": {
-            "files": 8,
-            "lines": 2260
+            "files": 9,
+            "lines": 2964
           },
           "contracts": {
             "files": 5,
@@ -632,11 +752,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 701
+            "lines": 629
           },
           "total": {
-            "files": 16,
-            "lines": 3220
+            "files": 17,
+            "lines": 3852
           }
         }
       },
@@ -647,8 +767,8 @@
         "frontend_path": "crates/frontend/src\\usecases\\u504_import_from_wildberries",
         "counts": {
           "backend": {
-            "files": 10,
-            "lines": 4165
+            "files": 12,
+            "lines": 5377
           },
           "contracts": {
             "files": 5,
@@ -656,11 +776,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 769
+            "lines": 663
           },
           "total": {
-            "files": 18,
-            "lines": 5168
+            "files": 20,
+            "lines": 6274
           }
         }
       },
@@ -680,11 +800,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 312
+            "lines": 311
           },
           "total": {
             "files": 11,
-            "lines": 1115
+            "lines": 1114
           }
         }
       },
@@ -704,34 +824,58 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 643
+            "lines": 644
           },
           "total": {
             "files": 12,
-            "lines": 1691
+            "lines": 1692
+          }
+        }
+      },
+      {
+        "name": "u507_import_from_erp",
+        "backend_path": "crates/backend/src\\usecases\\u507_import_from_erp",
+        "contracts_path": "crates/contracts/src\\usecases\\u507_import_from_erp",
+        "frontend_path": "crates/frontend/src\\usecases\\u507_import_from_erp",
+        "counts": {
+          "backend": {
+            "files": 4,
+            "lines": 411
+          },
+          "contracts": {
+            "files": 4,
+            "lines": 94
+          },
+          "frontend": {
+            "files": 3,
+            "lines": 452
+          },
+          "total": {
+            "files": 11,
+            "lines": 957
           }
         }
       }
     ]
   },
   "projections": {
-    "count": 7,
+    "count": 9,
     "totals": {
       "backend": {
-        "files": 24,
-        "lines": 4519
+        "files": 29,
+        "lines": 5811
       },
       "contracts": {
-        "files": 10,
-        "lines": 556
+        "files": 18,
+        "lines": 819
       },
       "frontend": {
-        "files": 28,
-        "lines": 6370
+        "files": 38,
+        "lines": 8790
       },
       "total": {
-        "files": 62,
-        "lines": 11445
+        "files": 85,
+        "lines": 15420
       }
     },
     "items": [
@@ -743,19 +887,19 @@
         "counts": {
           "backend": {
             "files": 5,
-            "lines": 1168
+            "lines": 1197
           },
           "contracts": {
             "files": 2,
-            "lines": 137
+            "lines": 142
           },
           "frontend": {
             "files": 5,
-            "lines": 1207
+            "lines": 1268
           },
           "total": {
             "files": 12,
-            "lines": 2512
+            "lines": 2607
           }
         }
       },
@@ -775,11 +919,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 573
+            "lines": 561
           },
           "total": {
             "files": 9,
-            "lines": 1266
+            "lines": 1254
           }
         }
       },
@@ -815,42 +959,43 @@
         "counts": {
           "backend": {
             "files": 2,
-            "lines": 474
+            "lines": 490
           },
           "contracts": {
             "files": 2,
             "lines": 104
           },
           "frontend": {
-            "files": 4,
-            "lines": 1638
+            "files": 5,
+            "lines": 1897
           },
           "total": {
-            "files": 8,
-            "lines": 2216
+            "files": 9,
+            "lines": 2491
           }
         }
       },
       {
         "name": "p904_sales_data",
         "backend_path": "crates/backend/src\\projections\\p904_sales_data",
+        "contracts_path": "crates/contracts/src\\projections\\p904_sales_data",
         "frontend_path": "crates/frontend/src\\projections\\p904_sales_data",
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 961
+            "lines": 1346
           },
           "contracts": {
-            "files": 0,
-            "lines": 0
+            "files": 2,
+            "lines": 68
           },
           "frontend": {
             "files": 4,
-            "lines": 1163
+            "lines": 1134
           },
           "total": {
-            "files": 8,
-            "lines": 2124
+            "files": 10,
+            "lines": 2548
           }
         }
       },
@@ -881,23 +1026,72 @@
       {
         "name": "p906_nomenclature_prices",
         "backend_path": "crates/backend/src\\projections\\p906_nomenclature_prices",
+        "contracts_path": "crates/contracts/src\\projections\\p906_nomenclature_prices",
         "frontend_path": "crates/frontend/src\\projections\\p906_nomenclature_prices",
         "counts": {
           "backend": {
-            "files": 4,
-            "lines": 504
+            "files": 5,
+            "lines": 721
           },
           "contracts": {
-            "files": 0,
-            "lines": 0
+            "files": 2,
+            "lines": 17
           },
           "frontend": {
             "files": 4,
-            "lines": 594
+            "lines": 662
+          },
+          "total": {
+            "files": 11,
+            "lines": 1400
+          }
+        }
+      },
+      {
+        "name": "p907_ym_payment_report",
+        "backend_path": "crates/backend/src\\projections\\p907_ym_payment_report",
+        "contracts_path": "crates/contracts/src\\projections\\p907_ym_payment_report",
+        "frontend_path": "crates/frontend/src\\projections\\p907_ym_payment_report",
+        "counts": {
+          "backend": {
+            "files": 2,
+            "lines": 368
+          },
+          "contracts": {
+            "files": 2,
+            "lines": 105
+          },
+          "frontend": {
+            "files": 5,
+            "lines": 1318
+          },
+          "total": {
+            "files": 9,
+            "lines": 1791
+          }
+        }
+      },
+      {
+        "name": "p908_wb_goods_prices",
+        "backend_path": "crates/backend/src\\projections\\p908_wb_goods_prices",
+        "contracts_path": "crates/contracts/src\\projections\\p908_wb_goods_prices",
+        "frontend_path": "crates/frontend/src\\projections\\p908_wb_goods_prices",
+        "counts": {
+          "backend": {
+            "files": 2,
+            "lines": 277
+          },
+          "contracts": {
+            "files": 2,
+            "lines": 68
+          },
+          "frontend": {
+            "files": 4,
+            "lines": 755
           },
           "total": {
             "files": 8,
-            "lines": 1098
+            "lines": 1100
           }
         }
       }

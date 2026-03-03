@@ -19,6 +19,7 @@ fn candidate_migrations_dirs() -> Vec<PathBuf> {
     }
 
     dirs.push(PathBuf::from("migrations"));
+    dirs.push(PathBuf::from("../migrations"));
     dirs.push(PathBuf::from("../../migrations"));
     dirs.push(PathBuf::from("../../../migrations"));
 

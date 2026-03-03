@@ -19,7 +19,7 @@ pub fn ProjectionsTab(
             {move || {
                 if projections_loading.get() {
                     view! {
-                        <div style="padding: var(--space-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                        <div style="padding: var(--spacing-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
                             "Загрузка проекций..."
                         </div>
                     }
@@ -78,9 +78,9 @@ pub fn ProjectionsTab(
                         }
                     };
                                     view! {
-                                        <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
-                            <div style="background: var(--color-bg-body); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--color-border-lighter);">
-                                <h3 style="margin: 0 0 var(--space-lg) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-md);">
+                                        <div style="display: flex; flex-direction: column; gap: var(--spacing-lg);">
+                            <div style="background: var(--color-bg-primary); padding: var(--spacing-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--color-border-lighter);">
+                                <h3 style="margin: 0 0 var(--spacing-lg) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-md);">
                                     {format!("📈 Sales Data (p904) — {} записей", p904_items.len())}
                                 </h3>
                                 {if !p904_items.is_empty() {
@@ -261,7 +261,7 @@ pub fn ProjectionsTab(
                                                                     </td>
                                                                     <td
                                                                         class="text-right"
-                                                                        style="color: #c62828; background: var(--color-error-bg); font-weight: var(--font-weight-semibold);"
+                                                                        style="color: #c62828; background: var(--color-error-50); font-weight: var(--font-weight-semibold);"
                                                                     >
                                                                         {format!("{:.2}", customer_out)}
                                                                     </td>
@@ -280,7 +280,7 @@ pub fn ProjectionsTab(
                                         .into_any()
                                 } else {
                                     view! {
-                                        <p style="text-align: center; padding: var(--space-lg); color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                                        <p style="text-align: center; padding: var(--spacing-lg); color: var(--color-text-muted); font-size: var(--font-size-sm);">
                                             "Нет записей. Документ должен иметь статус REFUNDED и быть проведён."
                                         </p>
                                     }
@@ -293,7 +293,7 @@ pub fn ProjectionsTab(
                         .into_any()
                 } else {
                     view! {
-                        <div style="padding: var(--space-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
+                        <div style="padding: var(--spacing-xl); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-sm);">
                             "Нет данных проекций"
                         </div>
                     }

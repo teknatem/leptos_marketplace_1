@@ -64,23 +64,6 @@
     margin: 0;
 }
 
-.schema-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.schema-table th,
-.schema-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid var(--thaw-color-neutral-stroke-1);
-}
-
-.schema-table th {
-    background: var(--thaw-color-neutral-background-2);
-    font-weight: 600;
-}
-
 .schema-id {
     font-family: monospace;
     font-size: 0.875rem;
@@ -91,15 +74,7 @@
     color: var(--thaw-color-neutral-foreground-2);
 }
 
-/* Badges */
-.badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
+/* Dashboard-specific badges (not in components.css) */
 .badge-custom {
     background: var(--thaw-color-brand-background-2);
     color: var(--thaw-color-brand-foreground-2);
@@ -221,19 +196,13 @@
     padding: 20px;
 }
 
-/* States */
-.loading-state,
-.empty-state,
+/* Error state (loading-state and empty-state are in components.css) */
 .error-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 48px;
-    color: var(--thaw-color-neutral-foreground-2);
-}
-
-.error-state {
     color: var(--thaw-color-danger-foreground-1);
 }
 
@@ -251,85 +220,6 @@
     to {
         transform: rotate(360deg);
     }
-}
-
-/* SQL Syntax Highlighting */
-.sql-keyword {
-    color: var(--thaw-color-brand-foreground-1);
-    font-weight: bold;
-}
-
-.sql-function {
-    color: var(--thaw-color-success-foreground-1);
-    font-weight: 600;
-}
-
-.sql-string {
-    color: #ce9178;
-}
-
-/* .sql-number {
-    color: #b5cea8;
-} */
-
-.sql-identifier {
-    color: #3939e9;
-}
-
-.sql-identifier-special {
-    color: #dcdcaa;
-    font-weight: 600;
-}
-
-.sql-query {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    background: var(--thaw-color-neutral-background-2);
-    padding: 20px;
-    border-radius: 8px;
-    line-height: 2;
-    font-size: 15px;
-    overflow-x: auto;
-    border: 1px solid var(--thaw-color-neutral-stroke-1);
-}
-
-.sql-header-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 12px;
-}
-
-.sql-section-title {
-    margin-top: 0;
-    margin-bottom: 12px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--thaw-color-neutral-foreground-1);
-}
-
-.sql-params {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sql-param {
-    display: flex;
-    gap: 12px;
-    padding: 8px 12px;
-    background: var(--thaw-color-neutral-background-2);
-    border-radius: 4px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-}
-
-.param-index {
-    color: var(--thaw-color-brand-foreground-1);
-    font-weight: 600;
-    min-width: 40px;
-}
-
-.param-value {
-    color: var(--thaw-color-neutral-foreground-1);
 }
 
 /* Error Banner */

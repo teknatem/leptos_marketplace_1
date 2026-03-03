@@ -162,14 +162,14 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                 {move || {
                     if loading.get() {
                         view! {
-                            <div style="text-align: center; padding: var(--space-2xl);">
+                            <div style="text-align: center; padding: var(--spacing-2xl);">
                                 <p style="font-size: var(--font-size-sm);">"Загрузка..."</p>
                             </div>
                         }
                             .into_any()
                     } else if let Some(err) = error.get() {
                         view! {
-                            <div style="padding: var(--space-lg); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); color: var(--color-error-text); margin: var(--space-lg); font-size: var(--font-size-sm);">
+                            <div style="padding: var(--spacing-lg); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-sm); color: var(--color-error-text); margin: var(--spacing-lg); font-size: var(--font-size-sm);">
                                 <strong>"Ошибка: "</strong>
                                 {err}
                             </div>
@@ -222,7 +222,7 @@ pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
                                     </button>
                                 </div>
 
-                                <div style="padding-top: var(--space-lg);">
+                                <div style="padding-top: var(--spacing-lg);">
                                     {move || {
                                         let tab = active_tab.get();
                                         match tab.as_ref() {
