@@ -55,7 +55,7 @@ pub fn LinesTab(
 
     view! {
         <div class="lines-info">
-            <div style="margin-bottom: var(--space-lg); padding: var(--space-lg); background: var(--color-error-bg); border-radius: var(--radius-sm); font-size: var(--font-size-sm);">
+            <div style="margin-bottom: var(--spacing-lg); padding: var(--spacing-lg); background: var(--color-error-50); border-radius: var(--radius-sm); font-size: var(--font-size-sm);">
                 <strong>"Сводка по возврату: "</strong>
                 {format!(
                     "{} позиций, {} шт. всего, {:.2} сумма",

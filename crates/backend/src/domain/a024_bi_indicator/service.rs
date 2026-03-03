@@ -221,6 +221,79 @@ pub async fn list_public() -> anyhow::Result<Vec<BiIndicator>> {
     Ok(indicators)
 }
 
+/// Вставить тестовые данные (5 предварительно разработанных индикаторов)
+pub async fn insert_test_data() -> anyhow::Result<()> {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+    let db = crate::shared::data::db::get_connection();
+
+    const TEST_OWNER: &str = "f2fc6986-855d-492b-acff-70c7cd8cdd34";
+
+    let records: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
+        (
+            "a024a024-0001-4001-a001-000000000001",
+            "IND-REVENUE-WB",
+            "Выручка WB",
+            "Тестовый индикатор: суммарная выручка Wildberries за выбранный период.",
+            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
+            r#"{"custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            "active",
+        ),
+        (
+            "a024a024-0002-4001-a001-000000000002",
+            "IND-MARGIN",
+            "Маржинальность",
+            "Тестовый индикатор: процент маржи. Кольцеобразный дизайн, пороги зелёный/красный.",
+            "[]",
+            r#"{"custom_html":"<div class=\"ring-kpi\"><div class=\"ring-kpi__ring\"><span class=\"ring-kpi__num\">{{value}}</span></div><div class=\"ring-kpi__info\"><div class=\"ring-kpi__title\">{{title}}</div><div class=\"ring-kpi__delta\">{{delta}}</div></div></div>","custom_css":".ring-kpi{display:flex;align-items:center;gap:16px;height:100%}.ring-kpi__ring{width:76px;height:76px;border-radius:50%;border:6px solid var(--bi-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}.ring-kpi__num{font-size:1rem;font-weight:800;color:var(--bi-primary)}.ring-kpi__info{display:flex;flex-direction:column;gap:6px}.ring-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.ring-kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Percent","decimals":1},"thresholds":[{"condition":"> 25","color":"rgb(34,197,94)","label":"Высокая"},{"condition":"< 10","color":"rgb(239,68,68)","label":"Низкая"}]}"#,
+            "active",
+        ),
+        (
+            "a024a024-0003-4001-a001-000000000003",
+            "IND-ORDERS",
+            "Количество заказов",
+            "Тестовый индикатор: количество заказов за период. Карточка с маркером.",
+            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
+            r#"{"custom_html":"<div class=\"cnt-kpi\"><span class=\"cnt-kpi__dot\"></span><div class=\"cnt-kpi__body\"><div class=\"cnt-kpi__title\">{{title}}</div><div class=\"cnt-kpi__value\">{{value}}</div><div class=\"cnt-kpi__delta\">{{delta}}</div></div></div>","custom_css":".cnt-kpi{display:flex;align-items:flex-start;gap:12px;height:100%;padding:4px}.cnt-kpi__dot{width:10px;height:10px;border-radius:50%;background:var(--bi-primary);flex-shrink:0;margin-top:4px}.cnt-kpi__body{display:flex;flex-direction:column;gap:4px}.cnt-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.cnt-kpi__value{font-size:2.2rem;font-weight:800;color:var(--bi-text);line-height:1}.cnt-kpi__delta{font-size:13px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Integer"},"thresholds":[]}"#,
+            "active",
+        ),
+        (
+            "a024a024-0004-4001-a001-000000000004",
+            "IND-REVENUE-OZON",
+            "Выручка Ozon",
+            "Тестовый индикатор (draft): выручка Ozon. Статус draft для проверки фильтрации.",
+            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
+            r#"{"custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            "draft",
+        ),
+        (
+            "a024a024-0005-4001-a001-000000000005",
+            "IND-EMPTY",
+            "Новый индикатор (без шаблона)",
+            "Тестовый индикатор без HTML/CSS — для проверки empty-state на вкладке Превью.",
+            "[]",
+            r#"{"custom_html":null,"custom_css":null,"format":{"kind":"Integer"},"thresholds":[]}"#,
+            "draft",
+        ),
+    ];
+
+    let data_spec_empty = r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#;
+
+    for (id, code, description, comment, params_json, view_spec_json, status) in records {
+        let sql = format!(
+            "INSERT OR IGNORE INTO a024_bi_indicator \
+            (id, code, description, comment, data_spec_json, params_json, view_spec_json, \
+             status, owner_user_id, is_public, created_at, updated_at, version) \
+            VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', 1, datetime('now'), datetime('now'), 1)",
+            id, code, description, comment, data_spec_empty, params_json, view_spec_json,
+            status, TEST_OWNER
+        );
+        db.execute(Statement::from_string(DbBackend::Sqlite, sql)).await
+            .map_err(|e| anyhow::anyhow!("Failed to insert test record {}: {}", id, e))?;
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================

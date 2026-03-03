@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a024_bi_indicator;
-use contracts::domain::a024_bi_indicator::aggregate::BiIndicator;
+use contracts::domain::a024_bi_indicator::aggregate::{
+    BiIndicator, GenerateViewRequest, GenerateViewResponse,
+};
 
 #[derive(Deserialize)]
 pub struct BiIndicatorListParams {
@@ -113,6 +115,33 @@ pub async fn upsert(
                 tracing::error!("Failed to create BI indicator: {}", e);
                 Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
             }
+        }
+    }
+}
+
+/// POST /api/a024-bi-indicator/testdata
+pub async fn insert_test_data() -> axum::http::StatusCode {
+    match a024_bi_indicator::service::insert_test_data().await {
+        Ok(_) => axum::http::StatusCode::OK,
+        Err(e) => {
+            tracing::error!("Failed to insert test data: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
+/// POST /api/a024-bi-indicator/generate-view
+pub async fn generate_view(
+    Json(req): Json<GenerateViewRequest>,
+) -> Result<Json<GenerateViewResponse>, (axum::http::StatusCode, String)> {
+    match a024_bi_indicator::llm_support::generate_view(req).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            tracing::error!("Failed to generate BI indicator view: {}", e);
+            Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+            ))
         }
     }
 }

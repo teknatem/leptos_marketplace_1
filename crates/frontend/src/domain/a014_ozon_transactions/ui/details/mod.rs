@@ -327,13 +327,13 @@ pub fn OzonTransactionsDetail(
                     {move || {
                         if loading.get() {
                             view! {
-                                <div style="text-align: center; padding: var(--space-2xl);">
+                                <div style="text-align: center; padding: var(--spacing-2xl);">
                                     <p style="font-size: var(--font-size-sm);">"Загрузка..."</p>
                                 </div>
                             }.into_any()
                         } else if let Some(err) = error.get() {
                             view! {
-                                <div style="padding: var(--space-lg); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); color: var(--color-error); margin: var(--space-lg); font-size: var(--font-size-sm);">
+                                <div style="padding: var(--spacing-lg); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-sm); color: var(--color-error); margin: var(--spacing-lg); font-size: var(--font-size-sm);">
                                     <strong>"Ошибка: "</strong>{err}
                                 </div>
                             }.into_any()
@@ -379,16 +379,16 @@ pub fn OzonTransactionsDetail(
                                         </button>
                                     </div>
 
-                                    <div style="padding-top: var(--space-lg);">
+                                    <div style="padding-top: var(--spacing-lg);">
                                         {move || {
                                             let data = transaction_data.get().unwrap();
                                             let tab = active_tab.get();
                                             match tab.as_ref() {
                                                 "general" => view! {
-                                                    <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
-                                                        <div style="background: var(--color-bg-white); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                            <h3 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-sm);">"Заголовок транзакции"</h3>
-                                                            <div style="display: grid; grid-template-columns: 400px 1fr; gap: var(--space-md) var(--space-lg); align-items: center;">
+                                                    <div style="display: flex; flex-direction: column; gap: var(--spacing-lg);">
+                                                        <div style="background: var(--color-bg-primary); padding: var(--spacing-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                            <h3 style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-sm);">"Заголовок транзакции"</h3>
+                                                            <div style="display: grid; grid-template-columns: 400px 1fr; gap: var(--spacing-md) var(--spacing-lg); align-items: center;">
                                                                 <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); font-size: var(--font-size-sm);">"Operation ID:"</div>
                                                                 <div class="field-value-nowrap">{data.header.operation_id}</div>
 
@@ -398,7 +398,7 @@ pub fn OzonTransactionsDetail(
                                                                     ":"
                                                                 </div>
                                                                 <div class="field-value">
-                                                                    <span style="padding: var(--space-2xs) var(--space-sm); background: var(--color-info-bg); color: var(--color-info); border-radius: var(--radius-xs); font-weight: var(--font-weight-medium);">
+                                                                    <span style="padding: var(--spacing-xs) var(--spacing-sm); background: var(--color-primary-50); color: var(--color-primary); border-radius: var(--radius-sm); font-weight: var(--font-weight-medium);">
                                                                         {data.header.operation_type_name.clone()}
                                                                     </span>
                                                                 </div>
@@ -458,9 +458,9 @@ pub fn OzonTransactionsDetail(
                                                             </div>
                                                         </div>
 
-                                                        <div style="background: var(--color-bg-white); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                            <h3 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-sm);">"Информация о постинге"</h3>
-                                                            <div style="display: grid; grid-template-columns: 400px 1fr; gap: var(--space-md) var(--space-lg); align-items: center;">
+                                                        <div style="background: var(--color-bg-primary); padding: var(--spacing-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                            <h3 style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-sm);">"Информация о постинге"</h3>
+                                                            <div style="display: grid; grid-template-columns: 400px 1fr; gap: var(--spacing-md) var(--spacing-lg); align-items: center;">
                                                                 <div style="font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); font-size: var(--font-size-sm);">"Posting Number:"</div>
                                                                 <div class="field-value-nowrap">
                                                                     <span style="color: var(--color-primary); font-weight: var(--font-weight-medium);">{data.posting.posting_number.clone()}</span>
@@ -522,40 +522,40 @@ pub fn OzonTransactionsDetail(
                                                     </div>
                                                 }.into_any(),
                                                 "items" => view! {
-                                                    <div style="background: var(--color-bg-white); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                        <h3 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-sm);">"Товары"</h3>
+                                                    <div style="background: var(--color-bg-primary); padding: var(--spacing-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                        <h3 style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-sm);">"Товары"</h3>
                                                         {if data.items.is_empty() {
                                                             view! {
-                                                                <p style="text-align: center; padding: var(--space-2xl); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет товаров"</p>
+                                                                <p style="text-align: center; padding: var(--spacing-2xl); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет товаров"</p>
                                                             }.into_any()
                                                         } else {
                                                             view! {
                                                                 <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                                     <thead>
                                                                         <tr style="background: var(--color-bg-secondary);">
-                                                                            <th style="padding: var(--space-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"SKU"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Название"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Цена"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Пропорция"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Продукт MP"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Номенклатура"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"SKU"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Название"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Цена"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Пропорция"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Продукт MP"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Номенклатура"</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
                                                                         {data.items.iter().map(|item| view! {
                                                                             <tr style="border-bottom: 1px solid var(--color-border-light);">
-                                                                                <td class="field-value-mono" style="padding: var(--space-sm); color: var(--color-text-primary);">{item.sku}</td>
-                                                                                <td style="padding: var(--space-sm); color: var(--color-text-primary);">{item.name.clone()}</td>
-                                                                                <td style="padding: var(--space-sm); text-align: right; color: var(--color-text-primary);">
+                                                                                <td class="field-value-mono" style="padding: var(--spacing-sm); color: var(--color-text-primary);">{item.sku}</td>
+                                                                                <td style="padding: var(--spacing-sm); color: var(--color-text-primary);">{item.name.clone()}</td>
+                                                                                <td style="padding: var(--spacing-sm); text-align: right; color: var(--color-text-primary);">
                                                                                     {item.price.map(|p| format!("{:.2} ₽", p)).unwrap_or("—".to_string())}
                                                                                 </td>
-                                                                                <td style="padding: var(--space-sm); text-align: right; color: var(--color-text-secondary);">
+                                                                                <td style="padding: var(--spacing-sm); text-align: right; color: var(--color-text-secondary);">
                                                                                     {item.ratio.map(|r| format!("{:.1}%", r * 100.0)).unwrap_or("—".to_string())}
                                                                                 </td>
-                                                                                <td class="field-value-mono-sm" style="padding: var(--space-sm);" title={item.marketplace_product_ref.clone().unwrap_or_default()}>
+                                                                                <td class="field-value-mono-sm" style="padding: var(--spacing-sm);" title={item.marketplace_product_ref.clone().unwrap_or_default()}>
                                                                                     {item.marketplace_product_ref.as_ref().map(|r| r.clone()).unwrap_or("—".to_string())}
                                                                                 </td>
-                                                                                <td class="field-value-mono-sm" style="padding: var(--space-sm);" title={item.nomenclature_ref.clone().unwrap_or_default()}>
+                                                                                <td class="field-value-mono-sm" style="padding: var(--spacing-sm);" title={item.nomenclature_ref.clone().unwrap_or_default()}>
                                                                                     {item.nomenclature_ref.as_ref().map(|r| r.clone()).unwrap_or("—".to_string())}
                                                                                 </td>
                                                                             </tr>
@@ -567,26 +567,26 @@ pub fn OzonTransactionsDetail(
                                                     </div>
                                                 }.into_any(),
                                                 "services" => view! {
-                                                    <div style="background: var(--color-bg-white); padding: var(--space-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                        <h3 style="margin: 0 0 var(--space-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-success); padding-bottom: var(--space-sm);">"Сервисы"</h3>
+                                                    <div style="background: var(--color-bg-primary); padding: var(--spacing-lg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                        <h3 style="margin: 0 0 var(--spacing-md) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-success); padding-bottom: var(--spacing-sm);">"Сервисы"</h3>
                                                         {if data.services.is_empty() {
                                                             view! {
-                                                                <p style="text-align: center; padding: var(--space-2xl); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет сервисов"</p>
+                                                                <p style="text-align: center; padding: var(--spacing-2xl); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет сервисов"</p>
                                                             }.into_any()
                                                         } else {
                                                             view! {
                                                                 <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                                     <thead>
                                                                         <tr style="background: var(--color-bg-secondary);">
-                                                                            <th style="padding: var(--space-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Название"</th>
-                                                                            <th style="padding: var(--space-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Цена"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: left; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Название"</th>
+                                                                            <th style="padding: var(--spacing-sm); text-align: right; font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-border); color: var(--color-text-secondary);">"Цена"</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
                                                                         {data.services.iter().map(|service| view! {
                                                                             <tr style="border-bottom: 1px solid var(--color-border-light);">
-                                                                                <td style="padding: var(--space-sm); color: var(--color-text-primary);">{service.name.clone()}</td>
-                                                                                <td style="padding: var(--space-sm); text-align: right; font-weight: var(--font-weight-semibold); color: var(--color-success);">{format!("{:.2} ₽", service.price)}</td>
+                                                                                <td style="padding: var(--spacing-sm); color: var(--color-text-primary);">{service.name.clone()}</td>
+                                                                                <td style="padding: var(--spacing-sm); text-align: right; font-weight: var(--font-weight-semibold); color: var(--color-success);">{format!("{:.2} ₽", service.price)}</td>
                                                                             </tr>
                                                                         }).collect::<Vec<_>>()}
                                                                     </tbody>
@@ -600,7 +600,7 @@ pub fn OzonTransactionsDetail(
                                                         {move || {
                                                             if projections_loading.get() {
                                                                 view! {
-                                                                    <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                                    <div style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
                                                                         "Загрузка проекций..."
                                                                     </div>
                                                                 }.into_any()
@@ -610,10 +610,10 @@ pub fn OzonTransactionsDetail(
                                                                 let p904_items = proj_data["p904_sales_data"].as_array().cloned().unwrap_or_default();
 
                                                                 view! {
-                                                                    <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                                                                    <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
                                                                         // P900 Sales Register
-                                                                        <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                                            <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-warning); padding-bottom: var(--space-xs);">
+                                                                        <div style="background: var(--color-bg-primary); padding: var(--spacing-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-warning); padding-bottom: var(--spacing-xs);">
                                                                                 {format!("📊 Sales Register (p900) - {} записей", p900_items.len())}
                                                                             </h3>
                                                                             {if !p900_items.is_empty() {
@@ -622,11 +622,11 @@ pub fn OzonTransactionsDetail(
                                                                                         <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                                                             <thead>
                                                                                                 <tr style="background: var(--color-bg-secondary);">
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"MP"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Title"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"MP"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Title"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
                                                                                                 </tr>
                                                                                             </thead>
                                                                                             <tbody>
@@ -639,11 +639,11 @@ pub fn OzonTransactionsDetail(
 
                                                                                                     view! {
                                                                                                         <tr style="border-bottom: 1px solid var(--color-border-light);">
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{mp}</td>
-                                                                                                            <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{sku}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{title}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{mp}</td>
+                                                                                                            <td class="field-value-mono" style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{sku}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{title}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
                                                                                                         </tr>
                                                                                                     }
                                                                                                 }).collect::<Vec<_>>()}
@@ -653,14 +653,14 @@ pub fn OzonTransactionsDetail(
                                                                                 }.into_any()
                                                                             } else {
                                                                                 view! {
-                                                                                    <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                                    <p style="text-align: center; padding: var(--spacing-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
                                                                                 }.into_any()
                                                                             }}
                                                                         </div>
 
                                                                         // P902 OZON Finance
-                                                                        <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                                            <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-success); padding-bottom: var(--space-xs);">
+                                                                        <div style="background: var(--color-bg-primary); padding: var(--spacing-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-success); padding-bottom: var(--spacing-xs);">
                                                                                 {format!("💰 OZON Finance (p902) - {} записей", p902_items.len())}
                                                                             </h3>
                                                                             {if !p902_items.is_empty() {
@@ -669,10 +669,10 @@ pub fn OzonTransactionsDetail(
                                                                                         <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                                                             <thead>
                                                                                                 <tr style="background: var(--color-bg-secondary);">
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Posting"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Posting"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"SKU"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Qty"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Amount"</th>
                                                                                                 </tr>
                                                                                             </thead>
                                                                                             <tbody>
@@ -684,10 +684,10 @@ pub fn OzonTransactionsDetail(
 
                                                                                                     view! {
                                                                                                         <tr style="border-bottom: 1px solid var(--color-border-light);">
-                                                                                                            <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{posting}</td>
-                                                                                                            <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{sku}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
+                                                                                                            <td class="field-value-mono" style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{posting}</td>
+                                                                                                            <td class="field-value-mono" style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{sku}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{qty}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", amount)}</td>
                                                                                                         </tr>
                                                                                                     }
                                                                                                 }).collect::<Vec<_>>()}
@@ -697,14 +697,14 @@ pub fn OzonTransactionsDetail(
                                                                                 }.into_any()
                                                                             } else {
                                                                                 view! {
-                                                                                    <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                                    <p style="text-align: center; padding: var(--spacing-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
                                                                                 }.into_any()
                                                                             }}
                                                                         </div>
 
                                                                         // P904 Sales Data
-                                                                        <div style="background: var(--color-bg-white); padding: var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
-                                                                            <h3 style="margin: 0 0 var(--space-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-xs);">
+                                                                        <div style="background: var(--color-bg-primary); padding: var(--spacing-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);">
+                                                                            <h3 style="margin: 0 0 var(--spacing-sm) 0; color: var(--color-text-primary); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-xs);">
                                                                                 {format!("📈 Sales Data (p904) - {} записей", p904_items.len())}
                                                                             </h3>
                                                                             {if !p904_items.is_empty() {
@@ -713,24 +713,24 @@ pub fn OzonTransactionsDetail(
                                                                                         <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                                                                             <thead>
                                                                                                 <tr style="background: var(--color-bg-secondary);">
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Date"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Doc No"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Article"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: left; border: 1px solid var(--color-border);">"Cabinet"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Cust In"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Cust Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Coinv In"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Comm Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Acq Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Pen Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Log Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Sell Out"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Price Full"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Price List"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Price Ret"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Comm %"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Coinv %"</th>
-                                                                                                    <th style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">"Total"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Date"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Doc No"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Article"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: left; border: 1px solid var(--color-border);">"Cabinet"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Cust In"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Cust Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Coinv In"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Comm Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Acq Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Pen Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Log Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Sell Out"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Price Full"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Price List"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Price Ret"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Comm %"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Coinv %"</th>
+                                                                                                    <th style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">"Total"</th>
                                                                                                 </tr>
                                                                                             </thead>
                                                                                             <tbody>
@@ -756,24 +756,24 @@ pub fn OzonTransactionsDetail(
 
                                                                                                     view! {
                                                                                                         <tr style="border-bottom: 1px solid var(--color-border-light);">
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border); white-space: nowrap;">{date}</td>
-                                                                                                            <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{document_no}</td>
-                                                                                                            <td class="field-value-mono" style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{article}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-border);">{connection_mp_ref}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_in)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", coinvest_in)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", commission_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", acquiring_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", penalty_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", logistics_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", seller_out)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_full)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_list)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_return)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", commission_percent)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", coinvest_persent)}</td>
-                                                                                                            <td style="padding: var(--space-2xs) var(--space-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", total)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border); white-space: nowrap;">{date}</td>
+                                                                                                            <td class="field-value-mono" style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{document_no}</td>
+                                                                                                            <td class="field-value-mono" style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{article}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); border: 1px solid var(--color-border);">{connection_mp_ref}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_in)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", customer_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", coinvest_in)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", commission_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", acquiring_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", penalty_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", logistics_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", seller_out)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_full)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_list)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", price_return)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", commission_percent)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border);">{format!("{:.2}", coinvest_persent)}</td>
+                                                                                                            <td style="padding: var(--spacing-xs) var(--spacing-xs); text-align: right; border: 1px solid var(--color-border); font-weight: var(--font-weight-semibold);">{format!("{:.2}", total)}</td>
                                                                                                         </tr>
                                                                                                     }
                                                                                                 }).collect::<Vec<_>>()}
@@ -783,7 +783,7 @@ pub fn OzonTransactionsDetail(
                                                                                 }.into_any()
                                                                             } else {
                                                                                 view! {
-                                                                                    <p style="text-align: center; padding: var(--space-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
+                                                                                    <p style="text-align: center; padding: var(--spacing-sm); color: var(--color-text-tertiary); font-size: var(--font-size-sm);">"Нет записей"</p>
                                                                                 }.into_any()
                                                                             }}
                                                                         </div>
@@ -791,7 +791,7 @@ pub fn OzonTransactionsDetail(
                                                                 }.into_any()
                                                             } else {
                                                                 view! {
-                                                                    <div style="padding: var(--space-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
+                                                                    <div style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-tertiary); font-size: var(--font-size-sm);">
                                                                         "Нет данных проекций"
                                                                     </div>
                                                                 }.into_any()
@@ -821,7 +821,7 @@ pub fn OzonTransactionsDetail(
                     if posting_type == "A010" {
                         view! {
                             <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
-                                <div style="background: var(--color-bg-white); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
+                                <div style="background: var(--color-bg-primary); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
                                     <OzonFbsPostingDetail
                                         id=posting_id
                                         on_close=move || set_selected_posting.set(None)
@@ -832,7 +832,7 @@ pub fn OzonTransactionsDetail(
                     } else if posting_type == "A011" {
                         view! {
                             <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
-                                <div style="background: var(--color-bg-white); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
+                                <div style="background: var(--color-bg-primary); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); width: 90%; max-width: 1400px; max-height: 90vh; overflow: hidden;">
                                     <OzonFboPostingDetail
                                         id=posting_id
                                         on_close=move || set_selected_posting.set(None)

@@ -1,0 +1,34 @@
+<button class="kpi {{col_class}}" data-status="{{status}}" style="--p:{{progress}}" type="button" aria-label="{{name}}">
+  <div class="fx" aria-hidden="true"></div>
+  <span class="bar" aria-hidden="true"></span>
+
+  <div class="top">
+    <div style="min-width: 0">
+      <div class="name">{{name}}</div>
+      <div class="meta">
+        <span>{{meta_1}}</span>
+        <span>{{meta_2}}</span>
+      </div>
+    </div>
+    <span class="chip">{{chip}}</span>
+  </div>
+
+  <div class="mid">
+    <div>
+      <div class="value">{{value}}</div>
+      <div class="sub">
+        <div class="delta" title="Изменение к прошлому периоду">
+          <span class="dot" aria-hidden="true"></span>
+          {{delta}}
+        </div>
+        <div class="hint">{{hint}}</div>
+      </div>
+    </div>
+    <div class="ring" aria-label="Выполнение к плану"><span>{{progress}}%</span></div>
+  </div>
+
+  <div class="foot">
+    <span>{{footer_1}}</span>
+    <span>{{footer_2}}</span>
+  </div>
+</button>

@@ -1,4 +1,6 @@
 pub mod api_utils;
+pub mod bi_card;
+pub mod code_format;
 pub mod clipboard;
 pub mod components;
 pub mod data;

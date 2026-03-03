@@ -1,0 +1,302 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "BiDashboard",
+  "entity_index": "a025",
+  "collection_name": "bi_dashboard",
+  "table_name": "a025_bi_dashboard",
+  "ui": {
+    "element_name": "BI Дашборд",
+    "element_name_en": "BI Dashboard",
+    "list_name": "BI Дашборды",
+    "list_name_en": "BI Dashboards",
+    "icon": "layout-dashboard"
+  },
+  "ai": {
+    "description": "BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оценку пользователя (1-5 звёзд) и статус. Дашборды могут быть персональными или публичными.",
+    "questions": [
+      "Какие дашборды доступны в системе?",
+      "Как создать новый BI дашборд?",
+      "Как добавить индикатор в дашборд?",
+      "Как организовать индикаторы по категориям?",
+      "Как настроить глобальные фильтры для дашборда?"
+    ],
+    "related": [
+      "a024_bi_indicator"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "BiDashboardId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "placeholder": "DASH-001",
+        "hint": "Уникальный код дашборда",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "placeholder": "Операционный дашборд",
+        "hint": "Название дашборда",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 280
+      },
+      "validation": {
+        "required": true,
+        "min_length": 2,
+        "max_length": 500
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "placeholder": "Описание дашборда и его назначения",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 2000
+      }
+    },
+    {
+      "name": "status",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "enum_values": ["draft", "active", "archived"],
+      "ui": {
+        "label": "Статус",
+        "label_en": "Status",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "select",
+        "column_width": 100
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус дашборда: draft (черновик), active (активен), archived (в архиве)"
+    },
+    {
+      "name": "owner_user_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Владелец",
+        "label_en": "Owner",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "text",
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "ID пользователя-владельца дашборда"
+    },
+    {
+      "name": "is_public",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Публичный",
+        "label_en": "Public",
+        "hint": "Доступен другим пользователям",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 90
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "rating",
+      "rust_type": "Option<u8>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Оценка",
+        "label_en": "Rating",
+        "hint": "Оценка дашборда от 1 до 5 звёзд",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "rate",
+        "column_width": 120
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Оценка пользователя: 1-5 звёзд, null = не оценён"
+    },
+    {
+      "name": "layout",
+      "rust_type": "DashboardLayout",
+      "field_type": "nested_struct",
+      "source": "specific",
+      "ui": {
+        "label": "Раскладка",
+        "label_en": "Layout",
+        "hint": "Дерево групп с индикаторами",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "tree_editor"
+      },
+      "ai_hint": "Иерархическое дерево категорий (DashboardGroup) с индикаторами (DashboardItem)"
+    },
+    {
+      "name": "global_filters",
+      "rust_type": "Vec<GlobalFilter>",
+      "field_type": "nested_table",
+      "source": "specific",
+      "ui": {
+        "label": "Глобальные фильтры",
+        "label_en": "Global Filters",
+        "hint": "Фильтры, применяемые ко всем индикаторам дашборда",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "table"
+      },
+      "ai_hint": "Список глобальных фильтров: key совпадает с ParamDef.global_filter_key из a024"
+    },
+    {
+      "name": "created_by",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создал",
+        "label_en": "Created By",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "updated_by",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновил",
+        "label_en": "Updated By",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "created_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Создан",
+        "label_en": "Created",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Обновлён",
+        "label_en": "Updated",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "format": "datetime"
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "is_deleted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Удалён",
+        "label_en": "Deleted",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "version",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Версия",
+        "label_en": "Version",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

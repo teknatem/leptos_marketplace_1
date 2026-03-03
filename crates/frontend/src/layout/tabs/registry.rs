@@ -43,6 +43,9 @@ use crate::domain::a023_purchase_of_goods::ui::details::PurchaseOfGoodsDetail;
 use crate::domain::a023_purchase_of_goods::ui::list::PurchaseOfGoodsList;
 use crate::domain::a024_bi_indicator::ui::details::BiIndicatorDetails;
 use crate::domain::a024_bi_indicator::ui::list::BiIndicatorList;
+use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
+use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
+use crate::domain::a025_bi_dashboard::ui::dashboard::BiDashboardView;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -458,6 +461,44 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                         }
                     })
                 />
+            }
+            .into_any()
+        }
+
+        // a025: BI Dashboards
+        "a025_bi_dashboard" => view! { <BiDashboardList /> }.into_any(),
+        k if k.starts_with("a025_bi_dashboard_detail_") => {
+            let raw_id = k
+                .strip_prefix("a025_bi_dashboard_detail_")
+                .unwrap()
+                .to_string();
+            let id = if raw_id == "new" { None } else { Some(raw_id) };
+            view! {
+                <BiDashboardDetails
+                    id=id
+                    on_saved=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                    on_cancel=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        k if k.starts_with("a025_bi_dashboard_view_") => {
+            let id = k
+                .strip_prefix("a025_bi_dashboard_view_")
+                .unwrap()
+                .to_string();
+            view! {
+                <BiDashboardView id=id />
             }
             .into_any()
         }

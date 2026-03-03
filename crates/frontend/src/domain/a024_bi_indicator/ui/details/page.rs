@@ -1,6 +1,8 @@
 //! Main page component for BiIndicator details (EditDetails MVVM Standard)
 
-use super::tabs::{DataSpecTab, DrillSpecTab, GeneralTab, MetaTab, ParamsTab, ViewSpecTab};
+use super::tabs::{
+    DataSpecTab, DrillSpecTab, GeneralTab, LlmPanel, MetaTab, ParamsTab, PreviewTab, ViewSpecTab,
+};
 use super::view_model::BiIndicatorDetailsVm;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
@@ -22,14 +24,18 @@ pub fn BiIndicatorDetails(
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
     let vm_content = vm.clone();
+    let vm_llm = vm.clone();
 
     view! {
         <PageFrame page_id="a024_bi_indicator--detail" category="detail">
             <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
             <TabBar vm=vm_tabs />
-            <div class="page__content">
-                <ErrorDisplay vm=vm.clone() />
-                <TabContent vm=vm_content />
+            <div class="page__content bi-detail__layout">
+                <div class="bi-detail__main">
+                    <ErrorDisplay vm=vm.clone() />
+                    <TabContent vm=vm_content />
+                </div>
+                <LlmPanel vm=vm_llm />
             </div>
         </PageFrame>
     }
@@ -102,6 +108,28 @@ fn TabBar(vm: BiIndicatorDetailsVm) -> impl IntoView {
 
             <button
                 class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "preview"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("preview")
+                }
+            >
+                {icon("eye")} " Превью"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "view_spec"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("view_spec")
+                }
+            >
+                {icon("layout")} " ViewSpec"
+            </button>
+
+            <button
+                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "data_spec"
                 on:click={
                     let vm = vm.clone();
@@ -120,17 +148,6 @@ fn TabBar(vm: BiIndicatorDetailsVm) -> impl IntoView {
                 }
             >
                 {icon("sliders")} " Параметры"
-            </button>
-
-            <button
-                class="page__tab"
-                class:page__tab--active=move || active_tab.get() == "view_spec"
-                on:click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("view_spec")
-                }
-            >
-                {icon("layout")} " ViewSpec"
             </button>
 
             <button
@@ -163,14 +180,17 @@ fn TabContent(vm: BiIndicatorDetailsVm) -> impl IntoView {
 
     view! {
         {move || match active_tab.get() {
+            "preview" => view! {
+                <PreviewTab vm=vm.clone() />
+            }.into_any(),
+            "view_spec" => view! {
+                <ViewSpecTab vm=vm.clone() />
+            }.into_any(),
             "data_spec" => view! {
                 <DataSpecTab vm=vm.clone() />
             }.into_any(),
             "params" => view! {
                 <ParamsTab vm=vm.clone() />
-            }.into_any(),
-            "view_spec" => view! {
-                <ViewSpecTab vm=vm.clone() />
             }.into_any(),
             "drill_spec" => view! {
                 <DrillSpecTab vm=vm.clone() />

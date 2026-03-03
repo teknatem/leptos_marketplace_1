@@ -3021,6 +3021,342 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   font-weight: 600;
 }
 
+/* ============================================================================
+   BI Indicator Editor — Preview, ViewSpec, LLM Panel
+   ============================================================================ */
+
+/* Detail page layout with LLM sidebar */
+.bi-detail__layout {
+  display: flex;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.bi-detail__main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* Preview tab */
+.bi-preview__controls {
+  margin-bottom: 0;
+}
+
+.bi-preview__test-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.bi-preview__sandbox {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--spacing-md);
+  border-radius: 8px;
+  border: 1px dashed var(--color-border, #e2e8f0);
+}
+
+.bi-preview__frame-wrapper {
+  border: 1px solid var(--color-neutral-200, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: width 0.3s ease, height 0.3s ease;
+  background: #fff;
+}
+
+.bi-preview__iframe {
+  display: block;
+}
+
+.bi-preview__empty-hint {
+  text-align: center;
+}
+
+/* ViewSpec editor — single-column full-width layout */
+.bi-viewspec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Header row inside each editor card: title+hint left, button right */
+.bi-viewspec__card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.bi-viewspec__hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.bi-viewspec__hint code {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--color-bg-tertiary, rgba(0,0,0,.05));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Row with Format and Thresholds side by side */
+.bi-viewspec__row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 900px) {
+  .bi-viewspec__row2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Live preview frame */
+.bi-viewspec__preview-frame {
+  width: 100%;
+  height: 220px;
+  margin-top: var(--spacing-sm);
+}
+
+/* Style picker grid — 3 option cards */
+.bi-viewspec__style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+@media (max-width: 700px) {
+  .bi-viewspec__style-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bi-style-option {
+  appearance: none;
+  cursor: pointer;
+  border: 2px solid var(--color-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--color-bg-secondary, #f8fafc);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.bi-style-option:hover {
+  border-color: var(--color-primary, #3b82f6);
+  background: var(--color-bg, #fff);
+}
+
+.bi-style-option--selected {
+  border-color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-bg, #fff));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
+}
+
+.bi-style-option__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text, #1e293b);
+  margin-bottom: 4px;
+}
+
+.bi-style-option--selected .bi-style-option__label {
+  color: var(--color-primary, #3b82f6);
+}
+
+.bi-style-option__desc {
+  font-size: 11px;
+  color: var(--color-text-secondary, #64748b);
+  line-height: 1.4;
+}
+
+/* ── Code editor textarea ─────────────────────────────────────────────────── */
+.code-editor {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas",
+               "SF Mono", "Menlo", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--color-bg-secondary, #f8fafc);
+  color: var(--color-text, #1e293b);
+  resize: vertical;
+  overflow: auto;
+  white-space: pre;
+  tab-size: 2;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.code-editor:focus {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+
+/* Keep existing .bi-viewspec-editor for backward compatibility */
+.bi-viewspec-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* LLM Panel — collapsible right sidebar */
+.bi-llm-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-neutral-200, #e2e8f0);
+  background: var(--color-neutral-50, #f8fafc);
+  transition: width 0.25s ease;
+  width: 40px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.bi-llm-panel--open {
+  width: 360px;
+}
+
+.bi-llm-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.bi-llm-panel__toggle:hover {
+  color: var(--color-brand);
+}
+
+.bi-llm-panel__toggle-label {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.bi-llm-panel--open .bi-llm-panel__toggle-label {
+  opacity: 1;
+}
+
+.bi-llm-panel__content {
+  padding: var(--spacing-sm) var(--spacing-md);
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.bi-llm-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--spacing-xs);
+}
+
+.bi-llm-panel__input-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.bi-llm-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.bi-llm-panel__hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.bi-llm-panel__error {
+  background: var(--color-error-50, #fef2f2);
+  color: var(--color-error, #dc2626);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.bi-llm-panel__empty {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: center;
+  padding: var(--spacing-md) 0;
+}
+
+.bi-llm-panel__history {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.bi-llm-panel__history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.bi-llm-panel__history-item {
+  background: var(--color-neutral-100, #f1f5f9);
+  border-radius: 8px;
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.bi-llm-panel__history-prompt {
+  font-size: 12px;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.bi-llm-panel__history-explanation {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Form select (native) for preview size selector */
+.form__select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-neutral-300, #cbd5e1);
+  border-radius: 6px;
+  background: var(--color-neutral-background1, #fff);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.form__select:focus {
+  outline: 2px solid var(--color-brand);
+  outline-offset: -1px;
+}
+
 /* General info layout */
 .general-info {
   max-width: 1400px;

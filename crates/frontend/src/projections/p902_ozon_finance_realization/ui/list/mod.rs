@@ -245,7 +245,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     on:input=move |ev| {
                         set_date_from.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-color);"
+                    style="padding: 4px 6px; border-radius: 4px; border: 1px solid var(--color-border);"
                 />
 
                 <label style="margin: 0; font-size: var(--font-size-sm);">"To:"</label>
@@ -255,7 +255,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     on:input=move |ev| {
                         set_date_to.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-color);"
+                    style="padding: 4px 6px; border-radius: 4px; border: 1px solid var(--color-border);"
                 />
 
                 <button
@@ -283,7 +283,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     on:input=move |ev| {
                         set_posting_number_filter.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1;"
+                    style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; flex: 1;"
                 />
                 <input
                     type="text"
@@ -292,7 +292,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     on:input=move |ev| {
                         set_sku_filter.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1;"
+                    style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; flex: 1;"
                 />
                 <input
                     type="text"
@@ -301,14 +301,14 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                     on:input=move |ev| {
                         set_operation_type_filter.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; flex: 1;"
+                    style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; flex: 1;"
                 />
 
                 <select
                     on:change=move |ev| {
                         set_sort_by.set(event_target_value(&ev));
                     }
-                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px;"
+                    style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px;"
                 >
                     <option value="accrual_date">"Sort by Date"</option>
                     <option value="sale_date">"Sort by Sale Date"</option>
@@ -319,7 +319,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
 
                 <button
                     on:click=move |_| set_sort_desc.set(!sort_desc.get())
-                    style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: white; cursor: pointer;"
+                    style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: white; cursor: pointer;"
                 >
                     {move || if sort_desc.get() { "↓ Desc" } else { "↑ Asc" }}
                 </button>
@@ -354,7 +354,7 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                         let total_price: f64 = items.iter().map(|item| item.price.unwrap_or(0.0)).sum();
 
                         view! {
-                            <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; display: flex; gap: 24px;">
+                            <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--secondary-bg-color); border: 1px solid var(--color-border); border-radius: 4px; font-weight: bold; display: flex; gap: 24px;">
                                 <span>"ИТОГО:"</span>
                                 <span>"Qty: " {format!("{:.2}", total_qty)}</span>
                                 <span>"Amount: " {format!("{:.2}", total_amount)}</span>
@@ -362,10 +362,10 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                                 <span>"Price: " {format!("{:.2}", total_price)}</span>
                             </div>
 
-                            <div style="max-height: calc(100vh - 300px); overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px;">
+                            <div style="max-height: calc(100vh - 300px); overflow-y: auto; border: 1px solid var(--color-border); border-radius: 4px;">
                                 <table style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                                     <thead style="position: sticky; top: 0; z-index: 10; background: var(--secondary-bg-color);">
-                                        <tr style="border-bottom: 2px solid var(--border-color);">
+                                        <tr style="border-bottom: 2px solid var(--color-border);">
                                             <th
                                                 on:click=move |_| handle_column_sort("accrual_date")
                                                 style="padding: 8px; text-align: left; cursor: pointer; user-select: none; background: var(--secondary-bg-color);"
@@ -444,9 +444,9 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                                             let sale_date_display = item.sale_date.clone().unwrap_or_else(|| "-".to_string());
                                             let is_return = item.is_return;
                                             let row_style = if is_return {
-                                                "border-bottom: 1px solid var(--border-color); background: #fff3cd; hover:background: #ffe69c;"
+                                                "border-bottom: 1px solid var(--color-border); background: #fff3cd; hover:background: #ffe69c;"
                                             } else {
-                                                "border-bottom: 1px solid var(--border-color); hover:background: var(--hover-bg-color);"
+                                                "border-bottom: 1px solid var(--color-border); hover:background: var(--hover-bg-color);"
                                             };
 
                                             view! {
