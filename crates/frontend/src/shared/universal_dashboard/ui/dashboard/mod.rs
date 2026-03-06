@@ -23,10 +23,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::{Button, ButtonAppearance, Select, Space};
 
-use crate::shared::page_frame::PageFrame;
 use super::pivot_table;
 use super::SaveConfigDialog;
 use super::SchemaPicker;
+use crate::shared::page_frame::PageFrame;
 use crate::shared::universal_dashboard::api;
 use tabs_container::TabsContainer;
 
@@ -62,7 +62,8 @@ pub fn UniversalDashboard(
     // Schema
     let (schemas, set_schemas) = signal(Vec::<SchemaInfo>::new());
     let selected_schema_id = RwSignal::new(initial_schema_id.clone());
-    let (schema, set_schema) = signal(None::<contracts::shared::universal_dashboard::DataSourceSchemaOwned>);
+    let (schema, set_schema) =
+        signal(None::<contracts::shared::universal_dashboard::DataSourceSchemaOwned>);
 
     // Config
     let (config, set_config) = signal(DashboardConfig {
@@ -121,7 +122,11 @@ pub fn UniversalDashboard(
         spawn_local(async move {
             match api::get_config(&config_id).await {
                 Ok(saved_config) => {
-                    log!("[load_config] OK: {} ({})", saved_config.name, saved_config.id);
+                    log!(
+                        "[load_config] OK: {} ({})",
+                        saved_config.name,
+                        saved_config.id
+                    );
                     current_config_id.set(Some(saved_config.id.clone()));
                     current_config_name.set(Some(saved_config.name.clone()));
                     set_config.set(saved_config.config);
@@ -201,7 +206,11 @@ pub fn UniversalDashboard(
                         return;
                     }
                 };
-                log!("[schema] Loaded: {} ({} fields)", sid, schema_data.fields.len());
+                log!(
+                    "[schema] Loaded: {} ({} fields)",
+                    sid,
+                    schema_data.fields.len()
+                );
 
                 let all_field_ids: Vec<String> =
                     schema_data.fields.iter().map(|f| f.id.clone()).collect();
@@ -245,7 +254,10 @@ pub fn UniversalDashboard(
                         spawn_local(async move {
                             // Wait for config load to finish
                             gloo_timers::future::TimeoutFuture::new(200).await;
-                            log!("[schema] Auto-executing query after config: {}", init_cid_for_exec);
+                            log!(
+                                "[schema] Auto-executing query after config: {}",
+                                init_cid_for_exec
+                            );
                             execute_query.run(());
                         });
                     }

@@ -134,14 +134,14 @@ fn SalesDetailsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
     view! {
         {move || {
             let sales = vm.wb_sales.get();
-            
+
             if sales.is_empty() {
                 return view! { <></> }.into_any();
             }
-            
+
             let first_sale = sales[0].clone();
             let line = first_sale.line.clone();
-            
+
             view! {
                 <CardAnimated delay_ms=120>
                     <h4 class="details-section__title">"Детализация Sales WB"</h4>

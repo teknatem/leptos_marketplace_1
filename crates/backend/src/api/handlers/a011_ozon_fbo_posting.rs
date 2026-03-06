@@ -103,11 +103,7 @@ pub async fn post_period(
                 }
                 Err(e) => {
                     failed_count += 1;
-                    tracing::error!(
-                        "Failed to post document {}: {}",
-                        doc.base.id.as_string(),
-                        e
-                    );
+                    tracing::error!("Failed to post document {}: {}", doc.base.id.as_string(), e);
                 }
             }
         }
@@ -119,4 +115,3 @@ pub async fn post_period(
         "failed_count": failed_count
     })))
 }
-

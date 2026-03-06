@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct LogEntry {
     pub id: i64,
     pub timestamp: String,
-    pub source: String,   // "client" или "server"
+    pub source: String, // "client" или "server"
     pub category: String,
     pub message: String,
 }

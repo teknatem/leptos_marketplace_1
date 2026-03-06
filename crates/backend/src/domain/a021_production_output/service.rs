@@ -25,8 +25,7 @@ pub async fn fill_nomenclature_ref_if_empty(doc: &mut ProductionOutput) -> Resul
     }
 
     let matches =
-        crate::domain::a004_nomenclature::repository::find_by_article_ignore_case(&article)
-            .await?;
+        crate::domain::a004_nomenclature::repository::find_by_article_ignore_case(&article).await?;
 
     tracing::info!(
         "fill_nomenclature_ref: article='{}' → found {} match(es) in a004",

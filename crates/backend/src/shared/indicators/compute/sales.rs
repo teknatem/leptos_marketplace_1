@@ -31,7 +31,8 @@ async fn fetch_agg(ctx: &IndicatorContext) -> Result<SalesAgg> {
     "#,
     );
 
-    let mut params: Vec<sea_orm::Value> = vec![ctx.date_from.clone().into(), ctx.date_to.clone().into()];
+    let mut params: Vec<sea_orm::Value> =
+        vec![ctx.date_from.clone().into(), ctx.date_to.clone().into()];
 
     if let Some(ref org) = ctx.organization_ref {
         sql.push_str(" AND conn.organization_ref = ?");

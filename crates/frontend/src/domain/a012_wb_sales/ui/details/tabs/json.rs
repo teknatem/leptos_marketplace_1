@@ -23,8 +23,8 @@ pub fn JsonTab(vm: WbSalesDetailsVm) -> impl IntoView {
 
             if let Some(json) = vm.raw_json.get() {
                 view! {
-                    <JsonViewer 
-                        json_content=json 
+                    <JsonViewer
+                        json_content=json
                         title="Raw JSON from WB".to_string()
                     />
                 }.into_any()

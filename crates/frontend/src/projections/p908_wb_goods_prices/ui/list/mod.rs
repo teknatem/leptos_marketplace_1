@@ -1,11 +1,11 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::page_frame::PageFrame;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{format_number_with_decimals, TableCellMoney};
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
+use crate::shared::page_frame::PageFrame;
 use contracts::projections::p908_wb_goods_prices::dto::{
     WbGoodsPriceDto, WbGoodsPriceListResponse,
 };

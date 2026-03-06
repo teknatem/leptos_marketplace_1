@@ -8,9 +8,21 @@ fn format_dt(dt: &str) -> String {
         if let Some((year, rest)) = date_part.split_once('-') {
             if let Some((month, day)) = rest.split_once('-') {
                 let time_part = dt.split('T').nth(1).unwrap_or("");
-                let time_clean = time_part.split('Z').next().unwrap_or("").split('+').next().unwrap_or("");
+                let time_clean = time_part
+                    .split('Z')
+                    .next()
+                    .unwrap_or("")
+                    .split('+')
+                    .next()
+                    .unwrap_or("");
                 if !time_clean.is_empty() {
-                    return format!("{}.{}.{} {}", day, month, year, &time_clean[..time_clean.len().min(5)]);
+                    return format!(
+                        "{}.{}.{} {}",
+                        day,
+                        month,
+                        year,
+                        &time_clean[..time_clean.len().min(5)]
+                    );
                 }
                 return format!("{}.{}.{}", day, month, year);
             }
@@ -24,7 +36,8 @@ fn opt_i32(v: Option<i32>) -> String {
 }
 
 fn opt_f64(v: Option<f64>) -> String {
-    v.map(|n| format!("{:.1}", n)).unwrap_or_else(|| "—".to_string())
+    v.map(|n| format!("{:.1}", n))
+        .unwrap_or_else(|| "—".to_string())
 }
 
 #[component]

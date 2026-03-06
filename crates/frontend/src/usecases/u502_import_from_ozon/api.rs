@@ -56,11 +56,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!(
-        "{}/api/u502/import/{}/progress",
-        api_base(),
-        session_id
-    );
+    let url = format!("{}/api/u502/import/{}/progress", api_base(), session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");
@@ -102,9 +98,11 @@ pub async fn get_connections(
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let request =
-        web_sys::Request::new_with_str_and_init(&format!("{}/api/connection_mp", api_base()), &opts)
-            .map_err(|e| format!("Failed to create request: {:?}", e))?;
+    let request = web_sys::Request::new_with_str_and_init(
+        &format!("{}/api/connection_mp", api_base()),
+        &opts,
+    )
+    .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     let response_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await

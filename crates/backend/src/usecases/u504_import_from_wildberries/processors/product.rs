@@ -1,15 +1,12 @@
+use super::super::wildberries_api_client::WildberriesCard;
+use crate::domain::a007_marketplace_product;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 use contracts::domain::common::AggregateId;
-use crate::domain::a007_marketplace_product;
-use super::super::wildberries_api_client::WildberriesCard;
 
 /// Обработать один товар (upsert)
-pub async fn process_product(
-    connection: &ConnectionMP,
-    card: &WildberriesCard,
-) -> Result<bool> {
+pub async fn process_product(connection: &ConnectionMP, card: &WildberriesCard) -> Result<bool> {
     // Используем nm_id как marketplace_sku
     let marketplace_sku = card.nm_id.to_string();
     let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
@@ -66,11 +63,9 @@ pub async fn process_product(
 
         // Автоматический поиск номенклатуры по артикулу
         let _ =
-            a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
-                .await;
+            a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
 
         a007_marketplace_product::repository::insert(&new_product).await?;
         Ok(true)
     }
 }
-

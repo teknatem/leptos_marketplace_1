@@ -38,30 +38,30 @@ pub fn SortableHeaderCell(
     /// Текст заголовка
     #[prop(into)]
     label: String,
-    
+
     /// Поле для сортировки
     #[prop(into)]
     sort_field: String,
-    
+
     /// Текущее поле сортировки из state
     #[prop(into)]
     current_sort_field: Signal<String>,
-    
+
     /// Направление сортировки из state
     #[prop(into)]
     sort_ascending: Signal<bool>,
-    
+
     /// Callback при клике на заголовок
     on_sort: Callback<String>,
-    
+
     /// Минимальная ширина колонки
     #[prop(optional, default = 100.0)]
     min_width: f64,
-    
+
     /// Выравнивание заголовка (left/right)
     #[prop(optional, default = "left")]
     align: &'static str,
-    
+
     /// Можно ли изменять размер колонки
     #[prop(optional, default = true)]
     resizable: bool,
@@ -69,7 +69,7 @@ pub fn SortableHeaderCell(
     let sort_field_for_click = sort_field.clone();
     let sort_field_for_indicator = sort_field.clone();
     let sort_field_for_class = sort_field.clone();
-    
+
     let handle_click = move |_| {
         // Не вызываем сортировку если только что изменяли размер колонки
         if was_just_resizing() {
@@ -78,21 +78,21 @@ pub fn SortableHeaderCell(
         }
         on_sort.run(sort_field_for_click.clone());
     };
-    
+
     let header_style = if align == "right" {
         "cursor: pointer; justify-content: flex-end; padding-right: 12px; max-width: calc(100% - 12px);"
     } else {
         "cursor: pointer; padding-right: 12px; max-width: calc(100% - 12px);"
     };
-    
+
     view! {
-        <TableHeaderCell 
-            resizable=resizable 
-            min_width=min_width 
+        <TableHeaderCell
+            resizable=resizable
+            min_width=min_width
             class="resizable"
         >
-            <div 
-                class="table__sortable-header" 
+            <div
+                class="table__sortable-header"
                 style=header_style
                 on:click=handle_click
             >

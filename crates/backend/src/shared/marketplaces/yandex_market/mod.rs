@@ -88,10 +88,7 @@ impl MarketplaceClient for YandexMarketClient {
             let error_text = response.text().await.unwrap_or_default();
             return TestConnectionResult {
                 success: false,
-                message: format!(
-                    "Яндекс.Маркет API вернул ошибку (HTTP {})",
-                    status.as_u16()
-                ),
+                message: format!("Яндекс.Маркет API вернул ошибку (HTTP {})", status.as_u16()),
                 details: Some(error_text),
             };
         }
@@ -102,9 +99,7 @@ impl MarketplaceClient for YandexMarketClient {
                 // Попробуем распарсить как JSON для проверки валидности
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&text) {
                     // Проверяем, что это похоже на ответ с кампаниями
-                    if json_value.get("campaigns").is_some()
-                        || json_value.get("result").is_some()
-                    {
+                    if json_value.get("campaigns").is_some() || json_value.get("result").is_some() {
                         TestConnectionResult {
                             success: true,
                             message: "Подключение к Яндекс.Маркет успешно установлено".into(),

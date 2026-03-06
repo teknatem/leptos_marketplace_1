@@ -69,10 +69,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
     };
 
     let create_new = move |_| {
-        tabs_store.open_tab(
-            "sys_scheduled_task_detail_new",
-            "Новая задача",
-        );
+        tabs_store.open_tab("sys_scheduled_task_detail_new", "Новая задача");
     };
 
     view! {
@@ -173,7 +170,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout>
                                                     <div style="text-align: center;">
-                                                <div 
+                                                <div
                                                     on:click=move |_| toggle_enabled(id_for_toggle.clone(), is_enabled)
                                                     style="cursor: pointer; display: inline-block;"
                                                 >
@@ -208,4 +205,3 @@ pub fn ScheduledTaskList() -> impl IntoView {
         </div>
     }
 }
-

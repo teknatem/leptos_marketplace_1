@@ -3,10 +3,7 @@ use anyhow::Result;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
 use uuid::Uuid;
 
-pub async fn store_document_with_raw(
-    mut document: OzonFboPosting,
-    raw_json: &str,
-) -> Result<Uuid> {
+pub async fn store_document_with_raw(mut document: OzonFboPosting, raw_json: &str) -> Result<Uuid> {
     let raw_ref = crate::shared::data::raw_storage::save_raw_json(
         "OZON",
         "OZON_FBO_Posting",
@@ -34,7 +31,11 @@ pub async fn store_document_with_raw(
         }
     } else {
         // Если is_posted = false, удаляем проекции (если были)
-        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string()).await {
+        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(
+            &id.to_string(),
+        )
+        .await
+        {
             tracing::error!("Failed to delete projections for OZON FBO document: {}", e);
         }
     }
@@ -57,4 +58,3 @@ pub async fn list_all() -> Result<Vec<OzonFboPosting>> {
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
-

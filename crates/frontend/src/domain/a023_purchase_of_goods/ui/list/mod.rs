@@ -101,7 +101,10 @@ pub fn PurchaseOfGoodsList() -> impl IntoView {
             );
 
             if !search_query_val.is_empty() {
-                url.push_str(&format!("&search_query={}", urlencoding::encode(&search_query_val)));
+                url.push_str(&format!(
+                    "&search_query={}",
+                    urlencoding::encode(&search_query_val)
+                ));
             }
 
             match Request::get(&url)
@@ -153,9 +156,7 @@ pub fn PurchaseOfGoodsList() -> impl IntoView {
                                                 .and_then(|x| x.as_str())
                                                 .unwrap_or("")
                                                 .to_string(),
-                                            is_posted: v
-                                                .get("is_posted")
-                                                .and_then(|x| x.as_bool()),
+                                            is_posted: v.get("is_posted").and_then(|x| x.as_bool()),
                                         })
                                     })
                                     .collect();
@@ -236,9 +237,15 @@ pub fn PurchaseOfGoodsList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
-        if !s.search_query.is_empty() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if !s.search_query.is_empty() {
+            count += 1;
+        }
         count
     });
 

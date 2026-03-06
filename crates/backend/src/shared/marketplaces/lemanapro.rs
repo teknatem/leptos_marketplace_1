@@ -15,7 +15,9 @@ impl MarketplaceClient for LemanaProClient {
             return TestConnectionResult {
                 success: false,
                 message: "Bearer токен не указан".to_string(),
-                details: Some("Для подключения к LemanaPro необходим Bearer токен (API Key)".to_string()),
+                details: Some(
+                    "Для подключения к LemanaPro необходим Bearer токен (API Key)".to_string(),
+                ),
             };
         }
 
@@ -58,7 +60,7 @@ impl MarketplaceClient for LemanaProClient {
         };
 
         let status = response.status();
-        
+
         if status.is_success() {
             // Пытаемся распарсить ответ
             match response.text().await {
@@ -100,5 +102,3 @@ impl MarketplaceClient for LemanaProClient {
         }
     }
 }
-
-

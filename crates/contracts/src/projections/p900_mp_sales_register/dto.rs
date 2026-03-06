@@ -130,10 +130,9 @@ pub struct SalesRegisterStatsByMarketplaceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SalesRegisterDetailDto {
     pub sale: SalesRegisterDto,
-    
+
     // Дополнительные данные для отображения
     pub organization_name: Option<String>,
     pub connection_mp_name: Option<String>,
     pub marketplace_product_name: Option<String>,
 }
-

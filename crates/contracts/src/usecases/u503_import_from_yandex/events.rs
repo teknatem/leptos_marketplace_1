@@ -24,8 +24,5 @@ pub enum ImportEvent {
 
     /// Ошибка импорта
     #[serde(rename = "import_failed")]
-    ImportFailed {
-        session_id: String,
-        error: String,
-    },
+    ImportFailed { session_id: String, error: String },
 }

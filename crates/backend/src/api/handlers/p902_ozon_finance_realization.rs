@@ -45,7 +45,11 @@ pub async fn list_finance_realization(
 
 /// Handler для получения детальной информации по композитному ключу
 pub async fn get_finance_realization_detail(
-    axum::extract::Path((posting_number, sku, operation_type)): axum::extract::Path<(String, String, String)>,
+    axum::extract::Path((posting_number, sku, operation_type)): axum::extract::Path<(
+        String,
+        String,
+        String,
+    )>,
 ) -> Result<Json<OzonFinanceRealizationByIdResponse>, axum::http::StatusCode> {
     let item = repository::get_by_id(&posting_number, &sku, &operation_type)
         .await
@@ -101,7 +105,7 @@ fn model_to_dto(model: repository::ModelWithSaleDate) -> OzonFinanceRealizationD
         organization_ref: model.organization_ref,
         posting_ref: model.posting_ref,
         accrual_date: model.accrual_date,
-        sale_date: model.sale_date,  // NEW: Дата продажи из p900_sales_register
+        sale_date: model.sale_date, // NEW: Дата продажи из p900_sales_register
         operation_date: model.operation_date,
         delivery_date: model.delivery_date,
         delivery_schema: model.delivery_schema,
@@ -118,7 +122,7 @@ fn model_to_dto(model: repository::ModelWithSaleDate) -> OzonFinanceRealizationD
         operation_type_name: model.operation_type_name,
         is_return: model.is_return,
         currency_code: model.currency_code,
-        loaded_at_utc: loaded_at_formatted,  // Отформатированная дата
+        loaded_at_utc: loaded_at_formatted, // Отформатированная дата
         payload_version: model.payload_version,
         extra: model.extra,
     }
@@ -142,7 +146,7 @@ fn model_to_dto_simple(model: repository::Model) -> OzonFinanceRealizationDto {
         organization_ref: model.organization_ref,
         posting_ref: model.posting_ref,
         accrual_date: model.accrual_date,
-        sale_date: None,  // Нет sale_date для простого Model
+        sale_date: None, // Нет sale_date для простого Model
         operation_date: model.operation_date,
         delivery_date: model.delivery_date,
         delivery_schema: model.delivery_schema,

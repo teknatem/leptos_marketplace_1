@@ -171,5 +171,3 @@ impl Default for ProgressTracker {
         Self::new()
     }
 }
-
-

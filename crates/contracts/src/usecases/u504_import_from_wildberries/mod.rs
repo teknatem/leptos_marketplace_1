@@ -1,12 +1,12 @@
-pub mod request;
-pub mod response;
 pub mod events;
 pub mod progress;
+pub mod request;
+pub mod response;
 
+pub use events::ImportEvent;
+pub use progress::{AggregateProgress, ImportProgress};
 pub use request::ImportRequest;
 pub use response::ImportResponse;
-pub use events::ImportEvent;
-pub use progress::{ImportProgress, AggregateProgress};
 
 use crate::usecases::common::UseCaseMetadata;
 

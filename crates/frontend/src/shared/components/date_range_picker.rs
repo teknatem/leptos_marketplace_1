@@ -2,32 +2,56 @@ use chrono::{Datelike, Duration, NaiveDate, Utc};
 use leptos::prelude::*;
 use thaw::*;
 
-/// DateRangePicker component - переиспользуемый компонент для выбора периода дат
-/// Включает 2 поля ввода дат и 3 кнопки быстрого выбора (текущий месяц, предыдущий месяц, произвольный)
-/// Стилизован в соответствии с Thaw UI
+fn month_range(year: i32, month: u32) -> (String, String) {
+    let start = NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid date");
+    let end = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            .map(|d| d - Duration::days(1))
+            .expect("Invalid date")
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+            .map(|d| d - Duration::days(1))
+            .expect("Invalid date")
+    };
+    (
+        start.format("%Y-%m-%d").to_string(),
+        end.format("%Y-%m-%d").to_string(),
+    )
+}
+
+/// DateRangePicker — переиспользуемый компонент выбора периода дат.
+/// Два поля ввода + кнопки: −1M, текущий месяц, +1M, произвольный выбор.
 #[component]
 pub fn DateRangePicker(
-    /// Значение даты "от" в формате yyyy-mm-dd
+    /// Дата «от» в формате yyyy-mm-dd
     #[prop(into)]
     date_from: Signal<String>,
 
-    /// Значение даты "до" в формате yyyy-mm-dd
+    /// Дата «до» в формате yyyy-mm-dd
     #[prop(into)]
     date_to: Signal<String>,
 
-    /// Callback при изменении диапазона дат (from, to)
+    /// Callback при изменении диапазона (from, to)
     on_change: Callback<(String, String)>,
 
-    /// Опциональная метка для компонента
+    /// Опциональная метка
     #[prop(optional)]
     label: Option<String>,
 ) -> impl IntoView {
-    // State для Dialog выбора произвольного периода
     let show_picker = RwSignal::new(false);
     let selected_month = RwSignal::new(Utc::now().date_naive().month().to_string());
     let selected_year = RwSignal::new(Utc::now().date_naive().year().to_string());
 
-    // Обработчик изменения даты "от"
+    // При монтировании устанавливаем текущий месяц, если период не задан
+    let on_change_init = on_change.clone();
+    Effect::new(move |_| {
+        if date_from.get().is_empty() && date_to.get().is_empty() {
+            let now = Utc::now().date_naive();
+            let (start, end) = month_range(now.year(), now.month());
+            on_change_init.run((start, end));
+        }
+    });
+
     let on_from_change = {
         let on_change = on_change.clone();
         move |new_from: String| {
@@ -36,288 +60,178 @@ pub fn DateRangePicker(
         }
     };
 
-    // Обработчик изменения даты "до"
     let on_to_change = move |new_to: String| {
         let current_from = date_from.get_untracked();
         on_change.run((current_from, new_to));
     };
 
-    // Установить текущий месяц
     let on_current_month = {
         let on_change = on_change.clone();
         move |_| {
             let now = Utc::now().date_naive();
-            let year = now.year();
-            let month = now.month();
-
-            let month_start =
-                NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-            let month_end = if month == 12 {
-                NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                    .map(|d| d - Duration::days(1))
-                    .expect("Invalid month end date")
-            } else {
-                NaiveDate::from_ymd_opt(year, month + 1, 1)
-                    .map(|d| d - Duration::days(1))
-                    .expect("Invalid month end date")
-            };
-
-            on_change.run((
-                month_start.format("%Y-%m-%d").to_string(),
-                month_end.format("%Y-%m-%d").to_string(),
-            ));
+            let (start, end) = month_range(now.year(), now.month());
+            on_change.run((start, end));
         }
     };
 
-    // Установить предыдущий месяц (вычитает от текущего выбранного периода)
     let on_previous_month = {
         let on_change = on_change.clone();
         move |_| {
-            // Берем текущую дату "от" и вычитаем от нее месяц
             let current_from = date_from.get_untracked();
-
-            // Парсим текущую дату
-            if let Ok(current_date) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
-                let (year, month) = if current_date.month() == 1 {
-                    (current_date.year() - 1, 12)
+            if let Ok(d) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
+                let (year, month) = if d.month() == 1 {
+                    (d.year() - 1, 12)
                 } else {
-                    (current_date.year(), current_date.month() - 1)
+                    (d.year(), d.month() - 1)
                 };
-
-                let month_start =
-                    NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-                let month_end = if month == 12 {
-                    NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                        .map(|d| d - Duration::days(1))
-                        .expect("Invalid month end date")
-                } else {
-                    NaiveDate::from_ymd_opt(year, month + 1, 1)
-                        .map(|d| d - Duration::days(1))
-                        .expect("Invalid month end date")
-                };
-
-                on_change.run((
-                    month_start.format("%Y-%m-%d").to_string(),
-                    month_end.format("%Y-%m-%d").to_string(),
-                ));
+                let (start, end) = month_range(year, month);
+                on_change.run((start, end));
             }
         }
     };
 
-    // Открыть Dialog выбора произвольного периода
+    let on_next_month = {
+        let on_change = on_change.clone();
+        move |_| {
+            let current_from = date_from.get_untracked();
+            if let Ok(d) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
+                let (year, month) = if d.month() == 12 {
+                    (d.year() + 1, 1)
+                } else {
+                    (d.year(), d.month() + 1)
+                };
+                let (start, end) = month_range(year, month);
+                on_change.run((start, end));
+            }
+        }
+    };
+
     let on_open_picker = move |_| {
         show_picker.set(true);
     };
 
-    // Применить произвольный выбранный месяц/год
     let on_apply_custom = {
         let on_change = on_change.clone();
         move |_| {
             let year_str = selected_year.get();
             let month_str = selected_month.get();
-
             if let (Ok(year), Ok(month)) = (year_str.parse::<i32>(), month_str.parse::<u32>()) {
-                let month_start =
-                    NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid month start date");
-                let month_end = if month == 12 {
-                    NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                        .map(|d| d - Duration::days(1))
-                        .expect("Invalid month end date")
-                } else {
-                    NaiveDate::from_ymd_opt(year, month + 1, 1)
-                        .map(|d| d - Duration::days(1))
-                        .expect("Invalid month end date")
-                };
-
-                on_change.run((
-                    month_start.format("%Y-%m-%d").to_string(),
-                    month_end.format("%Y-%m-%d").to_string(),
-                ));
+                let (start, end) = month_range(year, month);
+                on_change.run((start, end));
             }
             show_picker.set(false);
         }
     };
 
-    // Обработчик выбора месяца по кнопке
     let on_select_month = move |month: u32| {
         selected_month.set(month.to_string());
     };
 
-    // Установить текущий год
     let on_current_year = move |_| {
-        let current_year = Utc::now().date_naive().year();
-        selected_year.set(current_year.to_string());
+        selected_year.set(Utc::now().date_naive().year().to_string());
     };
 
-    // Установить предыдущий год
     let on_previous_year = move |_| {
-        let previous_year = Utc::now().date_naive().year() - 1;
-        selected_year.set(previous_year.to_string());
+        selected_year.set((Utc::now().date_naive().year() - 1).to_string());
     };
 
     view! {
+        <Flex vertical=true gap=FlexGap::Small style="max-width: 450px; width: fit-content;">
+            {label.map(|l| view! { <Label>{l}</Label> })}
 
-    <style>
-        ".date-range-picker-compact .thaw-button--small { width: 32px; min-width: 32px; height: 30px;}"
-        "
-        /* Match Thaw Input visuals (bottom stroke differs) */
-        .date-range-picker {
-            box-sizing: border-box;
-            border: 1px solid var(--colorNeutralStroke1, #d1d1d1);
-            border-bottom-color: var(--colorNeutralStrokeAccessible, var(--colorNeutralStroke2, rgba(0, 0, 0, 0.25)));
-            border-radius: var(--borderRadiusMedium, 4px);
-            background: var(--colorNeutralBackground1, #fff);
-            min-height: 32px;
-            height: 32px;
-            box-shadow: none;
-        }
-
-        .date-range-picker:hover {
-            border-color: var(--colorNeutralStroke1Hover, var(--colorNeutralStroke1, #d1d1d1));
-            border-bottom-color: var(--colorNeutralStrokeAccessibleHover, var(--colorNeutralStrokeAccessible, var(--colorNeutralStroke2, rgba(0, 0, 0, 0.25))));
-        }
-
-        .date-range-picker:focus-within {
-            border-color: var(--colorBrandStroke1, var(--color-primary, #3b82f6));
-            box-shadow:
-                0 0 0 2px var(--colorBrandStroke2, rgba(59, 130, 246, 0.20)),
-                inset 0 -1px 0 var(--colorBrandStroke1, var(--color-primary, #3b82f6));
-        }
-
-        /* Inner date inputs: mimic Thaw Input inner field */
-        .date-range-picker input[type=\"date\"] {
-            /*height: 100%;*/
-            box-sizing: border-box;
-            background: transparent;
-            border-radius: 0;
-            cursor: pointer;
-        }
-
-        /* Calendar icon (Chromium/WebKit) */
-        .date-range-picker input[type=\"date\"]::-webkit-calendar-picker-indicator {
-            cursor: pointer;
-        }
-
-        .date-range-picker input[type=\"date\"]:focus {
-            outline: none;
-        }
-        "
-    </style>
-
-        <Flex vertical=true gap=FlexGap::Small>
-            // Label на отдельной строке
-            {label.map(|l| view! {
-                <Label>{l}</Label>
-            })}
-
-            // Даты и кнопки на второй строке
             <Flex class="date-range-picker" align=FlexAlign::Center gap=FlexGap::Small>
-                // Поле даты "от"
                 <input
                     type="date"
+                    class="date-range-picker__input"
                     prop:value=date_from
-                    on:input=move |ev| {
-                        on_from_change(event_target_value(&ev));
-                    }
-                    style="
-                        margin-top: 4px;
-                        margin-bottom: 4px;                    
-                        padding: 0px 12px;
-                        margin-left: 4px;
-                        font-size: 0.875rem;
-                        border: none;
-                        border-radius: var(--borderRadiusMedium, 4px);
-                        background: var(--colorNeutralBackground6, #fff);
-                        color: var(--colorNeutralForeground1, #242424);
-                        width: 130px;
-                        transition: border-color 0.15s ease;
-                    "
+                    on:input=move |ev| on_from_change(event_target_value(&ev))
                 />
 
                 <div>"—"</div>
 
-                // Поле даты "до"
                 <input
                     type="date"
+                    class="date-range-picker__input"
                     prop:value=date_to
-                    on:input=move |ev| {
-                        on_to_change(event_target_value(&ev));
-                    }
-                    style="
-                        margin-top: 4px;
-                        margin-bottom: 4px;                    
-                        padding: 0px 12px;
-                        font-size: 0.875rem;
-                        border: none;
-                        border-radius: var(--borderRadiusMedium, 4px);
-                        background: var(--colorNeutralBackground6, #fff);
-                        color: var(--colorNeutralForeground1, #242424);
-                        width: 130px;
-                        transition: border-color 0.15s ease;
-                    "
+                    on:input=move |ev| on_to_change(event_target_value(&ev))
                 />
-                <div class="date-range-picker-compact">
-                <ButtonGroup>
-                    // Кнопка "Предыдущий месяц"
-                    <Button
-                        size=ButtonSize::Small
-                        appearance=ButtonAppearance::Subtle
-                        on_click=move |_| on_previous_month(())
-                    >
-                        "-1M"
-                    </Button>
 
-                    // Кнопка "Текущий месяц"
-                    <Button
-                        size=ButtonSize::Small
-                        appearance=ButtonAppearance::Subtle
-                        on_click=move |_| on_current_month(())
+                <div class="drp-nav-buttons">
+                    <button
+                        class="drp-icon-btn"
+                        title="-1 месяц"
+                        on:click=move |_| on_previous_month(())
                     >
-                        "0M"
-                    </Button>
+                        <div class="drp-btn-icon">
+                            <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+                                <path d="M7 1L2 6l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>"M"</span>
+                        </div>
+                    </button>
 
-                    // Кнопка "Произвольный период"
-                    <Button
-                        size=ButtonSize::Small
-                        appearance=ButtonAppearance::Subtle
-                        on_click=on_open_picker
+                    <button
+                        class="drp-icon-btn"
+                        title="Текущий месяц"
+                        on:click=move |_| on_current_month(())
                     >
-                        "⋯"
-                    </Button>
-                </ButtonGroup>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <circle cx="7" cy="7" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+                            <circle cx="7" cy="7" r="1.5" fill="currentColor"/>
+                        </svg>
+                    </button>
+
+                    <button
+                        class="drp-icon-btn"
+                        title="+1 месяц"
+                        on:click=move |_| on_next_month(())
+                    >
+                        <div class="drp-btn-icon">
+                            <span>"M"</span>
+                            <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+                                <path d="M3 1l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                    </button>
+
+                    <button
+                        class="drp-icon-btn"
+                        title="Выбрать период"
+                        on:click=move |_| on_open_picker(())
+                    >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <rect x="1.5" y="3" width="11" height="9.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+                            <path d="M1.5 6.5h11" stroke="currentColor" stroke-width="1.3"/>
+                            <path d="M4.5 1.5v2M9.5 1.5v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                        </svg>
+                    </button>
                 </div>
             </Flex>
         </Flex>
 
-        // Dialog для выбора произвольного периода
         <Dialog open=show_picker>
             <DialogSurface>
                 <DialogBody>
                     <DialogTitle>"Выберите месяц и год"</DialogTitle>
                     <DialogContent>
                         <Flex vertical=true gap=FlexGap::Large>
-                            // Секция выбора месяца - сетка 4x3
                             <div>
                                 <div style="margin-bottom: 12px; font-weight: 500;">"Месяц:"</div>
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
                                     {
                                         let months = vec![
-                                            (1, "Янв"), (2, "Фев"), (3, "Мар"), (4, "Апр"),
-                                            (5, "Май"), (6, "Июн"), (7, "Июл"), (8, "Авг"),
-                                            (9, "Сен"), (10, "Окт"), (11, "Ноя"), (12, "Дек"),
+                                            (1, "Январь"), (2, "Февраль"), (3, "Март"),
+                                            (4, "Апрель"), (5, "Май"), (6, "Июнь"),
+                                            (7, "Июль"), (8, "Август"), (9, "Сентябрь"),
+                                            (10, "Октябрь"), (11, "Ноябрь"), (12, "Декабрь"),
                                         ];
-
                                         months.into_iter().map(|(month_num, month_name)| {
                                             let is_selected = move || selected_month.get() == month_num.to_string();
                                             view! {
                                                 <Button
-                                                    size=ButtonSize::Small
                                                     appearance=move || {
-                                                        if is_selected() {
-                                                            ButtonAppearance::Primary
-                                                        } else {
-                                                            ButtonAppearance::Subtle
-                                                        }
+                                                        if is_selected() { ButtonAppearance::Primary }
+                                                        else { ButtonAppearance::Subtle }
                                                     }
                                                     on_click=move |_| on_select_month(month_num)
                                                     attr:style="width: 100%;"
@@ -330,7 +244,6 @@ pub fn DateRangePicker(
                                 </div>
                             </div>
 
-                            // Секция выбора года
                             <div>
                                 <div style="margin-bottom: 12px; font-weight: 500;">"Год:"</div>
                                 <Flex gap=FlexGap::Small vertical=false align=FlexAlign::Center>

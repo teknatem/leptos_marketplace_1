@@ -79,7 +79,11 @@ impl ProductionOutput {
         } else {
             None
         };
-        let base = BaseAggregate::new(ProductionOutputId::new(id), document_no.clone(), description);
+        let base = BaseAggregate::new(
+            ProductionOutputId::new(id),
+            document_no.clone(),
+            description,
+        );
         Self {
             base,
             document_no,

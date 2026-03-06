@@ -90,7 +90,11 @@ impl LemanaProApiClient {
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("LemanaPro API request failed: {}", body);
-            anyhow::bail!("LemanaPro API request failed with status {}: {}", status, body);
+            anyhow::bail!(
+                "LemanaPro API request failed with status {}: {}",
+                status,
+                body
+            );
         }
 
         let body = response.text().await?;
@@ -251,5 +255,3 @@ pub struct LemanaProParam {
     #[serde(rename = "paramValue", default)]
     pub param_value: Option<String>, // Значение параметра
 }
-
-

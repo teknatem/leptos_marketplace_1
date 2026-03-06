@@ -2,7 +2,9 @@ use super::repository;
 use anyhow::Result;
 use uuid::Uuid;
 
-async fn sync_organization_from_connection(document: &mut contracts::domain::a015_wb_orders::aggregate::WbOrders) -> Result<()> {
+async fn sync_organization_from_connection(
+    document: &mut contracts::domain::a015_wb_orders::aggregate::WbOrders,
+) -> Result<()> {
     let connection_uuid = match Uuid::parse_str(&document.header.connection_id) {
         Ok(uuid) => uuid,
         Err(_) => {
@@ -123,4 +125,3 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     Ok(())
 }
-

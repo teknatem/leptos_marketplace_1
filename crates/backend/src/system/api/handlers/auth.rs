@@ -1,13 +1,13 @@
 use axum::{extract::Json, http::StatusCode};
-use contracts::system::auth::{LoginRequest, LoginResponse, RefreshRequest, RefreshResponse, UserInfo};
+use contracts::system::auth::{
+    LoginRequest, LoginResponse, RefreshRequest, RefreshResponse, UserInfo,
+};
 
-use crate::system::{auth::jwt, users::service as user_service};
 use crate::system::auth::extractor::CurrentUser;
+use crate::system::{auth::jwt, users::service as user_service};
 
 /// Login handler
-pub async fn login(
-    Json(request): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, StatusCode> {
+pub async fn login(Json(request): Json<LoginRequest>) -> Result<Json<LoginResponse>, StatusCode> {
     // Verify credentials
     let user = user_service::verify_credentials(&request.username, &request.password)
         .await
@@ -67,9 +67,7 @@ pub async fn refresh(
 }
 
 /// Logout handler
-pub async fn logout(
-    Json(request): Json<RefreshRequest>,
-) -> Result<StatusCode, StatusCode> {
+pub async fn logout(Json(request): Json<RefreshRequest>) -> Result<StatusCode, StatusCode> {
     // Revoke refresh token
     revoke_refresh_token(&request.refresh_token)
         .await
@@ -79,9 +77,7 @@ pub async fn logout(
 }
 
 /// Get current user handler (protected by middleware)
-pub async fn current_user(
-    CurrentUser(claims): CurrentUser,
-) -> Result<Json<UserInfo>, StatusCode> {
+pub async fn current_user(CurrentUser(claims): CurrentUser) -> Result<Json<UserInfo>, StatusCode> {
     // Get user from database
     let user = user_service::get_by_id(&claims.sub)
         .await
@@ -181,4 +177,3 @@ fn hash_token(token: &str) -> String {
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
 }
-

@@ -61,7 +61,10 @@ impl MarketplaceClient for WildberriesClient {
                 let error_msg = if e.is_timeout() {
                     format!("Превышено время ожидания ответа от Wildberries API (>10 сек)")
                 } else if e.is_connect() {
-                    format!("Не удалось установить соединение с Wildberries API. Ошибка: {}", e)
+                    format!(
+                        "Не удалось установить соединение с Wildberries API. Ошибка: {}",
+                        e
+                    )
                 } else if e.is_request() || e.is_builder() {
                     format!("Ошибка формирования запроса: {}", e)
                 } else {
@@ -72,7 +75,7 @@ impl MarketplaceClient for WildberriesClient {
                     success: false,
                     message: error_msg.clone(),
                     details: Some(format!("URL: {}, Ошибка: {:?}", url, e)),
-                }
+                };
             }
         };
 

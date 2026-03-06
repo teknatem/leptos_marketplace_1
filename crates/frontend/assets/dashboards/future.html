@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KPI Indicator – Futuristic (Refined)</title>
+    <style>
+      :root {
+        --w: 280px;
+        --r: 18px;
+
+        /* light */
+        --bg: #f5f7ff;
+        --cardBase: rgba(255, 255, 255, 0.72);
+        --cardBase2: rgba(255, 255, 255, 0.52);
+        --ink: #0a1020;
+        --muted: rgba(10, 16, 32, 0.70);
+        --muted2: rgba(10, 16, 32, 0.52);
+        --edge: rgba(10, 16, 32, 0.14);
+        --shadow: rgba(7, 10, 18, 0.18);
+        --focus: rgba(60, 140, 255, 0.30);
+
+        /* status accents (overridden by data-status) */
+        --s1: #7c8aa6;
+        --s2: #b6c0d6;
+        --tint: rgba(120, 138, 166, 0.18);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #050815;
+          --cardBase: rgba(12, 16, 35, 0.66);
+          --cardBase2: rgba(12, 16, 35, 0.42);
+          --ink: #eef3ff;
+          --muted: rgba(238, 243, 255, 0.72);
+          --muted2: rgba(238, 243, 255, 0.52);
+          --edge: rgba(238, 243, 255, 0.12);
+          --shadow: rgba(0, 0, 0, 0.56);
+          --focus: rgba(0, 222, 255, 0.20);
+          --tint: rgba(180, 190, 215, 0.10);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 22px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          "Apple Color Emoji", "Segoe UI Emoji";
+        background:
+          radial-gradient(900px 520px at 18% 10%, rgba(0, 222, 255, 0.12), transparent 58%),
+          radial-gradient(820px 560px at 86% 82%, rgba(170, 85, 255, 0.12), transparent 58%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 35%),
+          var(--bg);
+        color: var(--ink);
+      }
+
+      .board {
+        width: var(--w);
+        display: grid;
+        gap: 14px;
+      }
+
+      /* -------- status mapping: clear colors -------- */
+      .indicator-card[data-status="ok"] {
+        --s1: #00ffa8; /* neon green */
+        --s2: #00d7ff; /* neon cyan */
+        --tint: rgba(0, 255, 168, 0.24);
+
+        /* greener card glass (more obvious) */
+        --card1: color-mix(in srgb, var(--cardBase) 78%, rgba(0, 255, 168, 0.26) 22%);
+        --card2: color-mix(in srgb, var(--cardBase2) 78%, rgba(0, 255, 168, 0.20) 22%);
+      }
+
+      .indicator-card[data-status="bad"] {
+        --s1: #ff3b66; /* neon red/pink */
+        --s2: #ffb300; /* hot amber */
+        --tint: rgba(255, 59, 102, 0.18);
+
+        --card1: var(--cardBase);
+        --card2: var(--cardBase2);
+      }
+
+      .indicator-card[data-status="neutral"] {
+        --s1: #7b8aa8; /* steel */
+        --s2: #b7c4df; /* pale */
+        --tint: rgba(123, 138, 168, 0.14);
+
+        --card1: var(--cardBase);
+        --card2: var(--cardBase2);
+      }
+
+      /* fallback (if status not set) */
+      .indicator-card {
+        --card1: var(--cardBase);
+        --card2: var(--cardBase2);
+      }
+
+      /* ---------- Card core ---------- */
+      .indicator-card {
+        width: var(--w);
+        position: relative;
+        border-radius: var(--r);
+        padding: 14px 14px 12px 14px;
+        border: 1px solid color-mix(in srgb, var(--edge) 88%, transparent);
+        background: linear-gradient(180deg, var(--card1), var(--card2));
+        color: var(--ink);
+        text-align: left;
+        cursor: pointer;
+        user-select: none;
+        outline: none;
+        overflow: hidden;
+        box-shadow:
+          0 18px 30px var(--shadow),
+          0 1px 0 rgba(255, 255, 255, 0.08) inset;
+        transform: translateZ(0);
+        transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+      }
+
+      .indicator-card:hover {
+        transform: translateY(-2px);
+        box-shadow:
+          0 24px 40px var(--shadow),
+          0 1px 0 rgba(255, 255, 255, 0.10) inset;
+      }
+
+      .indicator-card:active {
+        transform: translateY(0px) scale(0.995);
+        filter: saturate(1.06);
+      }
+
+      .indicator-card:focus-visible {
+        box-shadow:
+          0 0 0 4px var(--focus),
+          0 24px 40px var(--shadow),
+          0 1px 0 rgba(255, 255, 255, 0.10) inset;
+      }
+
+      /* neon perimeter glow */
+      .indicator-card::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border-radius: calc(var(--r) + 2px);
+        background:
+          conic-gradient(
+            from 230deg,
+            color-mix(in srgb, var(--s1) 78%, #fff 22%),
+            color-mix(in srgb, var(--s2) 78%, #fff 22%),
+            color-mix(in srgb, var(--s1) 78%, #fff 22%)
+          );
+        filter: blur(10px);
+        opacity: 0.36;
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      /* internal scan + tint */
+      .indicator-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: var(--r);
+        pointer-events: none;
+        z-index: 1;
+        background:
+          radial-gradient(180px 100px at 16% 14%, var(--tint), transparent 68%),
+          radial-gradient(170px 90px at 86% 22%, color-mix(in srgb, var(--tint) 85%, transparent), transparent 66%),
+          repeating-linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.08),
+            rgba(255, 255, 255, 0.08) 1px,
+            transparent 1px,
+            transparent 3px
+          );
+        opacity: 0.26;
+        mix-blend-mode: overlay;
+      }
+
+      /* noise */
+      .fx {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 12% 28%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1.2px),
+          radial-gradient(circle at 62% 68%, rgba(255, 255, 255, 0.05) 0 1px, transparent 1.2px),
+          radial-gradient(circle at 88% 38%, rgba(255, 255, 255, 0.05) 0 1px, transparent 1.2px),
+          radial-gradient(circle at 42% 82%, rgba(255, 255, 255, 0.04) 0 1px, transparent 1.2px);
+        background-size: 44px 44px, 56px 56px, 62px 62px, 48px 48px;
+        opacity: 0.5;
+        mix-blend-mode: overlay;
+      }
+
+      /* left rail: DECORATION ONLY (less noticeable) */
+      .bar {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        bottom: 12px;
+        width: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.10);
+        z-index: 3;
+        opacity: 0.55; /* overall subtle */
+      }
+
+      /* soft neon thread inside (not progress) */
+      .bar::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--s2), var(--s1));
+        opacity: 0.18;
+        filter: blur(0.2px);
+      }
+
+      /* tiny shimmer (optional futuristic) */
+      .bar::after {
+        content: "";
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        top: 10px;
+        height: 18px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.35), transparent 60%);
+        opacity: 0.18;
+      }
+
+      /* right-top square removed */
+      .accent {
+        display: none !important;
+      }
+
+      /* layout blocks */
+      .header,
+      .value-row,
+      .footer,
+      .spark-wrap {
+        position: relative;
+        z-index: 4;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding-left: 22px;
+        align-items: flex-start;
+      }
+
+      .name {
+        font-weight: 850;
+        letter-spacing: 0.2px;
+        font-size: 14px;
+        line-height: 1.05;
+        text-transform: uppercase;
+      }
+
+      .meta {
+        margin-top: 7px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .meta span {
+        position: relative;
+        padding-left: 10px;
+      }
+      .meta span::before {
+        content: "▸";
+        position: absolute;
+        left: 0;
+        top: -1px;
+        color: color-mix(in srgb, var(--s2) 70%, var(--muted) 30%);
+      }
+
+      .chip {
+        flex: 0 0 auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        padding: 6px 8px;
+        border-radius: 999px;
+        color: color-mix(in srgb, var(--ink) 86%, transparent);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.20), rgba(0, 0, 0, 0.06));
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.12);
+        white-space: nowrap;
+      }
+
+      .value-row {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: 1fr 72px; /* a bit more room for bigger spark */
+        gap: 10px;
+        align-items: center;
+        padding-left: 22px;
+      }
+
+      .value-line {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .value {
+        font-weight: 900;
+        font-size: 30px;
+        letter-spacing: -0.5px;
+        line-height: 1;
+      }
+
+      .unit {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      .sub {
+        margin-top: 8px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .delta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 6px 8px;
+        border-radius: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.07));
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.12);
+      }
+
+      .delta .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0.55;
+      }
+
+      .delta-arrow svg {
+        display: block;
+        filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.18));
+      }
+
+      .delta--good {
+        color: #00ffa8;
+      }
+      .delta--bad {
+        color: #ff3b66;
+      }
+      .delta--neutral {
+        color: color-mix(in srgb, var(--ink) 78%, transparent);
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--muted2);
+        line-height: 1.25;
+      }
+
+      /* -------- ring (progress) -------- */
+      .ring {
+        width: 62px;
+        height: 62px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        position: relative;
+        background:
+          conic-gradient(var(--s2) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.10) 0),
+          radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), transparent 55%);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.10) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.14),
+          0 0 26px color-mix(in srgb, var(--s2) 45%, transparent);
+        overflow: hidden;
+      }
+
+      .ring::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.22), transparent 55%),
+          linear-gradient(180deg, var(--card1), var(--card2));
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.12);
+      }
+
+      .ring > span {
+        position: relative;
+        z-index: 2;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.2px;
+      }
+
+      /* -------- sparkline (simpler, bigger) -------- */
+      .ring .ring-spark {
+        display: none; /* enabled in spark mode */
+        position: relative;
+        z-index: 2;
+        width: 54px;  /* bigger */
+        height: 30px; /* bigger */
+      }
+
+      .ring .ring-spark .grid {
+        stroke: rgba(255, 255, 255, 0.16);
+        stroke-width: 1;
+        fill: none;
+        stroke-dasharray: 3 4;
+        opacity: 0.55;
+      }
+
+      /* hide fill for clarity */
+      .ring .ring-spark .fill {
+        display: none;
+      }
+
+      .ring .ring-spark .line {
+        stroke: color-mix(in srgb, var(--s2) 82%, var(--s1) 18%);
+        stroke-width: 3.2; /* thicker */
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.18));
+      }
+
+      /* bottom sparkline (when in ring mode): also clearer */
+      .spark-wrap {
+        margin-top: 10px;
+        padding-left: 22px;
+      }
+      .spark {
+        width: 100%;
+        height: 42px; /* bigger */
+        display: block;
+      }
+      .spark .grid {
+        stroke: rgba(255, 255, 255, 0.12);
+        stroke-width: 1;
+        fill: none;
+        stroke-dasharray: 3 5;
+        opacity: 0.45;
+      }
+      .spark .fill {
+        display: none; /* simpler */
+      }
+      .spark .line {
+        stroke: color-mix(in srgb, var(--s2) 82%, var(--s1) 18%);
+        stroke-width: 3.0;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.16));
+      }
+
+      .footer {
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding-left: 22px;
+        font-size: 11px;
+        color: var(--muted);
+        border-top: 1px solid rgba(255, 255, 255, 0.10);
+        padding-top: 10px;
+      }
+
+      .footer span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* -------- mode switch: ring <-> spark -------- */
+      .indicator-card[data-mode="spark"] .ring {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.10));
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.10) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.14),
+          0 0 24px color-mix(in srgb, var(--s1) 35%, transparent);
+      }
+      .indicator-card[data-mode="spark"] .ring::before {
+        background: linear-gradient(180deg, var(--card1), var(--card2));
+      }
+      .indicator-card[data-mode="spark"] .ring > span {
+        display: none;
+      }
+      .indicator-card[data-mode="spark"] .ring .ring-spark {
+        display: block;
+      }
+      .indicator-card[data-mode="spark"] .spark-wrap {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="board" aria-label="Список KPI индикаторов (футуристичный стиль)">
+      <!-- 1: OK (ring mode) -->
+      <button
+        class="indicator-card col-1 design-1"
+        data-status="ok"
+        data-mode="ring"
+        style="--p:92"
+        type="button"
+        aria-label="Выручка — MTD"
+      >
+        <div class="fx" aria-hidden="true"></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="accent" aria-hidden="true"></span>
+
+        <div class="header">
+          <div class="header__main">
+            <div class="name">Выручка</div>
+            <div class="meta">
+              <span>MTD</span>
+              <span>каналы: 3</span>
+            </div>
+          </div>
+          <span class="chip">KZT</span>
+        </div>
+
+        <div class="value-row">
+          <div class="value-row__main">
+            <div class="value-line">
+              <span class="value">52,8</span>
+              <span class="unit">млн</span>
+            </div>
+            <div class="sub">
+              <div class="delta delta--good" title="Изменение к прошлому периоду">
+                <span class="delta-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="Рост">
+                    <path d="M7 2l4 5H8.6v5H5.4V7H3l4-5z" fill="currentColor" />
+                  </svg>
+                </span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="delta-text">+8,9%</span>
+              </div>
+              <div class="hint">Темп выше плана, основной вклад — новые SKU.</div>
+            </div>
+          </div>
+
+          <div class="ring" aria-label="Выполнение к плану">
+            <span>92%</span>
+            <svg class="ring-spark" viewBox="0 0 100 30" role="img" aria-label="Скрытый тренд">
+              <path class="grid" d="M0 29H100" />
+              <path class="fill" d="M0 29 L0 18 L20 17 L40 14 L60 15 L80 11 L100 10 L100 29 Z" />
+              <path class="line" d="M0 18 L20 17 L40 14 L60 15 L80 11 L100 10" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="footer">
+          <span>План: 57,5 млн</span>
+          <span>Факт: 52,8 млн</span>
+        </div>
+
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Тренд Выручка">
+            <path class="grid" d="M0 29H100" />
+            <path class="fill" d="M0 29 L0 18 L20 20 L40 15 L60 16 L80 12 L100 10 L100 29 Z" />
+            <path class="line" d="M0 18 L20 20 L40 15 L60 16 L80 12 L100 10" />
+          </svg>
+        </div>
+      </button>
+
+      <!-- 2: BAD (ring mode) -->
+      <button
+        class="indicator-card col-1 design-2"
+        data-status="bad"
+        data-mode="ring"
+        style="--p:63"
+        type="button"
+        aria-label="Маржинальность — GM%"
+      >
+        <div class="fx" aria-hidden="true"></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="accent" aria-hidden="true"></span>
+
+        <div class="header">
+          <div class="header__main">
+            <div class="name">Маржинальность</div>
+            <div class="meta">
+              <span>GM%</span>
+              <span>март</span>
+            </div>
+          </div>
+          <span class="chip">GROSS</span>
+        </div>
+
+        <div class="value-row">
+          <div class="value-row__main">
+            <div class="value-line">
+              <span class="value">23,6</span>
+              <span class="unit">%</span>
+            </div>
+            <div class="sub">
+              <div class="delta delta--bad" title="Изменение к прошлому периоду">
+                <span class="delta-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="Падение">
+                    <path d="M7 12l-4-5h2.4V2h3.2v5H11l-4 5z" fill="currentColor" />
+                  </svg>
+                </span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="delta-text">−0,7 п.п.</span>
+              </div>
+              <div class="hint">Комиссии и доставка увеличили удельные расходы.</div>
+            </div>
+          </div>
+
+          <div class="ring" aria-label="Выполнение к плану">
+            <span>63%</span>
+            <svg class="ring-spark" viewBox="0 0 100 30" role="img" aria-label="Скрытый тренд">
+              <path class="grid" d="M0 29H100" />
+              <path class="fill" d="M0 29 L0 11 L20 12 L40 13 L60 16 L80 17 L100 19 L100 29 Z" />
+              <path class="line" d="M0 11 L20 12 L40 13 L60 16 L80 17 L100 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="footer">
+          <span>Цель: 25,0%</span>
+          <span>Факт: 23,6%</span>
+        </div>
+
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Тренд Маржинальность">
+            <path class="grid" d="M0 29H100" />
+            <path class="fill" d="M0 29 L0 10 L20 12 L40 13 L60 16 L80 18 L100 20 L100 29 Z" />
+            <path class="line" d="M0 10 L20 12 L40 13 L60 16 L80 18 L100 20" />
+          </svg>
+        </div>
+      </button>
+
+      <!-- 3: NEUTRAL (spark replaces ring) -->
+      <button
+        class="indicator-card col-1 design-3"
+        data-status="neutral"
+        data-mode="spark"
+        style="--p:0"
+        type="button"
+        aria-label="Обработка заказов — P50"
+      >
+        <div class="fx" aria-hidden="true"></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="accent" aria-hidden="true"></span>
+
+        <div class="header">
+          <div class="header__main">
+            <div class="name">Обработка заказов</div>
+            <div class="meta">
+              <span>P50</span>
+              <span>24 часа</span>
+            </div>
+          </div>
+          <span class="chip">OPS</span>
+        </div>
+
+        <div class="value-row">
+          <div class="value-row__main">
+            <div class="value-line">
+              <span class="value">1,9</span>
+              <span class="unit">ч</span>
+            </div>
+            <div class="sub">
+              <div class="delta delta--neutral" title="Изменение к прошлому периоду">
+                <span class="delta-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="Без изменений">
+                    <path d="M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="delta-text">0,0</span>
+              </div>
+              <div class="hint">Стабильно: без пиков нагрузки, очередь ровная.</div>
+            </div>
+          </div>
+
+          <div class="ring" aria-label="Тренд (вместо выполнения)">
+            <span>--</span>
+            <svg class="ring-spark" viewBox="0 0 100 30" role="img" aria-label="Тренд обработки заказов">
+              <path class="grid" d="M0 29H100" />
+              <path class="fill" d="M0 29 L0 16 L25 14 L50 13 L75 12 L100 12 L100 29 Z" />
+              <path class="line" d="M0 16 L25 14 L50 13 L75 12 L100 12" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="footer">
+          <span>Цель: 2,0 ч</span>
+          <span>Факт: 1,9 ч</span>
+        </div>
+
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Тренд Обработка заказов">
+            <path class="grid" d="M0 29H100" />
+            <path class="fill" d="M0 29 L0 16 L25 14 L50 13 L75 12 L100 12 L100 29 Z" />
+            <path class="line" d="M0 16 L25 14 L50 13 L75 12 L100 12" />
+          </svg>
+        </div>
+      </button>
+
+      <!-- 4: BAD (spark replaces ring) -->
+      <button
+        class="indicator-card col-1 design-4"
+        data-status="bad"
+        data-mode="spark"
+        style="--p:0"
+        type="button"
+        aria-label="Возвраты — доля"
+      >
+        <div class="fx" aria-hidden="true"></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="accent" aria-hidden="true"></span>
+
+        <div class="header">
+          <div class="header__main">
+            <div class="name">Возвраты</div>
+            <div class="meta">
+              <span>28 дней</span>
+              <span>все каналы</span>
+            </div>
+          </div>
+          <span class="chip">RMA</span>
+        </div>
+
+        <div class="value-row">
+          <div class="value-row__main">
+            <div class="value-line">
+              <span class="value">3,4</span>
+              <span class="unit">%</span>
+            </div>
+            <div class="sub">
+              <div class="delta delta--bad" title="Изменение к прошлому периоду">
+                <span class="delta-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="Рост (хуже)">
+                    <path d="M7 2l4 5H8.6v5H5.4V7H3l4-5z" fill="currentColor" />
+                  </svg>
+                </span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="delta-text">+0,6 п.п.</span>
+              </div>
+              <div class="hint">Рост по группе “фурнитура”: проверить партию поставщика.</div>
+            </div>
+          </div>
+
+          <div class="ring" aria-label="Тренд (вместо выполнения)">
+            <span>--</span>
+            <svg class="ring-spark" viewBox="0 0 100 30" role="img" aria-label="Тренд возвратов">
+              <path class="grid" d="M0 29H100" />
+              <path class="fill" d="M0 29 L0 22 L25 21 L50 19 L75 16 L100 14 L100 29 Z" />
+              <path class="line" d="M0 22 L25 21 L50 19 L75 16 L100 14" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="footer">
+          <span>Цель: ≤ 2,5%</span>
+          <span>Факт: 3,4%</span>
+        </div>
+
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Тренд Возвраты">
+            <path class="grid" d="M0 29H100" />
+            <path class="fill" d="M0 29 L0 22 L25 21 L50 19 L75 16 L100 14 L100 29 Z" />
+            <path class="line" d="M0 22 L25 21 L50 19 L75 16 L100 14" />
+          </svg>
+        </div>
+      </button>
+    </div>
+  </body>
+</html>

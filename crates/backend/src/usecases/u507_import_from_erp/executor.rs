@@ -47,7 +47,9 @@ impl ImportExecutor {
         tokio::spawn(async move {
             if let Err(e) = executor.execute_import(&sid, &req, &conn).await {
                 tracing::error!("ERP import failed: {}", e);
-                executor.progress_tracker.add_error(&sid, format!("Import failed: {}", e));
+                executor
+                    .progress_tracker
+                    .add_error(&sid, format!("Import failed: {}", e));
                 executor
                     .progress_tracker
                     .complete_session(&sid, ImportStatus::Failed);
@@ -135,7 +137,11 @@ impl ImportExecutor {
                 )
                 .await
             {
-                tracing::warn!("Failed to fill nomenclature_ref for {}: {}", item.article, e);
+                tracing::warn!(
+                    "Failed to fill nomenclature_ref for {}: {}",
+                    item.article,
+                    e
+                );
             }
 
             match crate::domain::a021_production_output::service::upsert_from_api(&doc).await {
@@ -155,13 +161,8 @@ impl ImportExecutor {
             }
         }
 
-        self.progress_tracker.update_progress(
-            session_id,
-            total,
-            inserted,
-            updated,
-            None,
-        );
+        self.progress_tracker
+            .update_progress(session_id, total, inserted, updated, None);
 
         let final_status = if errors > 0 {
             ImportStatus::CompletedWithErrors
@@ -169,11 +170,14 @@ impl ImportExecutor {
             ImportStatus::Completed
         };
 
-        self.progress_tracker.complete_session(session_id, final_status);
+        self.progress_tracker
+            .complete_session(session_id, final_status);
 
         tracing::info!(
             "ERP import finished: inserted={}, updated={}, errors={}",
-            inserted, updated, errors
+            inserted,
+            updated,
+            errors
         );
 
         Ok(())

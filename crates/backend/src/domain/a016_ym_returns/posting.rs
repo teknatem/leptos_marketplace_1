@@ -18,8 +18,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     // Удалить старые проекции (если были)
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
-        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
 
     // Создать новые проекции (только для REFUNDED документов)
     crate::projections::p904_sales_data::service::project_ym_returns(&document, id).await?;
@@ -47,8 +46,7 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     // Удалить проекции
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
-        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
 
     tracing::info!("Unposted document a016 (YM Return): {}", id);
     Ok(())

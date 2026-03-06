@@ -1,9 +1,9 @@
-use leptos::prelude::*;
+use crate::shared::modal_frame::ModalFrame;
+use contracts::shared::universal_dashboard::{DashboardConfig, SavedDashboardConfigSummary};
 use leptos::ev::Event;
+use leptos::prelude::*;
 use thaw::*;
 use wasm_bindgen::JsCast;
-use contracts::shared::universal_dashboard::{SavedDashboardConfigSummary, DashboardConfig};
-use crate::shared::modal_frame::ModalFrame;
 
 /// Format ISO datetime string to human-readable format (DD.MM.YYYY HH:MM)
 fn format_datetime(iso: &str) -> String {
@@ -11,7 +11,7 @@ fn format_datetime(iso: &str) -> String {
     if iso.len() >= 16 {
         let date_part = &iso[0..10]; // 2026-01-26
         let time_part = &iso[11..16]; // 21:57
-        
+
         // Parse date components
         let parts: Vec<&str> = date_part.split('-').collect();
         if parts.len() == 3 {

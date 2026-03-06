@@ -1,9 +1,9 @@
+use super::super::yandex_api_client::{YandexMapping, YandexOffer};
+use crate::domain::a007_marketplace_product;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
 use contracts::domain::common::AggregateId;
-use crate::domain::a007_marketplace_product;
-use super::super::yandex_api_client::{YandexOffer, YandexMapping};
 
 /// Обработать один товар из YandexOffer (offer-mappings endpoint)
 /// Возвращает (is_new, barcodes_count)
@@ -80,8 +80,7 @@ pub async fn process_product_from_offer(
 
         // Автоматический поиск номенклатуры по артикулу
         let _ =
-            a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
-                .await;
+            a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
 
         a007_marketplace_product::repository::insert(&new_product).await?;
 
@@ -136,11 +135,12 @@ pub async fn import_barcodes_to_p901(
         };
 
         match repository::upsert_entry(&entry).await {
-            Ok(_) => { imported_count += 1; }
+            Ok(_) => {
+                imported_count += 1;
+            }
             Err(_) => {}
         }
     }
 
     Ok(imported_count)
 }
-

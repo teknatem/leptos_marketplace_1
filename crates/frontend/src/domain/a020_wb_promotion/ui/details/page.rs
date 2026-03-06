@@ -100,12 +100,7 @@ fn TabBar(vm: WbPromotionDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let nomenclatures_count = {
         let promotion = vm.promotion;
-        Signal::derive(move || {
-            promotion
-                .get()
-                .map(|p| p.nomenclatures.len())
-                .unwrap_or(0)
-        })
+        Signal::derive(move || promotion.get().map(|p| p.nomenclatures.len()).unwrap_or(0))
     };
     let tab_icon = |name: &str| view! { <span class="tab-icon">{icon(name)}</span> };
 

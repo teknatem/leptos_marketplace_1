@@ -280,7 +280,9 @@ impl WbSalesDetailsVm {
 
     /// Load finance reports (lazy, for "links" or "line" tabs)
     pub fn load_finance_reports(&self) {
-        if self.finance_reports_loaded.get_untracked() || self.finance_reports_loading.get_untracked() {
+        if self.finance_reports_loaded.get_untracked()
+            || self.finance_reports_loading.get_untracked()
+        {
             return;
         }
 

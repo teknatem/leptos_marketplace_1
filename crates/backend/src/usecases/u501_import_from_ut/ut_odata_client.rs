@@ -52,8 +52,16 @@ impl UtODataClient {
         skip: Option<i32>,
         filter: Option<&str>,
     ) -> Result<T> {
-        self.fetch_collection_with_options(connection, collection_name, top, skip, filter, None, None)
-            .await
+        self.fetch_collection_with_options(
+            connection,
+            collection_name,
+            top,
+            skip,
+            filter,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Получить данные из OData коллекции с фильтром, expand, select и orderby
@@ -67,8 +75,17 @@ impl UtODataClient {
         expand: Option<&str>,
         select: Option<&str>,
     ) -> Result<T> {
-        self.fetch_collection_full(connection, collection_name, top, skip, filter, expand, select, None)
-            .await
+        self.fetch_collection_full(
+            connection,
+            collection_name,
+            top,
+            skip,
+            filter,
+            expand,
+            select,
+            None,
+        )
+        .await
     }
 
     /// Получить данные из OData коллекции со всеми параметрами включая orderby
@@ -129,7 +146,7 @@ impl UtODataClient {
                     } else {
                         None
                     }
-                },
+                }
                 _ => None,
             };
 
@@ -150,7 +167,7 @@ impl UtODataClient {
         ));
 
         let start_time = std::time::Instant::now();
-        
+
         let response = match self
             .client
             .get(&url)
@@ -178,8 +195,16 @@ impl UtODataClient {
 
         let elapsed = start_time.elapsed();
         let status = response.status();
-        self.log_to_file(&format!("Response status: {} (took {:.2}s)", status, elapsed.as_secs_f64()));
-        tracing::info!("Request completed in {:.2}s with status {}", elapsed.as_secs_f64(), status);
+        self.log_to_file(&format!(
+            "Response status: {} (took {:.2}s)",
+            status,
+            elapsed.as_secs_f64()
+        ));
+        tracing::info!(
+            "Request completed in {:.2}s with status {}",
+            elapsed.as_secs_f64(),
+            status
+        );
 
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();

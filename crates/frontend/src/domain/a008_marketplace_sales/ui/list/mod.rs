@@ -124,28 +124,44 @@ pub fn MarketplaceSalesList() -> impl IntoView {
     let (products, set_products) = signal::<Vec<MarketplaceProduct>>(Vec::new());
 
     let conn_map = move || -> HashMap<String, String> {
-        connections.get().into_iter().map(|x| {
-            use contracts::domain::common::AggregateId;
-            (x.base.id.as_string(), x.base.description)
-        }).collect()
+        connections
+            .get()
+            .into_iter()
+            .map(|x| {
+                use contracts::domain::common::AggregateId;
+                (x.base.id.as_string(), x.base.description)
+            })
+            .collect()
     };
     let org_map = move || -> HashMap<String, String> {
-        organizations.get().into_iter().map(|x| {
-            use contracts::domain::common::AggregateId;
-            (x.base.id.as_string(), x.base.description)
-        }).collect()
+        organizations
+            .get()
+            .into_iter()
+            .map(|x| {
+                use contracts::domain::common::AggregateId;
+                (x.base.id.as_string(), x.base.description)
+            })
+            .collect()
     };
     let mp_map = move || -> HashMap<String, String> {
-        marketplaces.get().into_iter().map(|x| {
-            use contracts::domain::common::AggregateId;
-            (x.base.id.as_string(), x.base.description)
-        }).collect()
+        marketplaces
+            .get()
+            .into_iter()
+            .map(|x| {
+                use contracts::domain::common::AggregateId;
+                (x.base.id.as_string(), x.base.description)
+            })
+            .collect()
     };
     let product_map = move || -> HashMap<String, String> {
-        products.get().into_iter().map(|x| {
-            use contracts::domain::common::AggregateId;
-            (x.base.id.as_string(), x.base.description.clone())
-        }).collect()
+        products
+            .get()
+            .into_iter()
+            .map(|x| {
+                use contracts::domain::common::AggregateId;
+                (x.base.id.as_string(), x.base.description.clone())
+            })
+            .collect()
     };
 
     let refresh_view = move || {
@@ -173,15 +189,27 @@ pub fn MarketplaceSalesList() -> impl IntoView {
 
         filtered.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         let total = filtered.len();
-        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + page_size - 1) / page_size
+        };
         let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
         let start = page * page_size;
         let end = (start + page_size).min(total);
-        let page_items = if start < total { filtered[start..end].to_vec() } else { vec![] };
+        let page_items = if start < total {
+            filtered[start..end].to_vec()
+        } else {
+            vec![]
+        };
 
         state.update(|s| {
             s.items = page_items;
@@ -202,19 +230,38 @@ pub fn MarketplaceSalesList() -> impl IntoView {
             let mp_res = fetch_marketplaces().await;
             let prod_res = fetch_products().await;
 
-            if let Ok(v) = conn_res { set_connections.set(v); }
-            if let Ok(v) = org_res { set_organizations.set(v); }
-            if let Ok(v) = mp_res { set_marketplaces.set(v); }
-            if let Ok(v) = prod_res { set_products.set(v); }
+            if let Ok(v) = conn_res {
+                set_connections.set(v);
+            }
+            if let Ok(v) = org_res {
+                set_organizations.set(v);
+            }
+            if let Ok(v) = mp_res {
+                set_marketplaces.set(v);
+            }
+            if let Ok(v) = prod_res {
+                set_products.set(v);
+            }
 
             match sales_res {
                 Ok(v) => {
                     let rows: Vec<MarketplaceSalesRow> = v
                         .into_iter()
-                        .map(|s| MarketplaceSalesRow::from_sale(s, &conn_map(), &org_map(), &mp_map(), &product_map()))
+                        .map(|s| {
+                            MarketplaceSalesRow::from_sale(
+                                s,
+                                &conn_map(),
+                                &org_map(),
+                                &mp_map(),
+                                &product_map(),
+                            )
+                        })
                         .collect();
                     all_rows.set(rows);
-                    state.update(|s| { s.page = 0; s.is_loaded = true; });
+                    state.update(|s| {
+                        s.page = 0;
+                        s.is_loaded = true;
+                    });
                     refresh_view();
                     set_error.set(None);
                 }
@@ -245,7 +292,11 @@ pub fn MarketplaceSalesList() -> impl IntoView {
 
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
-        if s.search_query.is_empty() { 0usize } else { 1 }
+        if s.search_query.is_empty() {
+            0usize
+        } else {
+            1
+        }
     });
 
     let toggle_sort = move |field: &'static str| {
@@ -278,10 +329,18 @@ pub fn MarketplaceSalesList() -> impl IntoView {
 
     let toggle_selection = move |id: String, checked: bool| {
         selected.update(|s| {
-            if checked { s.insert(id.clone()); } else { s.remove(&id); }
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
         });
         state.update(|s| {
-            if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); }
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
         });
     };
 
@@ -290,11 +349,15 @@ pub fn MarketplaceSalesList() -> impl IntoView {
         if check_all {
             selected.update(|s| {
                 s.clear();
-                for item in items.iter() { s.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
             });
             state.update(|s| {
                 s.selected_ids.clear();
-                for item in items.iter() { s.selected_ids.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
             });
         } else {
             selected.update(|s| s.clear());
@@ -573,14 +636,21 @@ async fn fetch_sales() -> Result<Vec<MarketplaceSales>, String> {
     opts.set_mode(RequestMode::Cors);
     let url = format!("{}/api/marketplace_sales", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
@@ -593,14 +663,21 @@ async fn fetch_connections() -> Result<Vec<ConnectionMP>, String> {
     opts.set_mode(RequestMode::Cors);
     let url = format!("{}/api/connection_mp", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
@@ -613,14 +690,21 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     opts.set_mode(RequestMode::Cors);
     let url = format!("{}/api/organization", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
@@ -633,14 +717,21 @@ async fn fetch_marketplaces() -> Result<Vec<Marketplace>, String> {
     opts.set_mode(RequestMode::Cors);
     let url = format!("{}/api/marketplace", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
@@ -653,14 +744,21 @@ async fn fetch_products() -> Result<Vec<MarketplaceProduct>, String> {
     opts.set_mode(RequestMode::Cors);
     let url = format!("{}/api/marketplace_product", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }

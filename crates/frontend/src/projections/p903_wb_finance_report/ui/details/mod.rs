@@ -1,7 +1,7 @@
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::shared::icons::icon;
-use crate::shared::page_frame::PageFrame;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
+use crate::shared::page_frame::PageFrame;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;

@@ -63,16 +63,43 @@ impl Sortable for OzonTransactionsDto {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
             "operation_id" => self.operation_id.cmp(&other.operation_id),
-            "operation_type" => self.operation_type.to_lowercase().cmp(&other.operation_type.to_lowercase()),
-            "operation_type_name" => self.operation_type_name.to_lowercase().cmp(&other.operation_type_name.to_lowercase()),
+            "operation_type" => self
+                .operation_type
+                .to_lowercase()
+                .cmp(&other.operation_type.to_lowercase()),
+            "operation_type_name" => self
+                .operation_type_name
+                .to_lowercase()
+                .cmp(&other.operation_type_name.to_lowercase()),
             "operation_date" => self.operation_date.cmp(&other.operation_date),
-            "posting_number" => self.posting_number.to_lowercase().cmp(&other.posting_number.to_lowercase()),
-            "transaction_type" => self.transaction_type.to_lowercase().cmp(&other.transaction_type.to_lowercase()),
-            "delivery_schema" => self.delivery_schema.to_lowercase().cmp(&other.delivery_schema.to_lowercase()),
-            "amount" => self.amount.partial_cmp(&other.amount).unwrap_or(Ordering::Equal),
-            "accruals_for_sale" => self.accruals_for_sale.partial_cmp(&other.accruals_for_sale).unwrap_or(Ordering::Equal),
-            "sale_commission" => self.sale_commission.partial_cmp(&other.sale_commission).unwrap_or(Ordering::Equal),
-            "delivery_charge" => self.delivery_charge.partial_cmp(&other.delivery_charge).unwrap_or(Ordering::Equal),
+            "posting_number" => self
+                .posting_number
+                .to_lowercase()
+                .cmp(&other.posting_number.to_lowercase()),
+            "transaction_type" => self
+                .transaction_type
+                .to_lowercase()
+                .cmp(&other.transaction_type.to_lowercase()),
+            "delivery_schema" => self
+                .delivery_schema
+                .to_lowercase()
+                .cmp(&other.delivery_schema.to_lowercase()),
+            "amount" => self
+                .amount
+                .partial_cmp(&other.amount)
+                .unwrap_or(Ordering::Equal),
+            "accruals_for_sale" => self
+                .accruals_for_sale
+                .partial_cmp(&other.accruals_for_sale)
+                .unwrap_or(Ordering::Equal),
+            "sale_commission" => self
+                .sale_commission
+                .partial_cmp(&other.sale_commission)
+                .unwrap_or(Ordering::Equal),
+            "delivery_charge" => self
+                .delivery_charge
+                .partial_cmp(&other.delivery_charge)
+                .unwrap_or(Ordering::Equal),
             "substatus" => match (&self.substatus, &other.substatus) {
                 (Some(a), Some(b)) => a.to_lowercase().cmp(&b.to_lowercase()),
                 (Some(_), None) => Ordering::Greater,
@@ -120,15 +147,27 @@ pub fn OzonTransactionsList() -> impl IntoView {
         let mut sorted = source.clone();
         sorted.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         let total = sorted.len();
-        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + page_size - 1) / page_size
+        };
         let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
         let start = page * page_size;
         let end = (start + page_size).min(total);
-        let page_items = if start < total { sorted[start..end].to_vec() } else { vec![] };
+        let page_items = if start < total {
+            sorted[start..end].to_vec()
+        } else {
+            vec![]
+        };
 
         state.update(|s| {
             s.transactions = page_items;
@@ -146,7 +185,8 @@ pub fn OzonTransactionsList() -> impl IntoView {
             let date_from_val = state.with_untracked(|s| s.date_from.clone());
             let date_to_val = state.with_untracked(|s| s.date_to.clone());
             let transaction_type_val = state.with_untracked(|s| s.transaction_type_filter.clone());
-            let operation_type_name_val = state.with_untracked(|s| s.operation_type_name_filter.clone());
+            let operation_type_name_val =
+                state.with_untracked(|s| s.operation_type_name_filter.clone());
             let posting_number_val = state.with_untracked(|s| s.posting_number_filter.clone());
 
             let mut query_params = format!("?date_from={}&date_to={}", date_from_val, date_to_val);
@@ -170,7 +210,10 @@ pub fn OzonTransactionsList() -> impl IntoView {
                             Ok(items) => {
                                 log!("Loaded {} OZON transactions", items.len());
                                 all_transactions.set(items);
-                                state.update(|s| { s.page = 0; s.is_loaded = true; });
+                                state.update(|s| {
+                                    s.page = 0;
+                                    s.is_loaded = true;
+                                });
                                 refresh_pagination();
                             }
                             Err(e) => set_error.set(Some(format!("Ошибка парсинга: {}", e))),
@@ -194,11 +237,30 @@ pub fn OzonTransactionsList() -> impl IntoView {
                 match load_saved_settings(FORM_KEY).await {
                     Ok(Some(settings)) => {
                         state.update(|s| {
-                            if let Some(v) = settings.get("date_from").and_then(|v| v.as_str()) { s.date_from = v.to_string(); }
-                            if let Some(v) = settings.get("date_to").and_then(|v| v.as_str()) { s.date_to = v.to_string(); }
-                            if let Some(v) = settings.get("transaction_type_filter").and_then(|v| v.as_str()) { s.transaction_type_filter = v.to_string(); }
-                            if let Some(v) = settings.get("operation_type_name_filter").and_then(|v| v.as_str()) { s.operation_type_name_filter = v.to_string(); }
-                            if let Some(v) = settings.get("posting_number_filter").and_then(|v| v.as_str()) { s.posting_number_filter = v.to_string(); }
+                            if let Some(v) = settings.get("date_from").and_then(|v| v.as_str()) {
+                                s.date_from = v.to_string();
+                            }
+                            if let Some(v) = settings.get("date_to").and_then(|v| v.as_str()) {
+                                s.date_to = v.to_string();
+                            }
+                            if let Some(v) = settings
+                                .get("transaction_type_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.transaction_type_filter = v.to_string();
+                            }
+                            if let Some(v) = settings
+                                .get("operation_type_name_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.operation_type_name_filter = v.to_string();
+                            }
+                            if let Some(v) = settings
+                                .get("posting_number_filter")
+                                .and_then(|v| v.as_str())
+                            {
+                                s.posting_number_filter = v.to_string();
+                            }
                         });
                         log!("Loaded saved settings for A014");
                     }
@@ -230,7 +292,9 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
     let post_batch = move |post: bool| {
         let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         let total = ids.len();
         set_posting_in_progress.set(true);
         set_current_operation.set(Some((0, total)));
@@ -238,7 +302,12 @@ pub fn OzonTransactionsList() -> impl IntoView {
             let action = if post { "post" } else { "unpost" };
             for (index, id) in ids.iter().enumerate() {
                 set_current_operation.set(Some((index + 1, total)));
-                let url = format!("{}/api/a014/ozon-transactions/{}/{}", api_base(), id, action);
+                let url = format!(
+                    "{}/api/a014/ozon-transactions/{}/{}",
+                    api_base(),
+                    id,
+                    action
+                );
                 let _ = Request::post(&url).send().await;
             }
             set_posting_in_progress.set(false);
@@ -276,18 +345,32 @@ pub fn OzonTransactionsList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
-        if !s.transaction_type_filter.is_empty() { count += 1; }
-        if !s.operation_type_name_filter.is_empty() { count += 1; }
-        if !s.posting_number_filter.is_empty() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if !s.transaction_type_filter.is_empty() {
+            count += 1;
+        }
+        if !s.operation_type_name_filter.is_empty() {
+            count += 1;
+        }
+        if !s.posting_number_filter.is_empty() {
+            count += 1;
+        }
         count
     });
 
     let toggle_sort = move |field: &'static str| {
         state.update(|s| {
-            if s.sort_field == field { s.sort_ascending = !s.sort_ascending; }
-            else { s.sort_field = field.to_string(); s.sort_ascending = true; }
+            if s.sort_field == field {
+                s.sort_ascending = !s.sort_ascending;
+            } else {
+                s.sort_field = field.to_string();
+                s.sort_ascending = true;
+            }
             s.page = 0;
         });
         refresh_pagination();
@@ -299,22 +382,47 @@ pub fn OzonTransactionsList() -> impl IntoView {
     };
 
     let change_page_size = move |new_size: usize| {
-        state.update(|s| { s.page_size = new_size; s.page = 0; });
+        state.update(|s| {
+            s.page_size = new_size;
+            s.page = 0;
+        });
         refresh_pagination();
     };
 
     let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
 
     let toggle_selection = move |id: String, checked: bool| {
-        selected.update(|s| { if checked { s.insert(id.clone()); } else { s.remove(&id); } });
-        state.update(|s| { if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); } });
+        selected.update(|s| {
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
+        });
+        state.update(|s| {
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
+        });
     };
 
     let toggle_all = move |check_all: bool| {
         let items = state.get().transactions;
         if check_all {
-            selected.update(|s| { s.clear(); for item in items.iter() { s.insert(item.id.clone()); } });
-            state.update(|s| { s.selected_ids.clear(); for item in items.iter() { s.selected_ids.insert(item.id.clone()); } });
+            selected.update(|s| {
+                s.clear();
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
+            });
+            state.update(|s| {
+                s.selected_ids.clear();
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
+            });
         } else {
             selected.update(|s| s.clear());
             state.update(|s| s.selected_ids.clear());
@@ -332,11 +440,18 @@ pub fn OzonTransactionsList() -> impl IntoView {
         let total_accruals: f64 = data.iter().map(|t| t.accruals_for_sale).sum();
         let total_commission: f64 = data.iter().map(|t| t.sale_commission).sum();
         let total_delivery: f64 = data.iter().map(|t| t.delivery_charge).sum();
-        (data.len(), total_amount, total_accruals, total_commission, total_delivery)
+        (
+            data.len(),
+            total_amount,
+            total_accruals,
+            total_commission,
+            total_delivery,
+        )
     });
 
     let transaction_type_filter = RwSignal::new(state.get_untracked().transaction_type_filter);
-    let operation_type_name_filter = RwSignal::new(state.get_untracked().operation_type_name_filter);
+    let operation_type_name_filter =
+        RwSignal::new(state.get_untracked().operation_type_name_filter);
     let posting_number_filter = RwSignal::new(state.get_untracked().posting_number_filter);
 
     view! {
@@ -778,27 +893,38 @@ async fn load_saved_settings(form_key: &str) -> Result<Option<serde_json::Value>
     opts.set_mode(RequestMode::Cors);
     let url = format!("/api/form-settings/{}", form_key);
     let request = WebRequest::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await.map_err(|e| format!("{e:?}"))?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: web_sys::Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
     let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await.map_err(|e| format!("{e:?}"))?;
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let response: Option<serde_json::Value> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let response: Option<serde_json::Value> =
+        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     if let Some(form_settings) = response {
         if let Some(settings_json) = form_settings.get("settings_json").and_then(|v| v.as_str()) {
-            let settings: serde_json::Value = serde_json::from_str(settings_json).map_err(|e| format!("{e}"))?;
+            let settings: serde_json::Value =
+                serde_json::from_str(settings_json).map_err(|e| format!("{e}"))?;
             return Ok(Some(settings));
         }
     }
     Ok(None)
 }
 
-async fn save_settings_to_database(form_key: &str, settings: serde_json::Value) -> Result<(), String> {
+async fn save_settings_to_database(
+    form_key: &str,
+    settings: serde_json::Value,
+) -> Result<(), String> {
     use web_sys::{Request as WebRequest, RequestInit, RequestMode};
     let request_body = json!({ "form_key": form_key, "settings": settings });
     let opts = RequestInit::new();
@@ -808,12 +934,22 @@ async fn save_settings_to_database(form_key: &str, settings: serde_json::Value) 
     opts.set_body(&wasm_bindgen::JsValue::from_str(&body_str));
     let url = "/api/form-settings";
     let request = WebRequest::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Content-Type", "application/json").map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await.map_err(|e| format!("{e:?}"))?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     let resp: web_sys::Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     Ok(())
 }
 
@@ -823,14 +959,20 @@ fn export_to_csv(data: &[OzonTransactionsDto]) -> Result<(), String> {
     for txn in data {
         let op_date = format_date(&txn.operation_date);
         let substatus = txn.substatus.as_deref().unwrap_or("");
-        let delivering_date = txn.delivering_date.as_deref().map(format_date).unwrap_or_default();
+        let delivering_date = txn
+            .delivering_date
+            .as_deref()
+            .map(format_date)
+            .unwrap_or_default();
         let status = if txn.is_posted { "Да" } else { "Нет" };
         csv.push_str(&format!(
             "\"{}\";{};\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};\"{}\"
 ",
-            op_date, txn.operation_id,
+            op_date,
+            txn.operation_id,
             txn.operation_type_name.replace('\"', "\"\""),
-            substatus, delivering_date,
+            substatus,
+            delivering_date,
             txn.posting_number.replace('\"', "\"\""),
             txn.transaction_type.replace('\"', "\"\""),
             txn.delivery_schema.replace('\"', "\"\""),
@@ -851,10 +993,16 @@ fn export_to_csv(data: &[OzonTransactionsDto]) -> Result<(), String> {
         .map_err(|e| format!("Failed to create URL: {:?}", e))?;
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let document = window.document().ok_or_else(|| "no document".to_string())?;
-    let a = document.create_element("a").map_err(|e| format!("{:?}", e))?
-        .dyn_into::<HtmlAnchorElement>().map_err(|e| format!("{:?}", e))?;
+    let a = document
+        .create_element("a")
+        .map_err(|e| format!("{:?}", e))?
+        .dyn_into::<HtmlAnchorElement>()
+        .map_err(|e| format!("{:?}", e))?;
     a.set_href(&url);
-    a.set_download(&format!("ozon_transactions_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S")));
+    a.set_download(&format!(
+        "ozon_transactions_{}.csv",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+    ));
     a.click();
     Url::revoke_object_url(&url).map_err(|e| format!("Failed to revoke URL: {:?}", e))?;
     Ok(())

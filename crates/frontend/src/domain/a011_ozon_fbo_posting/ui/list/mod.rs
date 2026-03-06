@@ -1,7 +1,7 @@
 pub mod state;
 
-use super::details::OzonFboPostingDetail;
 use self::state::create_state;
+use super::details::OzonFboPostingDetail;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
@@ -121,28 +121,46 @@ pub fn OzonFboPostingList() -> impl IntoView {
                 if !df.is_empty() || !dt.is_empty() {
                     if let Some(ref d) = item.created_at_source {
                         let date_part = d.split('T').next().unwrap_or(d.as_str());
-                        if !df.is_empty() && date_part < df.as_str() { return false; }
-                        if !dt.is_empty() && date_part > dt.as_str() { return false; }
+                        if !df.is_empty() && date_part < df.as_str() {
+                            return false;
+                        }
+                        if !dt.is_empty() && date_part > dt.as_str() {
+                            return false;
+                        }
                     } else {
                         return false;
                     }
                 }
-                if !status.is_empty() && item.status_norm != status { return false; }
+                if !status.is_empty() && item.status_norm != status {
+                    return false;
+                }
                 true
             })
             .collect();
 
         filtered.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         let total = filtered.len();
-        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + page_size - 1) / page_size
+        };
         let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
         let start = page * page_size;
         let end = (start + page_size).min(total);
-        let page_items = if start < total { filtered[start..end].to_vec() } else { vec![] };
+        let page_items = if start < total {
+            filtered[start..end].to_vec()
+        } else {
+            vec![]
+        };
 
         state.update(|s| {
             s.items = page_items;
@@ -188,7 +206,9 @@ pub fn OzonFboPostingList() -> impl IntoView {
                                                 let line_count = lines.len();
                                                 let total_amount: f64 = lines
                                                     .iter()
-                                                    .filter_map(|line| line.get("amount_line")?.as_f64())
+                                                    .filter_map(|line| {
+                                                        line.get("amount_line")?.as_f64()
+                                                    })
                                                     .sum();
                                                 let is_posted = v
                                                     .get("is_posted")
@@ -197,8 +217,15 @@ pub fn OzonFboPostingList() -> impl IntoView {
                                                 let result = Some(OzonFboPostingDto {
                                                     id: v.get("id")?.as_str()?.to_string(),
                                                     code: v.get("code")?.as_str()?.to_string(),
-                                                    description: v.get("description")?.as_str()?.to_string(),
-                                                    document_no: v.get("header")?.get("document_no")?.as_str()?.to_string(),
+                                                    description: v
+                                                        .get("description")?
+                                                        .as_str()?
+                                                        .to_string(),
+                                                    document_no: v
+                                                        .get("header")?
+                                                        .get("document_no")?
+                                                        .as_str()?
+                                                        .to_string(),
                                                     status_norm,
                                                     substatus_raw,
                                                     created_at_source,
@@ -214,10 +241,15 @@ pub fn OzonFboPostingList() -> impl IntoView {
                                             .collect();
                                         log!("Loaded {} FBO postings", items.len());
                                         all_rows.set(items);
-                                        state.update(|s| { s.page = 0; s.is_loaded = true; });
+                                        state.update(|s| {
+                                            s.page = 0;
+                                            s.is_loaded = true;
+                                        });
                                         refresh_view();
                                     }
-                                    Err(e) => set_error.set(Some(format!("Ошибка парсинга: {}", e))),
+                                    Err(e) => {
+                                        set_error.set(Some(format!("Ошибка парсинга: {}", e)))
+                                    }
                                 }
                             }
                             Err(e) => set_error.set(Some(format!("Ошибка чтения ответа: {}", e))),
@@ -275,7 +307,9 @@ pub fn OzonFboPostingList() -> impl IntoView {
 
     let post_batch = move |post: bool| {
         let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         let total = ids.len();
         set_posting_in_progress.set(true);
         set_current_operation.set(Some((0, total)));
@@ -296,16 +330,26 @@ pub fn OzonFboPostingList() -> impl IntoView {
 
     let active_filters_count = Signal::derive(move || {
         let mut count = 0;
-        if !date_from.get().is_empty() { count += 1; }
-        if !date_to.get().is_empty() { count += 1; }
-        if !status_filter.get().is_empty() { count += 1; }
+        if !date_from.get().is_empty() {
+            count += 1;
+        }
+        if !date_to.get().is_empty() {
+            count += 1;
+        }
+        if !status_filter.get().is_empty() {
+            count += 1;
+        }
         count
     });
 
     let toggle_sort = move |field: &'static str| {
         state.update(|s| {
-            if s.sort_field == field { s.sort_ascending = !s.sort_ascending; }
-            else { s.sort_field = field.to_string(); s.sort_ascending = true; }
+            if s.sort_field == field {
+                s.sort_ascending = !s.sort_ascending;
+            } else {
+                s.sort_field = field.to_string();
+                s.sort_ascending = true;
+            }
             s.page = 0;
         });
         refresh_view();
@@ -317,22 +361,47 @@ pub fn OzonFboPostingList() -> impl IntoView {
     };
 
     let change_page_size = move |new_size: usize| {
-        state.update(|s| { s.page_size = new_size; s.page = 0; });
+        state.update(|s| {
+            s.page_size = new_size;
+            s.page = 0;
+        });
         refresh_view();
     };
 
     let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
 
     let toggle_selection = move |id: String, checked: bool| {
-        selected.update(|s| { if checked { s.insert(id.clone()); } else { s.remove(&id); } });
-        state.update(|s| { if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); } });
+        selected.update(|s| {
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
+        });
+        state.update(|s| {
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
+        });
     };
 
     let toggle_all = move |check_all: bool| {
         let items = state.get().items;
         if check_all {
-            selected.update(|s| { s.clear(); for item in items.iter() { s.insert(item.id.clone()); } });
-            state.update(|s| { s.selected_ids.clear(); for item in items.iter() { s.selected_ids.insert(item.id.clone()); } });
+            selected.update(|s| {
+                s.clear();
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
+            });
+            state.update(|s| {
+                s.selected_ids.clear();
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
+            });
         } else {
             selected.update(|s| s.clear());
             state.update(|s| s.selected_ids.clear());

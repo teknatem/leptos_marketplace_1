@@ -253,7 +253,11 @@ pub fn OzonFbsPostingDetail(
                                             // URL-кодируем posting_number для корректной передачи в URL
                                             let encoded_posting_number =
                                                 urlencoding::encode(&document_no);
-                                            let transactions_url = format!("{}/api/ozon_transactions/by-posting/{}", api_base(), encoded_posting_number);
+                                            let transactions_url = format!(
+                                                "{}/api/ozon_transactions/by-posting/{}",
+                                                api_base(),
+                                                encoded_posting_number
+                                            );
                                             log!("Loading transactions for posting_number: {} (encoded: {})", document_no, encoded_posting_number);
                                             log!("Request URL: {}", transactions_url);
 

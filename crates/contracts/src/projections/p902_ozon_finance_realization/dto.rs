@@ -29,17 +29,17 @@ pub struct OzonFinanceRealizationDto {
 
     // Количество и суммы
     pub quantity: f64,
-    pub price: Option<f64>,           // Цена товара
-    pub amount: f64,                  // Сумма продажи
-    pub commission_amount: Option<f64>, // Сумма комиссии
+    pub price: Option<f64>,              // Цена товара
+    pub amount: f64,                     // Сумма продажи
+    pub commission_amount: Option<f64>,  // Сумма комиссии
     pub commission_percent: Option<f64>, // Процент комиссии
-    pub services_amount: Option<f64>,   // Сумма доп. услуг
-    pub payout_amount: Option<f64>,     // Сумма к выплате
+    pub services_amount: Option<f64>,    // Сумма доп. услуг
+    pub payout_amount: Option<f64>,      // Сумма к выплате
 
     // Тип операции
-    pub operation_type: String,      // Тип операции
+    pub operation_type: String,              // Тип операции
     pub operation_type_name: Option<String>, // Название типа операции
-    pub is_return: bool,             // Флаг возврата (true если return_commission)
+    pub is_return: bool,                     // Флаг возврата (true если return_commission)
 
     // Валюта
     pub currency_code: Option<String>,

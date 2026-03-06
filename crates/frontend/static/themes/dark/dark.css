@@ -207,6 +207,10 @@
   --badge-status-not-posted-text: #fbbf24;
   --badge-status-not-posted-border: rgba(251, 191, 36, 0.35);
 
+  /* Sidebar scrollbar (was missing in dark theme — black thumb on dark bg = invisible) */
+  --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --sidebar-scrollbar-thumb-hover: rgba(255, 255, 255, 0.30);
+
   /* List/table scrollbar (content areas) */
   --list-scrollbar-track: rgba(0, 0, 0, 0.15);
   --list-scrollbar-thumb: rgba(255, 255, 255, 0.20);

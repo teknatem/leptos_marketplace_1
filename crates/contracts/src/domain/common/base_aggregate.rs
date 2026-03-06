@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::{EntityMetadata, EventStore};
+use serde::{Deserialize, Serialize};
 
 /// Базовый агрегат с обязательными полями для всех агрегатов
 #[derive(Debug, Clone, Serialize, Deserialize)]

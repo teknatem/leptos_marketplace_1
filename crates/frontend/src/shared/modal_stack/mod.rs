@@ -1,6 +1,6 @@
 use crate::shared::modal_frame::ModalFrame;
-use leptos::prelude::*;
 use gloo_timers::future::TimeoutFuture;
+use leptos::prelude::*;
 use std::sync::Arc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;

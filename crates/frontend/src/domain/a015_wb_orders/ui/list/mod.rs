@@ -57,10 +57,7 @@ fn format_time(iso_date: &str) -> String {
             .split('+')
             .next()
             .unwrap_or(time_part);
-        let time_clean = time_clean
-            .split('-')
-            .next()
-            .unwrap_or(time_clean);
+        let time_clean = time_clean.split('-').next().unwrap_or(time_clean);
         if let Some(hms) = time_clean.split('.').next() {
             let mut parts = hms.split(':');
             if let (Some(h), Some(m), Some(s)) = (parts.next(), parts.next(), parts.next()) {
@@ -777,21 +774,19 @@ pub fn WbOrdersList() -> impl IntoView {
                     <Show when=move || is_filter_expanded.get()>
                         <div class="filter-panel-content">
                             <Flex gap=FlexGap::Small align=FlexAlign::End>
-                                <div style="min-width: 420px;">
-                                    <DateRangePicker
-                                        date_from=Signal::derive(move || state.with(|s| s.date_from.clone()))
-                                        date_to=Signal::derive(move || state.with(|s| s.date_to.clone()))
-                                        on_change=Callback::new(move |(from, to)| {
-                                            state.update(|s| {
-                                                s.date_from = from;
-                                                s.date_to = to;
-                                                s.page = 0;
-                                            });
-                                            load_orders();
-                                        })
-                                        label="Период:".to_string()
-                                    />
-                                </div>
+                                <DateRangePicker
+                                    date_from=Signal::derive(move || state.with(|s| s.date_from.clone()))
+                                    date_to=Signal::derive(move || state.with(|s| s.date_to.clone()))
+                                    on_change=Callback::new(move |(from, to)| {
+                                        state.update(|s| {
+                                            s.date_from = from;
+                                            s.date_to = to;
+                                            s.page = 0;
+                                        });
+                                        load_orders();
+                                    })
+                                    label="Период:".to_string()
+                                />
 
                                 <div style="width: 260px;">
                                     <Flex vertical=true gap=FlexGap::Small>

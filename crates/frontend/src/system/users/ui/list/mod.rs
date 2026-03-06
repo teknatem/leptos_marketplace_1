@@ -7,7 +7,9 @@ use leptos::task::spawn_local;
 use thaw::*;
 
 use crate::shared::components::pagination_controls::PaginationControls;
-use crate::shared::components::table::{TableCrosshairHighlight, TableHeaderCheckbox, TableCellCheckbox};
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCrosshairHighlight, TableHeaderCheckbox,
+};
 use crate::shared::date_utils::format_datetime;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
@@ -120,7 +122,10 @@ fn UsersList() -> impl IntoView {
             match api::fetch_users().await {
                 Ok(data) => {
                     all_users.set(data);
-                    state.update(|s| { s.page = 0; s.is_loaded = true; });
+                    state.update(|s| {
+                        s.page = 0;
+                        s.is_loaded = true;
+                    });
                     refresh_view();
                     set_loading.set(false);
                 }
@@ -175,7 +180,9 @@ fn UsersList() -> impl IntoView {
     };
 
     let go_to_page = move |page: usize| {
-        state.update(|s| { s.page = page; });
+        state.update(|s| {
+            s.page = page;
+        });
         refresh_view();
     };
 
@@ -192,7 +199,11 @@ fn UsersList() -> impl IntoView {
 
     let toggle_selection = move |id: String, checked: bool| {
         selected.update(|s| {
-            if checked { s.insert(id); } else { s.remove(&id); }
+            if checked {
+                s.insert(id);
+            } else {
+                s.remove(&id);
+            }
         });
     };
 
@@ -207,7 +218,10 @@ fn UsersList() -> impl IntoView {
 
     let format_ts = |value: &str| format_datetime(value);
     let format_ts_opt = |value: &Option<String>| {
-        value.as_deref().map(format_datetime).unwrap_or_else(|| "-".to_string())
+        value
+            .as_deref()
+            .map(format_datetime)
+            .unwrap_or_else(|| "-".to_string())
     };
 
     view! {

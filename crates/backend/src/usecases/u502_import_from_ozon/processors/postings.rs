@@ -1,8 +1,8 @@
-use anyhow::Result;
-use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
+use super::super::ozon_api_client::OzonPosting;
 use crate::domain::a010_ozon_fbs_posting;
 use crate::domain::a011_ozon_fbo_posting;
+use anyhow::Result;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::{
     OzonFbsPosting, OzonFbsPostingHeader, OzonFbsPostingLine, OzonFbsPostingSourceMeta,
     OzonFbsPostingState,
@@ -11,7 +11,7 @@ use contracts::domain::a011_ozon_fbo_posting::aggregate::{
     OzonFboPosting, OzonFboPostingHeader, OzonFboPostingLine, OzonFboPostingSourceMeta,
     OzonFboPostingState,
 };
-use super::super::ozon_api_client::OzonPosting;
+use contracts::domain::common::AggregateId;
 
 /// Normalize OZON posting status
 pub fn normalize_ozon_status(status: &str) -> String {
@@ -31,8 +31,7 @@ pub async fn process_fbs_posting(
     let posting_number = posting.posting_number.clone();
 
     // Проверяем, существует ли документ
-    let existing =
-        a010_ozon_fbs_posting::service::get_by_document_no(&posting_number).await?;
+    let existing = a010_ozon_fbs_posting::service::get_by_document_no(&posting_number).await?;
     let is_new = existing.is_none();
 
     // Конвертируем продукты в строки документа
@@ -106,7 +105,7 @@ pub async fn process_fbs_posting(
 
     let raw_json = serde_json::to_string(posting)?;
     a010_ozon_fbs_posting::service::store_document_with_raw(document, &raw_json).await?;
-    
+
     Ok(is_new)
 }
 
@@ -118,8 +117,7 @@ pub async fn process_fbo_posting(
     let posting_number = posting.posting_number.clone();
 
     // Проверяем, существует ли документ
-    let existing =
-        a011_ozon_fbo_posting::service::get_by_document_no(&posting_number).await?;
+    let existing = a011_ozon_fbo_posting::service::get_by_document_no(&posting_number).await?;
     let is_new = existing.is_none();
 
     // Конвертируем продукты в строки документа
@@ -200,7 +198,6 @@ pub async fn process_fbo_posting(
 
     let raw_json = serde_json::to_string(posting)?;
     a011_ozon_fbo_posting::service::store_document_with_raw(document, &raw_json).await?;
-    
+
     Ok(is_new)
 }
-

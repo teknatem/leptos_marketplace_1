@@ -43,9 +43,9 @@ use crate::domain::a023_purchase_of_goods::ui::details::PurchaseOfGoodsDetail;
 use crate::domain::a023_purchase_of_goods::ui::list::PurchaseOfGoodsList;
 use crate::domain::a024_bi_indicator::ui::details::BiIndicatorDetails;
 use crate::domain::a024_bi_indicator::ui::list::BiIndicatorList;
+use crate::domain::a025_bi_dashboard::ui::dashboard::BiDashboardView;
 use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
 use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
-use crate::domain::a025_bi_dashboard::ui::dashboard::BiDashboardView;
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -539,9 +539,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "u506_import_from_lemanapro" => {
             view! { <u506_import_from_lemanapro::ImportWidget /> }.into_any()
         }
-        "u507_import_from_erp" => {
-            view! { <u507_import_from_erp::ImportWidget /> }.into_any()
-        }
+        "u507_import_from_erp" => view! { <u507_import_from_erp::ImportWidget /> }.into_any(),
 
         // ═══════════════════════════════════════════════════════════════════
         // Projections (p900-p906)
@@ -609,7 +607,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             let record_key = urlencoding::decode(encoded)
                 .map(|s| s.into_owned())
                 .unwrap_or_else(|_| encoded.to_string());
-            log!("✅ Creating YmPaymentReportDetail for record_key: {}", record_key);
+            log!(
+                "✅ Creating YmPaymentReportDetail for record_key: {}",
+                record_key
+            );
             view! {
                 <YmPaymentReportDetail
                     record_key=record_key

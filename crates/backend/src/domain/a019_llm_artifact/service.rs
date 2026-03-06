@@ -28,12 +28,12 @@ pub async fn create(dto: LlmArtifactDto) -> anyhow::Result<Uuid> {
         .clone()
         .unwrap_or_else(|| format!("ARTIFACT-{}", Uuid::new_v4()));
 
-    let chat_uuid = Uuid::parse_str(&dto.chat_id)
-        .map_err(|e| anyhow::anyhow!("Invalid chat_id: {}", e))?;
+    let chat_uuid =
+        Uuid::parse_str(&dto.chat_id).map_err(|e| anyhow::anyhow!("Invalid chat_id: {}", e))?;
     let chat_id = LlmChatId::new(chat_uuid);
 
-    let agent_uuid = Uuid::parse_str(&dto.agent_id)
-        .map_err(|e| anyhow::anyhow!("Invalid agent_id: {}", e))?;
+    let agent_uuid =
+        Uuid::parse_str(&dto.agent_id).map_err(|e| anyhow::anyhow!("Invalid agent_id: {}", e))?;
     let agent_id = LlmAgentId::new(agent_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -48,13 +48,8 @@ pub async fn create(dto: LlmArtifactDto) -> anyhow::Result<Uuid> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", dto.agent_id))?;
 
-    let mut aggregate = LlmArtifact::new_for_insert(
-        code,
-        dto.description,
-        chat_id,
-        agent_id,
-        dto.sql_query,
-    );
+    let mut aggregate =
+        LlmArtifact::new_for_insert(code, dto.description, chat_id, agent_id, dto.sql_query);
 
     // Установить дополнительные поля
     aggregate.base.comment = dto.comment;
@@ -84,8 +79,8 @@ pub async fn update(dto: LlmArtifactDto) -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("ID is required"))?;
 
-    let artifact_uuid = Uuid::parse_str(id_str)
-        .map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
+    let artifact_uuid =
+        Uuid::parse_str(id_str).map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
     let artifact_id = LlmArtifactId::new(artifact_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -128,8 +123,8 @@ pub async fn update(dto: LlmArtifactDto) -> anyhow::Result<()> {
 
 /// Удаление артефакта (soft delete)
 pub async fn delete(id: &str) -> anyhow::Result<()> {
-    let artifact_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
+    let artifact_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
     let artifact_id = LlmArtifactId::new(artifact_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -140,8 +135,8 @@ pub async fn delete(id: &str) -> anyhow::Result<()> {
 
 /// Получить артефакт по ID
 pub async fn get_by_id(id: &str) -> anyhow::Result<Option<LlmArtifact>> {
-    let artifact_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
+    let artifact_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid artifact ID: {}", e))?;
     let artifact_id = LlmArtifactId::new(artifact_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -159,8 +154,8 @@ pub async fn list_all() -> anyhow::Result<Vec<LlmArtifact>> {
 
 /// Получить артефакты конкретного чата
 pub async fn list_by_chat_id(chat_id: &str) -> anyhow::Result<Vec<LlmArtifact>> {
-    let chat_uuid = Uuid::parse_str(chat_id)
-        .map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
+    let chat_uuid =
+        Uuid::parse_str(chat_id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
     let chat_id_obj = LlmChatId::new(chat_uuid);
 
     let db = crate::shared::data::db::get_connection();

@@ -1,6 +1,8 @@
+use crate::domain::common::{
+    AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::domain::common::{AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin};
 
 // ============================================================================
 // ID Type
@@ -150,11 +152,7 @@ impl ConnectionMP {
         api_key: String,
         comment: Option<String>,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            ConnectionMPId::new_v4(),
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(ConnectionMPId::new_v4(), code, description);
         base.comment = comment;
 
         Self {

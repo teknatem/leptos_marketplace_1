@@ -42,17 +42,17 @@ pub async fn fetch_agent(id: &str) -> Result<LlmAgent, String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    
+
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let agent: LlmAgent = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    
+
     Ok(agent)
 }
 
@@ -81,11 +81,11 @@ pub async fn save_agent(dto: serde_json::Value) -> Result<(), String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    
+
     Ok(())
 }
 
@@ -107,17 +107,17 @@ pub async fn test_agent_connection(id: &str) -> Result<TestConnectionResponse, S
         .await
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    
+
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let result: TestConnectionResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    
+
     Ok(result)
 }
 
@@ -139,16 +139,16 @@ pub async fn fetch_models_from_api(id: &str) -> Result<FetchModelsResponse, Stri
         .await
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    
+
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let result: FetchModelsResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    
+
     Ok(result)
 }

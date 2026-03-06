@@ -1,6 +1,4 @@
-use contracts::domain::a023_purchase_of_goods::aggregate::{
-    PurchaseOfGoods, PurchaseOfGoodsLine,
-};
+use contracts::domain::a023_purchase_of_goods::aggregate::{PurchaseOfGoods, PurchaseOfGoodsLine};
 use serde::{Deserialize, Serialize};
 
 /// OData модель строки табличной части Товары документа ПриобретениеТоваровУслуг

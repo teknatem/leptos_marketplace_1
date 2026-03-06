@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::system::tasks::aggregate::ScheduledTask;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduledTaskResponse {
@@ -41,5 +41,3 @@ impl From<ScheduledTask> for ScheduledTaskResponse {
 pub struct ScheduledTaskListResponse {
     pub tasks: Vec<ScheduledTaskResponse>,
 }
-
-

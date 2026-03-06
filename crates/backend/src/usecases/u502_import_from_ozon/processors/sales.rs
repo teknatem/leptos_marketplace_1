@@ -1,7 +1,7 @@
+use crate::domain::{a007_marketplace_product, a008_marketplace_sales};
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
-use crate::domain::{a007_marketplace_product, a008_marketplace_sales};
 use std::collections::HashMap;
 
 /// Обработать одну строку продажи (item) из финансовой операции
@@ -19,12 +19,11 @@ pub async fn process_sale_item(
     let product_id = if let Some(pid) = sku_to_product_id.get(key) {
         pid.clone()
     } else {
-        let existing =
-            a007_marketplace_product::repository::get_by_connection_and_sku(
-                &connection.base.id.as_string(),
-                key,
-            )
-            .await?;
+        let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
+            &connection.base.id.as_string(),
+            key,
+        )
+        .await?;
         let pid = if let Some(mp) = existing {
             mp.to_string_id()
         } else {
@@ -44,10 +43,7 @@ pub async fn process_sale_item(
                 Some("auto-created from finance operation".to_string()),
             );
             // Автоматический поиск номенклатуры по артикулу
-            let _ = a007_marketplace_product::service::search_and_set_nomenclature(
-                &mut new,
-            )
-            .await;
+            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new).await;
             let id = a007_marketplace_product::repository::insert(&new).await?;
             id.to_string()
         };
@@ -89,4 +85,3 @@ pub async fn process_sale_item(
         Ok(true) // Inserted
     }
 }
-

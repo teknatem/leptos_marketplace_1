@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 
-use super::repository::{NomenclatureBarcodeEntry, Model, BarcodeWithNomenclature};
+use super::repository::{BarcodeWithNomenclature, Model, NomenclatureBarcodeEntry};
 
 /// Валидация штрихкода
 pub fn validate_barcode(barcode: &str) -> Result<()> {
@@ -14,7 +14,10 @@ pub fn validate_barcode(barcode: &str) -> Result<()> {
     }
 
     // Проверка на допустимые символы (цифры, буквы, дефисы)
-    if !barcode.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !barcode
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(anyhow!("Barcode contains invalid characters"));
     }
 
@@ -61,11 +64,13 @@ pub fn update_entry(
 }
 
 /// Конвертировать Model в DTO
-pub fn model_to_dto(model: &Model) -> contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
+pub fn model_to_dto(
+    model: &Model,
+) -> contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
     contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
         barcode: model.barcode.clone(),
         nomenclature_ref: model.nomenclature_ref.clone(),
-        nomenclature_name: None,  // Для простых запросов без JOIN
+        nomenclature_name: None, // Для простых запросов без JOIN
         article: model.article.clone(),
         source: model.source.clone(),
         created_at: model.created_at.parse().unwrap_or_else(|_| Utc::now()),
@@ -75,12 +80,16 @@ pub fn model_to_dto(model: &Model) -> contracts::projections::p901_nomenclature_
 }
 
 /// Конвертировать список Models в DTOs
-pub fn models_to_dtos(models: Vec<Model>) -> Vec<contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto> {
+pub fn models_to_dtos(
+    models: Vec<Model>,
+) -> Vec<contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto> {
     models.iter().map(model_to_dto).collect()
 }
 
 /// Конвертировать BarcodeWithNomenclature в DTO
-pub fn barcode_with_nomenclature_to_dto(model: &BarcodeWithNomenclature) -> contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
+pub fn barcode_with_nomenclature_to_dto(
+    model: &BarcodeWithNomenclature,
+) -> contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
     contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto {
         barcode: model.barcode.clone(),
         nomenclature_ref: model.nomenclature_ref.clone(),
@@ -94,8 +103,13 @@ pub fn barcode_with_nomenclature_to_dto(model: &BarcodeWithNomenclature) -> cont
 }
 
 /// Конвертировать список BarcodeWithNomenclature в DTOs
-pub fn barcodes_with_nomenclature_to_dtos(models: Vec<BarcodeWithNomenclature>) -> Vec<contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto> {
-    models.iter().map(barcode_with_nomenclature_to_dto).collect()
+pub fn barcodes_with_nomenclature_to_dtos(
+    models: Vec<BarcodeWithNomenclature>,
+) -> Vec<contracts::projections::p901_nomenclature_barcodes::NomenclatureBarcodeDto> {
+    models
+        .iter()
+        .map(barcode_with_nomenclature_to_dto)
+        .collect()
 }
 
 /// Найти nomenclature_ref по штрихкоду из источника 1C
@@ -144,10 +158,7 @@ pub async fn find_nomenclature_ref_by_ym_article(article: &str) -> Result<Option
     let ym_record = match repository::get_by_article_and_source(article, "YM").await? {
         Some(record) => record,
         None => {
-            tracing::debug!(
-                "No YM barcode found in p901 for article '{}'",
-                article
-            );
+            tracing::debug!("No YM barcode found in p901 for article '{}'", article);
             return Ok(None);
         }
     };

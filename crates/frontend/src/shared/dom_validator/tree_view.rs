@@ -15,11 +15,11 @@ pub fn TreeView(node: DomNode) -> impl IntoView {
     let is_page = node.classes.iter().any(|c| c.starts_with("page"));
 
     // Автоматически сворачивать определенные элементы
-    let initially_collapsed = is_table 
-        || is_panel_left 
-        || is_right_panel 
-        || is_app_header 
-        || is_app_sidebar 
+    let initially_collapsed = is_table
+        || is_panel_left
+        || is_right_panel
+        || is_app_header
+        || is_app_sidebar
         || node.depth >= 8;
     let (is_collapsed, set_is_collapsed) = signal(initially_collapsed);
     let children = node.children.clone();
@@ -79,8 +79,8 @@ pub fn TreeView(node: DomNode) -> impl IntoView {
                         <span class="dom-tree-node__classes">
                             {node.classes.iter().map(|cls| {
                                 let class_text = format!(".{}", cls);
-                                let is_special = cls == "panel-left" 
-                                    || cls == "right-panel" 
+                                let is_special = cls == "panel-left"
+                                    || cls == "right-panel"
                                     || cls == "app-header"
                                     || cls == "app-sidebar"
                                     || cls == "app-main"
@@ -102,13 +102,13 @@ pub fn TreeView(node: DomNode) -> impl IntoView {
                 // Data-атрибуты
                 {(!node.data_attributes.is_empty()).then(|| {
                     let has_hidden_class = node.classes.iter().any(|c| c == "app-tabs__item--hidden");
-                    
+
                     view! {
                         <span class="dom-tree-node__data-attrs">
                             {node.data_attributes.iter().map(|(key, value)| {
                                 let is_tab_key_hidden = key == "data-tab-key" && has_hidden_class;
                                 view! {
-                                    <span 
+                                    <span
                                         class="dom-tree-node__data-attr"
                                         class:dom-tree-node__data-attr--hidden=is_tab_key_hidden
                                     >

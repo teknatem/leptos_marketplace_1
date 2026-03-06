@@ -5,4 +5,4 @@ pub mod usecase_result;
 
 // Re-exports
 pub use usecase_metadata::UseCaseMetadata;
-pub use usecase_result::{UseCaseResult, UseCaseError};
+pub use usecase_result::{UseCaseError, UseCaseResult};

@@ -32,41 +32,39 @@ pub fn TableCellMoney(
     /// Значение для отображения
     #[prop(into)]
     value: Signal<Option<f64>>,
-    
+
     /// Символ валюты (по умолчанию "₽")
     #[prop(optional, default = "₽")]
     currency: &'static str,
-    
+
     /// Показывать ли суффикс валюты
     #[prop(optional, default = false)]
     show_currency: bool,
-    
+
     /// Включить цветовую индикацию по знаку
     /// true: положительные - зеленый, отрицательные - красный
     #[prop(optional, default = true)]
     color_by_sign: bool,
-    
+
     /// Жирный шрифт
     #[prop(optional, default = false)]
     bold: bool,
 ) -> impl IntoView {
-    let formatted_text = move || {
-        match value.get() {
-            Some(v) => {
-                let formatted = format_money(v);
-                if show_currency {
-                    format!("{} {}", formatted, currency)
-                } else {
-                    formatted
-                }
+    let formatted_text = move || match value.get() {
+        Some(v) => {
+            let formatted = format_money(v);
+            if show_currency {
+                format!("{} {}", formatted, currency)
+            } else {
+                formatted
             }
-            None => "—".to_string(),
         }
+        None => "—".to_string(),
     };
-    
+
     let cell_style = move || {
         let mut styles = Vec::new();
-        
+
         // Цветовая индикация
         if color_by_sign {
             if let Some(v) = value.get() {
@@ -78,15 +76,15 @@ pub fn TableCellMoney(
                 // 0.0 остается нейтральным
             }
         }
-        
+
         // Жирный шрифт
         if bold {
             styles.push("font-weight: 600");
         }
-        
+
         styles.join("; ")
     };
-    
+
     view! {
         <TableCell class="text-right">
             <span style=cell_style>

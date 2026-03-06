@@ -6,7 +6,10 @@ use leptos::prelude::*;
 pub use view::MarketplaceProductDetails;
 
 #[component]
-pub fn MarketplaceProductDetailsTab(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+pub fn MarketplaceProductDetailsTab(
+    id: String,
+    #[prop(into)] on_close: Callback<()>,
+) -> impl IntoView {
     let id_opt = if id == "new" || id.is_empty() {
         None
     } else {

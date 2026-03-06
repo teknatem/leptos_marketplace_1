@@ -1,8 +1,10 @@
-use axum::{extract::{Path, Query}, Json};
 use axum::http::StatusCode;
+use axum::{
+    extract::{Path, Query},
+    Json,
+};
 use contracts::projections::p901_nomenclature_barcodes::{
-    BarcodeByIdResponse, BarcodeListRequest, BarcodeListResponse,
-    BarcodesByNomenclatureResponse,
+    BarcodeByIdResponse, BarcodeListRequest, BarcodeListResponse, BarcodesByNomenclatureResponse,
 };
 
 use crate::projections::p901_nomenclature_barcodes::{repository, service};
@@ -22,7 +24,12 @@ pub async fn get_by_barcode(
     let model = repository::get_by_barcode_and_source(&barcode, &req.source)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get barcode {} with source {}: {}", barcode, req.source, e);
+            tracing::error!(
+                "Failed to get barcode {} with source {}: {}",
+                barcode,
+                req.source,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -35,12 +42,18 @@ pub async fn get_by_barcode(
 /// Handler для получения всех штрихкодов по nomenclature_ref
 pub async fn get_barcodes_by_nomenclature(
     Path(nomenclature_ref): Path<String>,
-    Query(req): Query<contracts::projections::p901_nomenclature_barcodes::BarcodesByNomenclatureRequest>,
+    Query(req): Query<
+        contracts::projections::p901_nomenclature_barcodes::BarcodesByNomenclatureRequest,
+    >,
 ) -> Result<Json<BarcodesByNomenclatureResponse>, StatusCode> {
     let models = repository::get_by_nomenclature_ref(&nomenclature_ref, req.include_inactive)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get barcodes for nomenclature {}: {}", nomenclature_ref, e);
+            tracing::error!(
+                "Failed to get barcodes for nomenclature {}: {}",
+                nomenclature_ref,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 

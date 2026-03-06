@@ -13,7 +13,7 @@ pub fn LlmChatList() -> impl IntoView {
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
-    
+
     let (items, set_items) = signal::<Vec<LlmChatListItem>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let show_create_modal = RwSignal::new(false);
@@ -105,13 +105,13 @@ pub fn LlmChatList() -> impl IntoView {
                         let id_for_link = id.clone();
                         let id_for_delete = id.clone();
                         let description_for_link = item.description.clone();
-                        
+
                         let msg_count = item.message_count.unwrap_or(0);
                         let last_msg = item.last_message_at.map(|dt| {
                             dt.format("%d.%m.%Y %H:%M").to_string()
                         }).unwrap_or_else(|| "-".to_string());
                         let created = item.created_at.format("%d.%m.%Y %H:%M").to_string();
-                        
+
                         view! {
                             <TableRow>
                                 <TableCell>
@@ -484,7 +484,11 @@ async fn fetch_agents() -> Result<Vec<LlmAgent>, String> {
     Ok(data)
 }
 
-async fn create_chat(description: &str, agent_id: &str, model_name: &str) -> Result<String, String> {
+async fn create_chat(
+    description: &str,
+    agent_id: &str,
+    model_name: &str,
+) -> Result<String, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -525,19 +529,19 @@ async fn create_chat(description: &str, agent_id: &str, model_name: &str) -> Res
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    
+
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let response: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    
+
     let chat_id = response
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "No chat ID in response".to_string())?
         .to_string();
-    
+
     Ok(chat_id)
 }
 

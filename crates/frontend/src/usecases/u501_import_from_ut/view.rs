@@ -1,10 +1,10 @@
 use super::api;
+use crate::shared::page_frame::PageFrame;
 use chrono::{Datelike, Utc};
 use contracts::usecases::u501_import_from_ut::{
     progress::{ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
-use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json;
@@ -31,8 +31,8 @@ pub fn ImportWidget() -> impl IntoView {
 
     // Период для a023_purchase_of_goods
     let today = chrono::Utc::now().date_naive();
-    let month_start = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-        .unwrap_or(today);
+    let month_start =
+        chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
     let (period_from, set_period_from) = signal(Some(month_start.format("%Y-%m-%d").to_string()));
     let (period_to, set_period_to) = signal(Some(today.format("%Y-%m-%d").to_string()));
 

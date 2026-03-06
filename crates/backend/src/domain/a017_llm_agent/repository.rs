@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a017_llm_agent")]
@@ -47,8 +49,8 @@ impl From<Model> for LlmAgent {
             version: m.version,
         };
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let provider_type = LlmProviderType::from_str(&m.provider_type)
-            .unwrap_or(LlmProviderType::OpenAI);
+        let provider_type =
+            LlmProviderType::from_str(&m.provider_type).unwrap_or(LlmProviderType::OpenAI);
 
         LlmAgent {
             base: BaseAggregate::with_metadata(

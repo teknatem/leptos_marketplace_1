@@ -30,7 +30,7 @@ impl MatchExecutor {
 
         // Получить количество товаров для обработки
         let products = if let Some(marketplace_id) = &request.marketplace_id {
-              a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
+            a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
         } else {
             a007_marketplace_product::service::list_all().await?
         };
@@ -82,12 +82,13 @@ impl MatchExecutor {
     /// Если ignore_case=true, ключи будут в нижнем регистре
     async fn build_article_index(
         ignore_case: bool,
-    ) -> Result<HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>> {
+    ) -> Result<HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>>
+    {
         let start_time = std::time::Instant::now();
-        
+
         // Загрузить все элементы номенклатуры (не папки, не удаленные)
         let all_items = a004_nomenclature::repository::list_all().await?;
-        
+
         let items: Vec<_> = all_items
             .into_iter()
             .filter(|n| !n.is_folder && !n.base.metadata.is_deleted)
@@ -131,7 +132,7 @@ impl MatchExecutor {
         // Загрузить товары маркетплейса
         let load_products_start = std::time::Instant::now();
         let products = if let Some(marketplace_id) = &request.marketplace_id {
-              a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
+            a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
         } else {
             a007_marketplace_product::service::list_all().await?
         };
@@ -159,10 +160,16 @@ impl MatchExecutor {
             // Установить текущий товар
             self.progress_tracker.set_current_item(
                 session_id,
-                Some(format!("{} - {}", product.article, product.base.description)),
+                Some(format!(
+                    "{} - {}",
+                    product.article, product.base.description
+                )),
             );
 
-            match self.process_product(&product, request, &article_index).await {
+            match self
+                .process_product(&product, request, &article_index)
+                .await
+            {
                 Ok(result) => {
                     processed += 1;
                     match result {
@@ -188,14 +195,8 @@ impl MatchExecutor {
             }
 
             // Обновить прогресс
-            self.progress_tracker.update_progress(
-                session_id,
-                processed,
-                matched,
-                cleared,
-                skipped,
-                ambiguous,
-            );
+            self.progress_tracker
+                .update_progress(session_id, processed, matched, cleared, skipped, ambiguous);
         }
         let process_duration = process_start.elapsed();
 
@@ -239,16 +240,24 @@ impl MatchExecutor {
         };
 
         // Аудит производительности
+        tracing::info!("=== Performance Audit for session {} ===", session_id);
         tracing::info!(
-            "=== Performance Audit for session {} ===",
-            session_id
+            "Total time: {:?}ms ({:.2}s)",
+            overall_duration.as_millis(),
+            overall_duration.as_secs_f64()
         );
-        tracing::info!("Total time: {:?}ms ({:.2}s)", overall_duration.as_millis(), overall_duration.as_secs_f64());
         tracing::info!("Load products: {:?}ms", load_products_duration.as_millis());
         tracing::info!("Build index: {:?}ms", build_index_duration.as_millis());
-        tracing::info!("Process products: {:?}ms ({:.2}s)", process_duration.as_millis(), process_duration.as_secs_f64());
+        tracing::info!(
+            "Process products: {:?}ms ({:.2}s)",
+            process_duration.as_millis(),
+            process_duration.as_secs_f64()
+        );
         tracing::info!("Average time per product: {:.2}ms", avg_time_per_product);
-        tracing::info!("Update mp_ref_count: {:?}ms", update_counts_duration.as_millis());
+        tracing::info!(
+            "Update mp_ref_count: {:?}ms",
+            update_counts_duration.as_millis()
+        );
         tracing::info!(
             "Results: Processed: {}, Matched: {}, Cleared: {}, Skipped: {}, Ambiguous: {}",
             processed,
@@ -287,7 +296,10 @@ impl MatchExecutor {
             }
         }
 
-        tracing::info!("Found {} nomenclature items with marketplace references", ref_counts.len());
+        tracing::info!(
+            "Found {} nomenclature items with marketplace references",
+            ref_counts.len()
+        );
 
         // Получить всю номенклатуру
         let all_nomenclature = a004_nomenclature::service::list_all().await?;
@@ -316,7 +328,10 @@ impl MatchExecutor {
         &self,
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
         request: &MatchRequest,
-        article_index: &HashMap<String, Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
+        article_index: &HashMap<
+            String,
+            Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>,
+        >,
     ) -> Result<MatchResult> {
         // Проверить, нужно ли обрабатывать товар
         if !request.overwrite_existing && product.nomenclature_ref.is_some() {

@@ -46,7 +46,11 @@ async fn fetch_paginated(
 
     let mut url = format!(
         "{}/api/a025-bi-dashboard/list?limit={}&offset={}&sort_by={}&sort_desc={}",
-        api_base(), limit, offset, sort_by, sort_desc,
+        api_base(),
+        limit,
+        offset,
+        sort_by,
+        sort_desc,
     );
     let q_trimmed = q.trim();
     if q_trimmed.len() >= 2 {
@@ -57,7 +61,10 @@ async fn fetch_paginated(
     }
 
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
 
     let window = web_sys::window().ok_or("no window")?;
     let resp: Response = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
@@ -66,18 +73,19 @@ async fn fetch_paginated(
         .dyn_into()
         .map_err(|e| format!("{e:?}"))?;
 
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
 
-    let text: String = wasm_bindgen_futures::JsFuture::from(
-        resp.text().map_err(|e| format!("{e:?}"))?,
-    )
-    .await
-    .map_err(|e| format!("{e:?}"))?
-    .as_string()
-    .ok_or("bad text")?;
+    let text: String =
+        wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .as_string()
+            .ok_or("bad text")?;
 
     let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let total       = parsed["total"].as_u64().unwrap_or(0);
+    let total = parsed["total"].as_u64().unwrap_or(0);
     let total_pages = parsed["total_pages"].as_u64().unwrap_or(1) as usize;
 
     let rows: Vec<BiDashboardRow> = parsed["items"]
@@ -87,13 +95,13 @@ async fn fetch_paginated(
         .into_iter()
         .filter_map(|v| {
             Some(BiDashboardRow {
-                id:          v["id"].as_str()?.to_string(),
-                code:        v["code"].as_str().unwrap_or("").to_string(),
+                id: v["id"].as_str()?.to_string(),
+                code: v["code"].as_str().unwrap_or("").to_string(),
                 description: v["description"].as_str().unwrap_or("").to_string(),
-                status:      v["status"].as_str().unwrap_or("draft").to_string(),
-                is_public:   v["is_public"].as_bool().unwrap_or(false),
-                rating:      v["rating"].as_u64().map(|r| r as u8),
-                created_at:  v["created_at"]
+                status: v["status"].as_str().unwrap_or("draft").to_string(),
+                is_public: v["is_public"].as_bool().unwrap_or(false),
+                rating: v["rating"].as_u64().map(|r| r as u8),
+                created_at: v["created_at"]
                     .as_str()
                     .map(|s| s[..10.min(s.len())].to_string())
                     .unwrap_or_default(),
@@ -102,6 +110,29 @@ async fn fetch_paginated(
         .collect();
 
     Ok((rows, total, total_pages))
+}
+
+async fn load_testdata() -> Result<(), String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/a025-bi-dashboard/testdata", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp: Response = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .dyn_into()
+        .map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
 }
 
 async fn delete_dashboard(id: &str) -> Result<(), String> {
@@ -121,7 +152,9 @@ async fn delete_dashboard(id: &str) -> Result<(), String> {
         .dyn_into()
         .map_err(|e| format!("{e:?}"))?;
 
-    if !resp.ok() { return Err(format!("HTTP {}", resp.status())); }
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
     Ok(())
 }
 
@@ -129,9 +162,9 @@ async fn delete_dashboard(id: &str) -> Result<(), String> {
 
 fn status_badge(status: &str) -> AnyView {
     let (color, label) = match status {
-        "active"   => (BadgeColor::Success, "Активен"),
+        "active" => (BadgeColor::Success, "Активен"),
         "archived" => (BadgeColor::Warning, "Архив"),
-        _          => (BadgeColor::Subtle,  "Черновик"),
+        _ => (BadgeColor::Subtle, "Черновик"),
     };
     view! { <Badge color=color>{label}</Badge> }.into_any()
 }
@@ -160,11 +193,12 @@ const COLUMN_WIDTHS_KEY: &str = "a025_bi_dashboard_column_widths";
 #[component]
 #[allow(non_snake_case)]
 pub fn BiDashboardList() -> impl IntoView {
-    let ctx   = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let state = create_state(); // BiDashboardListState: Copy
 
     let (items, set_items) = signal::<Vec<BiDashboardRow>>(vec![]);
     let (error, set_error) = signal::<Option<String>>(None);
+    let (testdata_loading, set_testdata_loading) = signal(false);
 
     // ── Reload ────────────────────────────────────────────────────────────────
     // All captured values are Copy, so reload itself is Copy.
@@ -203,24 +237,50 @@ pub fn BiDashboardList() -> impl IntoView {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
+    let on_load_testdata = move |_| {
+        set_testdata_loading.set(true);
+        set_error.set(None);
+        wasm_bindgen_futures::spawn_local(async move {
+            match load_testdata().await {
+                Ok(_) => {
+                    set_testdata_loading.set(false);
+                    reload();
+                }
+                Err(e) => {
+                    set_testdata_loading.set(false);
+                    set_error.set(Some(format!("Ошибка загрузки тест. данных: {}", e)));
+                }
+            }
+        });
+    };
+
     let toggle_select = move |id: String, checked: bool| {
         state.selected.update(|s| {
-            if checked { s.insert(id); } else { s.remove(&id); }
+            if checked {
+                s.insert(id);
+            } else {
+                s.remove(&id);
+            }
         });
     };
 
     let delete_selected = move || {
         let ids: Vec<String> = state.selected.get().into_iter().collect();
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         let confirmed = web_sys::window()
             .and_then(|w| {
-                w.confirm_with_message(
-                    &format!("Удалить выбранные дашборды? Количество: {}", ids.len()),
-                )
+                w.confirm_with_message(&format!(
+                    "Удалить выбранные дашборды? Количество: {}",
+                    ids.len()
+                ))
                 .ok()
             })
             .unwrap_or(false);
-        if !confirmed { return; }
+        if !confirmed {
+            return;
+        }
         wasm_bindgen_futures::spawn_local(async move {
             for id in ids {
                 let _ = delete_dashboard(&id).await;
@@ -250,6 +310,14 @@ pub fn BiDashboardList() -> impl IntoView {
                     <h1 class="page__title">"BI Дашборды"</h1>
                 </div>
                 <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=on_load_testdata
+                        disabled=Signal::derive(move || testdata_loading.get())
+                    >
+                        {icon("database")}
+                        {move || if testdata_loading.get() { " Загрузка..." } else { " Тест. данные" }}
+                    </Button>
                     <Button
                         appearance=ButtonAppearance::Primary
                         on_click=move |_| ctx.open_tab("a025_bi_dashboard_detail_new", "Новый BI Дашборд")
@@ -365,6 +433,7 @@ pub fn BiDashboardList() -> impl IntoView {
                                         {move || get_sort_indicator("created_at", &state.sort_by.get(), state.sort_desc.get())}
                                     </span>
                                 </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=90.0>"View"</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
@@ -377,6 +446,9 @@ pub fn BiDashboardList() -> impl IntoView {
                                 let tab_key   = format!("a025_bi_dashboard_detail_{}", id);
                                 let tab_title = format!("Дашборд · {}", row.code);
                                 let ctx_open  = ctx.clone();
+                                let view_tab_key = format!("a025_bi_dashboard_view_{}", row.id);
+                                let view_tab_title = format!("View · {}", row.code);
+                                let ctx_view = ctx.clone();
 
                                 view! {
                                     <TableRow class:table__row--selected=is_sel>
@@ -422,6 +494,20 @@ pub fn BiDashboardList() -> impl IntoView {
                                         <TableCell>
                                             <TableCellLayout>
                                                 <span class="text-muted">{row.created_at}</span>
+                                            </TableCellLayout>
+                                        </TableCell>
+                                        <TableCell>
+                                            <TableCellLayout>
+                                                <a
+                                                    href="#"
+                                                    class="table__link"
+                                                    on:click=move |e| {
+                                                        e.prevent_default();
+                                                        ctx_view.open_tab(&view_tab_key, &view_tab_title);
+                                                    }
+                                                >
+                                                    {icon("eye")} " Open"
+                                                </a>
                                             </TableCellLayout>
                                         </TableCell>
                                     </TableRow>

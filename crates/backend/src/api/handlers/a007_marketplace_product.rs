@@ -54,20 +54,18 @@ pub async fn list_paginated(
             let items = result
                 .items
                 .into_iter()
-                .map(|p| {
-                    MarketplaceProductListItemDto {
-                        id: p.base.id.0.to_string(),
-                        code: p.base.code,
-                        description: p.base.description,
-                        marketplace_ref: p.marketplace_ref,
-                        connection_mp_ref: p.connection_mp_ref,
-                        marketplace_sku: p.marketplace_sku,
-                        barcode: p.barcode,
-                        article: p.article,
-                        nomenclature_ref: p.nomenclature_ref,
-                        is_posted: p.base.metadata.is_posted,
-                        created_at: p.base.metadata.created_at.to_rfc3339(),
-                    }
+                .map(|p| MarketplaceProductListItemDto {
+                    id: p.base.id.0.to_string(),
+                    code: p.base.code,
+                    description: p.base.description,
+                    marketplace_ref: p.marketplace_ref,
+                    connection_mp_ref: p.connection_mp_ref,
+                    marketplace_sku: p.marketplace_sku,
+                    barcode: p.barcode,
+                    article: p.article,
+                    nomenclature_ref: p.nomenclature_ref,
+                    is_posted: p.base.metadata.is_posted,
+                    created_at: p.base.metadata.created_at.to_rfc3339(),
                 })
                 .collect();
 

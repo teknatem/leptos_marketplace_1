@@ -7,7 +7,7 @@
 //!   3. For standard categories, contains `page__header` and `page__content` children.
 
 use crate::shared::page_standard::{
-    is_known_category, is_valid_page_id, STANDARD_CATEGORIES, PAGE_CAT_LEGACY, PAGE_CAT_CUSTOM,
+    is_known_category, is_valid_page_id, PAGE_CAT_CUSTOM, PAGE_CAT_LEGACY, STANDARD_CATEGORIES,
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -62,20 +62,34 @@ pub fn validate_pages() -> ValidationReport {
     let mut legacy_count = 0;
 
     let Some(window) = web_sys::window() else {
-        return ValidationReport { issues, total_tabs, ok_count, legacy_count };
+        return ValidationReport {
+            issues,
+            total_tabs,
+            ok_count,
+            legacy_count,
+        };
     };
     let Some(document) = window.document() else {
-        return ValidationReport { issues, total_tabs, ok_count, legacy_count };
+        return ValidationReport {
+            issues,
+            total_tabs,
+            ok_count,
+            legacy_count,
+        };
     };
 
     // All app-tabs__item wrappers (one per open tab)
-    let tab_items = document.query_selector_all(".app-tabs__item").unwrap_or_else(|_| {
-        document.query_selector_all("*").unwrap()
-    });
+    let tab_items = document
+        .query_selector_all(".app-tabs__item")
+        .unwrap_or_else(|_| document.query_selector_all("*").unwrap());
 
     for i in 0..tab_items.length() {
-        let Some(node) = tab_items.get(i) else { continue };
-        let Some(tab_el) = node.dyn_ref::<Element>() else { continue };
+        let Some(node) = tab_items.get(i) else {
+            continue;
+        };
+        let Some(tab_el) = node.dyn_ref::<Element>() else {
+            continue;
+        };
 
         let tab_key = tab_el
             .get_attribute("data-tab-key")
@@ -106,7 +120,9 @@ pub fn validate_pages() -> ValidationReport {
                         issues.push(ValidationIssue {
                             severity: Severity::Error,
                             tab_key: tab_key.clone(),
-                            message: "Missing HTML id attribute (expected format: entity--category)".to_string(),
+                            message:
+                                "Missing HTML id attribute (expected format: entity--category)"
+                                    .to_string(),
                         });
                         tab_ok = false;
                     }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, FromQueryResult};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -27,11 +27,11 @@ pub struct Model {
     pub posting_ref: Option<String>, // Ссылка на a010_ozon_fbs_posting (UUID)
 
     // Даты
-    pub accrual_date: String,           // Дата начисления
+    pub accrual_date: String, // Дата начисления
     #[sea_orm(nullable)]
     pub operation_date: Option<String>, // Дата операции
     #[sea_orm(nullable)]
-    pub delivery_date: Option<String>,  // Дата доставки
+    pub delivery_date: Option<String>, // Дата доставки
 
     // Информация о доставке
     #[sea_orm(nullable)]
@@ -39,28 +39,28 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub delivery_region: Option<String>, // Регион доставки
     #[sea_orm(nullable)]
-    pub delivery_city: Option<String>,   // Город доставки
+    pub delivery_city: Option<String>, // Город доставки
 
     // Количество и суммы
     pub quantity: f64,
     #[sea_orm(nullable)]
-    pub price: Option<f64>,           // Цена товара
-    pub amount: f64,                  // Сумма продажи
+    pub price: Option<f64>, // Цена товара
+    pub amount: f64, // Сумма продажи
     #[sea_orm(nullable)]
     pub commission_amount: Option<f64>, // Сумма комиссии
     #[sea_orm(nullable)]
     pub commission_percent: Option<f64>, // Процент комиссии
     #[sea_orm(nullable)]
-    pub services_amount: Option<f64>,   // Сумма доп. услуг
+    pub services_amount: Option<f64>, // Сумма доп. услуг
     #[sea_orm(nullable)]
-    pub payout_amount: Option<f64>,     // Сумма к выплате
+    pub payout_amount: Option<f64>, // Сумма к выплате
 
     // Тип операции
     #[sea_orm(primary_key, auto_increment = false)]
-    pub operation_type: String,      // Тип операции
+    pub operation_type: String, // Тип операции
     #[sea_orm(nullable)]
     pub operation_type_name: Option<String>, // Название типа операции
-    pub is_return: bool,             // Флаг возврата
+    pub is_return: bool, // Флаг возврата
 
     // Валюта
     #[sea_orm(nullable)]
@@ -178,8 +178,12 @@ pub async fn upsert_entry(entry: &OzonFinanceRealizationEntry) -> Result<()> {
 
     let now = Utc::now();
     let accrual_date_str = entry.accrual_date.format("%Y-%m-%d").to_string();
-    let operation_date_str = entry.operation_date.map(|d| d.format("%Y-%m-%d").to_string());
-    let delivery_date_str = entry.delivery_date.map(|d| d.format("%Y-%m-%d").to_string());
+    let operation_date_str = entry
+        .operation_date
+        .map(|d| d.format("%Y-%m-%d").to_string());
+    let delivery_date_str = entry
+        .delivery_date
+        .map(|d| d.format("%Y-%m-%d").to_string());
 
     let active = ActiveModel {
         posting_number: Set(entry.posting_number.clone()),
@@ -221,7 +225,11 @@ pub async fn upsert_entry(entry: &OzonFinanceRealizationEntry) -> Result<()> {
 }
 
 /// Получить одну запись по композитному ключу (posting_number, sku, operation_type)
-pub async fn get_by_id(posting_number: &str, sku: &str, operation_type: &str) -> Result<Option<Model>> {
+pub async fn get_by_id(
+    posting_number: &str,
+    sku: &str,
+    operation_type: &str,
+) -> Result<Option<Model>> {
     let item = Entity::find()
         .filter(Column::PostingNumber.eq(posting_number))
         .filter(Column::Sku.eq(sku))
@@ -247,8 +255,8 @@ pub async fn list_with_filters(
     limit: i32,
     offset: i32,
 ) -> Result<(Vec<ModelWithSaleDate>, i32)> {
-    use sea_orm::Statement;
     use sea_orm::ConnectionTrait;
+    use sea_orm::Statement;
 
     // Построение WHERE условий
     let mut where_conditions = vec![
@@ -257,7 +265,10 @@ pub async fn list_with_filters(
     ];
 
     if let Some(ref pn) = posting_number {
-        where_conditions.push(format!("p902.posting_number LIKE '%{}%'", pn.replace("'", "''")));
+        where_conditions.push(format!(
+            "p902.posting_number LIKE '%{}%'",
+            pn.replace("'", "''")
+        ));
     }
 
     if let Some(ref s) = sku {
@@ -265,15 +276,24 @@ pub async fn list_with_filters(
     }
 
     if let Some(ref conn_ref) = connection_mp_ref {
-        where_conditions.push(format!("p902.connection_mp_ref = '{}'", conn_ref.replace("'", "''")));
+        where_conditions.push(format!(
+            "p902.connection_mp_ref = '{}'",
+            conn_ref.replace("'", "''")
+        ));
     }
 
     if let Some(ref org) = organization_ref {
-        where_conditions.push(format!("p902.organization_ref = '{}'", org.replace("'", "''")));
+        where_conditions.push(format!(
+            "p902.organization_ref = '{}'",
+            org.replace("'", "''")
+        ));
     }
 
     if let Some(ref op_type) = operation_type {
-        where_conditions.push(format!("p902.operation_type = '{}'", op_type.replace("'", "''")));
+        where_conditions.push(format!(
+            "p902.operation_type = '{}'",
+            op_type.replace("'", "''")
+        ));
     }
 
     if let Some(is_ret) = is_return {
@@ -292,11 +312,17 @@ pub async fn list_with_filters(
 
     // Построение ORDER BY
     let order_clause = match sort_by {
-        "posting_number" => format!("p902.posting_number {}", if sort_desc { "DESC" } else { "ASC" }),
+        "posting_number" => format!(
+            "p902.posting_number {}",
+            if sort_desc { "DESC" } else { "ASC" }
+        ),
         "sku" => format!("p902.sku {}", if sort_desc { "DESC" } else { "ASC" }),
         "amount" => format!("p902.amount {}", if sort_desc { "DESC" } else { "ASC" }),
         "sale_date" => format!("sale_date {}", if sort_desc { "DESC" } else { "ASC" }),
-        _ => format!("p902.accrual_date {}", if sort_desc { "DESC" } else { "ASC" }),
+        _ => format!(
+            "p902.accrual_date {}",
+            if sort_desc { "DESC" } else { "ASC" }
+        ),
     };
 
     // Count query
@@ -351,10 +377,7 @@ pub async fn list_with_filters(
         ORDER BY {}
         LIMIT {} OFFSET {}
         "#,
-        where_clause,
-        order_clause,
-        limit,
-        offset
+        where_clause, order_clause, limit, offset
     );
 
     let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
@@ -420,10 +443,7 @@ pub async fn get_stats(
         .iter()
         .map(|i| i.commission_amount.unwrap_or(0.0))
         .sum();
-    let total_payout: f64 = items
-        .iter()
-        .map(|i| i.payout_amount.unwrap_or(0.0))
-        .sum();
+    let total_payout: f64 = items.iter().map(|i| i.payout_amount.unwrap_or(0.0)).sum();
 
     // Подсчет уникальных постингов
     use std::collections::HashSet;

@@ -22,8 +22,11 @@ pub struct LlmAgentDto {
 
 /// Создание нового агента LLM
 pub async fn create(dto: LlmAgentDto) -> anyhow::Result<Uuid> {
-    let code = dto.code.clone().unwrap_or_else(|| format!("LLM-{}", Uuid::new_v4()));
-    
+    let code = dto
+        .code
+        .clone()
+        .unwrap_or_else(|| format!("LLM-{}", Uuid::new_v4()));
+
     let provider_type = LlmProviderType::from_str(&dto.provider_type)
         .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
 
@@ -58,7 +61,7 @@ pub async fn create(dto: LlmAgentDto) -> anyhow::Result<Uuid> {
 
     // Сохранение через repository
     repository::insert(&aggregate).await?;
-    
+
     Ok(id)
 }
 
@@ -79,7 +82,7 @@ pub async fn update(dto: LlmAgentDto) -> anyhow::Result<()> {
     }
     aggregate.base.description = dto.description;
     aggregate.base.comment = dto.comment;
-    
+
     aggregate.provider_type = LlmProviderType::from_str(&dto.provider_type)
         .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
     aggregate.api_endpoint = dto.api_endpoint;

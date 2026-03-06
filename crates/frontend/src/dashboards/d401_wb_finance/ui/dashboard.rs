@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use crate::shared::universal_dashboard::UniversalDashboard;
+use leptos::prelude::*;
 
 /// D401 WB Finance Dashboard - wrapper around UniversalDashboard
 #[component]

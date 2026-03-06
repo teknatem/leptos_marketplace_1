@@ -1,16 +1,12 @@
 use anyhow::Result;
 use chrono::{Duration, Utc};
+use contracts::domain::common::AggregateId;
+use std::sync::Arc;
 use tokio::time::{self, MissedTickBehavior};
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use std::sync::Arc;
-use contracts::domain::common::AggregateId;
 
-use super::{
-    logger::TaskLogger,
-    registry::TaskManagerRegistry,
-    service,
-};
+use super::{logger::TaskLogger, registry::TaskManagerRegistry, service};
 use contracts::system::tasks::progress::TaskStatus;
 
 /// Фоновый воркер для выполнения запланированных задач.
@@ -35,7 +31,10 @@ impl ScheduledTaskWorker {
 
     /// Запускает цикл выполнения задач.
     pub async fn run_loop(&self) {
-        info!("Scheduled task worker started with interval {} seconds", self.interval_seconds);
+        info!(
+            "Scheduled task worker started with interval {} seconds",
+            self.interval_seconds
+        );
         let mut interval = time::interval(time::Duration::from_secs(self.interval_seconds));
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -60,8 +59,12 @@ impl ScheduledTaskWorker {
             };
 
             if should_run {
-                info!("Task '{}' ({}) is due. Running...", task.base.description, task.base.id.as_string());
-                
+                info!(
+                    "Task '{}' ({}) is due. Running...",
+                    task.base.description,
+                    task.base.id.as_string()
+                );
+
                 let session_id = Uuid::new_v4().to_string();
                 let task_id = task.base.id;
                 let task_type = task.task_type.clone();
@@ -80,7 +83,8 @@ impl ScheduledTaskWorker {
                     Some(next_run),
                     Some(task_logger.get_log_file_path(&session_id)),
                     Some(TaskStatus::Running.to_string()),
-                ).await?;
+                )
+                .await?;
 
                 let task_clone = task.clone();
                 tokio::spawn(async move {
@@ -88,34 +92,53 @@ impl ScheduledTaskWorker {
                     match manager {
                         Some(mgr) => {
                             if let Err(e) = mgr.run(&task_clone, &session_id, task_logger).await {
-                                error!("Task '{}' ({}) session {} failed: {:?}", task_description, task_id.as_string(), session_id, e);
+                                error!(
+                                    "Task '{}' ({}) session {} failed: {:?}",
+                                    task_description,
+                                    task_id.as_string(),
+                                    session_id,
+                                    e
+                                );
                                 let _ = service::update_run_status(
                                     &task_id,
                                     Some(now),
                                     Some(next_run),
                                     None, // keep existing log file path
                                     Some(TaskStatus::Failed.to_string()),
-                                ).await;
+                                )
+                                .await;
                             } else {
-                                info!("Task '{}' ({}) session {} completed successfully", task_description, task_id.as_string(), session_id);
+                                info!(
+                                    "Task '{}' ({}) session {} completed successfully",
+                                    task_description,
+                                    task_id.as_string(),
+                                    session_id
+                                );
                                 let _ = service::update_run_status(
                                     &task_id,
                                     Some(now),
                                     Some(next_run),
                                     None, // keep existing log file path
                                     Some(TaskStatus::Completed.to_string()),
-                                ).await;
+                                )
+                                .await;
                             }
                         }
                         None => {
-                            warn!("No manager found for task type '{}' for task '{}' ({})", task_type, task_description, task_id.as_string());
+                            warn!(
+                                "No manager found for task type '{}' for task '{}' ({})",
+                                task_type,
+                                task_description,
+                                task_id.as_string()
+                            );
                             let _ = service::update_run_status(
                                 &task_id,
                                 Some(now),
                                 Some(next_run),
                                 None, // keep existing log file path
                                 Some(TaskStatus::Failed.to_string()),
-                            ).await;
+                            )
+                            .await;
                         }
                     }
                 });

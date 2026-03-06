@@ -1,7 +1,9 @@
 //! ViewModel for BiIndicator details form (EditDetails MVVM Standard)
 
-use super::model::{self, BiIndicatorSaveDto};
-use crate::shared::bi_card::{render_srcdoc, IndicatorCardParams};
+use super::model::{self, BiIndicatorSaveDto, ComputedIndicatorValue};
+use crate::shared::bi_card::{
+    default_design_name, is_known_design, render_srcdoc, IndicatorCardParams,
+};
 use crate::shared::code_format;
 use leptos::prelude::*;
 
@@ -15,11 +17,131 @@ fn get_app_theme() -> String {
             .and_then(|s| s.get_item("app_theme").ok().flatten())
             .unwrap_or_else(|| "dark".to_string());
         // forest is a dark-base theme
-        if theme == "light" { "light".to_string() } else { "dark".to_string() }
+        if theme == "light" {
+            "light".to_string()
+        } else {
+            "dark".to_string()
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         "dark".to_string()
+    }
+}
+
+fn default_query_config_value() -> serde_json::Value {
+    serde_json::json!({
+        "data_source": "",
+        "selected_fields": [],
+        "groupings": [],
+        "display_fields": [],
+        "filters": [],
+        "sort": [],
+        "enabled_fields": []
+    })
+}
+
+fn normalized_query_config(value: serde_json::Value) -> serde_json::Value {
+    let mut obj = if let Some(obj) = value.as_object() {
+        obj.clone()
+    } else {
+        serde_json::Map::new()
+    };
+
+    if !obj.contains_key("data_source") {
+        obj.insert(
+            "data_source".to_string(),
+            serde_json::Value::String(String::new()),
+        );
+    }
+    if !obj.contains_key("selected_fields") {
+        obj.insert("selected_fields".to_string(), serde_json::json!([]));
+    }
+    if !obj.contains_key("groupings") {
+        obj.insert("groupings".to_string(), serde_json::json!([]));
+    }
+    if !obj.contains_key("display_fields") {
+        obj.insert("display_fields".to_string(), serde_json::json!([]));
+    }
+    if !obj.contains_key("filters") {
+        obj.insert("filters".to_string(), serde_json::json!([]));
+    }
+    if !obj.contains_key("sort") {
+        obj.insert("sort".to_string(), serde_json::json!([]));
+    }
+    if !obj.contains_key("enabled_fields") {
+        obj.insert("enabled_fields".to_string(), serde_json::json!([]));
+    }
+
+    serde_json::Value::Object(obj)
+}
+
+fn format_money(v: f64, symbol: &str) -> String {
+    let abs = v.abs();
+    let sign = if v < 0.0 { "-" } else { "" };
+    if abs >= 1_000_000_000.0 {
+        format!("{sign}{symbol}{:.2}B", abs / 1_000_000_000.0)
+    } else if abs >= 1_000_000.0 {
+        format!("{sign}{symbol}{:.1}M", abs / 1_000_000.0)
+    } else if abs >= 1_000.0 {
+        format!("{sign}{symbol}{:.1}K", abs / 1_000.0)
+    } else {
+        format!("{sign}{symbol}{:.2}", abs)
+    }
+}
+
+fn default_value_format_value() -> serde_json::Value {
+    serde_json::json!({
+        "kind": "Number",
+        "decimals": 2
+    })
+}
+
+fn normalized_value_format(value: serde_json::Value) -> serde_json::Value {
+    let Some(obj) = value.as_object() else {
+        return default_value_format_value();
+    };
+
+    let kind = obj.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+    match kind {
+        "Money" => {
+            let currency = obj
+                .get("currency")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or("RUB");
+            serde_json::json!({
+                "kind": "Money",
+                "currency": currency
+            })
+        }
+        "Percent" => {
+            let decimals = obj.get("decimals").and_then(|v| v.as_u64()).unwrap_or(2) as u8;
+            serde_json::json!({
+                "kind": "Percent",
+                "decimals": decimals
+            })
+        }
+        "Integer" => serde_json::json!({
+            "kind": "Integer"
+        }),
+        "Number" => {
+            let decimals = obj.get("decimals").and_then(|v| v.as_u64()).unwrap_or(2) as u8;
+            serde_json::json!({
+                "kind": "Number",
+                "decimals": decimals
+            })
+        }
+        _ => default_value_format_value(),
+    }
+}
+
+fn normalize_design(style_name: &str, custom_css: &str) -> String {
+    let has_custom_css = !custom_css.trim().is_empty();
+    if is_known_design(style_name, has_custom_css) {
+        style_name.to_string()
+    } else {
+        default_design_name().to_string()
     }
 }
 
@@ -74,15 +196,24 @@ pub struct BiIndicatorDetailsVm {
     pub error: RwSignal<Option<String>>,
     pub success: RwSignal<Option<String>>,
 
-    // === Preview test data ===
-    pub preview_title: RwSignal<String>,
-    pub preview_value: RwSignal<String>,
-    pub preview_delta: RwSignal<String>,
-    pub preview_delta_dir: RwSignal<String>,
-    pub preview_status: RwSignal<String>,
-    pub preview_chip: RwSignal<String>,
-    pub preview_progress: RwSignal<u8>,
-    pub preview_size: RwSignal<String>,
+    // === Preview field values (saved with record via view_spec.preview_values) ===
+    pub preview_title: RwSignal<String>,        // {{name}}
+    pub preview_value: RwSignal<String>,        // {{value}}
+    pub preview_unit: RwSignal<String>,         // {{unit}}
+    pub preview_delta: RwSignal<String>,        // {{delta}}
+    pub preview_delta_dir: RwSignal<String>,    // {{delta_dir}} → arrow
+    pub preview_status: RwSignal<String>,       // {{status}}
+    pub preview_chip: RwSignal<String>,         // {{chip}}
+    pub preview_meta_1: RwSignal<String>,       // {{meta_1}}
+    pub preview_meta_2: RwSignal<String>,       // {{meta_2}}
+    pub preview_graph_type: RwSignal<u8>,       // 0-none, 1-progress, 2-spark
+    pub preview_progress: RwSignal<u8>,         // {{progress}} (modern)
+    pub preview_hint: RwSignal<String>,         // {{hint}} (modern)
+    pub preview_footer_1: RwSignal<String>,     // {{footer_1}} (modern)
+    pub preview_footer_2: RwSignal<String>,     // {{footer_2}} (modern)
+    pub preview_spark_points: RwSignal<String>, // comma-separated f64 for sparkline (classic)
+    pub preview_hidden_fields: RwSignal<std::collections::HashSet<String>>, // keys excluded from render
+    pub preview_size: RwSignal<String>,                                     // iframe sizing
 
     // === LLM generation state ===
     pub llm_prompt: RwSignal<String>,
@@ -90,6 +221,15 @@ pub struct BiIndicatorDetailsVm {
     pub llm_error: RwSignal<Option<String>>,
     pub llm_history: RwSignal<Vec<LlmGenerationEntry>>,
     pub llm_panel_open: RwSignal<bool>,
+
+    // === DataSpec live test ===
+    pub test_date_from: RwSignal<String>,
+    pub test_date_to: RwSignal<String>,
+    /// Newline- or comma-separated connection_mp IDs (empty = all)
+    pub test_connection_ids: RwSignal<String>,
+    pub test_loading: RwSignal<bool>,
+    pub test_error: RwSignal<Option<String>>,
+    pub test_result: RwSignal<Option<ComputedIndicatorValue>>,
 }
 
 impl BiIndicatorDetailsVm {
@@ -106,14 +246,20 @@ impl BiIndicatorDetailsVm {
 
             data_spec_schema_id: RwSignal::new(String::new()),
             data_spec_sql_artifact_id: RwSignal::new(String::new()),
-            data_spec_query_config_json: RwSignal::new("{}".to_string()),
+            data_spec_query_config_json: RwSignal::new(
+                serde_json::to_string_pretty(&default_query_config_value())
+                    .unwrap_or_else(|_| "{}".to_string()),
+            ),
 
             params_json: RwSignal::new("[]".to_string()),
 
-            view_spec_style_name: RwSignal::new("classic".to_string()),
+            view_spec_style_name: RwSignal::new(default_design_name().to_string()),
             view_spec_custom_html: RwSignal::new(String::new()),
             view_spec_custom_css: RwSignal::new(String::new()),
-            view_spec_format_json: RwSignal::new("{}".to_string()),
+            view_spec_format_json: RwSignal::new(
+                serde_json::to_string_pretty(&default_value_format_value())
+                    .unwrap_or_else(|_| "{}".to_string()),
+            ),
             view_spec_thresholds_json: RwSignal::new("[]".to_string()),
 
             drill_spec_json: RwSignal::new(String::new()),
@@ -131,11 +277,20 @@ impl BiIndicatorDetailsVm {
 
             preview_title: RwSignal::new("Выручка".to_string()),
             preview_value: RwSignal::new("₽2.40M".to_string()),
+            preview_unit: RwSignal::new(String::new()),
             preview_delta: RwSignal::new("+12.5%".to_string()),
             preview_delta_dir: RwSignal::new("up".to_string()),
             preview_status: RwSignal::new("ok".to_string()),
-            preview_chip: RwSignal::new("Выручка".to_string()),
-            preview_progress: RwSignal::new(82u8),
+            preview_chip: RwSignal::new(String::new()),
+            preview_meta_1: RwSignal::new(String::new()),
+            preview_meta_2: RwSignal::new(String::new()),
+            preview_graph_type: RwSignal::new(2u8),
+            preview_progress: RwSignal::new(0u8),
+            preview_hint: RwSignal::new(String::new()),
+            preview_footer_1: RwSignal::new(String::new()),
+            preview_footer_2: RwSignal::new(String::new()),
+            preview_spark_points: RwSignal::new(String::new()),
+            preview_hidden_fields: RwSignal::new(std::collections::HashSet::new()),
             preview_size: RwSignal::new("1x1".to_string()),
 
             llm_prompt: RwSignal::new(String::new()),
@@ -143,6 +298,37 @@ impl BiIndicatorDetailsVm {
             llm_error: RwSignal::new(None),
             llm_history: RwSignal::new(Vec::new()),
             llm_panel_open: RwSignal::new(false),
+
+            test_date_from: RwSignal::new({
+                // Default: first day of current month
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use js_sys::Date;
+                    let d = Date::new_0();
+                    format!("{}-{:02}-01", d.get_full_year(), d.get_month() + 1)
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                "2026-03-01".to_string()
+            }),
+            test_date_to: RwSignal::new({
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use js_sys::Date;
+                    let d = Date::new_0();
+                    format!(
+                        "{}-{:02}-{:02}",
+                        d.get_full_year(),
+                        d.get_month() + 1,
+                        d.get_date()
+                    )
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                "2026-03-05".to_string()
+            }),
+            test_connection_ids: RwSignal::new(String::new()),
+            test_loading: RwSignal::new(false),
+            test_error: RwSignal::new(None),
+            test_result: RwSignal::new(None),
         }
     }
 
@@ -164,47 +350,77 @@ impl BiIndicatorDetailsVm {
         Signal::derive(move || saving.get() || !is_valid.get())
     }
 
-    /// Build the iframe srcdoc from current ViewSpec + test data
+    /// Build the iframe srcdoc from current ViewSpec + preview field values
     pub fn build_preview_srcdoc(&self) -> Signal<String> {
         let style_sig = self.view_spec_style_name;
-        let html_sig = self.view_spec_custom_html;
         let css_sig = self.view_spec_custom_css;
         let name_sig = self.preview_title;
         let value_sig = self.preview_value;
+        let unit_sig = self.preview_unit;
         let delta_sig = self.preview_delta;
         let delta_dir_sig = self.preview_delta_dir;
         let status_sig = self.preview_status;
         let chip_sig = self.preview_chip;
+        let meta_1_sig = self.preview_meta_1;
+        let meta_2_sig = self.preview_meta_2;
+        let graph_type_sig = self.preview_graph_type;
         let progress_sig = self.preview_progress;
+        let hint_sig = self.preview_hint;
+        let footer_1_sig = self.preview_footer_1;
+        let footer_2_sig = self.preview_footer_2;
+        let spark_sig = self.preview_spark_points;
+        let hidden_sig = self.preview_hidden_fields;
 
         Signal::derive(move || {
-            let style_name = style_sig.get();
+            let hidden = hidden_sig.get();
+            let vis = |key: &str, val: String| -> String {
+                if hidden.contains(key) {
+                    String::new()
+                } else {
+                    val
+                }
+            };
+
+            let mut graph_type = graph_type_sig.get().min(2);
+            if (graph_type == 1 && hidden.contains("progress"))
+                || (graph_type == 2 && hidden.contains("spark"))
+            {
+                graph_type = 0;
+            }
+
+            let spark_points: Vec<f64> = if graph_type == 2 && !hidden.contains("spark") {
+                spark_sig
+                    .get()
+                    .split(',')
+                    .filter_map(|p| p.trim().parse::<f64>().ok())
+                    .collect()
+            } else {
+                vec![]
+            };
             let params = IndicatorCardParams {
-                style_name: style_name.clone(),
+                style_name: style_sig.get(),
                 theme: get_app_theme(),
-                name: name_sig.get(),
-                value: value_sig.get(),
-                unit: String::new(),
-                delta: delta_sig.get(),
-                delta_dir: delta_dir_sig.get(),
-                status: status_sig.get(),
-                chip: chip_sig.get(),
+                name: vis("name", name_sig.get()),
+                value: vis("value", value_sig.get()),
+                unit: vis("unit", unit_sig.get()),
+                delta: vis("delta", delta_sig.get()),
+                delta_dir: vis("delta_dir", delta_dir_sig.get()),
+                status: vis("status", status_sig.get()),
+                chip: vis("chip", chip_sig.get()),
                 col_class: String::new(),
-                progress: progress_sig.get(),
-                spark_points: vec![],
-                meta_1: "Период: 30 дней".to_string(),
-                meta_2: "Обновлено: 5 мин".to_string(),
-                hint: format!("до цели: {}%", progress_sig.get()),
-                footer_1: "Источник: Sales".to_string(),
-                footer_2: String::new(),
-                custom_html: {
-                    let h = html_sig.get();
-                    if h.trim().is_empty() {
-                        None
-                    } else {
-                        Some(h)
-                    }
+                graph_type,
+                progress: if graph_type == 1 && !hidden.contains("progress") {
+                    progress_sig.get()
+                } else {
+                    0
                 },
+                spark_points,
+                meta_1: vis("meta_1", meta_1_sig.get()),
+                meta_2: vis("meta_2", meta_2_sig.get()),
+                hint: vis("hint", hint_sig.get()),
+                footer_1: vis("footer_1", footer_1_sig.get()),
+                footer_2: vis("footer_2", footer_2_sig.get()),
+                custom_html: None,
                 custom_css: {
                     let c = css_sig.get();
                     if c.trim().is_empty() {
@@ -292,14 +508,6 @@ impl BiIndicatorDetailsVm {
         this.llm_generating.set(true);
         this.llm_error.set(None);
 
-        let current_html = {
-            let h = this.view_spec_custom_html.get();
-            if h.trim().is_empty() {
-                None
-            } else {
-                Some(h)
-            }
-        };
         let current_css = {
             let c = this.view_spec_custom_css.get();
             if c.trim().is_empty() {
@@ -313,7 +521,7 @@ impl BiIndicatorDetailsVm {
         leptos::task::spawn_local(async move {
             match model::generate_view(
                 &prompt,
-                current_html.as_deref(),
+                None,
                 current_css.as_deref(),
                 &indicator_description,
             )
@@ -344,10 +552,127 @@ impl BiIndicatorDetailsVm {
 
     /// Apply a specific LLM generation entry to the ViewSpec fields
     pub fn apply_generation(&self, entry: &LlmGenerationEntry) {
-        self.view_spec_custom_html
-            .set(code_format::format_html(&entry.html));
         self.view_spec_custom_css
             .set(code_format::format_css(&entry.css));
+        if !entry.css.trim().is_empty() {
+            self.view_spec_style_name.set("custom".to_string());
+        }
+    }
+
+    /// Run the indicator compute against real data using the current DataSpec schema_id
+    pub fn run_test(&self) {
+        let schema_id = self.data_spec_schema_id.get();
+        if schema_id.trim().is_empty() {
+            self.test_error.set(Some("Schema ID не задан".into()));
+            return;
+        }
+        let date_from = self.test_date_from.get();
+        let date_to = self.test_date_to.get();
+        let raw_ids = self.test_connection_ids.get();
+        let connection_ids: Vec<String> = raw_ids
+            .split([',', '\n'])
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let this = self.clone();
+        this.test_loading.set(true);
+        this.test_error.set(None);
+        this.test_result.set(None);
+
+        leptos::task::spawn_local(async move {
+            match model::compute_indicator_schema(&schema_id, &date_from, &date_to, connection_ids)
+                .await
+            {
+                Ok(result) => {
+                    this.test_loading.set(false);
+                    this.test_result.set(Some(result));
+                }
+                Err(e) => {
+                    this.test_loading.set(false);
+                    this.test_error.set(Some(e));
+                }
+            }
+        });
+    }
+
+    /// Apply the test result to the preview fields so the preview tab reflects real data
+    pub fn apply_test_to_preview(&self) {
+        let Some(result) = self.test_result.get() else {
+            return;
+        };
+
+        // Format the primary value using view_spec format
+        let formatted = self.format_value(result.value);
+        self.preview_value.set(formatted);
+
+        // Format delta
+        if let Some(pct) = result.change_percent {
+            let sign = if pct >= 0.0 { "+" } else { "" };
+            self.preview_delta.set(format!("{sign}{:.1}%", pct));
+            self.preview_delta_dir.set(if pct > 0.0 {
+                "up".to_string()
+            } else if pct < 0.0 {
+                "down".to_string()
+            } else {
+                "flat".to_string()
+            });
+        } else {
+            self.preview_delta.set(String::new());
+            self.preview_delta_dir.set("flat".to_string());
+        }
+
+        // Map status
+        let status_str = match result.status.as_str() {
+            "Good" => "ok",
+            "Bad" => "bad",
+            "Warning" => "warn",
+            _ => "neutral",
+        };
+        self.preview_status.set(status_str.to_string());
+    }
+
+    /// Format a numeric value according to the current view_spec format
+    pub fn format_value(&self, value: Option<f64>) -> String {
+        let Some(v) = value else {
+            return "—".to_string();
+        };
+        let format_json = self.view_spec_format_json.get();
+        let fmt: serde_json::Value =
+            serde_json::from_str(&format_json).unwrap_or_else(|_| default_value_format_value());
+        let kind = fmt["kind"].as_str().unwrap_or("Number");
+        match kind {
+            "Money" => {
+                let currency = fmt["currency"].as_str().unwrap_or("₽");
+                let symbol = if currency == "RUB" { "₽" } else { currency };
+                format_money(v, symbol)
+            }
+            "Percent" => {
+                let decimals = fmt["decimals"].as_u64().unwrap_or(1) as usize;
+                format!("{:.prec$}%", v, prec = decimals)
+            }
+            "Integer" => {
+                let abs = v.abs();
+                if abs >= 1_000_000_000.0 {
+                    format!("{:.2}B", v / 1_000_000_000.0)
+                } else if abs >= 1_000_000.0 {
+                    format!("{:.2}M", v / 1_000_000.0)
+                } else {
+                    format!("{}", v as i64)
+                }
+            }
+            _ => {
+                let decimals = fmt["decimals"].as_u64().unwrap_or(2) as usize;
+                let abs = v.abs();
+                if abs >= 1_000_000_000.0 {
+                    format!("{:.2}B", v / 1_000_000_000.0)
+                } else if abs >= 1_000_000.0 {
+                    format!("{:.2}M", v / 1_000_000.0)
+                } else {
+                    format!("{:.prec$}", v, prec = decimals)
+                }
+            }
+        }
     }
 
     // === Tab helpers ===
@@ -359,9 +684,10 @@ impl BiIndicatorDetailsVm {
     // === Private helpers ===
 
     fn to_dto(&self) -> BiIndicatorSaveDto {
-        let query_config =
+        let query_config_raw =
             serde_json::from_str::<serde_json::Value>(&self.data_spec_query_config_json.get())
-                .unwrap_or(serde_json::json!({}));
+                .unwrap_or_else(|_| default_query_config_value());
+        let query_config = normalized_query_config(query_config_raw);
 
         let sql_artifact_id = {
             let s = self.data_spec_sql_artifact_id.get();
@@ -381,21 +707,19 @@ impl BiIndicatorDetailsVm {
         let params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
             .unwrap_or(serde_json::json!([]));
 
-        let format = serde_json::from_str::<serde_json::Value>(&self.view_spec_format_json.get())
-            .unwrap_or(serde_json::json!({}));
+        let format_raw =
+            serde_json::from_str::<serde_json::Value>(&self.view_spec_format_json.get())
+                .unwrap_or_else(|_| default_value_format_value());
+        let format = normalized_value_format(format_raw);
 
         let thresholds =
             serde_json::from_str::<serde_json::Value>(&self.view_spec_thresholds_json.get())
                 .unwrap_or(serde_json::json!([]));
 
-        let custom_html = {
-            let h = self.view_spec_custom_html.get();
-            if h.trim().is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::Value::String(h)
-            }
-        };
+        let style_name = normalize_design(
+            &self.view_spec_style_name.get(),
+            &self.view_spec_custom_css.get(),
+        );
         let custom_css = {
             let c = self.view_spec_custom_css.get();
             if c.trim().is_empty() {
@@ -405,12 +729,37 @@ impl BiIndicatorDetailsVm {
             }
         };
 
+        let hidden_str = {
+            let mut keys: Vec<String> = self.preview_hidden_fields.get().into_iter().collect();
+            keys.sort();
+            keys.join(",")
+        };
+        let preview_values = serde_json::json!({
+            "name":         self.preview_title.get(),
+            "value":        self.preview_value.get(),
+            "unit":         self.preview_unit.get(),
+            "delta":        self.preview_delta.get(),
+            "delta_dir":    self.preview_delta_dir.get(),
+            "status":       self.preview_status.get(),
+            "chip":         self.preview_chip.get(),
+            "meta_1":       self.preview_meta_1.get(),
+            "meta_2":       self.preview_meta_2.get(),
+            "graph_type":   self.preview_graph_type.get().to_string(),
+            "progress":     self.preview_progress.get().to_string(),
+            "hint":         self.preview_hint.get(),
+            "footer_1":     self.preview_footer_1.get(),
+            "footer_2":     self.preview_footer_2.get(),
+            "spark_points": self.preview_spark_points.get(),
+            "_hidden":      hidden_str,
+        });
+
         let view_spec = serde_json::json!({
-            "style_name": self.view_spec_style_name.get(),
-            "custom_html": custom_html,
+            "style_name": style_name,
+            "custom_html": serde_json::Value::Null,
             "custom_css": custom_css,
             "format": format,
             "thresholds": thresholds,
+            "preview_values": preview_values,
         });
 
         let drill_spec_raw = self.drill_spec_json.get();
@@ -465,11 +814,13 @@ impl BiIndicatorDetailsVm {
                 .set(ds["schema_id"].as_str().unwrap_or("").to_string());
             self.data_spec_sql_artifact_id
                 .set(ds["sql_artifact_id"].as_str().unwrap_or("").to_string());
+            let normalized = normalized_query_config(
+                ds.get("query_config")
+                    .cloned()
+                    .unwrap_or_else(default_query_config_value),
+            );
             self.data_spec_query_config_json.set(
-                serde_json::to_string_pretty(
-                    ds.get("query_config").unwrap_or(&serde_json::json!({})),
-                )
-                .unwrap_or_else(|_| "{}".to_string()),
+                serde_json::to_string_pretty(&normalized).unwrap_or_else(|_| "{}".to_string()),
             );
         }
 
@@ -481,16 +832,20 @@ impl BiIndicatorDetailsVm {
 
         // ViewSpec
         if let Some(vs) = v.get("view_spec") {
-            self.view_spec_style_name
-                .set(vs["style_name"].as_str().unwrap_or("classic").to_string());
-            let raw_html = vs["custom_html"].as_str().unwrap_or("").to_string();
             let raw_css = vs["custom_css"].as_str().unwrap_or("").to_string();
-            self.view_spec_custom_html
-                .set(code_format::format_html(&raw_html));
             self.view_spec_custom_css
                 .set(code_format::format_css(&raw_css));
+            self.view_spec_custom_html.set(String::new());
+            let normalized_style =
+                normalize_design(vs["style_name"].as_str().unwrap_or("classic"), &raw_css);
+            self.view_spec_style_name.set(normalized_style);
+            let normalized_format = normalized_value_format(
+                vs.get("format")
+                    .cloned()
+                    .unwrap_or_else(default_value_format_value),
+            );
             self.view_spec_format_json.set(
-                serde_json::to_string_pretty(vs.get("format").unwrap_or(&serde_json::json!({})))
+                serde_json::to_string_pretty(&normalized_format)
                     .unwrap_or_else(|_| "{}".to_string()),
             );
             self.view_spec_thresholds_json.set(
@@ -499,6 +854,68 @@ impl BiIndicatorDetailsVm {
                 )
                 .unwrap_or_else(|_| "[]".to_string()),
             );
+
+            // Load saved preview values (if any)
+            if let Some(pv) = vs.get("preview_values").and_then(|v| v.as_object()) {
+                let s = |key: &str| {
+                    pv.get(key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
+                self.preview_title.set(s("name"));
+                self.preview_value.set(s("value"));
+                self.preview_unit.set(s("unit"));
+                self.preview_delta.set(s("delta"));
+                self.preview_delta_dir.set({
+                    let d = s("delta_dir");
+                    if d.is_empty() {
+                        "up".to_string()
+                    } else {
+                        d
+                    }
+                });
+                self.preview_status.set({
+                    let st = s("status");
+                    if st.is_empty() {
+                        "ok".to_string()
+                    } else {
+                        st
+                    }
+                });
+                self.preview_chip.set(s("chip"));
+                self.preview_meta_1.set(s("meta_1"));
+                self.preview_meta_2.set(s("meta_2"));
+                self.preview_graph_type.set({
+                    let explicit = s("graph_type").parse::<u8>().ok().map(|v| v.min(2));
+                    if let Some(v) = explicit {
+                        v
+                    } else {
+                        let progress_raw = s("progress").parse::<u8>().unwrap_or(0);
+                        let has_spark = !s("spark_points").trim().is_empty();
+                        if progress_raw > 0 {
+                            1
+                        } else if has_spark {
+                            2
+                        } else {
+                            2
+                        }
+                    }
+                });
+                self.preview_progress
+                    .set(s("progress").parse::<u8>().unwrap_or(0));
+                self.preview_hint.set(s("hint"));
+                self.preview_footer_1.set(s("footer_1"));
+                self.preview_footer_2.set(s("footer_2"));
+                self.preview_spark_points.set(s("spark_points"));
+                let hidden_str = s("_hidden");
+                let hidden: std::collections::HashSet<String> = hidden_str
+                    .split(',')
+                    .filter(|k| !k.is_empty())
+                    .map(|k| k.to_string())
+                    .collect();
+                self.preview_hidden_fields.set(hidden);
+            }
         }
 
         // DrillSpec

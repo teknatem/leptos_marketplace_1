@@ -213,8 +213,10 @@ impl YmOrderDetailsVm {
         let order_id: i64 = match order.header.document_no.parse() {
             Ok(v) => v,
             Err(_) => {
-                self.payment_reports_error
-                    .set(Some(format!("Не удалось разобрать номер заказа: {}", order.header.document_no)));
+                self.payment_reports_error.set(Some(format!(
+                    "Не удалось разобрать номер заказа: {}",
+                    order.header.document_no
+                )));
                 return;
             }
         };

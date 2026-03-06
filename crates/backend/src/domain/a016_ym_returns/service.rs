@@ -49,4 +49,3 @@ pub async fn list_all() -> Result<Vec<YmReturn>> {
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
-

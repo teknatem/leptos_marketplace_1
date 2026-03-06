@@ -16,7 +16,11 @@ pub fn points_to_svg_path(points: &[f64]) -> (String, String) {
 
     let min = points.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = points.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let range = if (max - min).abs() < 1e-9 { 1.0 } else { max - min };
+    let range = if (max - min).abs() < 1e-9 {
+        1.0
+    } else {
+        max - min
+    };
 
     let n = points.len();
     let coords: Vec<(f64, f64)> = points

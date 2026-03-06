@@ -2,7 +2,7 @@
 //!
 //! All types use 'static lifetimes for zero-cost compile-time constants.
 
-use super::field_type::{FieldType, FieldSource};
+use super::field_type::{FieldSource, FieldType};
 use super::validation::ValidationRules;
 
 // ============================================================================
@@ -77,7 +77,7 @@ pub struct FieldMetadata {
     pub ui: FieldUiMetadata,
     pub validation: ValidationRules,
     pub ai_hint: Option<&'static str>,
-    
+
     // For nested types (recursive reference via static slice)
     pub nested_fields: Option<&'static [FieldMetadata]>,
     pub ref_aggregate: Option<&'static str>,
@@ -139,4 +139,3 @@ impl Default for FieldUiMetadata {
         }
     }
 }
-

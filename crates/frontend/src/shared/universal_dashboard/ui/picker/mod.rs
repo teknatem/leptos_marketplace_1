@@ -29,7 +29,10 @@ pub fn SchemaPicker(
         let _ = schemas.get(); // subscribe to schemas changes
         let parent_val = selected.get().unwrap_or_default();
         if select_value.get_untracked() != parent_val {
-            log!("[SchemaPicker] Syncing select_value to parent: {}", parent_val);
+            log!(
+                "[SchemaPicker] Syncing select_value to parent: {}",
+                parent_val
+            );
             select_value.set(parent_val);
         }
     });

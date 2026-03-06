@@ -1,10 +1,11 @@
 use super::repository;
+use crate::domain::a024_bi_indicator;
+use contracts::domain::a024_bi_indicator::aggregate::BiIndicatorId;
 use contracts::domain::a025_bi_dashboard::aggregate::{
-    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardGroup, DashboardItem, DashboardLayout,
-    GlobalFilter,
+    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout, GlobalFilter,
 };
-use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 /// DTO для создания/обновления BI дашборда через API
@@ -25,6 +26,42 @@ pub struct BiDashboardDto {
     pub updated_by: Option<String>,
 }
 
+fn collect_indicator_ids_from_layout(
+    groups: &[contracts::domain::a025_bi_dashboard::aggregate::DashboardGroup],
+    out: &mut HashSet<String>,
+) {
+    for group in groups {
+        for item in &group.items {
+            out.insert(item.indicator_id.clone());
+        }
+        collect_indicator_ids_from_layout(&group.subgroups, out);
+    }
+}
+
+async fn validate_indicator_refs(layout: &DashboardLayout) -> anyhow::Result<()> {
+    let mut ids = HashSet::new();
+    collect_indicator_ids_from_layout(&layout.groups, &mut ids);
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let db = crate::shared::data::db::get_connection();
+    for indicator_id in ids {
+        let uuid = Uuid::parse_str(&indicator_id)
+            .map_err(|e| anyhow::anyhow!("Invalid indicator_id `{}`: {}", indicator_id, e))?;
+        let id = BiIndicatorId::new(uuid);
+        let exists = a024_bi_indicator::repository::find_by_id(&db, &id).await?;
+        if exists.is_none() {
+            return Err(anyhow::anyhow!(
+                "Indicator not found for dashboard layout: {}",
+                indicator_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Service functions
 // ============================================================================
@@ -41,6 +78,7 @@ pub async fn create(dto: BiDashboardDto) -> anyhow::Result<Uuid> {
     dashboard.base.comment = dto.comment;
 
     if let Some(layout) = dto.layout {
+        validate_indicator_refs(&layout).await?;
         dashboard.layout = layout;
     }
     if let Some(filters) = dto.global_filters {
@@ -83,8 +121,8 @@ pub async fn update(dto: BiDashboardDto) -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("ID is required for update"))?;
 
-    let dashboard_uuid = Uuid::parse_str(id_str)
-        .map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
+    let dashboard_uuid =
+        Uuid::parse_str(id_str).map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
     let dashboard_id = BiDashboardId::new(dashboard_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -99,6 +137,7 @@ pub async fn update(dto: BiDashboardDto) -> anyhow::Result<()> {
     dashboard.base.comment = dto.comment;
 
     if let Some(layout) = dto.layout {
+        validate_indicator_refs(&layout).await?;
         dashboard.layout = layout;
     }
     if let Some(filters) = dto.global_filters {
@@ -112,7 +151,9 @@ pub async fn update(dto: BiDashboardDto) -> anyhow::Result<()> {
         dashboard.is_public = is_public;
     }
     // rating: None в DTO означает "сбросить оценку", Some(x) — установить
-    dashboard.rating = dto.rating.and_then(|r| if r >= 1 && r <= 5 { Some(r) } else { None });
+    dashboard.rating = dto
+        .rating
+        .and_then(|r| if r >= 1 && r <= 5 { Some(r) } else { None });
 
     if let Some(updated_by) = dto.updated_by {
         dashboard.updated_by = Some(updated_by);
@@ -132,8 +173,8 @@ pub async fn update(dto: BiDashboardDto) -> anyhow::Result<()> {
 
 /// Удаление дашборда (soft delete)
 pub async fn delete(id: &str) -> anyhow::Result<()> {
-    let dashboard_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
+    let dashboard_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
     let dashboard_id = BiDashboardId::new(dashboard_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -144,8 +185,8 @@ pub async fn delete(id: &str) -> anyhow::Result<()> {
 
 /// Получить дашборд по ID
 pub async fn get_by_id(id: &str) -> anyhow::Result<Option<BiDashboard>> {
-    let dashboard_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
+    let dashboard_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {}", e))?;
     let dashboard_id = BiDashboardId::new(dashboard_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -165,9 +206,13 @@ pub async fn list_all() -> anyhow::Result<Vec<BiDashboard>> {
 pub async fn list_paginated(
     page: u64,
     page_size: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: Option<&str>,
 ) -> anyhow::Result<(Vec<BiDashboard>, u64)> {
     let db = crate::shared::data::db::get_connection();
-    let (dashboards, total) = repository::list_paginated(&db, page, page_size).await?;
+    let (dashboards, total) =
+        repository::list_paginated(&db, page, page_size, sort_by, sort_desc, q).await?;
     Ok((dashboards, total))
 }
 
@@ -279,6 +324,56 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
     let layout_empty = serde_json::json!({ "groups": [] });
     let filters_empty = serde_json::json!([]);
 
+    // Дашборд 4: Сквозной пример — Выручка по кабинетам с мульти-выбором и датами
+    let layout_revenue = serde_json::json!({
+        "groups": [
+            {
+                "id": "g-004-revenue",
+                "title": "Продажи WB",
+                "sort_order": 0,
+                "items": [
+                    {
+                        "indicator_id": "a024a024-0001-4001-a001-000000000001",
+                        "indicator_name": "Выручка WB",
+                        "sort_order": 0,
+                        "col_class": "2x1",
+                        "param_overrides": {}
+                    },
+                    {
+                        "indicator_id": "a024a024-0003-4001-a001-000000000003",
+                        "indicator_name": "Количество заказов",
+                        "sort_order": 1,
+                        "col_class": "1x1",
+                        "param_overrides": {}
+                    }
+                ],
+                "subgroups": []
+            }
+        ]
+    });
+
+    // Фильтры с явными типами: дата-пикеры и мульти-выбор кабинетов
+    let filters_revenue = serde_json::json!([
+        {
+            "key": "date_from",
+            "label": "Начало периода",
+            "value": "2025-01-01",
+            "filter_type": "date"
+        },
+        {
+            "key": "date_to",
+            "label": "Конец периода",
+            "value": "2025-03-31",
+            "filter_type": "date"
+        },
+        {
+            "key": "connection_ids",
+            "label": "Кабинеты МП",
+            "value": "",
+            "filter_type": "connection_multiselect"
+        }
+    ]);
+
     let records: &[(&str, &str, &str, &str, &str, &str, i32, &str)] = &[
         (
             "a025a025-0001-4001-a001-000000000001",
@@ -309,6 +404,16 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             &filters_empty.to_string(),
             0,
             "draft",
+        ),
+        (
+            "a025a025-0004-4001-a001-000000000004",
+            "DASH-REVENUE",
+            "Выручка по кабинетам",
+            "Сквозной пример: выручка WB с фильтром по кабинетам (мульти-выбор) и периоду (дата-пикеры).",
+            &layout_revenue.to_string(),
+            &filters_revenue.to_string(),
+            5,
+            "active",
         ),
     ];
 

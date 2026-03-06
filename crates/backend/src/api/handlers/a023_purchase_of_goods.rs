@@ -1,4 +1,7 @@
-use axum::{extract::{Path, Query}, Json};
+use axum::{
+    extract::{Path, Query},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -99,7 +102,10 @@ pub async fn list_paginated(
 /// GET /api/a023/purchase-of-goods/:id
 pub async fn get_by_id(
     Path(id): Path<String>,
-) -> Result<Json<contracts::domain::a023_purchase_of_goods::aggregate::PurchaseOfGoods>, axum::http::StatusCode> {
+) -> Result<
+    Json<contracts::domain::a023_purchase_of_goods::aggregate::PurchaseOfGoods>,
+    axum::http::StatusCode,
+> {
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
     match a023_purchase_of_goods::service::get_by_id(uuid).await {
         Ok(Some(doc)) => Ok(Json(doc)),

@@ -21,9 +21,11 @@ fn format_date(s: &str) -> String {
 fn format_datetime(s: &str) -> String {
     if let Some((date, time)) = s.split_once('T') {
         let time_clean = time
-            .split('Z').next()
+            .split('Z')
+            .next()
             .unwrap_or(time)
-            .split('+').next()
+            .split('+')
+            .next()
             .unwrap_or(time);
         let hms = time_clean.split('.').next().unwrap_or(time_clean);
         return format!("{} {}", format_date(date), hms);
@@ -75,7 +77,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
 
                                 // Загружаем номенклатуру, если есть ссылка
                                 if let Some(ref nom_id) = data.nomenclature_ref {
-                                    let nom_url = format!("{}/api/nomenclature/{}", api_base(), nom_id);
+                                    let nom_url =
+                                        format!("{}/api/nomenclature/{}", api_base(), nom_id);
                                     if let Ok(nom_resp) = Request::get(&nom_url).send().await {
                                         if nom_resp.ok() {
                                             #[derive(Deserialize)]
@@ -144,10 +147,17 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
             set_error.set(None);
             let load_doc = load_doc.clone();
             spawn_local(async move {
-                let url = format!("{}/api/a021/production-output/{}/unpost", api_base(), id_val);
+                let url = format!(
+                    "{}/api/a021/production-output/{}/unpost",
+                    api_base(),
+                    id_val
+                );
                 match Request::post(&url).send().await {
                     Ok(r) if r.ok() => load_doc(),
-                    Ok(r) => set_error.set(Some(format!("Ошибка отмены проведения: HTTP {}", r.status()))),
+                    Ok(r) => set_error.set(Some(format!(
+                        "Ошибка отмены проведения: HTTP {}",
+                        r.status()
+                    ))),
                     Err(e) => set_error.set(Some(format!("Ошибка сети: {}", e))),
                 }
                 set_posting.set(false);

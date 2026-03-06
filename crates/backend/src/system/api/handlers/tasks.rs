@@ -1,18 +1,16 @@
-use axum::{extract::Path, Json};
-use contracts::system::tasks::aggregate::ScheduledTaskId;
-use contracts::domain::common::AggregateId;
-use contracts::system::tasks::request::{
-    CreateScheduledTaskDto, UpdateScheduledTaskDto, ToggleScheduledTaskEnabledDto,
-};
-use contracts::system::tasks::response::{
-    ScheduledTaskResponse, ScheduledTaskListResponse,
-};
-use contracts::system::tasks::progress::TaskProgressResponse;
-use crate::system::tasks::service;
-use crate::system::tasks::registry::TaskManagerRegistry;
 use crate::system::tasks::logger::TaskLogger;
-use std::sync::Arc;
+use crate::system::tasks::registry::TaskManagerRegistry;
+use crate::system::tasks::service;
+use axum::{extract::Path, Json};
+use contracts::domain::common::AggregateId;
+use contracts::system::tasks::aggregate::ScheduledTaskId;
+use contracts::system::tasks::progress::TaskProgressResponse;
+use contracts::system::tasks::request::{
+    CreateScheduledTaskDto, ToggleScheduledTaskEnabledDto, UpdateScheduledTaskDto,
+};
+use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
 use once_cell::sync::Lazy;
+use std::sync::Arc;
 
 // Note: These should ideally be passed via state, but for simplicity we'll use statics for now
 // until we refactor Axum state to include them.
@@ -22,12 +20,11 @@ static TASK_REGISTRY: Lazy<Arc<TaskManagerRegistry>> = Lazy::new(|| {
     Arc::new(TaskManagerRegistry::new())
 });
 
-static TASK_LOGGER: Lazy<Arc<TaskLogger>> = Lazy::new(|| {
-    Arc::new(TaskLogger::new("./task_logs"))
-});
+static TASK_LOGGER: Lazy<Arc<TaskLogger>> = Lazy::new(|| Arc::new(TaskLogger::new("./task_logs")));
 
 /// GET /api/sys/scheduled_tasks
-pub async fn list_scheduled_tasks() -> Result<Json<ScheduledTaskListResponse>, axum::http::StatusCode> {
+pub async fn list_scheduled_tasks(
+) -> Result<Json<ScheduledTaskListResponse>, axum::http::StatusCode> {
     match service::list_all().await {
         Ok(tasks) => {
             let responses = tasks.into_iter().map(|t| t.into()).collect();
@@ -44,8 +41,8 @@ pub async fn list_scheduled_tasks() -> Result<Json<ScheduledTaskListResponse>, a
 pub async fn get_scheduled_task(
     Path(id): Path<String>,
 ) -> Result<Json<ScheduledTaskResponse>, axum::http::StatusCode> {
-    let task_id = ScheduledTaskId::from_string(&id)
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let task_id =
+        ScheduledTaskId::from_string(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     match service::get_by_id(&task_id).await {
         Ok(Some(task)) => Ok(Json(task.into())),
@@ -78,8 +75,8 @@ pub async fn update_scheduled_task(
     Path(id): Path<String>,
     Json(dto): Json<UpdateScheduledTaskDto>,
 ) -> Result<Json<ScheduledTaskResponse>, axum::http::StatusCode> {
-    let task_id = ScheduledTaskId::from_string(&id)
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let task_id =
+        ScheduledTaskId::from_string(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     match service::update(&task_id, dto).await {
         Ok(_) => match service::get_by_id(&task_id).await {
@@ -97,8 +94,8 @@ pub async fn update_scheduled_task(
 pub async fn delete_scheduled_task(
     Path(id): Path<String>,
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
-    let task_id = ScheduledTaskId::from_string(&id)
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let task_id =
+        ScheduledTaskId::from_string(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     match service::delete(&task_id).await {
         Ok(_) => Ok(axum::http::StatusCode::NO_CONTENT),
@@ -114,8 +111,8 @@ pub async fn toggle_scheduled_task_enabled(
     Path(id): Path<String>,
     Json(dto): Json<ToggleScheduledTaskEnabledDto>,
 ) -> Result<Json<ScheduledTaskResponse>, axum::http::StatusCode> {
-    let task_id = ScheduledTaskId::from_string(&id)
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let task_id =
+        ScheduledTaskId::from_string(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     match service::toggle_enabled(&task_id, dto.is_enabled).await {
         Ok(_) => match service::get_by_id(&task_id).await {
@@ -123,7 +120,11 @@ pub async fn toggle_scheduled_task_enabled(
             _ => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
         },
         Err(e) => {
-            tracing::error!("Failed to toggle scheduled task {} enabled status: {}", id, e);
+            tracing::error!(
+                "Failed to toggle scheduled task {} enabled status: {}",
+                id,
+                e
+            );
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -136,7 +137,8 @@ pub async fn get_task_progress(
     let task_id = ScheduledTaskId::from_string(&task_id_str)
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-    let task = service::get_by_id(&task_id).await
+    let task = service::get_by_id(&task_id)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to get task {}: {}", task_id_str, e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
@@ -152,20 +154,22 @@ pub async fn get_task_progress(
             } else {
                 // If no live progress, try to read from log file
                 match TASK_LOGGER.read_log(&session_id) {
-                    Ok(log_content) => {
-                        Ok(Json(TaskProgressResponse {
-                            session_id: session_id.clone(),
-                            status: task.last_run_status.clone().unwrap_or_default(),
-                            message: "Log available".to_string(),
-                            total_items: None,
-                            processed_items: None,
-                            errors: None,
-                            current_item: None,
-                            log_content: Some(log_content),
-                        }))
-                    }
+                    Ok(log_content) => Ok(Json(TaskProgressResponse {
+                        session_id: session_id.clone(),
+                        status: task.last_run_status.clone().unwrap_or_default(),
+                        message: "Log available".to_string(),
+                        total_items: None,
+                        processed_items: None,
+                        errors: None,
+                        current_item: None,
+                        log_content: Some(log_content),
+                    })),
                     Err(e) => {
-                        tracing::warn!("Could not find live progress or log file for session {}: {}", session_id, e);
+                        tracing::warn!(
+                            "Could not find live progress or log file for session {}: {}",
+                            session_id,
+                            e
+                        );
                         Err(axum::http::StatusCode::NOT_FOUND)
                     }
                 }

@@ -98,7 +98,7 @@
   --tab-close-active: #90EE90;
 
   /* Modal Colors */
-  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --modal-overlay: rgba(0, 0, 0, 0.22);
   --modal-bg: rgba(255, 255, 255, 0.92);
   --modal-border: rgba(200, 200, 200, 0.5);
   --modal-header-bg: #f5f5f5;

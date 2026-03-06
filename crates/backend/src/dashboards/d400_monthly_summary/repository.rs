@@ -7,7 +7,7 @@ use crate::shared::data::db::get_connection;
 /// Raw aggregation result from SQL query
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct RevenueAggregation {
-    pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
+    pub marketplace_code: Option<String>,  // "WB", "OZON", "YM"
     pub organization_name: Option<String>, // From a002_organization.description
     pub total_revenue: f64,
 }
@@ -15,7 +15,7 @@ pub struct RevenueAggregation {
 /// Returns aggregation result from SQL query
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct ReturnsAggregation {
-    pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
+    pub marketplace_code: Option<String>,  // "WB", "OZON", "YM"
     pub organization_name: Option<String>, // From a002_organization.description
     pub total_returns: f64,
 }
@@ -23,7 +23,7 @@ pub struct ReturnsAggregation {
 /// Cost aggregation result from SQL query
 #[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct CostAggregation {
-    pub marketplace_code: Option<String>, // "WB", "OZON", "YM"
+    pub marketplace_code: Option<String>,  // "WB", "OZON", "YM"
     pub organization_name: Option<String>, // From a002_organization.description
     pub total_cost: f64,
 }
@@ -231,4 +231,3 @@ pub async fn get_organizations_with_sales(date_from: &str, date_to: &str) -> Res
 
     Ok(orgs)
 }
-

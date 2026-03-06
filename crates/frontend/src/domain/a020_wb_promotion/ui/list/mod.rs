@@ -49,12 +49,14 @@ impl Sortable for WbPromotionDto {
             },
             "start_date_time" => self.start_date_time.cmp(&other.start_date_time),
             "end_date_time" => self.end_date_time.cmp(&other.end_date_time),
-            "in_promo_action_total" => match (&self.in_promo_action_total, &other.in_promo_action_total) {
-                (Some(a), Some(b)) => a.cmp(b),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            },
+            "in_promo_action_total" => {
+                match (&self.in_promo_action_total, &other.in_promo_action_total) {
+                    (Some(a), Some(b)) => a.cmp(b),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            }
             _ => Ordering::Equal,
         }
     }
@@ -230,8 +232,7 @@ pub fn WbPromotionList() -> impl IntoView {
                             }
                         }
                     } else {
-                        set_error
-                            .set(Some(format!("Server error: {}", response.status())));
+                        set_error.set(Some(format!("Server error: {}", response.status())));
                         set_loading.set(false);
                     }
                 }
@@ -300,10 +301,18 @@ pub fn WbPromotionList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0usize;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
-        if s.selected_connection_id.is_some() { count += 1; }
-        if !s.search_query.is_empty() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if s.selected_connection_id.is_some() {
+            count += 1;
+        }
+        if !s.search_query.is_empty() {
+            count += 1;
+        }
         count
     });
 

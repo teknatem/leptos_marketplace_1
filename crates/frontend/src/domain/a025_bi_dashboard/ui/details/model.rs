@@ -78,11 +78,9 @@ pub async fn save_dashboard(dto: BiDashboardSaveDto) -> Result<String, String> {
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
     if !resp.ok() {
-        let text = wasm_bindgen_futures::JsFuture::from(
-            resp.text().map_err(|e| format!("{e:?}"))?,
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
+        let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
         let text = text.as_string().unwrap_or_default();
         return Err(format!("HTTP {}: {}", resp.status(), text));
     }

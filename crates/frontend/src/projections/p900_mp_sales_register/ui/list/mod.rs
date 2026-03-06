@@ -12,7 +12,9 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
-use crate::shared::components::table::{SortableHeaderCell, TableCellMoney, TableCrosshairHighlight};
+use crate::shared::components::table::{
+    SortableHeaderCell, TableCellMoney, TableCrosshairHighlight,
+};
 use crate::shared::components::ui::badge::Badge as UiBadge;
 use crate::shared::components::ui::button::Button as UiButton;
 use crate::shared::icons::icon;
@@ -209,8 +211,8 @@ pub fn SalesRegisterList() -> impl IntoView {
             set_loading.set(true);
             set_error.set(None);
 
-            let (date_from, date_to, marketplace, organization_ref, page, page_size) =
-                state.with_untracked(|s| {
+            let (date_from, date_to, marketplace, organization_ref, page, page_size) = state
+                .with_untracked(|s| {
                     (
                         s.date_from.clone(),
                         s.date_to.clone(),
@@ -548,7 +550,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                             // Table wrapper with crosshair highlight overlay
                             <div class="table-wrapper">
                                 <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
-                                
+
                                 <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1500px;">
                                     <TableHeader>
                                         <TableRow>

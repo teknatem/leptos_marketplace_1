@@ -107,4 +107,3 @@ impl DrilldownFilter {
         format!("{:04}-{:02}-{:02}", year, month, days)
     }
 }
-

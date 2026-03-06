@@ -1,8 +1,8 @@
 //! Result Tab - displays pivot table results
 
-use leptos::prelude::*;
-use contracts::shared::universal_dashboard::ExecuteDashboardResponse;
 use crate::shared::universal_dashboard::ui::PivotTable;
+use contracts::shared::universal_dashboard::ExecuteDashboardResponse;
+use leptos::prelude::*;
 
 #[component]
 pub fn ResultTab(

@@ -122,7 +122,9 @@ impl From<crate::usecases::u503_import_from_yandex::progress::ImportProgress> fo
     }
 }
 
-impl From<crate::usecases::u504_import_from_wildberries::progress::ImportProgress> for TaskProgress {
+impl From<crate::usecases::u504_import_from_wildberries::progress::ImportProgress>
+    for TaskProgress
+{
     fn from(p: crate::usecases::u504_import_from_wildberries::progress::ImportProgress) -> Self {
         Self {
             session_id: p.session_id,
@@ -142,4 +144,3 @@ impl From<crate::usecases::u504_import_from_wildberries::progress::ImportProgres
         }
     }
 }
-

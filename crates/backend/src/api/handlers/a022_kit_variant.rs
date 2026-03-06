@@ -1,4 +1,7 @@
-use axum::{extract::{Path, Query}, Json};
+use axum::{
+    extract::{Path, Query},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -93,7 +96,8 @@ pub async fn list_paginated(
 /// GET /api/a022/kit-variant/:id
 pub async fn get_by_id(
     Path(id): Path<String>,
-) -> Result<Json<contracts::domain::a022_kit_variant::aggregate::KitVariant>, axum::http::StatusCode> {
+) -> Result<Json<contracts::domain::a022_kit_variant::aggregate::KitVariant>, axum::http::StatusCode>
+{
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
     match a022_kit_variant::service::get_by_id(uuid).await {
         Ok(Some(item)) => Ok(Json(item)),

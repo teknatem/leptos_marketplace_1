@@ -46,12 +46,10 @@ pub async fn list_reports(
 pub async fn get_report(
     Path(record_key): Path<String>,
 ) -> Result<Json<YmPaymentReportDto>, axum::http::StatusCode> {
-    let item = repository::get_by_id(&record_key)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get YM payment report: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let item = repository::get_by_id(&record_key).await.map_err(|e| {
+        tracing::error!("Failed to get YM payment report: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     match item {
         Some(model) => Ok(Json(model_to_dto(model))),

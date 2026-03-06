@@ -1,18 +1,20 @@
 //! BI indicator card rendering system.
 //!
-//! Developer-defined styles (classic, modern) are embedded as template strings.
-//! The user selects a style; the system fills placeholders and renders an iframe srcdoc.
+//! One universal HTML template + style packs (classic, modern).
+//! Optional per-indicator custom CSS can be used as an extra "custom" design.
 
+pub mod designs;
 pub mod renderer;
 pub mod spark;
 
-pub use renderer::render_srcdoc;
+pub use designs::{available_designs, default_design_name, is_known_design, IndicatorDesign};
+pub use renderer::{get_style_css, render_card_html, render_srcdoc};
 pub use spark::{demo_spark_points, points_to_svg_path};
 
 /// All data needed to render one indicator card.
 #[derive(Debug, Clone, Default)]
 pub struct IndicatorCardParams {
-    /// Style: "classic" | "modern" | "custom"
+    /// Design key: "classic" | "modern" | "retro" | "future" | "custom"
     pub style_name: String,
     /// App theme: "dark" | "light" (maps to data-theme on <body> in iframe)
     pub theme: String,
@@ -32,6 +34,8 @@ pub struct IndicatorCardParams {
     pub chip: String,
     /// Grid column class: "col-3" | "col-4" | "col-6" | "col-12"
     pub col_class: String,
+    /// Graph mode: 0 = none, 1 = progress ring, 2 = sparkline
+    pub graph_type: u8,
     /// Progress 0–100 for ring indicator (modern style)
     pub progress: u8,
     /// Sparkline data points (classic style; empty → demo data)
@@ -46,8 +50,8 @@ pub struct IndicatorCardParams {
     pub footer_1: String,
     /// Footer item 2 (modern)
     pub footer_2: String,
-    /// Custom HTML (only used when style_name = "custom")
+    /// Deprecated (kept for backward compatibility). HTML template is fixed globally.
     pub custom_html: Option<String>,
-    /// Custom CSS (only used when style_name = "custom")
+    /// Optional custom CSS for "custom" design
     pub custom_css: Option<String>,
 }

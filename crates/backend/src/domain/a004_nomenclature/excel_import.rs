@@ -57,10 +57,7 @@ pub async fn import_nomenclature_from_excel_data(
 /// Импортирует данные из списка ExcelRow в базу данных
 /// Обновляет только те поля, которые НЕ пустые в Excel
 /// Если поле в БД заполнено, а в Excel пустое - поле НЕ обновляется
-pub async fn import_nomenclature_from_rows(
-    rows: Vec<ExcelRow>,
-) -> anyhow::Result<ImportResult> {
-
+pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<ImportResult> {
     let started_at = std::time::Instant::now();
     let mut updated_count = 0;
     // Keep unique list (stable order) so UI doesn't show repeated articles.

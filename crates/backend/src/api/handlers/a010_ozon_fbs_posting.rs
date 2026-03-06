@@ -49,11 +49,10 @@ pub async fn get_raw_json(
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
-    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str)
-        .map_err(|e| {
-            tracing::error!("Failed to parse raw JSON: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str).map_err(|e| {
+        tracing::error!("Failed to parse raw JSON: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(json_value))
 }
@@ -127,11 +126,7 @@ pub async fn post_period(
                 }
                 Err(e) => {
                     failed_count += 1;
-                    tracing::error!(
-                        "Failed to post document {}: {}",
-                        doc.base.id.as_string(),
-                        e
-                    );
+                    tracing::error!("Failed to post document {}: {}", doc.base.id.as_string(), e);
                 }
             }
         }
@@ -143,4 +138,3 @@ pub async fn post_period(
         "failed_count": failed_count
     })))
 }
-

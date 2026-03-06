@@ -48,11 +48,7 @@ pub async fn start_import(request: ImportRequest) -> Result<ImportResponse, Stri
 pub async fn get_progress(session_id: &str) -> Result<ImportProgress, String> {
     let window = window().ok_or("No window object")?;
 
-    let url = format!(
-        "{}/api/u507/import/{}/progress",
-        api_base(),
-        session_id
-    );
+    let url = format!("{}/api/u507/import/{}/progress", api_base(), session_id);
 
     let opts = RequestInit::new();
     opts.set_method("GET");

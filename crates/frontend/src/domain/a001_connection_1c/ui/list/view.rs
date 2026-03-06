@@ -92,7 +92,11 @@ pub fn Connection1CList() -> impl IntoView {
 
         sorted.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         set_items.set(sorted);
@@ -466,5 +470,3 @@ async fn delete_connection(id: &str) -> Result<(), String> {
     }
     Ok(())
 }
-
-

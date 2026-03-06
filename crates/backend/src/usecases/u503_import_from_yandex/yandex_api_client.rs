@@ -1128,10 +1128,7 @@ impl YandexApiClient {
 
         self.log_to_file(&format!(
             "=== GENERATE PAYMENT REPORT ===\nPOST {}\nbusinessId={}, date_from={}, date_to={}",
-            url,
-            business_id,
-            date_from,
-            date_to
+            url, business_id, date_from, date_to
         ));
 
         let response = self
@@ -1159,10 +1156,7 @@ impl YandexApiClient {
         }
 
         let resp_body = response.text().await?;
-        self.log_to_file(&format!(
-            "Generate payment report response: {}",
-            resp_body
-        ));
+        self.log_to_file(&format!("Generate payment report response: {}", resp_body));
 
         let parsed: serde_json::Value = serde_json::from_str(&resp_body)
             .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
@@ -1322,8 +1316,9 @@ impl YandexApiClient {
                     if lower.ends_with(".csv") {
                         use std::io::Read;
                         let mut raw_bytes: Vec<u8> = Vec::new();
-                        file.read_to_end(&mut raw_bytes)
-                            .map_err(|e| anyhow::anyhow!("Failed to read {} from ZIP: {}", name, e))?;
+                        file.read_to_end(&mut raw_bytes).map_err(|e| {
+                            anyhow::anyhow!("Failed to read {} from ZIP: {}", name, e)
+                        })?;
 
                         // Save raw CSV bytes to disk before decoding
                         let csv_path = dir.join(format!("report_{}.csv", ts));

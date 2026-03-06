@@ -43,5 +43,3 @@ impl Default for NomenclatureListState {
 pub fn create_state() -> RwSignal<NomenclatureListState> {
     RwSignal::new(NomenclatureListState::default())
 }
-
-

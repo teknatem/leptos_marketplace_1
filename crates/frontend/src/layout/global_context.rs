@@ -46,7 +46,11 @@ impl AppGlobalContext {
                 .with_untracked(|tabs| tabs.iter().any(|tab| tab.key == active_key));
             if !exists {
                 let known = crate::layout::tabs::tab_label_for_key(&active_key);
-                let title = if known.is_empty() { active_key.clone() } else { known.to_string() };
+                let title = if known.is_empty() {
+                    active_key.clone()
+                } else {
+                    known.to_string()
+                };
                 self.open_tab(&active_key, &title);
             } else {
                 self.activate_tab(&active_key);

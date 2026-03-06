@@ -52,8 +52,11 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
         "p900_sales_register" => "ds02_mp_sales_register",
         _ => config.data_source.as_str(),
     };
-    let table_name = registry.get_table_name(data_source_for_table)
-        .ok_or_else(|| anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table))?;
+    let table_name = registry
+        .get_table_name(data_source_for_table)
+        .ok_or_else(|| {
+            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+        })?;
 
     // Build SQL query
     let query_builder = QueryBuilder::new(schema, &config, table_name);
@@ -390,8 +393,11 @@ pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse
         "p900_sales_register" => "ds02_mp_sales_register",
         _ => config.data_source.as_str(),
     };
-    let table_name = registry.get_table_name(data_source_for_table)
-        .ok_or_else(|| anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table))?;
+    let table_name = registry
+        .get_table_name(data_source_for_table)
+        .ok_or_else(|| {
+            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+        })?;
 
     // Build SQL query
     let query_builder = QueryBuilder::new(schema, &config, table_name);

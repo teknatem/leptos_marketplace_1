@@ -202,7 +202,11 @@ pub fn KitVariantList() -> impl IntoView {
 
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
-        if !s.search_query.is_empty() { 1 } else { 0 }
+        if !s.search_query.is_empty() {
+            1
+        } else {
+            0
+        }
     });
 
     let toggle_sort = move |field: &'static str| {

@@ -11,31 +11,31 @@ pub struct LlmAgentDetailsVm {
     pub code: RwSignal<String>,
     pub description: RwSignal<String>,
     pub comment: RwSignal<String>,
-    
+
     // Provider configuration
     pub provider_type: RwSignal<String>,
     pub api_endpoint: RwSignal<String>,
     pub api_key: RwSignal<String>,
-    
+
     // Model configuration
     pub model_name: RwSignal<String>,
     pub temperature: RwSignal<String>,
     pub max_tokens: RwSignal<String>,
     pub system_prompt: RwSignal<String>,
-    
+
     // Flags
     pub is_primary: RwSignal<bool>,
-    
+
     // State signals
     pub error: Signal<Option<String>>,
     pub set_error: WriteSignal<Option<String>>,
-    
+
     // Test connection state
     pub test_result: Signal<Option<(bool, String)>>,
     pub set_test_result: WriteSignal<Option<(bool, String)>>,
     pub is_testing: Signal<bool>,
     pub set_is_testing: WriteSignal<bool>,
-    
+
     // Fetch models state
     pub available_models: Signal<Vec<serde_json::Value>>,
     pub set_available_models: WriteSignal<Vec<serde_json::Value>>,
@@ -55,7 +55,7 @@ impl LlmAgentDetailsVm {
         let (available_models, set_available_models) = signal::<Vec<serde_json::Value>>(Vec::new());
         let (is_fetching_models, set_is_fetching_models) = signal(false);
         let (fetch_models_result, set_fetch_models_result) = signal::<Option<(bool, String)>>(None);
-        
+
         Self {
             code: RwSignal::new(String::new()),
             description: RwSignal::new(String::new()),
@@ -83,17 +83,17 @@ impl LlmAgentDetailsVm {
             set_fetch_models_result,
         }
     }
-    
+
     /// Get temperature as f64
     pub fn get_temperature(&self) -> f64 {
         self.temperature.get().parse().unwrap_or(0.7)
     }
-    
+
     /// Get max_tokens as i32
     pub fn get_max_tokens(&self) -> i32 {
         self.max_tokens.get().parse().unwrap_or(4096)
     }
-    
+
     /// Build save DTO from current values
     pub fn build_save_dto(&self, id: Option<String>) -> serde_json::Value {
         serde_json::json!({

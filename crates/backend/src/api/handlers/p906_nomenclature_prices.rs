@@ -23,13 +23,14 @@ pub struct ListResponse {
 }
 
 /// GET /api/p906/nomenclature-prices
-pub async fn list(
-    Query(params): Query<ListParams>,
-) -> Result<Json<ListResponse>, StatusCode> {
+pub async fn list(Query(params): Query<ListParams>) -> Result<Json<ListResponse>, StatusCode> {
     // Валидация лимита: минимум 10, максимум 10000, по умолчанию 1000
     let limit = match params.limit {
         Some(lim) if lim < 10 => {
-            tracing::warn!("P906: Invalid limit {} (too small), using default 1000", lim);
+            tracing::warn!(
+                "P906: Invalid limit {} (too small), using default 1000",
+                lim
+            );
             Some(1000)
         }
         Some(lim) if lim > 10000 => {
@@ -63,7 +64,11 @@ pub async fn list(
     .await
     {
         Ok((items, total_count)) => {
-            tracing::info!("P906 list response: {} items returned, total_count={}", items.len(), total_count);
+            tracing::info!(
+                "P906 list response: {} items returned, total_count={}",
+                items.len(),
+                total_count
+            );
             Ok(Json(ListResponse { items, total_count }))
         }
         Err(e) => {
@@ -106,5 +111,6 @@ pub async fn import_excel(
             tracing::error!("Excel import error: {}", e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    };    Ok(Json(result))
+    };
+    Ok(Json(result))
 }

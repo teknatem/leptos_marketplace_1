@@ -113,7 +113,9 @@ pub async fn get_primary() -> Result<Json<LlmAgent>, axum::http::StatusCode> {
 
 /// POST /api/a017-llm-agent/:id/test
 /// Тест подключения к LLM провайдеру
-pub async fn test_connection(Path(id): Path<String>) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+pub async fn test_connection(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     use crate::shared::llm::{openai_provider::OpenAiProvider, LlmProvider};
     use contracts::domain::a017_llm_agent::aggregate::LlmProviderType;
 
@@ -150,14 +152,12 @@ pub async fn test_connection(Path(id): Path<String>) -> Result<Json<serde_json::
                 })),
             }
         }
-        _ => {
-            Ok(json!({
-                "success": false,
-                "message": format!("Provider {} not yet implemented", agent.provider_type.as_str()),
-                "provider": agent.provider_type.as_str(),
-                "model": agent.model_name
-            }))
-        }
+        _ => Ok(json!({
+            "success": false,
+            "message": format!("Provider {} not yet implemented", agent.provider_type.as_str()),
+            "provider": agent.provider_type.as_str(),
+            "model": agent.model_name
+        })),
     };
 
     match result {
@@ -227,6 +227,6 @@ pub async fn fetch_models(
             "message": format!("Failed to fetch models: {}", e),
             "models": [],
             "count": 0
-        })))
+        }))),
     }
 }

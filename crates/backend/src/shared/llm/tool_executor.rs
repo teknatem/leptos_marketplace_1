@@ -159,12 +159,14 @@ pub fn execute_tool_call(call: &ToolCall) -> String {
                 let results = KNOWLEDGE_BASE.search_by_tags(&tag_refs);
                 let items: Vec<serde_json::Value> = results
                     .iter()
-                    .map(|doc| serde_json::json!({
-                        "id":      doc.id,
-                        "title":   doc.title,
-                        "tags":    doc.tags,
-                        "related": doc.related,
-                    }))
+                    .map(|doc| {
+                        serde_json::json!({
+                            "id":      doc.id,
+                            "title":   doc.title,
+                            "tags":    doc.tags,
+                            "related": doc.related,
+                        })
+                    })
                     .collect();
                 serde_json::json!({
                     "results": items,

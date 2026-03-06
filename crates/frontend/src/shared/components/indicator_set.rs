@@ -33,12 +33,7 @@ pub fn IndicatorSetView(
 
             let value_sig = Signal::derive({
                 let id_str = id_str.clone();
-                move || {
-                    values
-                        .get()
-                        .get(&id_str)
-                        .and_then(|v| v.value)
-                }
+                move || values.get().get(&id_str).and_then(|v| v.value)
             });
 
             let status_sig = Signal::derive({
@@ -54,22 +49,12 @@ pub fn IndicatorSetView(
 
             let change_sig = Signal::derive({
                 let id_str = id_str.clone();
-                move || {
-                    values
-                        .get()
-                        .get(&id_str)
-                        .and_then(|v| v.change_percent)
-                }
+                move || values.get().get(&id_str).and_then(|v| v.change_percent)
             });
 
             let subtitle_sig = Signal::derive({
                 let id_str = id_str.clone();
-                move || {
-                    values
-                        .get()
-                        .get(&id_str)
-                        .and_then(|v| v.subtitle.clone())
-                }
+                move || values.get().get(&id_str).and_then(|v| v.subtitle.clone())
             });
 
             Some(view! {

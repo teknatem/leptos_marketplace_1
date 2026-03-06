@@ -1,7 +1,7 @@
 use crate::shared::api_utils::api_url;
-use crate::shared::page_frame::PageFrame;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::indicator_set::IndicatorSetView;
+use crate::shared::page_frame::PageFrame;
 use chrono::{Datelike, Utc};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
@@ -35,10 +35,7 @@ pub fn IndicatorsDashboard() -> impl IntoView {
         let connections = connections;
         async move {
             // Load connections
-            match Request::get(&api_url("/api/connection_mp"))
-                .send()
-                .await
-            {
+            match Request::get(&api_url("/api/connection_mp")).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(text) = resp.text().await {
                         if let Ok(conns) = serde_json::from_str::<Vec<ConnectionMP>>(&text) {
@@ -50,10 +47,7 @@ pub fn IndicatorsDashboard() -> impl IntoView {
             }
 
             // Load catalog
-            match Request::get(&api_url("/api/indicators/meta"))
-                .send()
-                .await
-            {
+            match Request::get(&api_url("/api/indicators/meta")).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(text) = resp.text().await {
                         if let Ok(cat) = serde_json::from_str::<IndicatorCatalogResponse>(&text) {

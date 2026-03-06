@@ -5,7 +5,7 @@ use contracts::domain::a024_bi_indicator::aggregate::{
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
 
 mod bi_indicator {
@@ -54,22 +54,20 @@ impl From<bi_indicator::Model> for BiIndicator {
 
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
 
-        let data_spec: DataSpec = serde_json::from_str(&m.data_spec_json)
-            .unwrap_or_else(|_| DataSpec::default());
+        let data_spec: DataSpec =
+            serde_json::from_str(&m.data_spec_json).unwrap_or_else(|_| DataSpec::default());
 
-        let params: Vec<ParamDef> = serde_json::from_str(&m.params_json)
-            .unwrap_or_default();
+        let params: Vec<ParamDef> = serde_json::from_str(&m.params_json).unwrap_or_default();
 
-        let view_spec: ViewSpec = serde_json::from_str(&m.view_spec_json)
-            .unwrap_or_else(|_| ViewSpec::default());
+        let view_spec: ViewSpec =
+            serde_json::from_str(&m.view_spec_json).unwrap_or_else(|_| ViewSpec::default());
 
         let drill_spec: Option<DrillSpec> = m
             .drill_spec_json
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok());
 
-        let status = BiIndicatorStatus::from_str(&m.status)
-            .unwrap_or(BiIndicatorStatus::Draft);
+        let status = BiIndicatorStatus::from_str(&m.status).unwrap_or(BiIndicatorStatus::Draft);
 
         BiIndicator {
             base: BaseAggregate {
@@ -102,10 +100,30 @@ pub async fn list_paginated(
     db: &DatabaseConnection,
     page: u64,
     page_size: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: Option<&str>,
 ) -> Result<(Vec<BiIndicator>, u64), DbErr> {
-    let query = bi_indicator::Entity::find()
-        .filter(bi_indicator::Column::IsDeleted.eq(false))
-        .order_by_desc(bi_indicator::Column::CreatedAt);
+    let mut query = bi_indicator::Entity::find().filter(bi_indicator::Column::IsDeleted.eq(false));
+
+    if let Some(search) = q.map(str::trim).filter(|s| !s.is_empty()) {
+        query = query.filter(
+            Condition::any()
+                .add(bi_indicator::Column::Code.contains(search))
+                .add(bi_indicator::Column::Description.contains(search)),
+        );
+    }
+
+    query = match (sort_by, sort_desc) {
+        ("code", true) => query.order_by_desc(bi_indicator::Column::Code),
+        ("code", false) => query.order_by_asc(bi_indicator::Column::Code),
+        ("description", true) => query.order_by_desc(bi_indicator::Column::Description),
+        ("description", false) => query.order_by_asc(bi_indicator::Column::Description),
+        ("status", true) => query.order_by_desc(bi_indicator::Column::Status),
+        ("status", false) => query.order_by_asc(bi_indicator::Column::Status),
+        ("created_at", false) => query.order_by_asc(bi_indicator::Column::CreatedAt),
+        _ => query.order_by_desc(bi_indicator::Column::CreatedAt),
+    };
 
     let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await?;
@@ -169,12 +187,13 @@ pub async fn insert(db: &DatabaseConnection, indicator: &BiIndicator) -> Result<
 
     let data_spec_json =
         serde_json::to_string(&indicator.data_spec).unwrap_or_else(|_| "{}".to_string());
-    let params_json =
-        serde_json::to_string(&indicator.params).unwrap_or_else(|_| "[]".to_string());
+    let params_json = serde_json::to_string(&indicator.params).unwrap_or_else(|_| "[]".to_string());
     let view_spec_json =
         serde_json::to_string(&indicator.view_spec).unwrap_or_else(|_| "{}".to_string());
-    let drill_spec_json =
-        indicator.drill_spec.as_ref().and_then(|d| serde_json::to_string(d).ok());
+    let drill_spec_json = indicator
+        .drill_spec
+        .as_ref()
+        .and_then(|d| serde_json::to_string(d).ok());
 
     let active_model = bi_indicator::ActiveModel {
         id: Set(indicator.base.id.as_string()),
@@ -207,12 +226,13 @@ pub async fn update(db: &DatabaseConnection, indicator: &BiIndicator) -> Result<
 
     let data_spec_json =
         serde_json::to_string(&indicator.data_spec).unwrap_or_else(|_| "{}".to_string());
-    let params_json =
-        serde_json::to_string(&indicator.params).unwrap_or_else(|_| "[]".to_string());
+    let params_json = serde_json::to_string(&indicator.params).unwrap_or_else(|_| "[]".to_string());
     let view_spec_json =
         serde_json::to_string(&indicator.view_spec).unwrap_or_else(|_| "{}".to_string());
-    let drill_spec_json =
-        indicator.drill_spec.as_ref().and_then(|d| serde_json::to_string(d).ok());
+    let drill_spec_json = indicator
+        .drill_spec
+        .as_ref()
+        .and_then(|d| serde_json::to_string(d).ok());
 
     let active_model = bi_indicator::ActiveModel {
         id: Set(indicator.base.id.as_string()),

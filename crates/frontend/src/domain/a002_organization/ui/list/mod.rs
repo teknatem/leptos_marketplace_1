@@ -1,6 +1,8 @@
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
 use crate::shared::api_utils::api_base;
-use crate::shared::components::table::{TableCrosshairHighlight, TableHeaderCheckbox, TableCellCheckbox};
+use crate::shared::components::table::{
+    TableCellCheckbox, TableCrosshairHighlight, TableHeaderCheckbox,
+};
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
@@ -231,7 +233,7 @@ pub fn OrganizationList() -> impl IntoView {
 
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
-                    
+
                     <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 900px;">
                         <TableHeader>
                             <TableRow>

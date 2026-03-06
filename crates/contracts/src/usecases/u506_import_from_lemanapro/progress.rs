@@ -107,5 +107,3 @@ impl ImportProgress {
         self.total_errors += 1;
     }
 }
-
-

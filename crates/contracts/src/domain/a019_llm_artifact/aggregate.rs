@@ -90,22 +90,22 @@ impl ArtifactStatus {
 pub struct LlmArtifact {
     #[serde(flatten)]
     pub base: BaseAggregate<LlmArtifactId>,
-    
+
     // Связи
     pub chat_id: LlmChatId,
     pub agent_id: LlmAgentId,
-    
+
     // Метаданные
     pub artifact_type: ArtifactType,
     pub status: ArtifactStatus,
-    
+
     // SQL контент
     pub sql_query: String,
     pub query_params: Option<String>,
-    
+
     // UI конфигурация
     pub visualization_config: Option<String>,
-    
+
     // Статистика выполнения
     pub last_executed_at: Option<DateTime<Utc>>,
     pub execution_count: i32,

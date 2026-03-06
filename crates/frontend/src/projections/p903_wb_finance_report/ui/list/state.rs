@@ -28,17 +28,17 @@ pub struct P903ListState {
     pub connection_filter: String,
     pub operation_filter: String,
     pub srid_filter: String,
-    
+
     // Sorting
     pub sort_by: String,
     pub sort_ascending: bool,
-    
+
     // Pagination
     pub page: usize,
     pub page_size: usize,
     pub total_count: usize,
     pub total_pages: usize,
-    
+
     // Load flag
     pub is_loaded: bool,
 }
@@ -48,7 +48,7 @@ impl Default for P903ListState {
         let now = chrono::Utc::now().date_naive();
         let default_start = now - chrono::Duration::days(30);
         let default_end = now;
-        
+
         Self {
             date_from: default_start.format("%Y-%m-%d").to_string(),
             date_to: default_end.format("%Y-%m-%d").to_string(),
@@ -79,7 +79,9 @@ fn load_persisted() -> Option<PersistedState> {
 
 fn save_persisted(st: &PersistedState) {
     let Some(storage) = storage() else { return };
-    let Ok(raw) = serde_json::to_string(st) else { return };
+    let Ok(raw) = serde_json::to_string(st) else {
+        return;
+    };
     let _ = storage.set_item(STORAGE_KEY, &raw);
 }
 

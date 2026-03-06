@@ -1,22 +1,25 @@
 //! All Reports List - список всех сохраненных отчетов (настроек дашбордов)
 
+use crate::layout::global_context::AppGlobalContext;
+use crate::shared::page_frame::PageFrame;
+use crate::shared::universal_dashboard::api;
 use contracts::shared::universal_dashboard::SavedDashboardConfigSummary;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
-use thaw::{Button, ButtonAppearance, Input, Table, TableBody, TableCell, TableCellLayout, TableHeader, TableHeaderCell, TableRow};
+use thaw::{
+    Button, ButtonAppearance, Input, Table, TableBody, TableCell, TableCellLayout, TableHeader,
+    TableHeaderCell, TableRow,
+};
 use uuid::Uuid;
-use crate::layout::global_context::AppGlobalContext;
-use crate::shared::page_frame::PageFrame;
-use crate::shared::universal_dashboard::api;
 
 /// Format ISO datetime string to human-readable format (DD.MM.YYYY HH:MM)
 fn format_datetime(iso: &str) -> String {
     if iso.len() >= 16 {
         let date_part = &iso[0..10]; // 2026-01-26
         let time_part = &iso[11..16]; // 21:57
-        
+
         let parts: Vec<&str> = date_part.split('-').collect();
         if parts.len() == 3 {
             return format!("{}.{}.{} {}", parts[2], parts[1], parts[0], time_part);
@@ -40,34 +43,34 @@ enum SortDirection {
 #[component]
 pub fn AllReportsList() -> impl IntoView {
     let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
-    
+
     // Data state
     let (configs, set_configs) = signal(Vec::<SavedDashboardConfigSummary>::new());
     let (schemas_map, set_schemas_map) = signal(HashMap::<String, String>::new());
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
-    
+
     // UI state
     let search_query = RwSignal::new(String::new());
     let sort_field = RwSignal::new(SortField::UpdatedAt);
     let sort_direction = RwSignal::new(SortDirection::Desc);
-    
+
     // Load data on mount
     Effect::new(move |_| {
         spawn_local(async move {
             set_loading.set(true);
             set_error.set(None);
-            
+
             // Load all configs
             let configs_result = api::list_configs(None).await;
-            
+
             // Load schemas for name mapping
             let schemas_result = api::list_schemas().await;
-            
+
             match (configs_result, schemas_result) {
                 (Ok(configs_resp), Ok(schemas_resp)) => {
                     set_configs.set(configs_resp.configs);
-                    
+
                     // Build schema id -> name map
                     let map: HashMap<String, String> = schemas_resp
                         .schemas
@@ -75,7 +78,7 @@ pub fn AllReportsList() -> impl IntoView {
                         .map(|s| (s.id, s.name))
                         .collect();
                     set_schemas_map.set(map);
-                    
+
                     set_loading.set(false);
                 }
                 (Err(e), _) | (_, Err(e)) => {
@@ -85,7 +88,7 @@ pub fn AllReportsList() -> impl IntoView {
             }
         });
     });
-    
+
     // Filtered and sorted configs
     let filtered_sorted_configs = Signal::derive(move || {
         let query = search_query.get().to_lowercase();
@@ -96,7 +99,7 @@ pub fn AllReportsList() -> impl IntoView {
                 if query.is_empty() {
                     return true;
                 }
-                
+
                 let name_match = cfg.name.to_lowercase().contains(&query);
                 let desc_match = cfg
                     .description
@@ -104,43 +107,46 @@ pub fn AllReportsList() -> impl IntoView {
                     .map(|d| d.to_lowercase().contains(&query))
                     .unwrap_or(false);
                 let source_match = cfg.data_source.to_lowercase().contains(&query);
-                
+
                 // Also search in human-readable schema name
                 let schema_name_match = schemas_map
                     .get()
                     .get(&cfg.data_source)
                     .map(|name| name.to_lowercase().contains(&query))
                     .unwrap_or(false);
-                
+
                 name_match || desc_match || source_match || schema_name_match
             })
             .collect();
-        
+
         // Sort
         let field = sort_field.get();
         let direction = sort_direction.get();
-        
+
         result.sort_by(|a, b| {
             let cmp = match field {
                 SortField::Name => a.name.cmp(&b.name),
                 SortField::UpdatedAt => a.updated_at.cmp(&b.updated_at),
             };
-            
+
             match direction {
                 SortDirection::Asc => cmp,
                 SortDirection::Desc => cmp.reverse(),
             }
         });
-        
+
         result
     });
-    
+
     // Toggle sort
     let toggle_sort = move |field: SortField| {
         let current_field = sort_field.get();
         let current_direction = sort_direction.get();
-        
-        if matches!((current_field, &field), (SortField::Name, SortField::Name) | (SortField::UpdatedAt, SortField::UpdatedAt)) {
+
+        if matches!(
+            (current_field, &field),
+            (SortField::Name, SortField::Name) | (SortField::UpdatedAt, SortField::UpdatedAt)
+        ) {
             // Same field - toggle direction
             sort_direction.set(match current_direction {
                 SortDirection::Asc => SortDirection::Desc,
@@ -152,27 +158,30 @@ pub fn AllReportsList() -> impl IntoView {
             sort_direction.set(SortDirection::Desc);
         }
     };
-    
+
     // Open report in new tab
     let open_report = move |config: SavedDashboardConfigSummary| {
         let uuid = Uuid::new_v4();
         // Include schema_id (data_source) in the tab key for proper initialization
-        let tab_key = format!("universal_dashboard_report_{}__{}__{}", uuid, config.data_source, config.id);
+        let tab_key = format!(
+            "universal_dashboard_report_{}__{}__{}",
+            uuid, config.data_source, config.id
+        );
         let tab_title = format!("Отчет: {}", config.name);
-        
+
         log!("Opening report: {} with key: {}", tab_title, tab_key);
         ctx.open_tab(&tab_key, &tab_title);
     };
-    
+
     // Open details in new tab
     let open_details = move |config_id: String, config_name: String| {
         let tab_key = format!("all_reports_detail_{}", config_id);
         let tab_title = format!("Настройка: {}", config_name);
-        
+
         log!("Opening details: {} with key: {}", tab_title, tab_key);
         ctx.open_tab(&tab_key, &tab_title);
     };
-    
+
     view! {
         <PageFrame page_id="all_reports--list" category="list">
             <div class="page__header">
@@ -188,7 +197,7 @@ pub fn AllReportsList() -> impl IntoView {
                     </div>
                 </div>
             </div>
-            
+
             <div class="page__content">
                 <Show
                     when=move || !loading.get()
@@ -222,11 +231,11 @@ pub fn AllReportsList() -> impl IntoView {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHeaderCell 
-                                            resizable=true 
+                                        <TableHeaderCell
+                                            resizable=true
                                             min_width=200.0
                                         >
-                                            <div 
+                                            <div
                                                 style="display: flex; align-items: center; gap: 4px; cursor: pointer;"
                                                 on:click=move |_| toggle_sort(SortField::Name)
                                             >
@@ -249,10 +258,10 @@ pub fn AllReportsList() -> impl IntoView {
                                         <TableHeaderCell resizable=true min_width=200.0>
                                             "Источник данных"
                                         </TableHeaderCell>
-                                        <TableHeaderCell 
+                                        <TableHeaderCell
                                             min_width=150.0
                                         >
-                                            <div 
+                                            <div
                                                 style="display: flex; align-items: center; gap: 4px; cursor: pointer;"
                                                 on:click=move |_| toggle_sort(SortField::UpdatedAt)
                                             >
@@ -285,18 +294,18 @@ pub fn AllReportsList() -> impl IntoView {
                                                 let config_description = cfg.description.clone().unwrap_or_default();
                                                 let config_updated_at = cfg.updated_at.clone();
                                                 let config_data_source = cfg.data_source.clone();
-                                                
+
                                                 // Get human-readable schema name
                                                 let schema_name = schemas_map
                                                     .get()
                                                     .get(&config_data_source)
                                                     .cloned()
                                                     .unwrap_or_else(|| config_data_source.clone());
-                                                
+
                                                 let cfg_for_click = cfg.clone();
                                                 let config_id_for_details = config_id.clone();
                                                 let config_name_for_details = config_name.clone();
-                                                
+
                                                 view! {
                                                     <TableRow>
                                                         <TableCell>

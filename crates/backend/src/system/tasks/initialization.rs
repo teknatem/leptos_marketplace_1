@@ -38,7 +38,9 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
 
     // Register U504 Import from Wildberries manager
     let u504_tracker = Arc::new(u504_import_from_wildberries::ProgressTracker::new());
-    let u504_executor = Arc::new(u504_import_from_wildberries::ImportExecutor::new(u504_tracker));
+    let u504_executor = Arc::new(u504_import_from_wildberries::ImportExecutor::new(
+        u504_tracker,
+    ));
     registry.register(U504ImportWildberriesManager::new(u504_executor));
 
     let worker = ScheduledTaskWorker::new(Arc::new(registry), logger, 60); // Check every 60 seconds

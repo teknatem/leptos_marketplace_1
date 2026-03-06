@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// События импорта для event sourcing
 #[derive(Debug, Clone, Serialize, Deserialize)]

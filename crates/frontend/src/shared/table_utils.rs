@@ -245,7 +245,12 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
         };
 
         // Skip if already has resize handle
-        if th.query_selector(".table__resizer").ok().flatten().is_some() {
+        if th
+            .query_selector(".table__resizer")
+            .ok()
+            .flatten()
+            .is_some()
+        {
             continue;
         }
 

@@ -50,8 +50,7 @@ pub fn DomValidatorPage() -> impl IntoView {
                             if let Ok(element) = elem.dyn_into::<web_sys::HtmlAnchorElement>() {
                                 let blob_parts = js_sys::Array::new();
                                 blob_parts.push(&wasm_bindgen::JsValue::from_str(&json));
-                                if let Ok(blob) =
-                                    web_sys::Blob::new_with_str_sequence(&blob_parts)
+                                if let Ok(blob) = web_sys::Blob::new_with_str_sequence(&blob_parts)
                                 {
                                     if let Ok(url) =
                                         web_sys::Url::create_object_url_with_blob(&blob)

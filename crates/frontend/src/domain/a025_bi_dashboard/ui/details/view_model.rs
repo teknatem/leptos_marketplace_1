@@ -118,7 +118,8 @@ impl BiDashboardDetailsVm {
         }
         if let Some(v) = raw["rating"].as_u64() {
             let r = v as u8;
-            self.rating.set(if r >= 1 && r <= 5 { Some(r) } else { None });
+            self.rating
+                .set(if r >= 1 && r <= 5 { Some(r) } else { None });
         } else {
             self.rating.set(None);
         }
@@ -128,8 +129,10 @@ impl BiDashboardDetailsVm {
 
         // Layout
         if let Some(layout) = raw.get("layout") {
-            self.layout_json
-                .set(serde_json::to_string_pretty(layout).unwrap_or_else(|_| r#"{"groups":[]}"#.to_string()));
+            self.layout_json.set(
+                serde_json::to_string_pretty(layout)
+                    .unwrap_or_else(|_| r#"{"groups":[]}"#.to_string()),
+            );
         }
 
         // Global filters
@@ -156,16 +159,19 @@ impl BiDashboardDetailsVm {
     }
 
     pub fn to_dto(&self) -> BiDashboardSaveDto {
-        let layout: serde_json::Value =
-            serde_json::from_str(&self.layout_json.get_untracked())
-                .unwrap_or_else(|_| serde_json::json!({"groups": []}));
+        let layout: serde_json::Value = serde_json::from_str(&self.layout_json.get_untracked())
+            .unwrap_or_else(|_| serde_json::json!({"groups": []}));
         let global_filters: serde_json::Value =
             serde_json::from_str(&self.global_filters_json.get_untracked())
                 .unwrap_or_else(|_| serde_json::json!([]));
 
         let comment = {
             let c = self.comment.get_untracked();
-            if c.is_empty() { None } else { Some(c) }
+            if c.is_empty() {
+                None
+            } else {
+                Some(c)
+            }
         };
 
         BiDashboardSaveDto {

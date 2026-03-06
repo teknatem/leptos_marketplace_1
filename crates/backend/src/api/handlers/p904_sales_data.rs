@@ -1,7 +1,5 @@
 use axum::{extract::Query, http::StatusCode, Json};
-use contracts::projections::p904_sales_data::dto::{
-    SalesDataDto, SalesDataListResponse,
-};
+use contracts::projections::p904_sales_data::dto::{SalesDataDto, SalesDataListResponse};
 use serde::Deserialize;
 
 use crate::projections::p904_sales_data::repository::ModelWithCabinet;
@@ -56,10 +54,10 @@ pub async fn list(
     {
         Ok(items) => {
             tracing::info!("P904 list response: {} items returned", items.len());
-            
+
             let dtos: Vec<SalesDataDto> = items.into_iter().map(model_to_dto).collect();
             let total_count = dtos.len() as i32;
-            
+
             Ok(Json(SalesDataListResponse {
                 items: dtos,
                 total_count,

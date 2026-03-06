@@ -6,6 +6,6 @@ mod metadata_gen;
 pub use metadata_gen::{ENTITY_METADATA, FIELDS};
 
 pub use aggregate::{
-    ConnectionMP, ConnectionMPDto, ConnectionMPId,
-    MarketplaceType, AuthorizationType, ConnectionTestResult,
+    AuthorizationType, ConnectionMP, ConnectionMPDto, ConnectionMPId, ConnectionTestResult,
+    MarketplaceType,
 };
