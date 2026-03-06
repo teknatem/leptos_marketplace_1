@@ -38,7 +38,10 @@ pub async fn list_promotions(
     let page_size = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
     let page = if page_size > 0 { offset / page_size } else { 0 };
-    let sort_by = query.sort_by.clone().unwrap_or_else(|| "start_date_time".to_string());
+    let sort_by = query
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "start_date_time".to_string());
     let sort_desc = query.sort_desc.unwrap_or(true);
 
     let list_query = WbPromotionListQuery {
@@ -52,13 +55,12 @@ pub async fn list_promotions(
         offset,
     };
 
-    let (items, total) =
-        a020_wb_promotion::repository::list_sql(list_query)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to list WB promotions: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let (items, total) = a020_wb_promotion::repository::list_sql(list_query)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list WB promotions: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let total_pages = if page_size > 0 {
         (total + page_size - 1) / page_size
@@ -88,9 +90,7 @@ pub async fn get_promotion_detail(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    promotion
-        .map(Json)
-        .ok_or(axum::http::StatusCode::NOT_FOUND)
+    promotion.map(Json).ok_or(axum::http::StatusCode::NOT_FOUND)
 }
 
 /// POST /api/a020/wb-promotions/:id/post

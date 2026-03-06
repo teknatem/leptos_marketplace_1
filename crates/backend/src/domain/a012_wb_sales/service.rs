@@ -42,7 +42,11 @@ pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
     // Определяем тип документа по знаку finished_price
     let is_return = finished_price < 0.0;
     let sign = if is_return { -1.0_f64 } else { 1.0_f64 };
-    let target_oper_name = if is_return { "Возврат" } else { "Продажа" };
+    let target_oper_name = if is_return {
+        "Возврат"
+    } else {
+        "Продажа"
+    };
 
     // Фильтруем записи P903 по типу операции (Продажа / Возврат)
     let sales_entries: Vec<_> = p903_entries
@@ -253,7 +257,8 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
 
                         // Проверяем что цена не только найдена, но и не равна 0
                         if price.is_some() && price.unwrap() > 0.0 {
-                            price_source = format!("base_nomenclature {} on date {}", base_ref, sale_date);
+                            price_source =
+                                format!("base_nomenclature {} on date {}", base_ref, sale_date);
                         } else {
                             // Нулевая цена считается как "не найдена"
                             price = None;
@@ -299,7 +304,8 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
                         });
 
                         if price.is_some() {
-                            price_source = format!("base_nomenclature {} (first nonzero price)", base_ref);
+                            price_source =
+                                format!("base_nomenclature {} (first nonzero price)", base_ref);
                         }
                     }
                 }

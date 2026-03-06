@@ -1,7 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, FromQueryResult};
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -14,16 +16,16 @@ pub struct Model {
     pub barcode: String,
 
     #[sea_orm(primary_key, auto_increment = false)]
-    pub source: String,  // "1C" | "OZON" | "WB" | "YM"
+    pub source: String, // "1C" | "OZON" | "WB" | "YM"
 
     #[sea_orm(nullable)]
-    pub nomenclature_ref: Option<String>,  // UUID на a004_nomenclature (nullable)
+    pub nomenclature_ref: Option<String>, // UUID на a004_nomenclature (nullable)
 
     #[sea_orm(nullable)]
     pub article: Option<String>,
 
-    pub created_at: String,  // DateTime<Utc> as ISO8601
-    pub updated_at: String,  // DateTime<Utc> as ISO8601
+    pub created_at: String, // DateTime<Utc> as ISO8601
+    pub updated_at: String, // DateTime<Utc> as ISO8601
 
     pub is_active: bool,
 }
@@ -43,7 +45,7 @@ pub struct BarcodeWithNomenclature {
     pub created_at: String,
     pub updated_at: String,
     pub is_active: bool,
-    pub nomenclature_name: Option<String>,  // description из a004_nomenclature
+    pub nomenclature_name: Option<String>, // description из a004_nomenclature
 }
 
 fn conn() -> &'static DatabaseConnection {
@@ -99,9 +101,7 @@ pub async fn upsert_entry(entry: &NomenclatureBarcodeEntry) -> Result<()> {
             .await?;
     } else {
         // Insert новой записи
-        Entity::insert(active_model)
-            .exec(db)
-            .await?;
+        Entity::insert(active_model).exec(db).await?;
     }
 
     Ok(())
@@ -157,17 +157,13 @@ pub async fn get_by_nomenclature_ref(
 ) -> Result<Vec<Model>> {
     let db = conn();
 
-    let mut query = Entity::find()
-        .filter(Column::NomenclatureRef.eq(nomenclature_ref));
+    let mut query = Entity::find().filter(Column::NomenclatureRef.eq(nomenclature_ref));
 
     if !include_inactive {
         query = query.filter(Column::IsActive.eq(true));
     }
 
-    let results = query
-        .order_by_asc(Column::Barcode)
-        .all(db)
-        .await?;
+    let results = query.order_by_asc(Column::Barcode).all(db).await?;
 
     Ok(results)
 }
@@ -181,7 +177,7 @@ pub async fn list_with_filters(
     limit: i32,
     offset: i32,
 ) -> Result<(Vec<BarcodeWithNomenclature>, i32)> {
-    use sea_orm::{Statement, ConnectionTrait};
+    use sea_orm::{ConnectionTrait, Statement};
     let db = conn();
 
     // Строим WHERE условия
@@ -263,11 +259,7 @@ pub async fn list_with_filters(
     params.push((limit as i64).into());
     params.push((offset as i64).into());
 
-    let stmt = Statement::from_sql_and_values(
-        db.get_database_backend(),
-        &sql,
-        params,
-    );
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
 
     let results: Vec<BarcodeWithNomenclature> = BarcodeWithNomenclature::find_by_statement(stmt)
         .all(db)
@@ -291,9 +283,7 @@ pub async fn deactivate_by_barcode_and_source(barcode: &str, source: &str) -> Re
         active_model.is_active = Set(false);
         active_model.updated_at = Set(Utc::now().to_rfc3339());
 
-        Entity::update(active_model)
-            .exec(db)
-            .await?;
+        Entity::update(active_model).exec(db).await?;
 
         Ok(true)
     } else {
@@ -305,8 +295,7 @@ pub async fn deactivate_by_barcode_and_source(barcode: &str, source: &str) -> Re
 pub async fn list_all(limit: Option<u64>) -> Result<Vec<Model>> {
     let db = conn();
 
-    let mut query = Entity::find()
-        .order_by_desc(Column::UpdatedAt);
+    let mut query = Entity::find().order_by_desc(Column::UpdatedAt);
 
     if let Some(limit_val) = limit {
         query = query.limit(limit_val);

@@ -71,26 +71,17 @@ pub async fn generate_view(request: GenerateViewRequest) -> anyhow::Result<Gener
 
     if let Some(html) = &request.current_html {
         if !html.trim().is_empty() {
-            user_prompt.push_str(&format!(
-                "Current HTML:\n```html\n{}\n```\n\n",
-                html
-            ));
+            user_prompt.push_str(&format!("Current HTML:\n```html\n{}\n```\n\n", html));
         }
     }
     if let Some(css) = &request.current_css {
         if !css.trim().is_empty() {
-            user_prompt.push_str(&format!(
-                "Current CSS:\n```css\n{}\n```\n\n",
-                css
-            ));
+            user_prompt.push_str(&format!("Current CSS:\n```css\n{}\n```\n\n", css));
         }
     }
 
     if !request.indicator_description.is_empty() {
-        user_prompt.push_str(&format!(
-            "Indicator: {}\n\n",
-            request.indicator_description
-        ));
+        user_prompt.push_str(&format!("Indicator: {}\n\n", request.indicator_description));
     }
 
     user_prompt.push_str(&format!("Task: {}", request.prompt));
@@ -100,9 +91,10 @@ pub async fn generate_view(request: GenerateViewRequest) -> anyhow::Result<Gener
         ChatMessage::user(user_prompt),
     ];
 
-    let response = provider.chat_completion(messages).await.map_err(|e| {
-        anyhow::anyhow!("LLM request failed: {}", e)
-    })?;
+    let response = provider
+        .chat_completion(messages)
+        .await
+        .map_err(|e| anyhow::anyhow!("LLM request failed: {}", e))?;
 
     parse_llm_response(&response.content)
 }

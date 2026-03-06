@@ -18,18 +18,13 @@
 //! }
 //! ```
 
-mod types;
 mod field_type;
+mod types;
 mod validation;
 
+pub use field_type::{FieldSource, FieldType};
 pub use types::{
-    EntityMetadataInfo,
-    EntityType,
-    EntityUiMetadata,
-    EntityAiMetadata,
-    FieldMetadata,
+    EntityAiMetadata, EntityMetadataInfo, EntityType, EntityUiMetadata, FieldMetadata,
     FieldUiMetadata,
 };
-pub use field_type::{FieldType, FieldSource};
 pub use validation::ValidationRules;
-

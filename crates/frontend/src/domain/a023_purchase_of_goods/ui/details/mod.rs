@@ -44,10 +44,8 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                     Ok(response) if response.ok() => {
                         match response.json::<PurchaseOfGoods>().await {
                             Ok(data) => {
-                                let tab_key =
-                                    format!("a023_purchase_of_goods_detail_{}", id_val);
-                                let tab_title =
-                                    format!("Приобр. {}", data.document_no);
+                                let tab_key = format!("a023_purchase_of_goods_detail_{}", id_val);
+                                let tab_title = format!("Приобр. {}", data.document_no);
                                 tabs_store.update_tab_title(&tab_key, &tab_title);
                                 set_doc.set(Some(data));
                             }

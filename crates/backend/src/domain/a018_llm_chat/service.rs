@@ -6,7 +6,7 @@ use crate::shared::llm::{execute_tool_call, metadata_tool_definitions};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
-    ChatRole, LlmChat, LlmChatDetail, LlmChatAttachment, LlmChatId, LlmChatListItem, LlmChatMessage,
+    ChatRole, LlmChat, LlmChatAttachment, LlmChatDetail, LlmChatId, LlmChatListItem, LlmChatMessage,
 };
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
@@ -157,10 +157,7 @@ pub async fn get_by_id(id: &str) -> anyhow::Result<Option<LlmChatDetail>> {
         .flatten()
         .map(|a| a.base.description.clone());
 
-    Ok(Some(LlmChatDetail {
-        chat,
-        agent_name,
-    }))
+    Ok(Some(LlmChatDetail { chat, agent_name }))
 }
 
 /// Получить список всех чатов
@@ -286,11 +283,13 @@ pub async fn send_message(
     // Sliding window: system-сообщения сохраняются полностью,
     // не-системные обрезаются до MAX_HISTORY_MESSAGES (последние N)
     if history.len() > MAX_HISTORY_MESSAGES {
-        let system_msgs: Vec<_> = history.iter()
+        let system_msgs: Vec<_> = history
+            .iter()
             .filter(|m| m.role == ChatRole::System)
             .cloned()
             .collect();
-        let mut non_system: Vec<_> = history.iter()
+        let mut non_system: Vec<_> = history
+            .iter()
             .filter(|m| m.role != ChatRole::System)
             .cloned()
             .collect();
@@ -304,7 +303,8 @@ pub async fn send_message(
     let mut llm_messages: Vec<ChatMessage> = Vec::new();
 
     // Системный промпт: из агента в БД, иначе — файл prompts/default_agent.md
-    let system_prompt = agent.system_prompt
+    let system_prompt = agent
+        .system_prompt
         .as_deref()
         .unwrap_or(DEFAULT_SYSTEM_PROMPT);
     llm_messages.push(ChatMessage::system(system_prompt.to_string()));
@@ -357,20 +357,30 @@ pub async fn send_message(
         );
 
         // Добавить ответ ассистента с tool_calls в историю сообщений
-        llm_messages.push(ChatMessage::assistant_with_tool_calls(response.tool_calls.clone()));
+        llm_messages.push(ChatMessage::assistant_with_tool_calls(
+            response.tool_calls.clone(),
+        ));
 
         // Выполнить каждый tool call и добавить результаты
         for tool_call in &response.tool_calls {
             let result = execute_tool_call(tool_call);
-            tracing::debug!("Tool '{}' result: {}", tool_call.name, &result[..result.len().min(200)]);
+            tracing::debug!(
+                "Tool '{}' result: {}",
+                tool_call.name,
+                &result[..result.len().min(200)]
+            );
             llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
         }
     }
 
     let duration_ms = start.elapsed().as_millis() as i64;
 
-    let llm_response = final_response
-        .ok_or_else(|| anyhow::anyhow!("LLM exceeded maximum tool calling iterations ({})", MAX_TOOL_ITERATIONS))?;
+    let llm_response = final_response.ok_or_else(|| {
+        anyhow::anyhow!(
+            "LLM exceeded maximum tool calling iterations ({})",
+            MAX_TOOL_ITERATIONS
+        )
+    })?;
 
     // 10. Сохранить ответ ассистента с метаданными
     let assistant_msg = LlmChatMessage::new_with_metadata(

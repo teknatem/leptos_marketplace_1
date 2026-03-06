@@ -1,7 +1,7 @@
+use crate::domain::a009_ozon_returns;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
-use crate::domain::a009_ozon_returns;
 
 /// Обработать одну строку возврата
 pub async fn process_return_item(
@@ -75,4 +75,3 @@ pub async fn process_return_item(
         Ok(true) // Inserted
     }
 }
-

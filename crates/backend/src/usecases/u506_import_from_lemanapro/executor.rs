@@ -327,7 +327,9 @@ impl ImportExecutor {
             );
 
             // Автоматический поиск номенклатуры по артикулу
-            let _ = a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product).await;
+            let _ =
+                a007_marketplace_product::service::search_and_set_nomenclature(&mut new_product)
+                    .await;
 
             a007_marketplace_product::repository::insert(&new_product).await?;
             Ok(true)

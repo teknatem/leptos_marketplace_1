@@ -19,7 +19,7 @@ static ORG_CACHE: Lazy<Arc<RwLock<Option<(std::time::Instant, HashMap<String, St
 /// Получить кэш организаций (id -> description)
 async fn get_org_map() -> HashMap<String, String> {
     let cache_ttl = std::time::Duration::from_secs(300); // 5 минут
-    
+
     // Проверяем кэш
     {
         let cache = ORG_CACHE.read().await;
@@ -29,23 +29,23 @@ async fn get_org_map() -> HashMap<String, String> {
             }
         }
     }
-    
+
     // Загружаем организации из БД
     let organizations = crate::domain::a002_organization::service::list_all()
         .await
         .unwrap_or_default();
-    
+
     let map: HashMap<String, String> = organizations
         .into_iter()
         .map(|org| (org.base.id.as_string(), org.base.description.clone()))
         .collect();
-    
+
     // Обновляем кэш
     {
         let mut cache = ORG_CACHE.write().await;
         *cache = Some((std::time::Instant::now(), map.clone()));
     }
-    
+
     map
 }
 
@@ -73,7 +73,10 @@ pub async fn list_sales(
     // Получаем кэш организаций
     let org_map = get_org_map().await;
 
-    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(|m| model_to_dto(m, &org_map)).collect();
+    let dtos: Vec<SalesRegisterDto> = items
+        .into_iter()
+        .map(|m| model_to_dto(m, &org_map))
+        .collect();
 
     let has_more = total > (req.offset + dtos.len() as i32);
 
@@ -139,7 +142,9 @@ pub async fn get_stats_by_marketplace(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok(Json(SalesRegisterStatsByMarketplaceResponse { data: stats }))
+    Ok(Json(SalesRegisterStatsByMarketplaceResponse {
+        data: stats,
+    }))
 }
 
 /// Handler для запуска backfill marketplace_product_ref
@@ -173,7 +178,7 @@ pub async fn backfill_product_refs() -> Result<Json<serde_json::Value>, axum::ht
 /// Преобразование Model в DTO
 fn model_to_dto(model: repository::Model, org_map: &HashMap<String, String>) -> SalesRegisterDto {
     let organization_name = org_map.get(&model.organization_ref).cloned();
-    
+
     SalesRegisterDto {
         marketplace: model.marketplace,
         document_no: model.document_no,
@@ -225,7 +230,10 @@ pub async fn get_by_registrator(
     // Получаем кэш организаций
     let org_map = get_org_map().await;
 
-    let dtos: Vec<SalesRegisterDto> = items.into_iter().map(|m| model_to_dto(m, &org_map)).collect();
+    let dtos: Vec<SalesRegisterDto> = items
+        .into_iter()
+        .map(|m| model_to_dto(m, &org_map))
+        .collect();
 
     Ok(Json(dtos))
 }

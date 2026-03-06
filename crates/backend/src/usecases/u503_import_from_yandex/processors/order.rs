@@ -1,11 +1,11 @@
+use super::super::yandex_api_client::YmOrderItem;
+use crate::domain::a013_ym_order;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
-use crate::domain::a013_ym_order;
 use contracts::domain::a013_ym_order::aggregate::{
     YmOrder, YmOrderHeader, YmOrderLine, YmOrderSourceMeta, YmOrderState,
 };
-use super::super::yandex_api_client::YmOrderItem;
+use contracts::domain::common::AggregateId;
 
 /// Normalize Yandex Market order status
 pub fn normalize_ym_status(status: &str) -> String {
@@ -188,7 +188,6 @@ pub async fn process_order(
 
     let raw_json = serde_json::to_string(&order_details)?;
     a013_ym_order::service::store_document_with_raw(document, &raw_json).await?;
-    
+
     Ok(is_new)
 }
-

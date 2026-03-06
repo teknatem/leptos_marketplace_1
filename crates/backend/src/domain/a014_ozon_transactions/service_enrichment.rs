@@ -11,9 +11,7 @@ struct PostingLineData {
 }
 
 /// Обогатить items данными из связанного постинга (FBS или FBO)
-pub async fn enrich_items_from_posting(
-    transaction: &mut OzonTransactions,
-) -> anyhow::Result<()> {
+pub async fn enrich_items_from_posting(transaction: &mut OzonTransactions) -> anyhow::Result<()> {
     // Проверяем наличие ссылки на постинг
     let posting_ref = match (&transaction.posting_ref, &transaction.posting_ref_type) {
         (Some(ref_id), Some(ref_type)) => (ref_id.clone(), ref_type.clone()),
@@ -32,36 +30,44 @@ pub async fn enrich_items_from_posting(
         let posting = crate::domain::a010_ozon_fbs_posting::repository::get_by_id(posting_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("FBS Posting not found: {}", posting_id))?;
-        
-        posting.lines.into_iter().map(|line| PostingLineData {
-            product_id: line.product_id,
-            offer_id: line.offer_id,
-            price_effective: line.price_effective,
-            barcode: line.barcode,
-            name: line.name,
-        }).collect()
+
+        posting
+            .lines
+            .into_iter()
+            .map(|line| PostingLineData {
+                product_id: line.product_id,
+                offer_id: line.offer_id,
+                price_effective: line.price_effective,
+                barcode: line.barcode,
+                name: line.name,
+            })
+            .collect()
     } else if posting_ref.1 == "A011" {
         // FBO Posting
         let posting = crate::domain::a011_ozon_fbo_posting::repository::get_by_id(posting_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("FBO Posting not found: {}", posting_id))?;
-        
-        posting.lines.into_iter().map(|line| PostingLineData {
-            product_id: line.product_id,
-            offer_id: line.offer_id,
-            price_effective: line.price_effective,
-            barcode: line.barcode,
-            name: line.name,
-        }).collect()
+
+        posting
+            .lines
+            .into_iter()
+            .map(|line| PostingLineData {
+                product_id: line.product_id,
+                offer_id: line.offer_id,
+                price_effective: line.price_effective,
+                barcode: line.barcode,
+                name: line.name,
+            })
+            .collect()
     } else {
         tracing::warn!("Unknown posting type: {}", posting_ref.1);
         return Ok(());
     };
 
     // Создаем lookup map: sku (product_id) -> PostingLineData
-    let mut line_map: std::collections::HashMap<i64, PostingLineData> = 
+    let mut line_map: std::collections::HashMap<i64, PostingLineData> =
         std::collections::HashMap::new();
-    
+
     for line_data in lines {
         // Используем product_id для сопоставления (это числовой SKU в OZON)
         if let Ok(sku) = line_data.product_id.parse::<i64>() {
@@ -79,10 +85,10 @@ pub async fn enrich_items_from_posting(
 
     for item in &transaction.items {
         let mut enriched = item.clone();
-        
+
         if let Some(line_data) = line_map.get(&item.sku) {
             enriched.price = line_data.price_effective;
-            
+
             if let Some(price) = line_data.price_effective {
                 total_price += price;
             }
@@ -100,20 +106,24 @@ pub async fn enrich_items_from_posting(
                     barcode: line_data.barcode.clone(),
                     title: line_data.name.clone(),
                 },
-            ).await {
+            )
+            .await
+            {
                 Ok(mp_uuid) => {
                     // Получаем nomenclature_ref из найденного a007
-                    if let Ok(Some(product)) = 
-                        crate::domain::a007_marketplace_product::service::get_by_id(mp_uuid).await 
+                    if let Ok(Some(product)) =
+                        crate::domain::a007_marketplace_product::service::get_by_id(mp_uuid).await
                     {
                         // Если есть nomenclature_ref в a007, получаем код 1С из a004
                         if let Some(ref nom_uuid_str) = product.nomenclature_ref {
                             if let Ok(nom_uuid) = Uuid::parse_str(nom_uuid_str) {
-                                if let Ok(Some(nomenclature)) = 
-                                    crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await 
+                                if let Ok(Some(nomenclature)) =
+                                    crate::domain::a004_nomenclature::service::get_by_id(nom_uuid)
+                                        .await
                                 {
                                     // Устанавливаем код 1С как nomenclature_ref
-                                    enriched.nomenclature_ref = Some(nomenclature.base.code.clone());
+                                    enriched.nomenclature_ref =
+                                        Some(nomenclature.base.code.clone());
                                 }
                             }
                         }
@@ -122,14 +132,15 @@ pub async fn enrich_items_from_posting(
                 Err(e) => {
                     tracing::warn!(
                         "Failed to find/create marketplace product for SKU {}: {}",
-                        marketplace_sku, e
+                        marketplace_sku,
+                        e
                     );
                 }
             }
         } else {
             tracing::warn!("No matching line found in posting for SKU: {}", item.sku);
         }
-        
+
         enriched_items.push(enriched);
     }
 
@@ -154,4 +165,3 @@ pub async fn enrich_items_from_posting(
 
     Ok(())
 }
-

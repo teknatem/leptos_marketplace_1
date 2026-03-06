@@ -95,7 +95,10 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "ID транзакции (ЯМ)".to_string(),
                 field_id: "transaction_id".to_string(),
-                value: item.transaction_id.clone().unwrap_or_else(|| "-".to_string()),
+                value: item
+                    .transaction_id
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата транзакции".to_string(),
@@ -235,10 +238,7 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "Номер претензии".to_string(),
                 field_id: "claim_number".to_string(),
-                value: item
-                    .claim_number
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.claim_number.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Год-месяц бонусного счёта".to_string(),

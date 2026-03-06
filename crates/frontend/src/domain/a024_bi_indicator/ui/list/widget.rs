@@ -94,7 +94,9 @@ async fn fetch_paginated(
             let status = v["status"].as_str().unwrap_or("draft").to_string();
             let is_public = v["is_public"].as_bool().unwrap_or(false);
             let owner_user_id = v["owner_user_id"].as_str().unwrap_or("").to_string();
-            let created_at = v["created_at"].as_str().map(|s| s[..10.min(s.len())].to_string());
+            let created_at = v["created_at"]
+                .as_str()
+                .map(|s| s[..10.min(s.len())].to_string());
             Some(BiIndicatorRow {
                 id,
                 code,
@@ -107,7 +109,13 @@ async fn fetch_paginated(
         })
         .collect();
 
-    Ok((rows, parsed.total, parsed.page, parsed.page_size, parsed.total_pages))
+    Ok((
+        rows,
+        parsed.total,
+        parsed.page,
+        parsed.page_size,
+        parsed.total_pages,
+    ))
 }
 
 async fn load_testdata() -> Result<(), String> {

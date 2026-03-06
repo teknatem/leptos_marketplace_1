@@ -57,10 +57,19 @@ impl Sortable for YmReturnDto {
         match field {
             "return_id" => self.return_id.cmp(&other.return_id),
             "order_id" => self.order_id.cmp(&other.order_id),
-            "return_type" => self.return_type.to_lowercase().cmp(&other.return_type.to_lowercase()),
-            "refund_status" => self.refund_status.to_lowercase().cmp(&other.refund_status.to_lowercase()),
+            "return_type" => self
+                .return_type
+                .to_lowercase()
+                .cmp(&other.return_type.to_lowercase()),
+            "refund_status" => self
+                .refund_status
+                .to_lowercase()
+                .cmp(&other.refund_status.to_lowercase()),
             "total_items" => self.total_items.cmp(&other.total_items),
-            "total_amount" => self.total_amount.partial_cmp(&other.total_amount).unwrap_or(Ordering::Equal),
+            "total_amount" => self
+                .total_amount
+                .partial_cmp(&other.total_amount)
+                .unwrap_or(Ordering::Equal),
             "created_at_source" => self.created_at_source.cmp(&other.created_at_source),
             "fetched_at" => self.fetched_at.cmp(&other.fetched_at),
             _ => Ordering::Equal,
@@ -82,20 +91,30 @@ pub fn YmReturnsList() -> impl IntoView {
     let search_return_id = RwSignal::new(state.get_untracked().search_return_id.clone());
     let search_order_id = RwSignal::new(state.get_untracked().search_order_id.clone());
     let filter_type = RwSignal::new(
-        state.get_untracked().filter_type.clone().unwrap_or_default(),
+        state
+            .get_untracked()
+            .filter_type
+            .clone()
+            .unwrap_or_default(),
     );
 
     Effect::new(move || {
         let return_id = search_return_id.get();
         untrack(move || {
-            state.update(|s| { s.search_return_id = return_id; s.page = 0; });
+            state.update(|s| {
+                s.search_return_id = return_id;
+                s.page = 0;
+            });
         });
     });
 
     Effect::new(move || {
         let order_id = search_order_id.get();
         untrack(move || {
-            state.update(|s| { s.search_order_id = order_id; s.page = 0; });
+            state.update(|s| {
+                s.search_order_id = order_id;
+                s.page = 0;
+            });
         });
     });
 
@@ -103,7 +122,11 @@ pub fn YmReturnsList() -> impl IntoView {
         let ft = filter_type.get();
         untrack(move || {
             state.update(|s| {
-                s.filter_type = if ft.is_empty() { None } else { Some(ft.clone()) };
+                s.filter_type = if ft.is_empty() {
+                    None
+                } else {
+                    Some(ft.clone())
+                };
                 s.page = 0;
             });
         });
@@ -130,10 +153,16 @@ pub fn YmReturnsList() -> impl IntoView {
                 url.push_str(&format!("&return_type={}", t));
             }
             if !current_state.search_return_id.is_empty() {
-                url.push_str(&format!("&search_return_id={}", current_state.search_return_id));
+                url.push_str(&format!(
+                    "&search_return_id={}",
+                    current_state.search_return_id
+                ));
             }
             if !current_state.search_order_id.is_empty() {
-                url.push_str(&format!("&search_order_id={}", current_state.search_order_id));
+                url.push_str(&format!(
+                    "&search_order_id={}",
+                    current_state.search_order_id
+                ));
             }
             match Request::get(&url).send().await {
                 Ok(response) => {
@@ -196,20 +225,36 @@ pub fn YmReturnsList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
-        if !s.search_return_id.is_empty() { count += 1; }
-        if !s.search_order_id.is_empty() { count += 1; }
-        if s.filter_type.is_some() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if !s.search_return_id.is_empty() {
+            count += 1;
+        }
+        if !s.search_order_id.is_empty() {
+            count += 1;
+        }
+        if s.filter_type.is_some() {
+            count += 1;
+        }
         count
     });
 
     let toggle_sort = move |field: &'static str| {
         move |_| {
-            if was_just_resizing() { return; }
+            if was_just_resizing() {
+                return;
+            }
             state.update(|s| {
-                if s.sort_field == field { s.sort_ascending = !s.sort_ascending; }
-                else { s.sort_field = field.to_string(); s.sort_ascending = true; }
+                if s.sort_field == field {
+                    s.sort_ascending = !s.sort_ascending;
+                } else {
+                    s.sort_field = field.to_string();
+                    s.sort_ascending = true;
+                }
                 s.page = 0;
             });
             load_data();
@@ -222,7 +267,10 @@ pub fn YmReturnsList() -> impl IntoView {
     };
 
     let change_page_size = move |size: usize| {
-        state.update(|s| { s.page_size = size; s.page = 0; });
+        state.update(|s| {
+            s.page_size = size;
+            s.page = 0;
+        });
         load_data();
     };
 
@@ -243,13 +291,18 @@ pub fn YmReturnsList() -> impl IntoView {
 
     let batch_post = move |_| {
         let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         set_posting_in_progress.set(true);
         spawn_local(async move {
             let body = json!({ "ids": ids });
             match Request::post(&format!("{}/api/a016/ym-returns/batch-post", api_base()))
                 .header("Content-Type", "application/json")
-                .body(body.to_string()).unwrap().send().await
+                .body(body.to_string())
+                .unwrap()
+                .send()
+                .await
             {
                 Ok(resp) => {
                     if resp.status() == 200 {
@@ -265,13 +318,18 @@ pub fn YmReturnsList() -> impl IntoView {
 
     let batch_unpost = move |_| {
         let ids: Vec<String> = state.with_untracked(|s| s.selected_ids.iter().cloned().collect());
-        if ids.is_empty() { return; }
+        if ids.is_empty() {
+            return;
+        }
         set_posting_in_progress.set(true);
         spawn_local(async move {
             let body = json!({ "ids": ids });
             match Request::post(&format!("{}/api/a016/ym-returns/batch-unpost", api_base()))
                 .header("Content-Type", "application/json")
-                .body(body.to_string()).unwrap().send().await
+                .body(body.to_string())
+                .unwrap()
+                .send()
+                .await
             {
                 Ok(resp) => {
                     if resp.status() == 200 {
@@ -292,8 +350,12 @@ pub fn YmReturnsList() -> impl IntoView {
         for item in data.iter() {
             csv.push_str(&format!(
                 "{};{};{};{};{};{};{};{}\n",
-                item.return_id, item.order_id, item.return_type, item.refund_status,
-                item.total_items, format_number(item.total_amount),
+                item.return_id,
+                item.order_id,
+                item.return_type,
+                item.refund_status,
+                item.total_items,
+                format_number(item.total_amount),
                 format_datetime(&item.created_at_source),
                 if item.is_posted { "Да" } else { "Нет" }
             ));
@@ -333,15 +395,37 @@ pub fn YmReturnsList() -> impl IntoView {
     let selected = RwSignal::new(state.with_untracked(|s| s.selected_ids.clone()));
 
     let toggle_selection = move |id: String, checked: bool| {
-        selected.update(|s| { if checked { s.insert(id.clone()); } else { s.remove(&id); } });
-        state.update(|s| { if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); } });
+        selected.update(|s| {
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
+        });
+        state.update(|s| {
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
+        });
     };
 
     let toggle_all = move |check_all: bool| {
         let current_items = items.get();
         if check_all {
-            selected.update(|s| { s.clear(); for item in current_items.iter() { s.insert(item.id.clone()); } });
-            state.update(|s| { s.selected_ids.clear(); for item in current_items.iter() { s.selected_ids.insert(item.id.clone()); } });
+            selected.update(|s| {
+                s.clear();
+                for item in current_items.iter() {
+                    s.insert(item.id.clone());
+                }
+            });
+            state.update(|s| {
+                s.selected_ids.clear();
+                for item in current_items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
+            });
         } else {
             selected.update(|s| s.clear());
             state.update(|s| s.selected_ids.clear());

@@ -1,12 +1,12 @@
+use super::super::ozon_api_client::OzonTransactionOperation;
+use crate::domain::a014_ozon_transactions;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
-use crate::domain::a014_ozon_transactions;
 use contracts::domain::a014_ozon_transactions::aggregate::{
-    OzonTransactions, OzonTransactionsHeader, OzonTransactionsItem,
-    OzonTransactionsPosting, OzonTransactionsService, OzonTransactionsSourceMeta,
+    OzonTransactions, OzonTransactionsHeader, OzonTransactionsItem, OzonTransactionsPosting,
+    OzonTransactionsService, OzonTransactionsSourceMeta,
 };
-use super::super::ozon_api_client::OzonTransactionOperation;
+use contracts::domain::common::AggregateId;
 
 pub async fn process_transaction(
     connection: &ConnectionMP,
@@ -88,14 +88,12 @@ pub async fn process_transaction(
     );
 
     // Upsert по operation_id
-    let existing = a014_ozon_transactions::repository::get_by_operation_id(
-        aggregate.header.operation_id,
-    )
-    .await?;
-    
+    let existing =
+        a014_ozon_transactions::repository::get_by_operation_id(aggregate.header.operation_id)
+            .await?;
+
     let is_new = existing.is_none();
     a014_ozon_transactions::repository::upsert_by_operation_id(&aggregate).await?;
-    
+
     Ok(is_new)
 }
-

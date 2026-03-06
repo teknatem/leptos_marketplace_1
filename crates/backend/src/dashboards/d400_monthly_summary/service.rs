@@ -25,7 +25,16 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     // === REVENUE (Выручка) ===
     let revenue_data = repository::get_revenue_by_marketplace_and_org(&date_from, &date_to).await?;
     let revenue_rows = build_indicator_rows(
-        &revenue_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_revenue)).collect::<Vec<_>>(),
+        &revenue_data
+            .iter()
+            .map(|r| {
+                (
+                    r.marketplace_code.clone(),
+                    r.organization_name.clone(),
+                    r.total_revenue,
+                )
+            })
+            .collect::<Vec<_>>(),
         "revenue",
         "Выручка",
         &marketplaces,
@@ -37,7 +46,16 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     // === RETURNS (Возвраты) ===
     let returns_data = repository::get_returns_by_marketplace_and_org(&date_from, &date_to).await?;
     let returns_rows = build_indicator_rows(
-        &returns_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_returns)).collect::<Vec<_>>(),
+        &returns_data
+            .iter()
+            .map(|r| {
+                (
+                    r.marketplace_code.clone(),
+                    r.organization_name.clone(),
+                    r.total_returns,
+                )
+            })
+            .collect::<Vec<_>>(),
         "returns",
         "Возвраты",
         &marketplaces,
@@ -49,7 +67,16 @@ pub async fn get_monthly_summary(request: MonthlySummaryRequest) -> Result<Month
     // === COST (Себестоимость) ===
     let cost_data = repository::get_cost_by_marketplace_and_org(&date_from, &date_to).await?;
     let cost_rows = build_indicator_rows(
-        &cost_data.iter().map(|r| (r.marketplace_code.clone(), r.organization_name.clone(), r.total_cost)).collect::<Vec<_>>(),
+        &cost_data
+            .iter()
+            .map(|r| {
+                (
+                    r.marketplace_code.clone(),
+                    r.organization_name.clone(),
+                    r.total_cost,
+                )
+            })
+            .collect::<Vec<_>>(),
         "cost",
         "Себестоимость",
         &marketplaces,
@@ -189,7 +216,10 @@ fn build_result_rows(
 
     // Populate revenue map
     for r in revenue_data {
-        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        let mp = r
+            .marketplace_code
+            .clone()
+            .unwrap_or_else(|| "Другое".to_string());
         if let Some(org) = &r.organization_name {
             if !org.is_empty() {
                 all_orgs.insert(org.clone());
@@ -200,7 +230,10 @@ fn build_result_rows(
 
     // Populate returns map
     for r in returns_data {
-        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        let mp = r
+            .marketplace_code
+            .clone()
+            .unwrap_or_else(|| "Другое".to_string());
         if let Some(org) = &r.organization_name {
             if !org.is_empty() {
                 all_orgs.insert(org.clone());
@@ -211,7 +244,10 @@ fn build_result_rows(
 
     // Populate cost map
     for r in cost_data {
-        let mp = r.marketplace_code.clone().unwrap_or_else(|| "Другое".to_string());
+        let mp = r
+            .marketplace_code
+            .clone()
+            .unwrap_or_else(|| "Другое".to_string());
         if let Some(org) = &r.organization_name {
             if !org.is_empty() {
                 all_orgs.insert(org.clone());
@@ -226,28 +262,28 @@ fn build_result_rows(
 
     for mp in marketplaces {
         let mut mp_total = 0.0;
-        
+
         // Sum revenue for this marketplace
         for r in revenue_data {
             if r.marketplace_code.as_ref() == Some(mp) {
                 mp_total += r.total_revenue;
             }
         }
-        
+
         // Add returns for this marketplace
         for r in returns_data {
             if r.marketplace_code.as_ref() == Some(mp) {
                 mp_total += r.total_returns;
             }
         }
-        
+
         // Add cost for this marketplace
         for c in cost_data {
             if c.marketplace_code.as_ref() == Some(mp) {
                 mp_total += c.total_cost;
             }
         }
-        
+
         mp_totals.insert(mp.clone(), mp_total);
         grand_total += mp_total;
     }
@@ -283,7 +319,7 @@ fn build_result_rows(
             let returns = *returns_map.get(&key).unwrap_or(&0.0);
             let cost = *cost_map.get(&key).unwrap_or(&0.0);
             let result = revenue + returns + cost;
-            
+
             org_values.insert(mp.clone(), result);
             org_total += result;
         }
@@ -319,4 +355,3 @@ fn last_day_of_month(year: i32, month: u32) -> String {
     };
     format!("{:04}-{:02}-{:02}", year, month, days)
 }
-

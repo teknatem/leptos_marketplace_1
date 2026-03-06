@@ -7,7 +7,10 @@ use uuid::Uuid;
 
 /// Создание нового подключения к маркетплейсу
 pub async fn create(dto: ConnectionMPDto) -> anyhow::Result<Uuid> {
-    let code = dto.code.clone().unwrap_or_else(|| format!("MP-{}", Uuid::new_v4()));
+    let code = dto
+        .code
+        .clone()
+        .unwrap_or_else(|| format!("MP-{}", Uuid::new_v4()));
     let mut aggregate = ConnectionMP::new_for_insert(
         code,
         dto.description,
@@ -118,20 +121,19 @@ pub async fn test_connection(dto: ConnectionMPDto) -> anyhow::Result<ConnectionT
         }
     };
 
-    let marketplace = match crate::domain::a005_marketplace::repository::get_by_id(marketplace_uuid)
-        .await?
-    {
-        Some(mp) => mp,
-        None => {
-            return Ok(ConnectionTestResult {
-                success: false,
-                message: "Маркетплейс не найден в базе данных".into(),
-                duration_ms: 0,
-                tested_at: Utc::now(),
-                details: None,
-            });
-        }
-    };
+    let marketplace =
+        match crate::domain::a005_marketplace::repository::get_by_id(marketplace_uuid).await? {
+            Some(mp) => mp,
+            None => {
+                return Ok(ConnectionTestResult {
+                    success: false,
+                    message: "Маркетплейс не найден в базе данных".into(),
+                    duration_ms: 0,
+                    tested_at: Utc::now(),
+                    details: None,
+                });
+            }
+        };
 
     // Тестируем подключение через соответствующий клиент
     let test_result =

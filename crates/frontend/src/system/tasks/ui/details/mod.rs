@@ -1,9 +1,9 @@
+use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::system::tasks::api;
+use contracts::system::tasks::progress::TaskProgressResponse;
 use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
 use contracts::system::tasks::response::ScheduledTaskResponse;
-use contracts::system::tasks::progress::TaskProgressResponse;
-use crate::shared::icons::icon;
-use crate::system::tasks::api;
 use leptos::ev;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -75,7 +75,11 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                     code: code.get(),
                     description: description.get(),
                     task_type: task_type.get(),
-                    schedule_cron: if schedule_cron.get().is_empty() { None } else { Some(schedule_cron.get()) },
+                    schedule_cron: if schedule_cron.get().is_empty() {
+                        None
+                    } else {
+                        Some(schedule_cron.get())
+                    },
                     is_enabled: is_enabled.get(),
                     config_json: config_json.get(),
                 };
@@ -84,9 +88,17 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                 let dto = UpdateScheduledTaskDto {
                     code: code.get(),
                     description: description.get(),
-                    comment: if comment.get().is_empty() { None } else { Some(comment.get()) },
+                    comment: if comment.get().is_empty() {
+                        None
+                    } else {
+                        Some(comment.get())
+                    },
                     task_type: task_type.get(),
-                    schedule_cron: if schedule_cron.get().is_empty() { None } else { Some(schedule_cron.get()) },
+                    schedule_cron: if schedule_cron.get().is_empty() {
+                        None
+                    } else {
+                        Some(schedule_cron.get())
+                    },
                     is_enabled: is_enabled.get(),
                     config_json: config_json.get(),
                 };
@@ -107,7 +119,9 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
 
     let id_for_delete = id.clone();
     let delete_task = move |_| {
-        if is_new { return; }
+        if is_new {
+            return;
+        }
         let task_id = id_for_delete.clone();
         spawn_local(async move {
             match api::delete_scheduled_task(&task_id).await {
@@ -159,25 +173,25 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                         {move || if is_new { "Новая задача".to_string() } else { format!("Задача: {}", code.get()) }}
                     </h2>
                 <Space>
-                    <Button 
+                    <Button
                         appearance=ButtonAppearance::Primary
-                        on_click=move |_| save_task(()) 
-                        disabled=saving.get() 
+                        on_click=move |_| save_task(())
+                        disabled=saving.get()
                     >
                         {icon("save")}
                         " Сохранить"
                     </Button>
                     {move || if !is_new {
                         let delete_task_clone = delete_task.clone();
-                        view! { 
-                            <Button 
+                        view! {
+                            <Button
                                 appearance=ButtonAppearance::Transparent
-                                on_click=move |_: ev::MouseEvent| delete_task_clone(()) 
+                                on_click=move |_: ev::MouseEvent| delete_task_clone(())
                                 attr:class="scheduled-task-details__delete-btn"
                             >
                                 {icon("delete")}
                                 " Удалить"
-                            </Button> 
+                            </Button>
                         }.into_any()
                     } else {
                         view! { <></> }.into_any()
@@ -245,9 +259,9 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                         <h3 class="scheduled-task-details__card-title">"Конфигурация (JSON)"</h3>
                     </div>
                     <div class="card__body scheduled-task-details__json-body">
-                        <Textarea 
+                        <Textarea
                             value=config_json
-                            placeholder="{ ... }" 
+                            placeholder="{ ... }"
                             class="monospace-textarea"
                             attr:rows=15
                         />
@@ -274,7 +288,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                                         <span class="scheduled-task-details__progress-title">"Прогресс выполнения"</span>
                                         <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>{p.status}</Badge>
                                     </Flex>
-                                    
+
                                     <div class="scheduled-task-details__progress-bar">
                                         <div class="scheduled-task-details__progress-bar-fill" style=move || {
                                             let percent = if let (Some(t), Some(pr)) = (p.total_items, p.processed_items) {
@@ -283,7 +297,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                                             format!("width: {}%;", percent)
                                         }></div>
                                     </div>
-                                    
+
                                     <div class="scheduled-task-details__progress-meta">
                                         <Flex justify=FlexJustify::SpaceBetween>
                                             <span>{format!("Обработано: {} / {}", p.processed_items.unwrap_or(0), p.total_items.unwrap_or(0))}</span>

@@ -1,8 +1,8 @@
+use super::super::wildberries_api_client::WbFinanceReportRow;
+use crate::projections::p903_wb_finance_report::repository::{self, WbFinanceReportEntry};
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
-use crate::projections::p903_wb_finance_report::repository::{self, WbFinanceReportEntry};
-use super::super::wildberries_api_client::WbFinanceReportRow;
 
 pub async fn process_finance_report_row(
     connection: &ConnectionMP,
@@ -58,7 +58,6 @@ pub async fn process_finance_report_row(
     };
 
     repository::upsert_entry(&entry).await?;
-    
+
     Ok(true)
 }
-

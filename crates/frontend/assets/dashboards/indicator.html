@@ -1,0 +1,58 @@
+﻿<button
+  class="indicator-card {{col_class}} design-{{style_key}}"
+  data-status="{{status}}"
+  data-graph="{{graph_type}}"
+  style="--p:{{progress}}"
+  type="button"
+  aria-label="{{name}}"
+>
+  <div class="fx" aria-hidden="true"></div>
+  <span class="bar" aria-hidden="true"></span>
+  <span class="accent" aria-hidden="true"></span>
+
+  <div class="header">
+    <div class="header__main">
+      <div class="name">{{name}}</div>
+      <div class="meta">
+        <span>{{meta_1}}</span>
+        <span>{{meta_2}}</span>
+      </div>
+    </div>
+
+    <div class="header__aside">
+      <span class="chip">{{chip}}</span>
+      <div class="graph-slot">
+        <div class="ring" aria-label="Progress to plan"><span>{{progress}}%</span></div>
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 100 30" role="img" aria-label="Trend {{name}}">
+            <path class="grid" d="M0 29H100" />
+            <path class="fill" d="{{spark_fill}}" />
+            <path class="line" d="{{spark_line}}" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="value-row">
+    <div class="value-row__main">
+      <div class="value-line">
+        <span class="value">{{value}}</span>
+        <span class="unit">{{unit}}</span>
+      </div>
+      <div class="sub">
+        <div class="delta {{delta_neutral_class}}" title="Change vs previous period">
+          <span class="delta-arrow">{{delta_arrow_svg}}</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span class="delta-text">{{delta}}</span>
+        </div>
+        <div class="hint">{{hint}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>{{footer_1}}</span>
+    <span>{{footer_2}}</span>
+  </div>
+</button>

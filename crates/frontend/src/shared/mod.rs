@@ -1,7 +1,7 @@
 pub mod api_utils;
 pub mod bi_card;
-pub mod code_format;
 pub mod clipboard;
+pub mod code_format;
 pub mod components;
 pub mod data;
 pub mod date_utils;

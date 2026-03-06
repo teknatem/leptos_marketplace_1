@@ -93,6 +93,12 @@
   font-size: var(--font-size-base) !important;
 }
 
+/* THAW Textarea — allow rows attribute and inline min-height to control size */
+.thaw-textarea__textarea {
+  min-height: unset !important;
+  height: unset !important;
+}
+
 /* THAW Input/Textarea placeholder styling - italic and lighter */
 .thaw-input__input::placeholder,
 .thaw-textarea__textarea::placeholder {

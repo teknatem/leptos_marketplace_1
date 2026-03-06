@@ -74,8 +74,11 @@ impl MarketplaceClient for OzonClient {
                 return TestConnectionResult {
                     success: false,
                     message: error_msg.clone(),
-                    details: Some(format!("URL: {}, Client-Id: {}, Ошибка: {:?}", url, client_id, e)),
-                }
+                    details: Some(format!(
+                        "URL: {}, Client-Id: {}, Ошибка: {:?}",
+                        url, client_id, e
+                    )),
+                };
             }
         };
 

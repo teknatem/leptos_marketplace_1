@@ -46,8 +46,8 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                         </Flex>
 
                         // JSON content with highlighting
-                        <JsonViewer 
-                            json_content=pretty 
+                        <JsonViewer
+                            json_content=pretty
                             title="Проекции (p900 / p904)".to_string()
                         />
                     </div>

@@ -47,7 +47,8 @@ impl From<Model> for MarketplaceSales {
             version: m.version,
         };
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let accrual_date = NaiveDate::parse_from_str(&m.accrual_date, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
+        let accrual_date = NaiveDate::parse_from_str(&m.accrual_date, "%Y-%m-%d")
+            .unwrap_or_else(|_| Utc::now().date_naive());
 
         MarketplaceSales {
             base: BaseAggregate::with_metadata(
@@ -167,5 +168,3 @@ pub async fn get_by_key(
         .await?;
     Ok(result.map(Into::into))
 }
-
-

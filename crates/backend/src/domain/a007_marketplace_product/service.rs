@@ -7,7 +7,9 @@ use uuid::Uuid;
 
 /// Поиск и установка nomenclature_ref по артикулу
 /// Возвращает true если nomenclature_ref был установлен, false если нет
-pub async fn search_and_set_nomenclature(aggregate: &mut MarketplaceProduct) -> anyhow::Result<bool> {
+pub async fn search_and_set_nomenclature(
+    aggregate: &mut MarketplaceProduct,
+) -> anyhow::Result<bool> {
     // Если nomenclature_ref уже заполнен, ничего не делаем
     if aggregate.nomenclature_ref.is_some() {
         return Ok(false);
@@ -19,7 +21,8 @@ pub async fn search_and_set_nomenclature(aggregate: &mut MarketplaceProduct) -> 
     }
 
     // Шаг 1: Ищем по артикулу в a004_nomenclature
-    let found_items = crate::domain::a004_nomenclature::repository::find_by_article(article).await?;
+    let found_items =
+        crate::domain::a004_nomenclature::repository::find_by_article(article).await?;
 
     // Если найдено ровно 1 - устанавливаем
     if found_items.len() == 1 {
@@ -231,11 +234,9 @@ pub struct FindOrCreateParams {
 /// Возвращает UUID найденного или созданного товара
 pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Result<Uuid> {
     // Шаг 1: Поиск по (connection_mp_ref, marketplace_sku)
-    if let Some(existing) = repository::get_by_connection_and_sku(
-        &params.connection_mp_ref,
-        &params.marketplace_sku,
-    )
-    .await?
+    if let Some(existing) =
+        repository::get_by_connection_and_sku(&params.connection_mp_ref, &params.marketplace_sku)
+            .await?
     {
         return Ok(existing.base.id.value());
     }
@@ -324,7 +325,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             code: Some("mp-ozon-001".into()),
             description: "Тестовый товар Ozon".into(),
             marketplace_ref: "marketplace-ozon-id".into(), // Здесь нужен реальный ID из a005
-            connection_mp_ref: "connection-mp-id".into(), // Здесь нужен реальный ID из a006
+            connection_mp_ref: "connection-mp-id".into(),  // Здесь нужен реальный ID из a006
             marketplace_sku: "OZON87654321".into(),
             barcode: Some("4607087654321".into()),
             article: "ART-OZON-001".into(),

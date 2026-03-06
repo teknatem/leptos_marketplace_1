@@ -2,7 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -246,11 +248,8 @@ pub async fn list_with_filters(
     data_params.push(safe_limit.into());
     data_params.push(safe_offset.into());
 
-    let data_stmt = Statement::from_sql_and_values(
-        db.get_database_backend(),
-        &data_sql,
-        data_params,
-    );
+    let data_stmt =
+        Statement::from_sql_and_values(db.get_database_backend(), &data_sql, data_params);
 
     let items = WbGoodsPriceRow::find_by_statement(data_stmt)
         .all(db)

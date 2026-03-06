@@ -318,4 +318,3 @@ pub struct YmReturnListItemDto {
     pub fetched_at: String,
     pub is_posted: bool,
 }
-

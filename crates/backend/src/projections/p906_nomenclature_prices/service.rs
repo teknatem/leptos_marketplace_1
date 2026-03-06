@@ -1,5 +1,5 @@
+use super::repository::{self, NomenclaturePriceEntry, PriceWithNomenclature};
 use anyhow::Result;
-use super::repository::{self, PriceWithNomenclature, NomenclaturePriceEntry};
 
 /// Получить список цен с фильтрами
 pub async fn list_with_filters(
@@ -11,7 +11,16 @@ pub async fn list_with_filters(
     limit: Option<u64>,
     offset: Option<u64>,
 ) -> Result<(Vec<PriceWithNomenclature>, i64)> {
-    repository::list_with_filters(period, nomenclature_ref, q, sort_by, sort_desc, limit, offset).await
+    repository::list_with_filters(
+        period,
+        nomenclature_ref,
+        q,
+        sort_by,
+        sort_desc,
+        limit,
+        offset,
+    )
+    .await
 }
 
 /// Получить уникальные периоды для фильтра
@@ -28,4 +37,3 @@ pub async fn delete_by_period(period: &str) -> Result<u64> {
 pub async fn upsert_price(entry: &NomenclaturePriceEntry) -> Result<()> {
     repository::upsert_entry(entry).await
 }
-

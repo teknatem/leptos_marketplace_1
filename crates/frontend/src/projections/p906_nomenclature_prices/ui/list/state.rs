@@ -61,7 +61,9 @@ fn load_persisted() -> Option<PersistedState> {
 
 fn save_persisted(st: &PersistedState) {
     let Some(storage) = storage() else { return };
-    let Ok(raw) = serde_json::to_string(st) else { return };
+    let Ok(raw) = serde_json::to_string(st) else {
+        return;
+    };
     let _ = storage.set_item(STORAGE_KEY, &raw);
 }
 
@@ -90,5 +92,3 @@ pub fn create_state() -> RwSignal<P906ListState> {
     }
     RwSignal::new(st)
 }
-
-

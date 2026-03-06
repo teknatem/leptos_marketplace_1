@@ -17,4 +17,3 @@ pub struct SaveSettingsResponse {
     pub success: bool,
     pub message: String,
 }
-

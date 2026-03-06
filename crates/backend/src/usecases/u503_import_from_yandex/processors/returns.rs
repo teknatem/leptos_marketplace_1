@@ -1,13 +1,12 @@
-use anyhow::Result;
-use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
-use crate::domain::a016_ym_returns;
-use contracts::domain::a016_ym_returns::aggregate::{
-    YmReturn, YmReturnDecision, YmReturnHeader, YmReturnLine, YmReturnSourceMeta,
-    YmReturnState,
-};
 use super::super::yandex_api_client::YmReturnItem;
 use super::order::parse_ym_date;
+use crate::domain::a016_ym_returns;
+use anyhow::Result;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::a016_ym_returns::aggregate::{
+    YmReturn, YmReturnDecision, YmReturnHeader, YmReturnLine, YmReturnSourceMeta, YmReturnState,
+};
+use contracts::domain::common::AggregateId;
 
 pub async fn process_return(
     connection: &ConnectionMP,
@@ -41,8 +40,7 @@ pub async fn process_return(
                 })
                 .collect();
 
-            let photos: Vec<String> =
-                item.photos.iter().filter_map(|p| p.url.clone()).collect();
+            let photos: Vec<String> = item.photos.iter().filter_map(|p| p.url.clone()).collect();
 
             YmReturnLine {
                 item_id: item.market_sku.unwrap_or(0),
@@ -126,7 +124,6 @@ pub async fn process_return(
 
     let raw_json = serde_json::to_string(&return_item)?;
     a016_ym_returns::service::store_document_with_raw(document, &raw_json).await?;
-    
+
     Ok(is_new)
 }
-

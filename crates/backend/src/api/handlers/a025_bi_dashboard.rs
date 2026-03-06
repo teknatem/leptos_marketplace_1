@@ -12,6 +12,9 @@ use contracts::domain::a025_bi_dashboard::aggregate::BiDashboard;
 pub struct BiDashboardListParams {
     pub limit: Option<u64>,
     pub offset: Option<u64>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub q: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -38,8 +41,11 @@ pub async fn list_paginated(
     let limit = params.limit.unwrap_or(100).clamp(10, 10000);
     let offset = params.offset.unwrap_or(0);
     let page = offset / limit;
+    let sort_by = params.sort_by.as_deref().unwrap_or("created_at");
+    let sort_desc = params.sort_desc.unwrap_or(true);
+    let q = params.q.as_deref();
 
-    match a025_bi_dashboard::service::list_paginated(page, limit).await {
+    match a025_bi_dashboard::service::list_paginated(page, limit, sort_by, sort_desc, q).await {
         Ok((items, total)) => {
             let page_size = limit as usize;
             let page_num = (offset as usize) / page_size;

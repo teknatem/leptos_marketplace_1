@@ -6,10 +6,7 @@ use uuid::Uuid;
 
 /// Сохранить документ с сырым JSON
 /// Идемпотентная операция - если документ с таким document_no уже существует, он будет обновлен
-pub async fn store_document_with_raw(
-    mut document: OzonFbsPosting,
-    raw_json: &str,
-) -> Result<Uuid> {
+pub async fn store_document_with_raw(mut document: OzonFbsPosting, raw_json: &str) -> Result<Uuid> {
     // Сохраняем сырой JSON
     let raw_ref = crate::shared::data::raw_storage::save_raw_json(
         "OZON",
@@ -51,7 +48,11 @@ pub async fn store_document_with_raw(
         }
     } else {
         // Если is_posted = false, удаляем проекции (если были)
-        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string()).await {
+        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(
+            &id.to_string(),
+        )
+        .await
+        {
             tracing::error!("Failed to delete projections for OZON FBS document: {}", e);
         }
     }
@@ -74,4 +75,3 @@ pub async fn list_all() -> Result<Vec<OzonFbsPosting>> {
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
-

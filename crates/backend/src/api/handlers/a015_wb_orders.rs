@@ -114,7 +114,12 @@ pub async fn list_orders(
 
     let mp_map: std::collections::HashMap<String, (String, Option<String>)> = marketplace_products
         .into_iter()
-        .map(|mp| (mp.base.id.as_string(), (mp.article.clone(), mp.nomenclature_ref.clone())))
+        .map(|mp| {
+            (
+                mp.base.id.as_string(),
+                (mp.article.clone(), mp.nomenclature_ref.clone()),
+            )
+        })
         .collect();
 
     let nomenclature_items = crate::domain::a004_nomenclature::service::list_all()
@@ -290,12 +295,10 @@ pub async fn delete_order(
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
-    a015_wb_orders::service::delete(uuid)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete order: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    a015_wb_orders::service::delete(uuid).await.map_err(|e| {
+        tracing::error!("Failed to delete order: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(serde_json::json!({"success": true})))
 }
@@ -313,7 +316,9 @@ pub async fn post_order(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok(Json(serde_json::json!({"success": true, "message": "Document posted"})))
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document posted"}),
+    ))
 }
 
 /// Handler для отмены проведения документа
@@ -329,6 +334,7 @@ pub async fn unpost_order(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok(Json(serde_json::json!({"success": true, "message": "Document unposted"})))
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document unposted"}),
+    ))
 }
-

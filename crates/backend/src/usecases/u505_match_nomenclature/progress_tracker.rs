@@ -75,7 +75,13 @@ impl ProgressTracker {
     }
 
     /// Добавить ошибку
-    pub fn add_error(&self, session_id: &str, message: String, details: Option<String>, article: Option<String>) {
+    pub fn add_error(
+        &self,
+        session_id: &str,
+        message: String,
+        details: Option<String>,
+        article: Option<String>,
+    ) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {
             progress.errors += 1;

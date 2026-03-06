@@ -1,11 +1,16 @@
 use chrono::Utc;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
-use contracts::domain::a018_llm_chat::aggregate::{ArtifactAction, ChatRole, LlmChat, LlmChatAttachment, LlmChatId, LlmChatMessage, LlmChatListItem};
+use contracts::domain::a018_llm_chat::aggregate::{
+    ArtifactAction, ChatRole, LlmChat, LlmChatAttachment, LlmChatId, LlmChatListItem,
+    LlmChatMessage,
+};
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, FromQueryResult};
 use sea_orm::prelude::Expr;
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, QueryOrder, Set,
+};
 use uuid::Uuid;
 
 mod chat {
@@ -121,13 +126,13 @@ impl From<message::Model> for LlmChatMessage {
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
-        let artifact_id = m.artifact_id.and_then(|id_str| {
-            Uuid::parse_str(&id_str).ok().map(LlmArtifactId::new)
-        });
+        let artifact_id = m
+            .artifact_id
+            .and_then(|id_str| Uuid::parse_str(&id_str).ok().map(LlmArtifactId::new));
 
-        let artifact_action = m.artifact_action.and_then(|action_str| {
-            ArtifactAction::from_str(&action_str).ok()
-        });
+        let artifact_action = m
+            .artifact_action
+            .and_then(|action_str| ArtifactAction::from_str(&action_str).ok());
 
         LlmChatMessage {
             id,
@@ -343,7 +348,10 @@ pub async fn find_messages_by_chat_id(
 }
 
 /// Вставить сообщение
-pub async fn insert_message(db: &DatabaseConnection, message: &LlmChatMessage) -> Result<(), DbErr> {
+pub async fn insert_message(
+    db: &DatabaseConnection,
+    message: &LlmChatMessage,
+) -> Result<(), DbErr> {
     let active_model = message::ActiveModel {
         id: Set(message.id.to_string()),
         chat_id: Set(message.chat_id.as_string()),
@@ -355,7 +363,10 @@ pub async fn insert_message(db: &DatabaseConnection, message: &LlmChatMessage) -
         duration_ms: Set(message.duration_ms),
         created_at: Set(message.created_at.to_rfc3339()),
         artifact_id: Set(message.artifact_id.map(|id| id.as_string())),
-        artifact_action: Set(message.artifact_action.as_ref().map(|a| a.as_str().to_string())),
+        artifact_action: Set(message
+            .artifact_action
+            .as_ref()
+            .map(|a| a.as_str().to_string())),
     };
 
     active_model.insert(db).await?;
@@ -381,7 +392,10 @@ pub async fn find_attachments_by_message_id(
 }
 
 /// Вставить вложение
-pub async fn insert_attachment(db: &DatabaseConnection, attachment: &LlmChatAttachment) -> Result<(), DbErr> {
+pub async fn insert_attachment(
+    db: &DatabaseConnection,
+    attachment: &LlmChatAttachment,
+) -> Result<(), DbErr> {
     let active_model = attachment::ActiveModel {
         id: Set(attachment.id.to_string()),
         message_id: Set(attachment.message_id.to_string()),

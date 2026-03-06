@@ -254,11 +254,11 @@ pub struct LlmChatMessage {
     pub confidence: Option<f64>,
     pub duration_ms: Option<i64>,
     pub created_at: DateTime<Utc>,
-    
+
     // Связь с артефактами
     pub artifact_id: Option<LlmArtifactId>,
     pub artifact_action: Option<ArtifactAction>,
-    
+
     // Вложения (загружаются отдельно при необходимости)
     #[serde(default)]
     pub attachments: Vec<LlmChatAttachment>,

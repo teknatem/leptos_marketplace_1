@@ -2,6 +2,7 @@
 
 use super::tabs::{FiltersTab, GeneralTab, LayoutTab, MetaTab};
 use super::view_model::BiDashboardDetailsVm;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
@@ -44,12 +45,33 @@ fn Header(
     on_saved: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
+    let tabs_ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let is_edit_mode = vm.is_edit_mode();
     let is_save_disabled = vm.is_save_disabled();
+    let can_open_view = Signal::derive({
+        let vm = vm.clone();
+        move || vm.id.get().is_some()
+    });
 
     let handle_save = {
         let vm = vm.clone();
         move |_| vm.save(on_saved)
+    };
+
+    let handle_open_view = {
+        let vm = vm.clone();
+        move |_| {
+            if let Some(id) = vm.id.get_untracked() {
+                let code = vm.code.get_untracked();
+                let key = format!("a025_bi_dashboard_view_{}", id);
+                let title = if code.trim().is_empty() {
+                    "Просмотр BI Dashboard".to_string()
+                } else {
+                    format!("Просмотр · {}", code)
+                };
+                tabs_ctx.open_tab(&key, &title);
+            }
+        }
     };
 
     view! {
@@ -64,6 +86,13 @@ fn Header(
                 </h1>
             </div>
             <div class="page__header-right">
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    on_click=handle_open_view
+                    disabled=move || !can_open_view.get()
+                >
+                    {icon("eye")} " Просмотр"
+                </Button>
                 <Button
                     appearance=ButtonAppearance::Primary
                     on_click=handle_save

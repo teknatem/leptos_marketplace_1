@@ -1,7 +1,7 @@
 use super::{
-    ozon_api_client::OzonApiClient, 
+    ozon_api_client::OzonApiClient,
+    processors::{postings, product, realization, returns, sales, transaction},
     progress_tracker::ProgressTracker,
-    processors::{product, sales, returns, postings, transaction, realization},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -473,7 +473,9 @@ impl ImportExecutor {
                         &key,
                         qty,
                         revenue,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(true) => total_inserted += 1,
                         Ok(false) => total_updated += 1,
                         Err(e) => {
@@ -647,11 +649,17 @@ impl ImportExecutor {
                         0.0,
                         0,
                         &display_name,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(true) => total_inserted += 1,
                         Ok(false) => total_updated += 1,
                         Err(e) => {
-                            tracing::error!("Failed to process return item {}: {}", return_id_str, e);
+                            tracing::error!(
+                                "Failed to process return item {}: {}",
+                                return_id_str,
+                                e
+                            );
                             self.progress_tracker.add_error(
                                 session_id,
                                 Some(aggregate_index.to_string()),
@@ -703,7 +711,9 @@ impl ImportExecutor {
                         price,
                         quantity,
                         &display_name,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(true) => total_inserted += 1,
                         Ok(false) => total_updated += 1,
                         Err(e) => {
@@ -986,10 +996,10 @@ impl ImportExecutor {
 
             let currency_code = resp.header.currency_sys_name.clone();
             let doc_date = resp.header.doc_date.clone();
-            
+
             // Парсим дату документа как accrual_date
-            let accrual_date = chrono::NaiveDate::parse_from_str(&doc_date, "%Y-%m-%d")
-                .unwrap_or(date_from);
+            let accrual_date =
+                chrono::NaiveDate::parse_from_str(&doc_date, "%Y-%m-%d").unwrap_or(date_from);
 
             for row in resp.rows {
                 match realization::process_realization_row(
@@ -999,7 +1009,9 @@ impl ImportExecutor {
                     &row,
                     &currency_code,
                     accrual_date,
-                ).await {
+                )
+                .await
+                {
                     Ok((ins, upd)) => {
                         total_inserted += ins;
                         total_updated += upd;
@@ -1078,7 +1090,9 @@ impl ImportExecutor {
             );
 
             for operation in resp.result.operations {
-                match transaction::process_transaction(connection, &organization_id, &operation).await {
+                match transaction::process_transaction(connection, &organization_id, &operation)
+                    .await
+                {
                     Ok(is_new) => {
                         if is_new {
                             total_inserted += 1;

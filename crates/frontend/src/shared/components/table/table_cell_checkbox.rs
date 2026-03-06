@@ -27,17 +27,17 @@ pub fn TableCellCheckbox(
     /// ID текущего элемента
     #[prop(into)]
     item_id: String,
-    
+
     /// Выбранные ID
     #[prop(into)]
     selected: Signal<HashSet<String>>,
-    
+
     /// Callback при изменении (item_id, checked)
     on_change: Callback<(String, bool)>,
 ) -> impl IntoView {
     let item_id_for_checked = item_id.clone();
     let item_id_for_change = item_id.clone();
-    
+
     view! {
         <TableCell class="fixed-checkbox-column" on:click=|e| e.stop_propagation()>
             <input

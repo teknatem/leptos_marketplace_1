@@ -948,7 +948,6 @@ pub fn configure_business_routes() -> Router {
         )
         .route(
             "/api/a025-bi-dashboard/:id",
-            get(handlers::a025_bi_dashboard::get_by_id)
-                .delete(handlers::a025_bi_dashboard::delete),
+            get(handlers::a025_bi_dashboard::get_by_id).delete(handlers::a025_bi_dashboard::delete),
         )
 }

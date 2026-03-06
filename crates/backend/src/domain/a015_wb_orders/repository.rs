@@ -512,4 +512,3 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
 
     Ok(WbOrdersListResult { items, total })
 }
-

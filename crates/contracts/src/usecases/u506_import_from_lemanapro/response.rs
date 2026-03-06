@@ -22,5 +22,3 @@ pub enum ImportStartStatus {
     /// Ошибка при запуске
     Failed,
 }
-
-

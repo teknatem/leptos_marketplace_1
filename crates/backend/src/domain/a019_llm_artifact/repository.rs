@@ -6,8 +6,8 @@ use contracts::domain::a019_llm_artifact::aggregate::{
 };
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 use sea_orm::prelude::Expr;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
 
 mod artifact {
@@ -53,14 +53,15 @@ impl From<artifact::Model> for LlmArtifact {
             is_posted: m.is_posted,
             version: m.version,
         };
-        
+
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
         let chat_uuid = Uuid::parse_str(&m.chat_id).unwrap_or_else(|_| Uuid::new_v4());
         let agent_uuid = Uuid::parse_str(&m.agent_id).unwrap_or_else(|_| Uuid::new_v4());
-        
-        let artifact_type = ArtifactType::from_str(&m.artifact_type).unwrap_or(ArtifactType::SqlQuery);
+
+        let artifact_type =
+            ArtifactType::from_str(&m.artifact_type).unwrap_or(ArtifactType::SqlQuery);
         let status = ArtifactStatus::from_str(&m.status).unwrap_or(ArtifactStatus::Active);
-        
+
         let last_executed_at = m.last_executed_at.and_then(|s| {
             chrono::DateTime::parse_from_rfc3339(&s)
                 .ok()

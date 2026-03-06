@@ -4,10 +4,10 @@
 
 use contracts::shared::universal_dashboard::{
     DashboardConfig, DeleteDashboardConfigResponse, DistinctValuesResponse,
-    ExecuteDashboardRequest, ExecuteDashboardResponse, GenerateSqlResponse,
-    GetSchemaResponse, ListDashboardConfigsResponse, ListSchemasResponse,
-    SaveDashboardConfigRequest, SaveDashboardConfigResponse, SavedDashboardConfig,
-    SchemaValidationResult, UpdateDashboardConfigRequest, ValidateAllSchemasResponse,
+    ExecuteDashboardRequest, ExecuteDashboardResponse, GenerateSqlResponse, GetSchemaResponse,
+    ListDashboardConfigsResponse, ListSchemasResponse, SaveDashboardConfigRequest,
+    SaveDashboardConfigResponse, SavedDashboardConfig, SchemaValidationResult,
+    UpdateDashboardConfigRequest, ValidateAllSchemasResponse,
 };
 use gloo_net::http::Request;
 

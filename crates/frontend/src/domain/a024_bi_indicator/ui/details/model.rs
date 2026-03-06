@@ -58,6 +58,7 @@ pub async fn fetch_by_id(id: &str) -> Result<serde_json::Value, String> {
 }
 
 pub async fn save_indicator(dto: BiIndicatorSaveDto) -> Result<String, String> {
+    let fallback_id = dto.id.clone();
     let body = serde_json::to_string(&dto).map_err(|e| format!("serialize error: {e}"))?;
 
     let opts = RequestInit::new();
@@ -83,11 +84,9 @@ pub async fn save_indicator(dto: BiIndicatorSaveDto) -> Result<String, String> {
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
     if !resp.ok() {
-        let text = wasm_bindgen_futures::JsFuture::from(
-            resp.text().map_err(|e| format!("{e:?}"))?,
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
+        let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
         let text = text.as_string().unwrap_or_default();
         return Err(format!("HTTP {}: {}", resp.status(), text));
     }
@@ -98,10 +97,150 @@ pub async fn save_indicator(dto: BiIndicatorSaveDto) -> Result<String, String> {
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
 
     let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    parsed["id"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "No id in response".to_string())
+    if let Some(id) = parsed["id"].as_str() {
+        Ok(id.to_string())
+    } else if let Some(id) = fallback_id {
+        Ok(id)
+    } else {
+        Err("No id in response".to_string())
+    }
+}
+
+/// Minimal schema entry from the indicator catalog.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IndicatorSchemaMeta {
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+/// Fetch the indicator catalog from /api/indicators/meta.
+/// Returns a flat list of (id, label, description).
+pub async fn fetch_indicator_catalog() -> Result<Vec<IndicatorSchemaMeta>, String> {
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/indicators/meta", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+
+    // Response: { indicators: [{ id: { "0": "sales_revenue" }, label, description, ... }] }
+    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let items = parsed["indicators"]
+        .as_array()
+        .ok_or_else(|| "No indicators array".to_string())?;
+
+    let result = items
+        .iter()
+        .filter_map(|v| {
+            // IndicatorId serializes as { "0": "sales_revenue" } because it's a newtype
+            // but contracts says it should serialize as plain string — check both
+            let id = if let Some(s) = v["id"].as_str() {
+                s.to_string()
+            } else if let Some(s) = v["id"]["0"].as_str() {
+                s.to_string()
+            } else {
+                return None;
+            };
+            Some(IndicatorSchemaMeta {
+                id,
+                label: v["label"].as_str().unwrap_or("").to_string(),
+                description: v["description"].as_str().map(|s| s.to_string()),
+            })
+        })
+        .collect();
+    Ok(result)
+}
+
+/// Result from /api/indicators/compute for a single indicator.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ComputedIndicatorValue {
+    pub value: Option<f64>,
+    pub previous_value: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub status: String,
+    pub subtitle: Option<String>,
+}
+
+pub async fn compute_indicator_schema(
+    schema_id: &str,
+    date_from: &str,
+    date_to: &str,
+    connection_ids: Vec<String>,
+) -> Result<ComputedIndicatorValue, String> {
+    let payload = serde_json::json!({
+        "indicator_ids": [schema_id],
+        "context": {
+            "date_from": date_from,
+            "date_to": date_to,
+            "connection_mp_refs": connection_ids,
+        }
+    });
+    let body = serde_json::to_string(&payload).map_err(|e| format!("serialize: {e}"))?;
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+    opts.set_body(&wasm_bindgen::JsValue::from_str(&body));
+
+    let url = format!("{}/api/indicators/compute", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}: {}", resp.status(), text));
+    }
+
+    // Response: { values: [{ id, value, previous_value, change_percent, status, subtitle }] }
+    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let first = parsed["values"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .ok_or_else(|| "No values in response".to_string())?;
+
+    Ok(ComputedIndicatorValue {
+        value: first["value"].as_f64(),
+        previous_value: first["previous_value"].as_f64(),
+        change_percent: first["change_percent"].as_f64(),
+        status: first["status"].as_str().unwrap_or("Neutral").to_string(),
+        subtitle: first["subtitle"].as_str().map(|s| s.to_string()),
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -148,11 +287,9 @@ pub async fn generate_view(
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
     if !resp.ok() {
-        let text = wasm_bindgen_futures::JsFuture::from(
-            resp.text().map_err(|e| format!("{e:?}"))?,
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
+        let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
         let text = text.as_string().unwrap_or_default();
         return Err(format!("HTTP {}: {}", resp.status(), text));
     }

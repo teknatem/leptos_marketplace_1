@@ -1,12 +1,11 @@
 //! ViewModel for schema details
 
+use contracts::shared::universal_dashboard::{
+    DataSourceSchemaOwned, GenerateSqlResponse, SavedDashboardConfigSummary, SchemaValidationResult,
+};
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::logging::log;
-use contracts::shared::universal_dashboard::{
-    DataSourceSchemaOwned, GenerateSqlResponse, SavedDashboardConfigSummary,
-    SchemaValidationResult,
-};
 
 use crate::shared::universal_dashboard::api;
 
@@ -130,10 +129,11 @@ impl SchemaDetailsVm {
         }
 
         let schema = schema_opt.unwrap();
-        
+
         // Create test config with all fields
         use contracts::shared::universal_dashboard::{
-            AggregateFunction, DashboardConfig, DashboardFilters, DashboardSort, SelectedField, ValueType,
+            AggregateFunction, DashboardConfig, DashboardFilters, DashboardSort, SelectedField,
+            ValueType,
         };
 
         let mut selected_fields = Vec::new();
@@ -155,7 +155,7 @@ impl SchemaDetailsVm {
                     field.get_value_type(),
                     ValueType::Integer | ValueType::Numeric
                 );
-                
+
                 if is_numeric {
                     selected_fields.push(SelectedField {
                         field_id: field.id.clone(),

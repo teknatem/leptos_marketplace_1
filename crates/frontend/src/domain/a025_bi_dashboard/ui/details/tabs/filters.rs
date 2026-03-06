@@ -36,11 +36,13 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
         let rows = rows.clone();
         let sync = sync_to_vm.clone();
         move |_| {
-            rows.update(|v| v.push(GlobalFilterRow {
-                key: String::new(),
-                label: String::new(),
-                value: String::new(),
-            }));
+            rows.update(|v| {
+                v.push(GlobalFilterRow {
+                    key: String::new(),
+                    label: String::new(),
+                    value: String::new(),
+                })
+            });
             sync();
         }
     };

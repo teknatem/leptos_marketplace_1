@@ -1,7 +1,7 @@
 pub mod state;
 
-use super::details::OzonReturnsDetail;
 use self::state::create_state;
+use super::details::OzonReturnsDetail;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
@@ -138,15 +138,27 @@ pub fn OzonReturnsList() -> impl IntoView {
 
         filtered.sort_by(|a, b| {
             let cmp = a.compare_by_field(b, &field);
-            if ascending { cmp } else { cmp.reverse() }
+            if ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
         });
 
         let total = filtered.len();
-        let total_pages = if total == 0 { 0 } else { (total + page_size - 1) / page_size };
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + page_size - 1) / page_size
+        };
         let page = page.min(if total_pages == 0 { 0 } else { total_pages - 1 });
         let start = page * page_size;
         let end = (start + page_size).min(total);
-        let page_items = if start < total { filtered[start..end].to_vec() } else { vec![] };
+        let page_items = if start < total {
+            filtered[start..end].to_vec()
+        } else {
+            vec![]
+        };
 
         state.update(|s| {
             s.items = page_items;
@@ -168,7 +180,10 @@ pub fn OzonReturnsList() -> impl IntoView {
                             Ok(items) => {
                                 log!("Loaded {} OZON returns", items.len());
                                 all_rows.set(items);
-                                state.update(|s| { s.page = 0; s.is_loaded = true; });
+                                state.update(|s| {
+                                    s.page = 0;
+                                    s.is_loaded = true;
+                                });
                                 refresh_view();
                             }
                             Err(e) => set_error.set(Some(format!("Ошибка парсинга: {}", e))),
@@ -251,8 +266,12 @@ pub fn OzonReturnsList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
         count
     });
 
@@ -286,10 +305,18 @@ pub fn OzonReturnsList() -> impl IntoView {
 
     let toggle_selection = move |id: String, checked: bool| {
         selected.update(|s| {
-            if checked { s.insert(id.clone()); } else { s.remove(&id); }
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
         });
         state.update(|s| {
-            if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); }
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
         });
     };
 
@@ -298,11 +325,15 @@ pub fn OzonReturnsList() -> impl IntoView {
         if check_all {
             selected.update(|s| {
                 s.clear();
-                for item in items.iter() { s.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
             });
             state.update(|s| {
                 s.selected_ids.clear();
-                for item in items.iter() { s.selected_ids.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
             });
         } else {
             selected.update(|s| s.clear());

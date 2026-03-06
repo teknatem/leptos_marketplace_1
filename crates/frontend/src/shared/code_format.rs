@@ -82,14 +82,21 @@ pub fn format_html(input: &str) -> String {
 
 #[derive(Debug)]
 enum HtmlToken {
-    Open { name: String, raw: String, void: bool },
-    Close { name: String, raw: String },
+    Open {
+        name: String,
+        raw: String,
+        void: bool,
+    },
+    Close {
+        name: String,
+        raw: String,
+    },
     Text(String),
 }
 
 const VOID: &[&str] = &[
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
-    "source", "track", "wbr",
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
 ];
 
 fn tokenize_html(input: &str) -> Vec<HtmlToken> {

@@ -21,8 +21,5 @@ pub enum ImportEvent {
     },
 
     /// Импорт провален
-    ImportFailed {
-        session_id: String,
-        error: String,
-    },
+    ImportFailed { session_id: String, error: String },
 }

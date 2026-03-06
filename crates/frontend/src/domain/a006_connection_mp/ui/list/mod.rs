@@ -8,6 +8,7 @@ use crate::shared::components::table::{
 };
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
+use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use leptos::prelude::*;
@@ -15,7 +16,6 @@ use leptos::task::spawn_local;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use thaw::*;
-use crate::shared::page_frame::PageFrame;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionMPRow {
@@ -61,12 +61,24 @@ impl ConnectionMPRow {
 impl Sortable for ConnectionMPRow {
     fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
         match field {
-            "description" => self.description.to_lowercase().cmp(&other.description.to_lowercase()),
-            "marketplace" => self.marketplace.to_lowercase().cmp(&other.marketplace.to_lowercase()),
-            "organization" => self.organization.to_lowercase().cmp(&other.organization.to_lowercase()),
+            "description" => self
+                .description
+                .to_lowercase()
+                .cmp(&other.description.to_lowercase()),
+            "marketplace" => self
+                .marketplace
+                .to_lowercase()
+                .cmp(&other.marketplace.to_lowercase()),
+            "organization" => self
+                .organization
+                .to_lowercase()
+                .cmp(&other.organization.to_lowercase()),
             "is_used" => self.is_used.cmp(&other.is_used),
             "test_mode" => self.test_mode.cmp(&other.test_mode),
-            "comment" => self.comment.to_lowercase().cmp(&other.comment.to_lowercase()),
+            "comment" => self
+                .comment
+                .to_lowercase()
+                .cmp(&other.comment.to_lowercase()),
             "created_at" => self.created_at.cmp(&other.created_at),
             _ => Ordering::Equal,
         }
@@ -85,7 +97,7 @@ const COLUMN_WIDTHS_KEY: &str = "a006_connection_mp_column_widths";
 pub fn ConnectionMPList() -> impl IntoView {
     let tabs_store =
         use_context::<AppGlobalContext>().expect("AppGlobalContext not found in context");
-    
+
     let state = create_state();
     let (items, set_items) = signal::<Vec<ConnectionMPRow>>(Vec::new());
     let (raw_items, set_raw_items) = signal::<Vec<ConnectionMPRow>>(Vec::new());
@@ -126,10 +138,7 @@ pub fn ConnectionMPList() -> impl IntoView {
     });
 
     let handle_create_new = move || {
-        tabs_store.open_tab(
-            "a006_connection_mp_detail_new",
-            "Новое подключение",
-        );
+        tabs_store.open_tab("a006_connection_mp_detail_new", "Новое подключение");
     };
 
     let open_detail = move |id: String, description: String| {
@@ -256,7 +265,7 @@ pub fn ConnectionMPList() -> impl IntoView {
 
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
-                    
+
                     <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 900px;">
                         <TableHeader>
                             <TableRow>
@@ -376,7 +385,7 @@ pub fn ConnectionMPList() -> impl IntoView {
                                 let id_for_link = id.clone();
                                 let description_for_link = description.clone();
                                 let is_selected = state.selected.get().contains(&id);
-                                
+
                                 view! {
                                     <TableRow class:table__row--selected=is_selected>
                                         <TableCellCheckbox

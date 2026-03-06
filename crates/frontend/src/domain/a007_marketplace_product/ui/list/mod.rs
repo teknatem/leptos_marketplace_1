@@ -8,6 +8,7 @@ use crate::shared::components::ui::badge::Badge;
 use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, highlight_matches};
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use contracts::domain::common::AggregateId;
@@ -17,7 +18,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use thaw::*;
-use crate::shared::page_frame::PageFrame;
 
 impl ExcelExportable for MarketplaceProductListItemDto {
     fn headers() -> Vec<&'static str> {

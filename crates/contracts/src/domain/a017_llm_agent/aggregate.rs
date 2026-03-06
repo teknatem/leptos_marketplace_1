@@ -193,7 +193,7 @@ impl LlmAgent {
         if key.len() <= 8 {
             return "****".to_string();
         }
-        format!("{}...{}", &key[..4], &key[key.len()-4..])
+        format!("{}...{}", &key[..4], &key[key.len() - 4..])
     }
 }
 

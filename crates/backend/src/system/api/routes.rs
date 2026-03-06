@@ -17,18 +17,9 @@ pub fn configure_system_routes() -> Router {
         // ========================================
         // SYSTEM AUTH ROUTES (PUBLIC)
         // ========================================
-        .route(
-            "/api/system/auth/login",
-            post(handlers::auth::login),
-        )
-        .route(
-            "/api/system/auth/refresh",
-            post(handlers::auth::refresh),
-        )
-        .route(
-            "/api/system/auth/logout",
-            post(handlers::auth::logout),
-        )
+        .route("/api/system/auth/login", post(handlers::auth::login))
+        .route("/api/system/auth/refresh", post(handlers::auth::refresh))
+        .route("/api/system/auth/logout", post(handlers::auth::logout))
         // System auth routes (protected)
         .route(
             "/api/system/auth/me",

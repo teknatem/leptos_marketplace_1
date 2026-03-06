@@ -65,7 +65,12 @@ async fn get_org_map() -> HashMap<String, String> {
     if let Ok(orgs) = a002_organization::service::list_all().await {
         write.0 = orgs
             .into_iter()
-            .map(|org| (normalize_id(&org.base.id.as_string()), org.base.description.clone()))
+            .map(|org| {
+                (
+                    normalize_id(&org.base.id.as_string()),
+                    org.base.description.clone(),
+                )
+            })
             .collect();
         write.1 = std::time::Instant::now();
     }

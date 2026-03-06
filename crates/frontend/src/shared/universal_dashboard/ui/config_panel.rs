@@ -1,8 +1,7 @@
-use leptos::prelude::*;
 use contracts::shared::universal_dashboard::{
-    AggregateFunction, DashboardConfig, DataSourceSchemaOwned,
-    SelectedField,
+    AggregateFunction, DashboardConfig, DataSourceSchemaOwned, SelectedField,
 };
+use leptos::prelude::*;
 
 #[component]
 pub fn ConfigPanel(

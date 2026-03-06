@@ -45,17 +45,61 @@ impl MetadataRegistry {
     fn build() -> Self {
         Self {
             entries: vec![
-                RegistryEntry { meta: &A001_META, fields: A001_FIELDS, tags: &["ref", "1c"] },
-                RegistryEntry { meta: &A002_META, fields: A002_FIELDS, tags: &["ref"] },
-                RegistryEntry { meta: &A004_META, fields: A004_FIELDS, tags: &["ref", "1c"] },
-                RegistryEntry { meta: &A005_META, fields: A005_FIELDS, tags: &["ref"] },
-                RegistryEntry { meta: &A006_META, fields: A006_FIELDS, tags: &["ref", "wb", "ozon", "ym"] },
-                RegistryEntry { meta: &A012_META, fields: A012_FIELDS, tags: &["wb", "sales"] },
-                RegistryEntry { meta: &A020_META, fields: A020_FIELDS, tags: &["wb", "promotion"] },
-                RegistryEntry { meta: &A013_META, fields: A013_FIELDS, tags: &["ym", "sales"] },
-                RegistryEntry { meta: &A017_META, fields: A017_FIELDS, tags: &["llm"] },
-                RegistryEntry { meta: &A018_META, fields: A018_FIELDS, tags: &["llm"] },
-                RegistryEntry { meta: &A019_META, fields: A019_FIELDS, tags: &["llm"] },
+                RegistryEntry {
+                    meta: &A001_META,
+                    fields: A001_FIELDS,
+                    tags: &["ref", "1c"],
+                },
+                RegistryEntry {
+                    meta: &A002_META,
+                    fields: A002_FIELDS,
+                    tags: &["ref"],
+                },
+                RegistryEntry {
+                    meta: &A004_META,
+                    fields: A004_FIELDS,
+                    tags: &["ref", "1c"],
+                },
+                RegistryEntry {
+                    meta: &A005_META,
+                    fields: A005_FIELDS,
+                    tags: &["ref"],
+                },
+                RegistryEntry {
+                    meta: &A006_META,
+                    fields: A006_FIELDS,
+                    tags: &["ref", "wb", "ozon", "ym"],
+                },
+                RegistryEntry {
+                    meta: &A012_META,
+                    fields: A012_FIELDS,
+                    tags: &["wb", "sales"],
+                },
+                RegistryEntry {
+                    meta: &A020_META,
+                    fields: A020_FIELDS,
+                    tags: &["wb", "promotion"],
+                },
+                RegistryEntry {
+                    meta: &A013_META,
+                    fields: A013_FIELDS,
+                    tags: &["ym", "sales"],
+                },
+                RegistryEntry {
+                    meta: &A017_META,
+                    fields: A017_FIELDS,
+                    tags: &["llm"],
+                },
+                RegistryEntry {
+                    meta: &A018_META,
+                    fields: A018_FIELDS,
+                    tags: &["llm"],
+                },
+                RegistryEntry {
+                    meta: &A019_META,
+                    fields: A019_FIELDS,
+                    tags: &["llm"],
+                },
             ],
         }
     }
@@ -159,8 +203,14 @@ impl MetadataRegistry {
             return json!({ "error": format!("Entity '{}' not found", to_index) });
         };
 
-        let from_table = from_entry.meta.table_name.unwrap_or(from_entry.meta.collection_name);
-        let to_table = to_entry.meta.table_name.unwrap_or(to_entry.meta.collection_name);
+        let from_table = from_entry
+            .meta
+            .table_name
+            .unwrap_or(from_entry.meta.collection_name);
+        let to_table = to_entry
+            .meta
+            .table_name
+            .unwrap_or(to_entry.meta.collection_name);
 
         // Ищем FK-поля в from_entry, ссылающиеся на to_index
         let fk_fields: Vec<_> = from_entry
@@ -222,9 +272,7 @@ impl MetadataRegistry {
     // ─── Вспомогательные ──────────────────────────────────────────────────
 
     fn find_by_index(&self, index: &str) -> Option<&RegistryEntry> {
-        self.entries
-            .iter()
-            .find(|e| e.meta.entity_index == index)
+        self.entries.iter().find(|e| e.meta.entity_index == index)
     }
 
     /// Служебные поля, не нужные LLM
@@ -232,10 +280,7 @@ impl MetadataRegistry {
         // Скрываем поля из EntityMetadata (version, is_posted, events и т.п.)
         // кроме созданных/обновлённых дат
         if f.source == FieldSource::Metadata {
-            return matches!(
-                f.name,
-                "version" | "is_posted" | "events"
-            );
+            return matches!(f.name, "version" | "is_posted" | "events");
         }
         // Скрываем пароли
         matches!(f.ui.widget, Some("password"))

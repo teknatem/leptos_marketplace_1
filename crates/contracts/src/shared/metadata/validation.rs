@@ -50,29 +50,35 @@ impl ValidationRules {
         if self.required && value.trim().is_empty() {
             return Err(format!("{} не может быть пустым", field_label));
         }
-        
+
         if let Some(min) = self.min_length {
             if value.len() < min {
-                return Err(format!("{} должен содержать минимум {} символов", field_label, min));
+                return Err(format!(
+                    "{} должен содержать минимум {} символов",
+                    field_label, min
+                ));
             }
         }
-        
+
         if let Some(max) = self.max_length {
             if value.len() > max {
-                return Err(format!("{} не должен превышать {} символов", field_label, max));
+                return Err(format!(
+                    "{} не должен превышать {} символов",
+                    field_label, max
+                ));
             }
         }
-        
+
         // Pattern validation requires regex crate - skip for now
         // TODO: Add regex validation when needed
         if self.pattern.is_some() && self.custom_error.is_some() {
             // Placeholder for future regex validation
             let _ = (self.pattern, self.custom_error);
         }
-        
+
         Ok(())
     }
-    
+
     /// Validate a numeric value against min/max rules
     pub fn validate_number(&self, value: f64, field_label: &str) -> Result<(), String> {
         if let Some(min) = self.min {
@@ -80,14 +86,13 @@ impl ValidationRules {
                 return Err(format!("{} должен быть не менее {}", field_label, min));
             }
         }
-        
+
         if let Some(max) = self.max {
             if value > max {
                 return Err(format!("{} должен быть не более {}", field_label, max));
             }
         }
-        
+
         Ok(())
     }
 }
-

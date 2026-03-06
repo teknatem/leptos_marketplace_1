@@ -129,11 +129,7 @@ pub async fn auto_fill_references(document: &mut YmOrder) -> Result<()> {
                 updated_lines.push(updated_line);
             }
             Err(e) => {
-                tracing::warn!(
-                    "Failed to fill references for line {}: {}",
-                    line.line_id,
-                    e
-                );
+                tracing::warn!("Failed to fill references for line {}: {}", line.line_id, e);
                 // Добавляем оригинальную строку без изменений
                 updated_lines.push(line.clone());
             }
@@ -273,10 +269,8 @@ pub async fn fill_dealer_price_for_lines(document: &mut YmOrder) -> Result<()> {
                             });
 
                             if price.is_some() {
-                                price_source = format!(
-                                    "base_nomenclature {} (first nonzero price)",
-                                    base_ref
-                                );
+                                price_source =
+                                    format!("base_nomenclature {} (first nonzero price)", base_ref);
                             }
                         }
                     }
@@ -446,7 +440,11 @@ pub async fn store_document_with_raw(mut document: YmOrder, raw_json: &str) -> R
         }
     } else {
         // Если is_posted = false, удаляем проекции (если были)
-        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string()).await {
+        if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(
+            &id.to_string(),
+        )
+        .await
+        {
             tracing::error!("Failed to delete projections for YM Order document: {}", e);
         }
     }
@@ -504,36 +502,24 @@ fn parse_ym_date(date_str: &str) -> Option<DateTime<Utc>> {
 
     // Try format "DD-MM-YYYY HH:MM:SS" (Yandex Market format with time)
     if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%d-%m-%Y %H:%M:%S") {
-        return Some(DateTime::from_naive_utc_and_offset(
-            naive,
-            Utc,
-        ));
+        return Some(DateTime::from_naive_utc_and_offset(naive, Utc));
     }
 
     // Try format "DD-MM-YYYY" (Yandex Market format without time)
     if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%d-%m-%Y") {
         let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
-        return Some(DateTime::from_naive_utc_and_offset(
-            naive_datetime,
-            Utc,
-        ));
+        return Some(DateTime::from_naive_utc_and_offset(naive_datetime, Utc));
     }
 
     // Try format "YYYY-MM-DD HH:MM:SS"
     if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
-        return Some(DateTime::from_naive_utc_and_offset(
-            naive,
-            Utc,
-        ));
+        return Some(DateTime::from_naive_utc_and_offset(naive, Utc));
     }
 
     // Try format "YYYY-MM-DD"
     if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
         let naive_datetime = naive_date.and_hms_opt(0, 0, 0)?;
-        return Some(DateTime::from_naive_utc_and_offset(
-            naive_datetime,
-            Utc,
-        ));
+        return Some(DateTime::from_naive_utc_and_offset(naive_datetime, Utc));
     }
 
     tracing::warn!("Failed to parse YM date: {}", date_str);
@@ -655,4 +641,3 @@ fn normalize_ym_status(status: &str) -> String {
         _ => status.to_uppercase(),
     }
 }
-

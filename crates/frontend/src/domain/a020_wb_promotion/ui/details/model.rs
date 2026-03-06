@@ -108,6 +108,5 @@ pub async fn fetch_raw_json(raw_payload_ref: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to read response: {}", e))?;
     let json_value: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("Failed to parse JSON: {}", e))?;
-    serde_json::to_string_pretty(&json_value)
-        .map_err(|e| format!("Failed to format JSON: {}", e))
+    serde_json::to_string_pretty(&json_value).map_err(|e| format!("Failed to format JSON: {}", e))
 }

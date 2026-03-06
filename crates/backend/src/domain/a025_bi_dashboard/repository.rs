@@ -5,7 +5,7 @@ use contracts::domain::a025_bi_dashboard::aggregate::{
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
 
 mod bi_dashboard {
@@ -53,18 +53,21 @@ impl From<bi_dashboard::Model> for BiDashboard {
 
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
 
-        let layout: DashboardLayout = serde_json::from_str(&m.layout_json)
-            .unwrap_or_else(|_| DashboardLayout::default());
+        let layout: DashboardLayout =
+            serde_json::from_str(&m.layout_json).unwrap_or_else(|_| DashboardLayout::default());
 
         let global_filters: Vec<GlobalFilter> =
             serde_json::from_str(&m.global_filters_json).unwrap_or_default();
 
-        let status = BiDashboardStatus::from_str(&m.status)
-            .unwrap_or(BiDashboardStatus::Draft);
+        let status = BiDashboardStatus::from_str(&m.status).unwrap_or(BiDashboardStatus::Draft);
 
         let rating = m.rating.and_then(|r| {
             let r = r as u8;
-            if r >= 1 && r <= 5 { Some(r) } else { None }
+            if r >= 1 && r <= 5 {
+                Some(r)
+            } else {
+                None
+            }
         });
 
         BiDashboard {
@@ -97,10 +100,30 @@ pub async fn list_paginated(
     db: &DatabaseConnection,
     page: u64,
     page_size: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: Option<&str>,
 ) -> Result<(Vec<BiDashboard>, u64), DbErr> {
-    let query = bi_dashboard::Entity::find()
-        .filter(bi_dashboard::Column::IsDeleted.eq(false))
-        .order_by_desc(bi_dashboard::Column::CreatedAt);
+    let mut query = bi_dashboard::Entity::find().filter(bi_dashboard::Column::IsDeleted.eq(false));
+
+    if let Some(search) = q.map(str::trim).filter(|s| !s.is_empty()) {
+        query = query.filter(
+            Condition::any()
+                .add(bi_dashboard::Column::Code.contains(search))
+                .add(bi_dashboard::Column::Description.contains(search)),
+        );
+    }
+
+    query = match (sort_by, sort_desc) {
+        ("code", true) => query.order_by_desc(bi_dashboard::Column::Code),
+        ("code", false) => query.order_by_asc(bi_dashboard::Column::Code),
+        ("description", true) => query.order_by_desc(bi_dashboard::Column::Description),
+        ("description", false) => query.order_by_asc(bi_dashboard::Column::Description),
+        ("status", true) => query.order_by_desc(bi_dashboard::Column::Status),
+        ("status", false) => query.order_by_asc(bi_dashboard::Column::Status),
+        ("created_at", false) => query.order_by_asc(bi_dashboard::Column::CreatedAt),
+        _ => query.order_by_desc(bi_dashboard::Column::CreatedAt),
+    };
 
     let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await?;

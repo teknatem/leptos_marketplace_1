@@ -12,13 +12,13 @@ pub fn GeneralTab(data: YmReturnDetailDto) -> impl IntoView {
         "RETURN" => "Возврат".to_string(),
         _ => return_type.clone(),
     };
-    
+
     let (return_type_class, return_type_extra_style) = match data.header.return_type.as_str() {
         "UNREDEEMED" => ("badge", "background: #fff3e0; color: #e65100;"),
         "RETURN" => ("badge", "background: #e3f2fd; color: #1565c0;"),
         _ => ("badge", "background: #f5f5f5; color: #666;"),
     };
-    
+
     let (refund_status_class, refund_extra_style) = match data.state.refund_status.as_str() {
         "REFUNDED" => ("badge badge-success", ""),
         "NOT_REFUNDED" => ("badge badge-error", ""),

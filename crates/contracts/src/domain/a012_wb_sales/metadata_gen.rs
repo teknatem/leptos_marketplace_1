@@ -1,6 +1,6 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-03T22:07:31Z
+// Generated: 2026-03-06T09:32:37Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -19,10 +19,10 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
     collection_name: "wb_sales",
     table_name: Some("a012_wb_sales"),
     ui: EntityUiMetadata {
-        element_name: "Документ WB Продажи",
-        element_name_en: Some("WB Sales Document"),
-        list_name: "Документы WB Продажи",
-        list_name_en: Some("WB Sales Documents"),
+        element_name: "WB Sales",
+        element_name_en: Some("WB Sales"),
+        list_name: "WB Sales",
+        list_name_en: Some("WB Sales"),
         icon: Some("shopping-bag"),
     },
     ai: EntityAiMetadata {

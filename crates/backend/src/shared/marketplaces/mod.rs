@@ -1,7 +1,7 @@
+pub mod lemanapro;
 pub mod ozon;
 pub mod wildberries;
 pub mod yandex_market;
-pub mod lemanapro;
 
 use async_trait::async_trait;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto;
@@ -35,10 +35,15 @@ pub fn get_marketplace_type(marketplace_code: &str) -> Option<MarketplaceType> {
     if code_lower.contains("ozon") || code_lower.contains("озон") {
         return Some(MarketplaceType::Ozon);
     }
-    if code_lower.contains("wildberries") || code_lower.contains("вб") || code_lower.contains("wb") {
+    if code_lower.contains("wildberries") || code_lower.contains("вб") || code_lower.contains("wb")
+    {
         return Some(MarketplaceType::Wildberries);
     }
-    if code_lower.contains("yandex") || code_lower.contains("яндекс") || code_lower.contains("market") || code_lower.contains("ym") {
+    if code_lower.contains("yandex")
+        || code_lower.contains("яндекс")
+        || code_lower.contains("market")
+        || code_lower.contains("ym")
+    {
         return Some(MarketplaceType::YandexMarket);
     }
     if code_lower.contains("kuper") || code_lower.contains("купер") {
@@ -50,7 +55,6 @@ pub fn get_marketplace_type(marketplace_code: &str) -> Option<MarketplaceType> {
 
     None
 }
-
 
 /// Основная функция для тестирования подключения к маркетплейсу
 pub async fn test_marketplace_connection(

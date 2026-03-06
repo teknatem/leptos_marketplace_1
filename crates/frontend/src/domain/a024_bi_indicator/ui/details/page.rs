@@ -1,7 +1,7 @@
 //! Main page component for BiIndicator details (EditDetails MVVM Standard)
 
 use super::tabs::{
-    DataSpecTab, DrillSpecTab, GeneralTab, LlmPanel, MetaTab, ParamsTab, PreviewTab, ViewSpecTab,
+    DataSpecTab, DrillSpecTab, GeneralTab, MetaTab, ParamsTab, PreviewTab, ViewSpecTab,
 };
 use super::view_model::BiIndicatorDetailsVm;
 use crate::shared::icons::icon;
@@ -24,8 +24,6 @@ pub fn BiIndicatorDetails(
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
     let vm_content = vm.clone();
-    let vm_llm = vm.clone();
-
     view! {
         <PageFrame page_id="a024_bi_indicator--detail" category="detail">
             <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
@@ -35,7 +33,6 @@ pub fn BiIndicatorDetails(
                     <ErrorDisplay vm=vm.clone() />
                     <TabContent vm=vm_content />
                 </div>
-                <LlmPanel vm=vm_llm />
             </div>
         </PageFrame>
     }

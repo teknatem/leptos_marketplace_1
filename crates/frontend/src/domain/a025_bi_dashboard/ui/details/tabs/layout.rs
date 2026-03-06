@@ -5,6 +5,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
+use std::collections::HashMap;
 use thaw::*;
 use wasm_bindgen::JsCast;
 
@@ -18,6 +19,8 @@ struct ItemEdit {
     pub indicator_name: String,
     pub sort_order: i32,
     pub col_class: String,
+    #[serde(default)]
+    pub param_overrides: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -77,6 +80,12 @@ fn item_display(item: &ItemEdit) -> String {
 // ── Drop application ─────────────────────────────────────────────────────────
 
 fn apply_drop(layout: &mut LayoutEdit, from: &DragItem, onto: &DragItem) {
+    fn renumber_items(group: &mut GroupEdit) {
+        for (i, item) in group.items.iter_mut().enumerate() {
+            item.sort_order = i as i32;
+        }
+    }
+
     match (from, onto) {
         // Reorder categories
         (DragItem::Category(fi), DragItem::Category(ti)) => {
@@ -121,6 +130,10 @@ fn apply_drop(layout: &mut LayoutEdit, from: &DragItem, onto: &DragItem) {
                 let item = layout.groups[sg].items.remove(si);
                 let insert_at = ti.min(layout.groups[tg].items.len());
                 layout.groups[tg].items.insert(insert_at, item);
+                renumber_items(&mut layout.groups[sg]);
+                if sg != tg {
+                    renumber_items(&mut layout.groups[tg]);
+                }
             }
         }
         // Indicator → category header → append to that category
@@ -141,6 +154,10 @@ fn apply_drop(layout: &mut LayoutEdit, from: &DragItem, onto: &DragItem) {
             {
                 let item = layout.groups[sg].items.remove(si);
                 layout.groups[tg].items.push(item);
+                renumber_items(&mut layout.groups[sg]);
+                if sg != tg {
+                    renumber_items(&mut layout.groups[tg]);
+                }
             }
         }
         _ => {}
@@ -222,9 +239,13 @@ pub fn LayoutTab(vm: BiDashboardDetailsVm) -> impl IntoView {
     // blank indicator_name fields so the tree shows names instead of UUIDs.
     Effect::new(move |_| {
         let needs_backfill = layout.with(|l| {
-            l.groups.iter().any(|g| g.items.iter().any(|i| i.indicator_name.is_empty()))
+            l.groups
+                .iter()
+                .any(|g| g.items.iter().any(|i| i.indicator_name.is_empty()))
         });
-        if !needs_backfill { return; }
+        if !needs_backfill {
+            return;
+        }
         leptos::task::spawn_local(async move {
             if let Ok(rows) = fetch_indicators("").await {
                 let name_map: std::collections::HashMap<String, String> = rows
@@ -654,6 +675,7 @@ fn IndicatorPicker(
                                 indicator_name: name,
                                 sort_order: so,
                                 col_class: "1x1".to_string(),
+                                param_overrides: HashMap::new(),
                             });
                         }
                     }

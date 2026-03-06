@@ -8,7 +8,11 @@ const ACCESS_TOKEN_LIFETIME_HOURS: i64 = 24; // 24 hours for long lifetime
 const REFRESH_TOKEN_LIFETIME_DAYS: i64 = 90; // 90 days
 
 /// Generate JWT access token with 24 hours lifetime
-pub async fn generate_access_token(user_id: &str, username: &str, is_admin: bool) -> Result<String> {
+pub async fn generate_access_token(
+    user_id: &str,
+    username: &str,
+    is_admin: bool,
+) -> Result<String> {
     let now = Utc::now();
     let exp = (now + chrono::Duration::hours(ACCESS_TOKEN_LIFETIME_HOURS)).timestamp() as usize;
     let iat = now.timestamp() as usize;
@@ -79,14 +83,15 @@ async fn get_jwt_secret_from_db() -> Result<Option<String>> {
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
     let conn = get_connection();
-    
-    let result = conn.query_one(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "SELECT value FROM sys_settings WHERE key = ?",
-        ["jwt_secret".into()],
-    ))
-    .await?;
-    
+
+    let result = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT value FROM sys_settings WHERE key = ?",
+            ["jwt_secret".into()],
+        ))
+        .await?;
+
     match result {
         Some(row) => {
             let secret: String = row.try_get("", "value")?;

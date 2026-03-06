@@ -40,7 +40,7 @@ pub async fn save_raw_json(
     fetched_at: chrono::DateTime<Utc>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
-    
+
     let active = ActiveModel {
         id: Set(id.clone()),
         marketplace: Set(marketplace.to_string()),
@@ -50,9 +50,9 @@ pub async fn save_raw_json(
         fetched_at: Set(fetched_at.to_rfc3339()),
         created_at: Set(Utc::now().to_rfc3339()),
     };
-    
+
     active.insert(conn()).await?;
-    
+
     tracing::debug!(
         "Saved raw JSON: marketplace={}, document_type={}, document_no={}, id={}",
         marketplace,
@@ -60,16 +60,14 @@ pub async fn save_raw_json(
         document_no,
         id
     );
-    
+
     Ok(id)
 }
 
 /// Получить сырой JSON по ref
 pub async fn get_by_ref(ref_id: &str) -> Result<Option<String>> {
-    let result = Entity::find_by_id(ref_id.to_string())
-        .one(conn())
-        .await?;
-    
+    let result = Entity::find_by_id(ref_id.to_string()).one(conn()).await?;
+
     Ok(result.map(|m| m.raw_json))
 }
 
@@ -85,7 +83,7 @@ pub async fn get_by_key(
         .filter(Column::DocumentNo.eq(document_no))
         .one(conn())
         .await?;
-    
+
     Ok(result)
 }
 
@@ -93,13 +91,17 @@ pub async fn get_by_key(
 pub async fn cleanup_old(days: i64) -> Result<u64> {
     let cutoff_date = Utc::now() - chrono::Duration::days(days);
     let cutoff_str = cutoff_date.to_rfc3339();
-    
+
     let result = Entity::delete_many()
         .filter(Column::CreatedAt.lt(cutoff_str))
         .exec(conn())
         .await?;
-    
-    tracing::info!("Cleaned up {} old raw JSON records (older than {} days)", result.rows_affected, days);
-    
+
+    tracing::info!(
+        "Cleaned up {} old raw JSON records (older than {} days)",
+        result.rows_affected,
+        days
+    );
+
     Ok(result.rows_affected)
 }

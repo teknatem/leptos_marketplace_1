@@ -150,6 +150,9 @@ pub struct ViewSpec {
     pub format: ValueFormat,
     /// Пороги/алерты
     pub thresholds: Vec<Threshold>,
+    /// Значения параметров для превью/тестирования (сохраняются с записью)
+    #[serde(default)]
+    pub preview_values: HashMap<std::string::String, std::string::String>,
 }
 
 impl Default for ViewSpec {
@@ -160,6 +163,7 @@ impl Default for ViewSpec {
             custom_css: None,
             format: ValueFormat::Number { decimals: 2 },
             thresholds: vec![],
+            preview_values: HashMap::new(),
         }
     }
 }

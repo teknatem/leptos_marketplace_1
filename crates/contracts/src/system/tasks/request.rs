@@ -25,5 +25,3 @@ pub struct UpdateScheduledTaskDto {
 pub struct ToggleScheduledTaskEnabledDto {
     pub is_enabled: bool,
 }
-
-

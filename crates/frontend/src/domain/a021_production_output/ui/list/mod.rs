@@ -18,8 +18,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use thaw::*;
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 use wasm_bindgen::JsCast;
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 use crate::shared::api_utils::api_base;
 
@@ -110,7 +110,10 @@ pub fn ProductionOutputList() -> impl IntoView {
             );
 
             if !search_query_val.is_empty() {
-                url.push_str(&format!("&search_query={}", urlencoding::encode(&search_query_val)));
+                url.push_str(&format!(
+                    "&search_query={}",
+                    urlencoding::encode(&search_query_val)
+                ));
             }
 
             log!("Loading production output: {}", url);
@@ -270,9 +273,15 @@ pub fn ProductionOutputList() -> impl IntoView {
     let active_filters_count = Signal::derive(move || {
         let s = state.get();
         let mut count = 0;
-        if !s.date_from.is_empty() { count += 1; }
-        if !s.date_to.is_empty() { count += 1; }
-        if !s.search_query.is_empty() { count += 1; }
+        if !s.date_from.is_empty() {
+            count += 1;
+        }
+        if !s.date_to.is_empty() {
+            count += 1;
+        }
+        if !s.search_query.is_empty() {
+            count += 1;
+        }
         count
     });
 
@@ -306,10 +315,18 @@ pub fn ProductionOutputList() -> impl IntoView {
 
     let toggle_selection = move |id: String, checked: bool| {
         selected.update(|s| {
-            if checked { s.insert(id.clone()); } else { s.remove(&id); }
+            if checked {
+                s.insert(id.clone());
+            } else {
+                s.remove(&id);
+            }
         });
         state.update(|s| {
-            if checked { s.selected_ids.insert(id); } else { s.selected_ids.remove(&id); }
+            if checked {
+                s.selected_ids.insert(id);
+            } else {
+                s.selected_ids.remove(&id);
+            }
         });
     };
 
@@ -318,11 +335,15 @@ pub fn ProductionOutputList() -> impl IntoView {
             let items = state.get().items;
             selected.update(|s| {
                 s.clear();
-                for item in items.iter() { s.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.insert(item.id.clone());
+                }
             });
             state.update(|s| {
                 s.selected_ids.clear();
-                for item in items.iter() { s.selected_ids.insert(item.id.clone()); }
+                for item in items.iter() {
+                    s.selected_ids.insert(item.id.clone());
+                }
             });
         } else {
             selected.update(|s| s.clear());
@@ -701,7 +722,11 @@ fn export_to_csv(data: &[ProductionOutputDto]) -> Result<(), String> {
             .cost_of_production
             .map(|v| format!("{:.2}", v).replace(".", ","))
             .unwrap_or_else(|| "—".to_string());
-        let has_nom = if item.nomenclature_ref.is_some() { "Да" } else { "Нет" };
+        let has_nom = if item.nomenclature_ref.is_some() {
+            "Да"
+        } else {
+            "Нет"
+        };
 
         csv.push_str(&format!(
             "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{}\n",

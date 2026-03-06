@@ -59,5 +59,3 @@ pub enum ImportMode {
     /// Фоновый импорт (по расписанию)
     Background,
 }
-
-

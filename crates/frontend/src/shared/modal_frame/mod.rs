@@ -1,6 +1,6 @@
+use gloo_timers::future::TimeoutFuture;
 use leptos::ev;
 use leptos::prelude::*;
-use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 
 /// Modal frame container (overlay + positioned surface).
@@ -111,5 +111,3 @@ pub fn ModalFrame(
         </div>
     }
 }
-
-

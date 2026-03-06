@@ -108,29 +108,28 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                     api_base(),
                                     g.nomenclature_ref
                                 );
-                                let nom_info = if let Ok(nom_resp) =
-                                    Request::get(&nom_url).send().await
-                                {
-                                    if nom_resp.ok() {
-                                        #[derive(Deserialize)]
-                                        struct NomFull {
-                                            pub id: String,
-                                            pub code: String,
-                                            pub description: String,
-                                            pub article: String,
+                                let nom_info =
+                                    if let Ok(nom_resp) = Request::get(&nom_url).send().await {
+                                        if nom_resp.ok() {
+                                            #[derive(Deserialize)]
+                                            struct NomFull {
+                                                pub id: String,
+                                                pub code: String,
+                                                pub description: String,
+                                                pub article: String,
+                                            }
+                                            nom_resp.json::<NomFull>().await.ok().map(|n| NomInfo {
+                                                id: n.id,
+                                                code: n.code,
+                                                description: n.description,
+                                                article: n.article,
+                                            })
+                                        } else {
+                                            None
                                         }
-                                        nom_resp.json::<NomFull>().await.ok().map(|n| NomInfo {
-                                            id: n.id,
-                                            code: n.code,
-                                            description: n.description,
-                                            article: n.article,
-                                        })
                                     } else {
                                         None
-                                    }
-                                } else {
-                                    None
-                                };
+                                    };
                                 resolved.push(ResolvedGoodsItem {
                                     nomenclature_ref: g.nomenclature_ref.clone(),
                                     quantity: g.quantity,

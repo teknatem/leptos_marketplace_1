@@ -4,11 +4,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FieldType {
     #[default]
-    Primitive,      // String, i32, f64, bool, DateTime
-    Enum,           // Rust enum with variants
-    AggregateRef,   // Reference to another aggregate by ID
-    NestedStruct,   // Embedded struct (not Vec)
-    NestedTable,    // Vec<T> of embedded structs
+    Primitive, // String, i32, f64, bool, DateTime
+    Enum,         // Rust enum with variants
+    AggregateRef, // Reference to another aggregate by ID
+    NestedStruct, // Embedded struct (not Vec)
+    NestedTable,  // Vec<T> of embedded structs
 }
 
 impl FieldType {
@@ -27,9 +27,9 @@ impl FieldType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FieldSource {
     #[default]
-    Specific,  // Field specific to this aggregate
-    Base,      // Field from BaseAggregate (id, code, description, comment)
-    Metadata,  // Field from EntityMetadata (created_at, updated_at, etc.)
+    Specific, // Field specific to this aggregate
+    Base,     // Field from BaseAggregate (id, code, description, comment)
+    Metadata, // Field from EntityMetadata (created_at, updated_at, etc.)
 }
 
 impl FieldSource {
@@ -41,4 +41,3 @@ impl FieldSource {
         }
     }
 }
-

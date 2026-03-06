@@ -14,6 +14,9 @@ use contracts::domain::a024_bi_indicator::aggregate::{
 pub struct BiIndicatorListParams {
     pub limit: Option<u64>,
     pub offset: Option<u64>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub q: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -40,8 +43,11 @@ pub async fn list_paginated(
     let limit = params.limit.unwrap_or(100).clamp(10, 10000);
     let offset = params.offset.unwrap_or(0);
     let page = offset / limit;
+    let sort_by = params.sort_by.as_deref().unwrap_or("created_at");
+    let sort_desc = params.sort_desc.unwrap_or(true);
+    let q = params.q.as_deref();
 
-    match a024_bi_indicator::service::list_paginated(page, limit).await {
+    match a024_bi_indicator::service::list_paginated(page, limit, sort_by, sort_desc, q).await {
         Ok((items, total)) => {
             let page_size = limit as usize;
             let page_num = (offset as usize) / page_size;
@@ -100,9 +106,16 @@ pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode
 pub async fn upsert(
     Json(dto): Json<a024_bi_indicator::service::BiIndicatorDto>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let response_id = dto.id.clone();
     if dto.id.is_some() {
         match a024_bi_indicator::service::update(dto).await {
-            Ok(_) => Ok(Json(json!({"success": true}))),
+            Ok(_) => {
+                if let Some(id) = response_id {
+                    Ok(Json(json!({"success": true, "id": id})))
+                } else {
+                    Ok(Json(json!({"success": true})))
+                }
+            }
             Err(e) => {
                 tracing::error!("Failed to update BI indicator: {}", e);
                 Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
@@ -138,10 +151,7 @@ pub async fn generate_view(
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             tracing::error!("Failed to generate BI indicator view: {}", e);
-            Err((
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                e.to_string(),
-            ))
+            Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }

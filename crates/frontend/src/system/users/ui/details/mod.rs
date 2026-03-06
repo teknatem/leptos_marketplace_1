@@ -33,8 +33,16 @@ where
         let dto = CreateUserDto {
             username: username.get(),
             password: password.get(),
-            email: if email.get().is_empty() { None } else { Some(email.get()) },
-            full_name: if full_name.get().is_empty() { None } else { Some(full_name.get()) },
+            email: if email.get().is_empty() {
+                None
+            } else {
+                Some(email.get())
+            },
+            full_name: if full_name.get().is_empty() {
+                None
+            } else {
+                Some(full_name.get())
+            },
             is_admin: is_admin.get(),
         };
 

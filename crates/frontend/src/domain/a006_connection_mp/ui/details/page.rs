@@ -65,11 +65,7 @@ pub fn ConnectionMPDetail(
 }
 
 #[component]
-fn Header(
-    vm: ConnectionMPDetailsVm,
-    id: Option<String>,
-    on_close: Callback<()>,
-) -> impl IntoView {
+fn Header(vm: ConnectionMPDetailsVm, id: Option<String>, on_close: Callback<()>) -> impl IntoView {
     let is_edit = id.is_some();
     let title = if is_edit {
         "Редактирование подключения"

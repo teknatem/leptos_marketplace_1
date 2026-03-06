@@ -11,17 +11,18 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     // Найти документ постинга по posting_number
     let posting_number = &document.posting.posting_number;
-    
+
     // Сначала пробуем найти A010 (FBS)
-    let posting_fbs = crate::domain::a010_ozon_fbs_posting::service::get_by_document_no(posting_number).await?;
-    
+    let posting_fbs =
+        crate::domain::a010_ozon_fbs_posting::service::get_by_document_no(posting_number).await?;
+
     // Если не нашли, пробуем A011 (FBO)
     let posting_fbo = if posting_fbs.is_none() {
         crate::domain::a011_ozon_fbo_posting::service::get_by_document_no(posting_number).await?
     } else {
         None
     };
-    
+
     // Установить ссылку на постинг, если найден
     if let Some(fbs_doc) = posting_fbs {
         document.posting_ref = Some(fbs_doc.to_string_id());
@@ -32,7 +33,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         document.posting_ref_type = Some("A011".to_string());
         tracing::info!("Found A011 FBO posting for transaction: {}", posting_number);
     } else {
-        tracing::warn!("Posting document not found for posting_number: {}", posting_number);
+        tracing::warn!(
+            "Posting document not found for posting_number: {}",
+            posting_number
+        );
         // Оставляем posting_ref и posting_ref_type как None
     }
 
@@ -47,8 +51,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     repository::upsert_by_operation_id(&document).await?;
 
     // Удалить старые проекции (если были)
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
-        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
 
     // Создать новые проекции в P904
     crate::projections::p904_sales_data::service::project_ozon_transactions(&document, id).await?;
@@ -75,10 +78,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     repository::upsert_by_operation_id(&document).await?;
 
     // Удалить проекции
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
-        .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
 
     tracing::info!("Unposted document a014: {}", id);
     Ok(())
 }
-

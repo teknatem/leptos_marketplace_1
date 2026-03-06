@@ -36,16 +36,18 @@ impl ErpApiClient {
         };
         let url = format!(
             "{}/hs/mpi_api/production_output?date1={}&date2={}",
-            trade_base,
-            date_from,
-            date_to
+            trade_base, date_from, date_to
         );
 
         tracing::info!(
             "ERP API: GET {} (login='{}', password={})",
             url,
             connection.login,
-            if connection.password.is_empty() { "EMPTY" } else { "***" }
+            if connection.password.is_empty() {
+                "EMPTY"
+            } else {
+                "***"
+            }
         );
 
         if connection.login.trim().is_empty() {
@@ -94,7 +96,9 @@ impl ErpApiClient {
             ));
         }
 
-        let result: ProductionOutputResponse = response.json().await
+        let result: ProductionOutputResponse = response
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Ошибка парсинга JSON ответа от {}: {}", url, e))?;
 
         tracing::info!("ERP API: got {} documents", result.count);

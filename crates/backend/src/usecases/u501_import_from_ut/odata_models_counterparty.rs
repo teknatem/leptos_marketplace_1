@@ -110,5 +110,3 @@ impl UtCounterpartyOData {
 pub struct UtCounterpartyListResponse {
     pub value: Vec<UtCounterpartyOData>,
 }
-
-

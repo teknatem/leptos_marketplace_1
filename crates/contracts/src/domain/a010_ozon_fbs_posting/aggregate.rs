@@ -199,53 +199,52 @@ impl OzonFbsPosting {
 
 impl AggregateRoot for OzonFbsPosting {
     type Id = OzonFbsPostingId;
-    
+
     fn id(&self) -> Self::Id {
         self.base.id
     }
-    
+
     fn code(&self) -> &str {
         &self.base.code
     }
-    
+
     fn description(&self) -> &str {
         &self.base.description
     }
-    
+
     fn metadata(&self) -> &EntityMetadata {
         &self.base.metadata
     }
-    
+
     fn metadata_mut(&mut self) -> &mut EntityMetadata {
         &mut self.base.metadata
     }
-    
+
     fn events(&self) -> &EventStore {
         &self.base.events
     }
-    
+
     fn events_mut(&mut self) -> &mut EventStore {
         &mut self.base.events
     }
-    
+
     fn aggregate_index() -> &'static str {
         "a010"
     }
-    
+
     fn collection_name() -> &'static str {
         "ozon_fbs_posting"
     }
-    
+
     fn element_name() -> &'static str {
         "Документ OZON FBS"
     }
-    
+
     fn list_name() -> &'static str {
         "Документы OZON FBS"
     }
-    
+
     fn origin() -> Origin {
         Origin::Marketplace
     }
 }
-

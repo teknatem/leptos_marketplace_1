@@ -318,4 +318,3 @@ impl AggregateRoot for WbOrders {
         Origin::Marketplace
     }
 }
-

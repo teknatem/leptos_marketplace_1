@@ -62,8 +62,7 @@ pub async fn project_ozon_transactions(
 /// Проецировать YM Order в Sales Data (P904)
 /// Только документы со статусом DELIVERED формируют проекции
 pub async fn project_ym_order(document: &YmOrder, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_ym_order(document, &document_id.to_string()).await?;
+    let entries = projection_builder::from_ym_order(document, &document_id.to_string()).await?;
 
     let entries_count = entries.len();
     for entry in entries {
@@ -85,8 +84,7 @@ pub async fn project_ym_order(document: &YmOrder, document_id: Uuid) -> Result<(
 /// Только документы со статусом REFUNDED формируют проекции
 /// Заполняется только customer_out (с минусом)
 pub async fn project_ym_returns(document: &YmReturn, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_ym_returns(document, &document_id.to_string()).await?;
+    let entries = projection_builder::from_ym_returns(document, &document_id.to_string()).await?;
 
     let entries_count = entries.len();
     for entry in entries {
@@ -107,8 +105,7 @@ pub async fn project_ym_returns(document: &YmReturn, document_id: Uuid) -> Resul
 /// Проецировать OZON FBS Posting в Sales Data (P904)
 /// Только документы со статусом DELIVERED формируют проекции
 pub async fn project_ozon_fbs(document: &OzonFbsPosting, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_ozon_fbs(document, &document_id.to_string()).await?;
+    let entries = projection_builder::from_ozon_fbs(document, &document_id.to_string()).await?;
 
     let entries_count = entries.len();
     for entry in entries {
@@ -128,8 +125,7 @@ pub async fn project_ozon_fbs(document: &OzonFbsPosting, document_id: Uuid) -> R
 
 /// Проецировать OZON FBO Posting в Sales Data (P904)
 pub async fn project_ozon_fbo(document: &OzonFboPosting, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_ozon_fbo(document, &document_id.to_string()).await?;
+    let entries = projection_builder::from_ozon_fbo(document, &document_id.to_string()).await?;
 
     let entries_count = entries.len();
     for entry in entries {
@@ -150,8 +146,7 @@ pub async fn project_ozon_fbo(document: &OzonFboPosting, document_id: Uuid) -> R
 /// Проецировать OZON Returns в Sales Data (P904)
 /// Возвраты формируют проекции с отрицательным customer_out
 pub async fn project_ozon_returns(document: &OzonReturns, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_ozon_returns(document, &document_id.to_string()).await?;
+    let entries = projection_builder::from_ozon_returns(document, &document_id.to_string()).await?;
 
     let entries_count = entries.len();
     for entry in entries {

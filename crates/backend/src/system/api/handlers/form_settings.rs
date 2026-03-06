@@ -25,12 +25,10 @@ pub async fn get_settings(
         .await
     {
         Ok(Some(row)) => {
-            let settings_json: String = row
-                .try_get("", "settings_json")
-                .map_err(|e| {
-                    tracing::error!("Failed to get settings_json: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            let settings_json: String = row.try_get("", "settings_json").map_err(|e| {
+                tracing::error!("Failed to get settings_json: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
             Ok(Json(Some(FormSettings {
                 form_key,
@@ -87,4 +85,3 @@ pub async fn save_settings(
         }
     }
 }
-

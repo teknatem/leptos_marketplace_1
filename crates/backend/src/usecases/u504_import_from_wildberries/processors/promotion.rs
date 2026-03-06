@@ -3,8 +3,8 @@ use crate::domain::a020_wb_promotion;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a020_wb_promotion::aggregate::{
-    WbPromotion, WbPromotionData, WbPromotionHeader, WbPromotionNomenclature,
-    WbPromotionRanging, WbPromotionSourceMeta,
+    WbPromotion, WbPromotionData, WbPromotionHeader, WbPromotionNomenclature, WbPromotionRanging,
+    WbPromotionSourceMeta,
 };
 
 pub async fn process_promotion(
@@ -43,9 +43,7 @@ pub async fn process_promotion(
         description: details
             .and_then(|d| d.description.clone())
             .or_else(|| promotion.description.clone()),
-        advantages: details
-            .map(|d| d.advantages.clone())
-            .unwrap_or_default(),
+        advantages: details.map(|d| d.advantages.clone()).unwrap_or_default(),
         start_date_time: details
             .and_then(|d| d.start_date_time.clone())
             .or_else(|| promotion.start_date_time.clone())

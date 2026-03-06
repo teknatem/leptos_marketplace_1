@@ -61,9 +61,7 @@ impl UtKitVariantOData {
         };
 
         let owner_ref = if !self.owner_key.is_empty() {
-            Uuid::parse_str(&self.owner_key)
-                .ok()
-                .map(|u| u.to_string())
+            Uuid::parse_str(&self.owner_key).ok().map(|u| u.to_string())
         } else {
             None
         };

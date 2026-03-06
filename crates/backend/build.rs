@@ -8,7 +8,7 @@ fn main() {
     // Get the output directory where the binary will be placed
     let out_dir = env::var("OUT_DIR").unwrap();
     let profile = env::var("PROFILE").unwrap(); // "debug" or "release"
-    
+
     // Construct path to target/debug or target/release
     // OUT_DIR is typically: target/debug/build/backend-xxx/out
     // We need to go to: target/debug or target/release
@@ -23,7 +23,7 @@ fn main() {
         .parent()
         .and_then(|p| p.parent())
         .expect("Could not find workspace root");
-    
+
     let source_config = workspace_root.join("config.toml");
     let dest_config = target_dir.join("config.toml");
 
@@ -33,7 +33,9 @@ fn main() {
             .unwrap_or_else(|e| panic!("Failed to copy config.toml: {}", e));
         println!("cargo:warning=Copied config.toml to {:?}", dest_config);
     } else {
-        println!("cargo:warning=config.toml not found at {:?}, using default config", source_config);
+        println!(
+            "cargo:warning=config.toml not found at {:?}, using default config",
+            source_config
+        );
     }
 }
-

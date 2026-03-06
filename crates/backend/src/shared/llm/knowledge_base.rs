@@ -42,7 +42,10 @@ pub static KNOWLEDGE_BASE: Lazy<KnowledgeBase> = Lazy::new(|| {
     let path = match crate::shared::config::load_config() {
         Ok(cfg) => crate::shared::config::get_knowledge_base_path(&cfg),
         Err(e) => {
-            tracing::warn!("KnowledgeBase: cannot load config: {}; using default path", e);
+            tracing::warn!(
+                "KnowledgeBase: cannot load config: {}; using default path",
+                e
+            );
             std::path::PathBuf::from("data/knowledge")
         }
     };
@@ -68,7 +71,11 @@ impl KnowledgeBase {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(e) => {
-                tracing::error!("KnowledgeBase: cannot read directory '{}': {}", dir.display(), e);
+                tracing::error!(
+                    "KnowledgeBase: cannot read directory '{}': {}",
+                    dir.display(),
+                    e
+                );
                 return Self { index, docs };
             }
         };
@@ -169,7 +176,13 @@ fn parse_doc(id: String, raw: &str) -> KnowledgeDoc {
         .and_then(|fm| parse_list(fm, "related"))
         .unwrap_or_default();
 
-    KnowledgeDoc { id, title, tags, related, content: content.trim_start().to_string() }
+    KnowledgeDoc {
+        id,
+        title,
+        tags,
+        related,
+        content: content.trim_start().to_string(),
+    }
 }
 
 /// Разделить файл на frontmatter (между первыми `---`) и тело.
@@ -250,7 +263,11 @@ fn parse_list(frontmatter: &str, key: &str) -> Option<Vec<String>> {
                 let s = subsequent.trim();
                 if s.starts_with("- ") {
                     items.push(
-                        s[2..].trim().trim_matches('"').trim_matches('\'').to_string(),
+                        s[2..]
+                            .trim()
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .to_string(),
                     );
                 } else if !s.is_empty() && !s.starts_with('#') {
                     break;
@@ -295,10 +312,16 @@ updated: 2026-02-25
 
     #[test]
     fn test_search_by_tags() {
-        let mut kb = KnowledgeBase { index: HashMap::new(), docs: HashMap::new() };
+        let mut kb = KnowledgeBase {
+            index: HashMap::new(),
+            docs: HashMap::new(),
+        };
         let doc = parse_doc("wb-promotions".to_string(), SAMPLE);
         for tag in &doc.tags {
-            kb.index.entry(tag.to_lowercase()).or_default().push(doc.id.clone());
+            kb.index
+                .entry(tag.to_lowercase())
+                .or_default()
+                .push(doc.id.clone());
         }
         kb.docs.insert(doc.id.clone(), doc);
 

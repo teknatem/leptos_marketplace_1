@@ -95,12 +95,14 @@ impl Sortable for YmOrderListDto {
                 .partial_cmp(&other.subsidies_total)
                 .unwrap_or(Ordering::Equal),
             "lines_count" => self.lines_count.cmp(&other.lines_count),
-            "total_dealer_amount" => match (&self.total_dealer_amount, &other.total_dealer_amount) {
-                (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            },
+            "total_dealer_amount" => {
+                match (&self.total_dealer_amount, &other.total_dealer_amount) {
+                    (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            }
             "margin_pro" => match (&self.margin_pro, &other.margin_pro) {
                 (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
                 (Some(_), None) => Ordering::Less,

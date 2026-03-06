@@ -110,6 +110,10 @@ impl Default for DashboardLayout {
 // GlobalFilter — глобальные фильтры дашборда
 // ============================================================================
 
+fn default_filter_type() -> String {
+    "text".to_string()
+}
+
 /// Глобальный фильтр дашборда. Ключ совпадает с `ParamDef.global_filter_key` из a024
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalFilter {
@@ -119,6 +123,9 @@ pub struct GlobalFilter {
     pub label: String,
     /// Значение по умолчанию
     pub value: String,
+    /// Тип UI-контрола: "text" | "date" | "connection_multiselect"
+    #[serde(default = "default_filter_type")]
+    pub filter_type: String,
 }
 
 // ============================================================================
@@ -185,11 +192,7 @@ pub struct BiDashboard {
 }
 
 impl BiDashboard {
-    pub fn new_for_insert(
-        code: String,
-        description: String,
-        owner_user_id: String,
-    ) -> Self {
+    pub fn new_for_insert(code: String, description: String, owner_user_id: String) -> Self {
         let base = BaseAggregate::new(BiDashboardId::new_v4(), code, description);
         Self {
             base,

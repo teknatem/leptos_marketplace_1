@@ -1,11 +1,11 @@
 use super::{
     odata_models_counterparty::*, odata_models_kit_variant::*, odata_models_nomenclature::*,
-    odata_models_organization::*, odata_models_purchase_of_goods::*, progress_tracker::ProgressTracker,
-    ut_odata_client::UtODataClient,
+    odata_models_organization::*, odata_models_purchase_of_goods::*,
+    progress_tracker::ProgressTracker, ut_odata_client::UtODataClient,
 };
 use crate::domain::{
-    a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature,
-    a022_kit_variant, a023_purchase_of_goods,
+    a001_connection_1c, a002_organization, a003_counterparty, a004_nomenclature, a022_kit_variant,
+    a023_purchase_of_goods,
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -1342,11 +1342,7 @@ impl ImportExecutor {
             }
 
             let batch_size = response.value.len();
-            tracing::info!(
-                "Kit variants batch: skip={}, size={}",
-                skip,
-                batch_size
-            );
+            tracing::info!("Kit variants batch: skip={}, size={}", skip, batch_size);
 
             for odata_item in response.value {
                 self.progress_tracker.set_current_item(

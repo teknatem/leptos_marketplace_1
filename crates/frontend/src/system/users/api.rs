@@ -94,7 +94,8 @@ pub async fn change_password(dto: ChangePasswordDto) -> Result<(), String> {
 
     let response = Request::post(&format!(
         "{}/api/system/users/{}/change-password",
-        api_base(), dto.user_id
+        api_base(),
+        dto.user_id
     ))
     .header("Authorization", &auth_header)
     .json(&dto)

@@ -1,4 +1,7 @@
-use axum::{extract::{Path, Query}, Json};
+use axum::{
+    extract::{Path, Query},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -109,7 +112,10 @@ pub async fn list_paginated(
 /// GET /api/a021/production-output/:id
 pub async fn get_by_id(
     Path(id): Path<String>,
-) -> Result<Json<contracts::domain::a021_production_output::aggregate::ProductionOutput>, axum::http::StatusCode> {
+) -> Result<
+    Json<contracts::domain::a021_production_output::aggregate::ProductionOutput>,
+    axum::http::StatusCode,
+> {
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
     match a021_production_output::service::get_by_id(uuid).await {
         Ok(Some(doc)) => Ok(Json(doc)),
@@ -132,7 +138,9 @@ pub async fn post_production_output(
             tracing::error!("Failed to post production output {}: {}", id, e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    Ok(Json(serde_json::json!({"success": true, "message": "Document posted"})))
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document posted"}),
+    ))
 }
 
 /// POST /api/a021/production-output/:id/unpost
@@ -146,5 +154,7 @@ pub async fn unpost_production_output(
             tracing::error!("Failed to unpost production output {}: {}", id, e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    Ok(Json(serde_json::json!({"success": true, "message": "Document unposted"})))
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document unposted"}),
+    ))
 }

@@ -1,8 +1,6 @@
 use chrono::Utc;
-use contracts::system::tasks::aggregate::{
-    ScheduledTask, ScheduledTaskId,
-};
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
+use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

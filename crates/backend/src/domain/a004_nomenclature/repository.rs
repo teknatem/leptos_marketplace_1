@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use sea_orm::entity::prelude::*;
 use sea_orm::Condition;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 
 use crate::shared::data::db::get_connection;
 
@@ -136,7 +138,10 @@ pub async fn list_paginated(
         condition = condition.add(or);
     }
 
-    let total: u64 = Entity::find().filter(condition.clone()).count(conn()).await?;
+    let total: u64 = Entity::find()
+        .filter(condition.clone())
+        .count(conn())
+        .await?;
 
     let sort_column = match sort_by {
         "article" => Column::Article,
@@ -258,8 +263,12 @@ pub async fn find_by_article(article: &str) -> anyhow::Result<Vec<Nomenclature>>
     // IMPORTANT: don't load the whole table. Use SQL TRIM() so trailing spaces from 1C won't break matching.
     use sea_orm::sea_query::Expr;
 
-    find_by_article_with_conn(conn(), article, Expr::cust_with_values("trim(article) = ?", [article]))
-        .await
+    find_by_article_with_conn(
+        conn(),
+        article,
+        Expr::cust_with_values("trim(article) = ?", [article]),
+    )
+    .await
 }
 
 async fn find_by_article_with_conn<C: ConnectionTrait>(
@@ -306,12 +315,23 @@ pub async fn find_by_article_ignore_case(article: &str) -> anyhow::Result<Vec<No
     .await
 }
 
-pub async fn find_by_article_txn<C: ConnectionTrait>(db: &C, article: &str) -> anyhow::Result<Vec<Nomenclature>> {
+pub async fn find_by_article_txn<C: ConnectionTrait>(
+    db: &C,
+    article: &str,
+) -> anyhow::Result<Vec<Nomenclature>> {
     use sea_orm::sea_query::Expr;
-    find_by_article_with_conn(db, article, Expr::cust_with_values("trim(article) = ?", [article])).await
+    find_by_article_with_conn(
+        db,
+        article,
+        Expr::cust_with_values("trim(article) = ?", [article]),
+    )
+    .await
 }
 
-pub async fn update_txn<C: ConnectionTrait>(db: &C, aggregate: &Nomenclature) -> anyhow::Result<()> {
+pub async fn update_txn<C: ConnectionTrait>(
+    db: &C,
+    aggregate: &Nomenclature,
+) -> anyhow::Result<()> {
     let id = aggregate.base.id.value().to_string();
     let active = ActiveModel {
         id: Set(id),
@@ -433,11 +453,11 @@ pub async fn delete_by_ids(ids: Vec<Uuid>) -> anyhow::Result<u64> {
     }
 
     let id_strings: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
-    
+
     let result = Entity::delete_many()
         .filter(Column::Id.is_in(id_strings))
         .exec(conn())
         .await?;
-    
+
     Ok(result.rows_affected)
 }

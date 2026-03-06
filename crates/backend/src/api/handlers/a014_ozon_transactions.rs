@@ -144,12 +144,13 @@ pub async fn get_projections(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let p902_items = crate::projections::p902_ozon_finance_realization::repository::get_by_registrator(&id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get p902 projections: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let p902_items =
+        crate::projections::p902_ozon_finance_realization::repository::get_by_registrator(&id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get p902 projections: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     let p904_items = crate::projections::p904_sales_data::repository::get_by_registrator(&id)
         .await

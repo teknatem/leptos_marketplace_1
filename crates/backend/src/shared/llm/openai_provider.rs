@@ -1,4 +1,6 @@
-use super::types::{ChatMessage, ChatRole, LlmError, LlmProvider, LlmResponse, ToolCall, ToolDefinition};
+use super::types::{
+    ChatMessage, ChatRole, LlmError, LlmProvider, LlmResponse, ToolCall, ToolDefinition,
+};
 use async_openai::{
     config::OpenAIConfig,
     types::chat::{
@@ -82,15 +84,17 @@ impl OpenAiProvider {
                     if let Some(tool_calls) = &msg.tool_calls {
                         let openai_tool_calls: Vec<ChatCompletionMessageToolCalls> = tool_calls
                             .iter()
-                            .map(|tc| ChatCompletionMessageToolCalls::Function(
-                                ChatCompletionMessageToolCall {
-                                    id: tc.id.clone(),
-                                    function: FunctionCall {
-                                        name: tc.name.clone(),
-                                        arguments: tc.arguments.clone(),
+                            .map(|tc| {
+                                ChatCompletionMessageToolCalls::Function(
+                                    ChatCompletionMessageToolCall {
+                                        id: tc.id.clone(),
+                                        function: FunctionCall {
+                                            name: tc.name.clone(),
+                                            arguments: tc.arguments.clone(),
+                                        },
                                     },
-                                }
-                            ))
+                                )
+                            })
                             .collect();
                         builder.tool_calls(openai_tool_calls);
                     }
@@ -100,11 +104,7 @@ impl OpenAiProvider {
                         .into()
                 }
                 ChatRole::Tool => {
-                    let tool_call_id = msg
-                        .tool_call_id
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_string();
+                    let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("").to_string();
                     ChatCompletionRequestToolMessageArgs::default()
                         .content(msg.content_str())
                         .tool_call_id(tool_call_id)
@@ -123,14 +123,16 @@ impl OpenAiProvider {
     fn convert_tools(&self, tools: Vec<ToolDefinition>) -> Vec<ChatCompletionTools> {
         tools
             .into_iter()
-            .map(|t| ChatCompletionTools::Function(ChatCompletionTool {
-                function: FunctionObject {
-                    name: t.name,
-                    description: Some(t.description),
-                    parameters: Some(t.parameters),
-                    strict: None,
-                },
-            }))
+            .map(|t| {
+                ChatCompletionTools::Function(ChatCompletionTool {
+                    function: FunctionObject {
+                        name: t.name,
+                        description: Some(t.description),
+                        parameters: Some(t.parameters),
+                        strict: None,
+                    },
+                })
+            })
             .collect()
     }
 
@@ -169,9 +171,7 @@ impl LlmProvider for OpenAiProvider {
 
         // Создаём базовый запрос
         let mut request_builder = CreateChatCompletionRequestArgs::default();
-        request_builder
-            .model(&self.model)
-            .messages(openai_messages);
+        request_builder.model(&self.model).messages(openai_messages);
 
         // Добавляем инструменты если есть
         if has_tools {
@@ -226,7 +226,11 @@ impl LlmProvider for OpenAiProvider {
                         .map(|token| (token.logprob as f64).exp())
                         .sum();
                     let count = content_logprobs.len();
-                    if count > 0 { Some(sum / count as f64) } else { None }
+                    if count > 0 {
+                        Some(sum / count as f64)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -258,7 +262,7 @@ impl LlmProvider for OpenAiProvider {
 
 impl OpenAiProvider {
     /// Проверяет, поддерживает ли модель расширенные параметры (temperature, logprobs, max_tokens)
-    /// 
+    ///
     /// GPT-5 и o1/o3 модели имеют ограниченный API:
     /// - Не поддерживают кастомный temperature (только дефолт 1.0)
     /// - Не поддерживают logprobs для расчета confidence
@@ -267,10 +271,10 @@ impl OpenAiProvider {
         let is_restricted = model_id.starts_with("gpt-5")
             || model_id.starts_with("o1-")
             || model_id.starts_with("o3-");
-        
+
         !is_restricted
     }
-    
+
     /// Проверяет, является ли модель подходящей для chat completion
     fn is_chat_model(model_id: &str) -> bool {
         // Включаем chat-модели
@@ -280,7 +284,7 @@ impl OpenAiProvider {
             || model_id.starts_with("o1-")
             || model_id.starts_with("o3-")
             || model_id.starts_with("chatgpt-");
-        
+
         // Исключаем специализированные модели
         let is_excluded = model_id.starts_with("text-embedding-")
             || model_id.starts_with("whisper-")
@@ -301,27 +305,32 @@ impl OpenAiProvider {
             || model_id.contains("edit")
             || model_id.contains("insert")
             || model_id.contains(":ft-"); // fine-tuned модели
-        
+
         is_chat && !is_excluded
     }
-    
+
     /// Получить список доступных моделей для chat completion от OpenAI
     pub async fn list_models(&self) -> Result<Vec<serde_json::Value>, LlmError> {
-        let response = self.client.models()
+        let response = self
+            .client
+            .models()
             .list()
             .await
             .map_err(|e| LlmError::ApiError(e.to_string()))?;
-        
-        let models: Vec<serde_json::Value> = response.data
+
+        let models: Vec<serde_json::Value> = response
+            .data
             .into_iter()
             .filter(|m| Self::is_chat_model(&m.id))
-            .map(|m| serde_json::json!({
-                "id": m.id,
-                "created": m.created,
-                "owned_by": m.owned_by
-            }))
+            .map(|m| {
+                serde_json::json!({
+                    "id": m.id,
+                    "created": m.created,
+                    "owned_by": m.owned_by
+                })
+            })
             .collect();
-        
+
         Ok(models)
     }
 }

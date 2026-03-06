@@ -6,10 +6,7 @@ use contracts::domain::common::AggregateId;
 
 const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
-pub async fn process_goods_price(
-    connection: &ConnectionMP,
-    row: &WbGoodsPriceRow,
-) -> Result<()> {
+pub async fn process_goods_price(connection: &ConnectionMP, row: &WbGoodsPriceRow) -> Result<()> {
     let connection_mp_ref = connection.base.id.as_string();
 
     // Extract price from first size (most products have one size)
@@ -61,13 +58,14 @@ async fn enrich(
     }
 
     // 1. Look up nomenclature by article
-    let nomenclatures = match crate::domain::a004_nomenclature::repository::find_by_article(article).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("p908 enrich: find_by_article({}) failed: {}", article, e);
-            return (None, None, None);
-        }
-    };
+    let nomenclatures =
+        match crate::domain::a004_nomenclature::repository::find_by_article(article).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("p908 enrich: find_by_article({}) failed: {}", article, e);
+                return (None, None, None);
+            }
+        };
 
     let Some(nom) = nomenclatures.into_iter().next() else {
         return (None, None, None);
@@ -116,7 +114,11 @@ async fn lookup_dealer_price(ext_ref: &str, date: &str) -> Option<f64> {
     crate::projections::p906_nomenclature_prices::repository::get_last_nonzero_price(ext_ref)
         .await
         .unwrap_or_else(|e| {
-            tracing::warn!("p908 enrich: get_last_nonzero_price({}) failed: {}", ext_ref, e);
+            tracing::warn!(
+                "p908 enrich: get_last_nonzero_price({}) failed: {}",
+                ext_ref,
+                e
+            );
             None
         })
 }

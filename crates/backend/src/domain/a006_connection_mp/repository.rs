@@ -1,6 +1,6 @@
 use chrono::Utc;
 use contracts::domain::a006_connection_mp::aggregate::{
-    ConnectionMP, ConnectionMPId, AuthorizationType,
+    AuthorizationType, ConnectionMP, ConnectionMPId,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use serde::{Deserialize, Serialize};

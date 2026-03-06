@@ -53,7 +53,13 @@ pub async fn unlink_from_posting(posting_number: &str) -> Result<usize> {
     let mut unlinked_count = 0;
     for row in rows {
         if row.posting_ref.is_some() {
-            repository::update_posting_ref(&row.posting_number, &row.sku, &row.operation_type, None).await?;
+            repository::update_posting_ref(
+                &row.posting_number,
+                &row.sku,
+                &row.operation_type,
+                None,
+            )
+            .await?;
             unlinked_count += 1;
         }
     }

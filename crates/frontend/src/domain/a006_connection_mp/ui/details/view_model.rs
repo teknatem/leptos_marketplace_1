@@ -79,7 +79,7 @@ impl ConnectionMPDetailsVm {
                 Ok(conn) => {
                     let marketplace_id = conn.marketplace_id.clone();
                     let organization_ref = conn.organization_ref.clone();
-                    
+
                     form.set(ConnectionMPFormDto::from(conn));
 
                     // Загрузить информацию о маркетплейсе
@@ -125,10 +125,12 @@ impl ConnectionMPDetailsVm {
     /// Тестировать подключение
     pub fn test_command(&self) {
         let current = self.form.get();
-        
+
         // Базовая валидация перед тестом
         if current.marketplace_id.is_empty() || current.api_key.trim().is_empty() {
-            self.error.set(Some("Для теста необходимо указать маркетплейс и API Key".to_string()));
+            self.error.set(Some(
+                "Для теста необходимо указать маркетплейс и API Key".to_string(),
+            ));
             return;
         }
 

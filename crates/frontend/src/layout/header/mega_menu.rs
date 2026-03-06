@@ -83,55 +83,185 @@ pub fn MegaMenuCategory(
 pub fn MegaMenuBar() -> impl IntoView {
     // Справочники
     let directories = vec![
-        MegaMenuItem { key: "a002_organization", title: tab_label_for_key("a002_organization"), icon_name: "building" },
-        MegaMenuItem { key: "a003_counterparty", title: tab_label_for_key("a003_counterparty"), icon_name: "contact" },
-        MegaMenuItem { key: "a004_nomenclature", title: tab_label_for_key("a004_nomenclature"), icon_name: "list" },
-        MegaMenuItem { key: "a004_nomenclature_list", title: tab_label_for_key("a004_nomenclature_list"), icon_name: "table" },
-        MegaMenuItem { key: "a005_marketplace", title: tab_label_for_key("a005_marketplace"), icon_name: "store" },
-        MegaMenuItem { key: "a007_marketplace_product", title: tab_label_for_key("a007_marketplace_product"), icon_name: "package" },
+        MegaMenuItem {
+            key: "a002_organization",
+            title: tab_label_for_key("a002_organization"),
+            icon_name: "building",
+        },
+        MegaMenuItem {
+            key: "a003_counterparty",
+            title: tab_label_for_key("a003_counterparty"),
+            icon_name: "contact",
+        },
+        MegaMenuItem {
+            key: "a004_nomenclature",
+            title: tab_label_for_key("a004_nomenclature"),
+            icon_name: "list",
+        },
+        MegaMenuItem {
+            key: "a004_nomenclature_list",
+            title: tab_label_for_key("a004_nomenclature_list"),
+            icon_name: "table",
+        },
+        MegaMenuItem {
+            key: "a005_marketplace",
+            title: tab_label_for_key("a005_marketplace"),
+            icon_name: "store",
+        },
+        MegaMenuItem {
+            key: "a007_marketplace_product",
+            title: tab_label_for_key("a007_marketplace_product"),
+            icon_name: "package",
+        },
     ];
 
     // Документы
     let documents = vec![
-        MegaMenuItem { key: "a008_marketplace_sales", title: tab_label_for_key("a008_marketplace_sales"), icon_name: "dollar-sign" },
-        MegaMenuItem { key: "a010_ozon_fbs_posting", title: tab_label_for_key("a010_ozon_fbs_posting"), icon_name: "file-text" },
-        MegaMenuItem { key: "a011_ozon_fbo_posting", title: tab_label_for_key("a011_ozon_fbo_posting"), icon_name: "file-text" },
-        MegaMenuItem { key: "a015_wb_orders", title: tab_label_for_key("a015_wb_orders"), icon_name: "file-text" },
-        MegaMenuItem { key: "a021_production_output", title: tab_label_for_key("a021_production_output"), icon_name: "package" },
-        MegaMenuItem { key: "a022_kit_variant", title: tab_label_for_key("a022_kit_variant"), icon_name: "layers" },
-        MegaMenuItem { key: "a023_purchase_of_goods", title: tab_label_for_key("a023_purchase_of_goods"), icon_name: "shopping-cart" },
-        MegaMenuItem { key: "a012_wb_sales", title: tab_label_for_key("a012_wb_sales"), icon_name: "file-text" },
-        MegaMenuItem { key: "a013_ym_order", title: tab_label_for_key("a013_ym_order"), icon_name: "file-text" },
-        MegaMenuItem { key: "a009_ozon_returns", title: tab_label_for_key("a009_ozon_returns"), icon_name: "package-x" },
-        MegaMenuItem { key: "a016_ym_returns", title: tab_label_for_key("a016_ym_returns"), icon_name: "package-x" },
-        MegaMenuItem { key: "a014_ozon_transactions", title: tab_label_for_key("a014_ozon_transactions"), icon_name: "credit-card" },
+        MegaMenuItem {
+            key: "a008_marketplace_sales",
+            title: tab_label_for_key("a008_marketplace_sales"),
+            icon_name: "dollar-sign",
+        },
+        MegaMenuItem {
+            key: "a010_ozon_fbs_posting",
+            title: tab_label_for_key("a010_ozon_fbs_posting"),
+            icon_name: "file-text",
+        },
+        MegaMenuItem {
+            key: "a011_ozon_fbo_posting",
+            title: tab_label_for_key("a011_ozon_fbo_posting"),
+            icon_name: "file-text",
+        },
+        MegaMenuItem {
+            key: "a015_wb_orders",
+            title: tab_label_for_key("a015_wb_orders"),
+            icon_name: "file-text",
+        },
+        MegaMenuItem {
+            key: "a021_production_output",
+            title: tab_label_for_key("a021_production_output"),
+            icon_name: "package",
+        },
+        MegaMenuItem {
+            key: "a022_kit_variant",
+            title: tab_label_for_key("a022_kit_variant"),
+            icon_name: "layers",
+        },
+        MegaMenuItem {
+            key: "a023_purchase_of_goods",
+            title: tab_label_for_key("a023_purchase_of_goods"),
+            icon_name: "shopping-cart",
+        },
+        MegaMenuItem {
+            key: "a012_wb_sales",
+            title: tab_label_for_key("a012_wb_sales"),
+            icon_name: "file-text",
+        },
+        MegaMenuItem {
+            key: "a013_ym_order",
+            title: tab_label_for_key("a013_ym_order"),
+            icon_name: "file-text",
+        },
+        MegaMenuItem {
+            key: "a009_ozon_returns",
+            title: tab_label_for_key("a009_ozon_returns"),
+            icon_name: "package-x",
+        },
+        MegaMenuItem {
+            key: "a016_ym_returns",
+            title: tab_label_for_key("a016_ym_returns"),
+            icon_name: "package-x",
+        },
+        MegaMenuItem {
+            key: "a014_ozon_transactions",
+            title: tab_label_for_key("a014_ozon_transactions"),
+            icon_name: "credit-card",
+        },
     ];
 
     // Интеграции
     let integrations = vec![
-        MegaMenuItem { key: "a001_connection_1c", title: tab_label_for_key("a001_connection_1c"), icon_name: "database" },
-        MegaMenuItem { key: "a006_connection_mp", title: tab_label_for_key("a006_connection_mp"), icon_name: "plug" },
-        MegaMenuItem { key: "u501_import_from_ut", title: tab_label_for_key("u501_import_from_ut"), icon_name: "import" },
-        MegaMenuItem { key: "u502_import_from_ozon", title: tab_label_for_key("u502_import_from_ozon"), icon_name: "import" },
-        MegaMenuItem { key: "u503_import_from_yandex", title: tab_label_for_key("u503_import_from_yandex"), icon_name: "import" },
-        MegaMenuItem { key: "u504_import_from_wildberries", title: tab_label_for_key("u504_import_from_wildberries"), icon_name: "import" },
-        MegaMenuItem { key: "u506_import_from_lemanapro", title: tab_label_for_key("u506_import_from_lemanapro"), icon_name: "import" },
-        MegaMenuItem { key: "u507_import_from_erp", title: tab_label_for_key("u507_import_from_erp"), icon_name: "import" },
+        MegaMenuItem {
+            key: "a001_connection_1c",
+            title: tab_label_for_key("a001_connection_1c"),
+            icon_name: "database",
+        },
+        MegaMenuItem {
+            key: "a006_connection_mp",
+            title: tab_label_for_key("a006_connection_mp"),
+            icon_name: "plug",
+        },
+        MegaMenuItem {
+            key: "u501_import_from_ut",
+            title: tab_label_for_key("u501_import_from_ut"),
+            icon_name: "import",
+        },
+        MegaMenuItem {
+            key: "u502_import_from_ozon",
+            title: tab_label_for_key("u502_import_from_ozon"),
+            icon_name: "import",
+        },
+        MegaMenuItem {
+            key: "u503_import_from_yandex",
+            title: tab_label_for_key("u503_import_from_yandex"),
+            icon_name: "import",
+        },
+        MegaMenuItem {
+            key: "u504_import_from_wildberries",
+            title: tab_label_for_key("u504_import_from_wildberries"),
+            icon_name: "import",
+        },
+        MegaMenuItem {
+            key: "u506_import_from_lemanapro",
+            title: tab_label_for_key("u506_import_from_lemanapro"),
+            icon_name: "import",
+        },
+        MegaMenuItem {
+            key: "u507_import_from_erp",
+            title: tab_label_for_key("u507_import_from_erp"),
+            icon_name: "import",
+        },
     ];
 
     // Операции
-    let operations = vec![
-        MegaMenuItem { key: "u505_match_nomenclature", title: tab_label_for_key("u505_match_nomenclature"), icon_name: "layers" },
-    ];
+    let operations = vec![MegaMenuItem {
+        key: "u505_match_nomenclature",
+        title: tab_label_for_key("u505_match_nomenclature"),
+        icon_name: "layers",
+    }];
 
     // Регистры
     let registers = vec![
-        MegaMenuItem { key: "p900_sales_register", title: tab_label_for_key("p900_sales_register"), icon_name: "database" },
-        MegaMenuItem { key: "p901_barcodes", title: tab_label_for_key("p901_barcodes"), icon_name: "barcode" },
-        MegaMenuItem { key: "p902_ozon_finance_realization", title: tab_label_for_key("p902_ozon_finance_realization"), icon_name: "dollar-sign" },
-        MegaMenuItem { key: "p903_wb_finance_report", title: tab_label_for_key("p903_wb_finance_report"), icon_name: "dollar-sign" },
-        MegaMenuItem { key: "p904_sales_data", title: tab_label_for_key("p904_sales_data"), icon_name: "dollar-sign" },
-        MegaMenuItem { key: "p905_commission_history", title: tab_label_for_key("p905_commission_history"), icon_name: "percent" },
+        MegaMenuItem {
+            key: "p900_sales_register",
+            title: tab_label_for_key("p900_sales_register"),
+            icon_name: "database",
+        },
+        MegaMenuItem {
+            key: "p901_barcodes",
+            title: tab_label_for_key("p901_barcodes"),
+            icon_name: "barcode",
+        },
+        MegaMenuItem {
+            key: "p902_ozon_finance_realization",
+            title: tab_label_for_key("p902_ozon_finance_realization"),
+            icon_name: "dollar-sign",
+        },
+        MegaMenuItem {
+            key: "p903_wb_finance_report",
+            title: tab_label_for_key("p903_wb_finance_report"),
+            icon_name: "dollar-sign",
+        },
+        MegaMenuItem {
+            key: "p904_sales_data",
+            title: tab_label_for_key("p904_sales_data"),
+            icon_name: "dollar-sign",
+        },
+        MegaMenuItem {
+            key: "p905_commission_history",
+            title: tab_label_for_key("p905_commission_history"),
+            icon_name: "percent",
+        },
     ];
 
     view! {

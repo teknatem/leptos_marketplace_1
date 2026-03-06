@@ -44,9 +44,8 @@ pub struct BiIndicatorDto {
 pub fn sanitize_html(html: &str) -> String {
     ammonia::Builder::new()
         .tags(maplit::hashset![
-            "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6",
-            "ul", "ol", "li", "strong", "em", "b", "i", "small", "sup", "sub",
-            "table", "thead", "tbody", "tr", "td", "th",
+            "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "strong",
+            "em", "b", "i", "small", "sup", "sub", "table", "thead", "tbody", "tr", "td", "th",
             "br", "hr", "section", "article", "aside", "header", "footer",
         ])
         .generic_attributes(maplit::hashset!["class", "style", "id", "title"])
@@ -115,8 +114,8 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("ID is required for update"))?;
 
-    let indicator_uuid = Uuid::parse_str(id_str)
-        .map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
+    let indicator_uuid =
+        Uuid::parse_str(id_str).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
     let indicator_id = BiIndicatorId::new(indicator_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -168,8 +167,8 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
 
 /// Удаление индикатора (soft delete)
 pub async fn delete(id: &str) -> anyhow::Result<()> {
-    let indicator_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
+    let indicator_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
     let indicator_id = BiIndicatorId::new(indicator_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -180,8 +179,8 @@ pub async fn delete(id: &str) -> anyhow::Result<()> {
 
 /// Получить индикатор по ID
 pub async fn get_by_id(id: &str) -> anyhow::Result<Option<BiIndicator>> {
-    let indicator_uuid = Uuid::parse_str(id)
-        .map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
+    let indicator_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
     let indicator_id = BiIndicatorId::new(indicator_uuid);
 
     let db = crate::shared::data::db::get_connection();
@@ -201,9 +200,13 @@ pub async fn list_all() -> anyhow::Result<Vec<BiIndicator>> {
 pub async fn list_paginated(
     page: u64,
     page_size: u64,
+    sort_by: &str,
+    sort_desc: bool,
+    q: Option<&str>,
 ) -> anyhow::Result<(Vec<BiIndicator>, u64)> {
     let db = crate::shared::data::db::get_connection();
-    let (indicators, total) = repository::list_paginated(&db, page, page_size).await?;
+    let (indicators, total) =
+        repository::list_paginated(&db, page, page_size, sort_by, sort_desc, q).await?;
     Ok((indicators, total))
 }
 
@@ -228,14 +231,16 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
 
     const TEST_OWNER: &str = "f2fc6986-855d-492b-acff-70c7cd8cdd34";
 
-    let records: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
+    // (id, code, description, comment, data_spec_json, params_json, view_spec_json, status)
+    let records: &[(&str, &str, &str, &str, &str, &str, &str, &str)] = &[
         (
             "a024a024-0001-4001-a001-000000000001",
             "IND-REVENUE-WB",
             "Выручка WB",
-            "Тестовый индикатор: суммарная выручка Wildberries за выбранный период.",
-            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
-            r#"{"custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            "Сквозной пример: суммарная выручка по выбранным кабинетам WB за период. schema_id=sales_revenue.",
+            r#"{"schema_id":"sales_revenue","query_config":{"data_source":"p904_sales_data","selected_fields":["revenue"],"groupings":[],"filters":{},"display_fields":[],"sort":{"field":"","ascending":true},"enabled_fields":[]},"sql_artifact_id":null}"#,
+            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"},{"key":"connection_ids","param_type":"ref","label":"Кабинеты МП","default_value":null,"required":false,"global_filter_key":"connection_ids"}]"#,
+            r#"{"style_name":"custom","custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
             "active",
         ),
         (
@@ -243,26 +248,29 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "IND-MARGIN",
             "Маржинальность",
             "Тестовый индикатор: процент маржи. Кольцеобразный дизайн, пороги зелёный/красный.",
+            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
             "[]",
-            r#"{"custom_html":"<div class=\"ring-kpi\"><div class=\"ring-kpi__ring\"><span class=\"ring-kpi__num\">{{value}}</span></div><div class=\"ring-kpi__info\"><div class=\"ring-kpi__title\">{{title}}</div><div class=\"ring-kpi__delta\">{{delta}}</div></div></div>","custom_css":".ring-kpi{display:flex;align-items:center;gap:16px;height:100%}.ring-kpi__ring{width:76px;height:76px;border-radius:50%;border:6px solid var(--bi-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}.ring-kpi__num{font-size:1rem;font-weight:800;color:var(--bi-primary)}.ring-kpi__info{display:flex;flex-direction:column;gap:6px}.ring-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.ring-kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Percent","decimals":1},"thresholds":[{"condition":"> 25","color":"rgb(34,197,94)","label":"Высокая"},{"condition":"< 10","color":"rgb(239,68,68)","label":"Низкая"}]}"#,
+            r#"{"style_name":"custom","custom_html":"<div class=\"ring-kpi\"><div class=\"ring-kpi__ring\"><span class=\"ring-kpi__num\">{{value}}</span></div><div class=\"ring-kpi__info\"><div class=\"ring-kpi__title\">{{title}}</div><div class=\"ring-kpi__delta\">{{delta}}</div></div></div>","custom_css":".ring-kpi{display:flex;align-items:center;gap:16px;height:100%}.ring-kpi__ring{width:76px;height:76px;border-radius:50%;border:6px solid var(--bi-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}.ring-kpi__num{font-size:1rem;font-weight:800;color:var(--bi-primary)}.ring-kpi__info{display:flex;flex-direction:column;gap:6px}.ring-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.ring-kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Percent","decimals":1},"thresholds":[{"condition":"> 25","color":"rgb(34,197,94)","label":"Высокая"},{"condition":"< 10","color":"rgb(239,68,68)","label":"Низкая"}]}"#,
             "active",
         ),
         (
             "a024a024-0003-4001-a001-000000000003",
             "IND-ORDERS",
             "Количество заказов",
-            "Тестовый индикатор: количество заказов за период. Карточка с маркером.",
-            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
-            r#"{"custom_html":"<div class=\"cnt-kpi\"><span class=\"cnt-kpi__dot\"></span><div class=\"cnt-kpi__body\"><div class=\"cnt-kpi__title\">{{title}}</div><div class=\"cnt-kpi__value\">{{value}}</div><div class=\"cnt-kpi__delta\">{{delta}}</div></div></div>","custom_css":".cnt-kpi{display:flex;align-items:flex-start;gap:12px;height:100%;padding:4px}.cnt-kpi__dot{width:10px;height:10px;border-radius:50%;background:var(--bi-primary);flex-shrink:0;margin-top:4px}.cnt-kpi__body{display:flex;flex-direction:column;gap:4px}.cnt-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.cnt-kpi__value{font-size:2.2rem;font-weight:800;color:var(--bi-text);line-height:1}.cnt-kpi__delta{font-size:13px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Integer"},"thresholds":[]}"#,
+            "Тестовый индикатор: количество заказов за период. schema_id=sales_order_count.",
+            r#"{"schema_id":"sales_order_count","query_config":{"data_source":"p904_sales_data","selected_fields":["order_count"],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
+            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"},{"key":"connection_ids","param_type":"ref","label":"Кабинеты МП","default_value":null,"required":false,"global_filter_key":"connection_ids"}]"#,
+            r#"{"style_name":"custom","custom_html":"<div class=\"cnt-kpi\"><span class=\"cnt-kpi__dot\"></span><div class=\"cnt-kpi__body\"><div class=\"cnt-kpi__title\">{{title}}</div><div class=\"cnt-kpi__value\">{{value}}</div><div class=\"cnt-kpi__delta\">{{delta}}</div></div></div>","custom_css":".cnt-kpi{display:flex;align-items:flex-start;gap:12px;height:100%;padding:4px}.cnt-kpi__dot{width:10px;height:10px;border-radius:50%;background:var(--bi-primary);flex-shrink:0;margin-top:4px}.cnt-kpi__body{display:flex;flex-direction:column;gap:4px}.cnt-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.cnt-kpi__value{font-size:2.2rem;font-weight:800;color:var(--bi-text);line-height:1}.cnt-kpi__delta{font-size:13px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Integer"},"thresholds":[]}"#,
             "active",
         ),
         (
             "a024a024-0004-4001-a001-000000000004",
             "IND-REVENUE-OZON",
             "Выручка Ozon",
-            "Тестовый индикатор (draft): выручка Ozon. Статус draft для проверки фильтрации.",
-            r#"[{"key":"period","param_type":"date_range","label":"Период","default_value":null,"required":false,"global_filter_key":"date_range"}]"#,
-            r#"{"custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            "Тестовый индикатор (draft): выручка Ozon.",
+            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
+            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"}]"#,
+            r#"{"style_name":"custom","custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
             "draft",
         ),
         (
@@ -270,24 +278,26 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "IND-EMPTY",
             "Новый индикатор (без шаблона)",
             "Тестовый индикатор без HTML/CSS — для проверки empty-state на вкладке Превью.",
+            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
             "[]",
-            r#"{"custom_html":null,"custom_css":null,"format":{"kind":"Integer"},"thresholds":[]}"#,
+            r#"{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Integer"},"thresholds":[]}"#,
             "draft",
         ),
     ];
 
-    let data_spec_empty = r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#;
-
-    for (id, code, description, comment, params_json, view_spec_json, status) in records {
+    for (id, code, description, comment, data_spec_json, params_json, view_spec_json, status) in
+        records
+    {
         let sql = format!(
-            "INSERT OR IGNORE INTO a024_bi_indicator \
+            "INSERT OR REPLACE INTO a024_bi_indicator \
             (id, code, description, comment, data_spec_json, params_json, view_spec_json, \
              status, owner_user_id, is_public, created_at, updated_at, version) \
             VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', 1, datetime('now'), datetime('now'), 1)",
-            id, code, description, comment, data_spec_empty, params_json, view_spec_json,
+            id, code, description, comment, data_spec_json, params_json, view_spec_json,
             status, TEST_OWNER
         );
-        db.execute(Statement::from_string(DbBackend::Sqlite, sql)).await
+        db.execute(Statement::from_string(DbBackend::Sqlite, sql))
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to insert test record {}: {}", id, e))?;
     }
 

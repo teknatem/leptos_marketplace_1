@@ -1,12 +1,12 @@
+use super::super::wildberries_api_client::WbOrderRow;
+use crate::domain::a015_wb_orders;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::common::AggregateId;
-use crate::domain::a015_wb_orders;
 use contracts::domain::a015_wb_orders::aggregate::{
-    WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta,
-    WbOrdersState, WbOrdersWarehouse,
+    WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta, WbOrdersState,
+    WbOrdersWarehouse,
 };
-use super::super::wildberries_api_client::WbOrderRow;
+use contracts::domain::common::AggregateId;
 
 pub async fn process_order_row(
     connection: &ConnectionMP,
@@ -34,7 +34,10 @@ pub async fn process_order_row(
 
     // Создаем line
     let line = WbOrdersLine {
-        line_id: order_row.srid.clone().unwrap_or_else(|| document_no.clone()),
+        line_id: order_row
+            .srid
+            .clone()
+            .unwrap_or_else(|| document_no.clone()),
         supplier_article: supplier_article.clone(),
         nm_id: order_row.nm_id.unwrap_or(0),
         barcode: order_row.barcode.clone().unwrap_or_default(),
@@ -139,7 +142,6 @@ pub async fn process_order_row(
 
     let raw_json = serde_json::to_string(order_row)?;
     a015_wb_orders::service::store_document_with_raw(document, &raw_json).await?;
-    
+
     Ok(is_new)
 }
-

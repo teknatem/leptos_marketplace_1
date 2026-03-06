@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a014_ozon_transactions::aggregate::{
-    OzonTransactions, OzonTransactionsId, OzonTransactionsHeader, OzonTransactionsPosting,
-    OzonTransactionsItem, OzonTransactionsService, OzonTransactionsSourceMeta,
+    OzonTransactions, OzonTransactionsHeader, OzonTransactionsId, OzonTransactionsItem,
+    OzonTransactionsPosting, OzonTransactionsService, OzonTransactionsSourceMeta,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -54,23 +54,38 @@ impl From<Model> for OzonTransactions {
 
         let header: OzonTransactionsHeader =
             serde_json::from_str(&m.header_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize header_json for operation_id: {}", m.operation_id)
+                panic!(
+                    "Failed to deserialize header_json for operation_id: {}",
+                    m.operation_id
+                )
             });
-        let posting: OzonTransactionsPosting =
-            serde_json::from_str(&m.posting_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize posting_json for operation_id: {}", m.operation_id)
+        let posting: OzonTransactionsPosting = serde_json::from_str(&m.posting_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize posting_json for operation_id: {}",
+                    m.operation_id
+                )
             });
         let items: Vec<OzonTransactionsItem> =
             serde_json::from_str(&m.items_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize items_json for operation_id: {}", m.operation_id)
+                panic!(
+                    "Failed to deserialize items_json for operation_id: {}",
+                    m.operation_id
+                )
             });
-        let services: Vec<OzonTransactionsService> =
-            serde_json::from_str(&m.services_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize services_json for operation_id: {}", m.operation_id)
+        let services: Vec<OzonTransactionsService> = serde_json::from_str(&m.services_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize services_json for operation_id: {}",
+                    m.operation_id
+                )
             });
-        let source_meta: OzonTransactionsSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| {
-                panic!("Failed to deserialize source_meta_json for operation_id: {}", m.operation_id)
+        let source_meta: OzonTransactionsSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to deserialize source_meta_json for operation_id: {}",
+                    m.operation_id
+                )
             });
 
         OzonTransactions {
@@ -155,11 +170,13 @@ pub async fn list_with_filters(
             // Фильтр по дате - сравниваем только дату без времени
             if let (Some(from), Some(to)) = (&date_from, &date_to) {
                 // Извлекаем только дату из operation_date (формат: "2025-10-11 00:00:00" или "2025-10-11")
-                let op_date_only = txn.header.operation_date
+                let op_date_only = txn
+                    .header
+                    .operation_date
                     .split_whitespace()
                     .next()
                     .unwrap_or(&txn.header.operation_date);
-                
+
                 if op_date_only < from.as_str() || op_date_only > to.as_str() {
                     return false;
                 }
@@ -212,8 +229,12 @@ pub async fn get_by_posting_number(posting_number: &str) -> Result<Vec<OzonTrans
         .into_iter()
         .map(Into::into)
         .collect();
-    
-    tracing::info!("A014 get_by_posting_number: found {} items for posting {}", items.len(), posting_number);
+
+    tracing::info!(
+        "A014 get_by_posting_number: found {} items for posting {}",
+        items.len(),
+        posting_number
+    );
     Ok(items)
 }
 

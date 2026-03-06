@@ -89,8 +89,8 @@ impl From<Model> for WbPromotion {
         let nomenclatures: Vec<WbPromotionNomenclature> =
             serde_json::from_str(&m.nomenclatures_json).unwrap_or_default();
 
-        let source_meta: WbPromotionSourceMeta =
-            serde_json::from_str(&m.source_meta_json).unwrap_or_else(|_| WbPromotionSourceMeta {
+        let source_meta: WbPromotionSourceMeta = serde_json::from_str(&m.source_meta_json)
+            .unwrap_or_else(|_| WbPromotionSourceMeta {
                 raw_payload_ref: m.raw_payload_ref.clone(),
                 fetched_at: m.fetched_at.clone(),
             });
@@ -348,10 +348,7 @@ pub async fn list_sql(query: WbPromotionListQuery) -> Result<(Vec<WbPromotionLis
     let total = {
         let result = sea_orm::ConnectionTrait::query_one(
             db,
-            sea_orm::Statement::from_string(
-                sea_orm::DatabaseBackend::Sqlite,
-                count_sql.clone(),
-            ),
+            sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Sqlite, count_sql.clone()),
         )
         .await?;
         result

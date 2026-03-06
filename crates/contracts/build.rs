@@ -38,10 +38,7 @@ fn main() {
                     println!("cargo:warning=Generated: {}", output_rs.display());
                 }
                 Err(e) => {
-                    panic!(
-                        "Failed to generate metadata for {}: {}",
-                        dir_name, e
-                    );
+                    panic!("Failed to generate metadata for {}: {}", dir_name, e);
                 }
             }
         }
@@ -222,7 +219,8 @@ fn generate_entity_metadata(meta: &MetadataJson) -> String {
 }
 
 fn generate_fields_array(fields: &[FieldJson]) -> String {
-    let mut code = String::from("/// Field metadata array\npub const FIELDS: &[FieldMetadata] = &[\n");
+    let mut code =
+        String::from("/// Field metadata array\npub const FIELDS: &[FieldMetadata] = &[\n");
 
     for field in fields {
         code.push_str(&generate_field_metadata(field, 1));
@@ -363,4 +361,3 @@ fn escape_string(s: &str) -> String {
         .replace('\r', "\\r")
         .replace('\t', "\\t")
 }
-

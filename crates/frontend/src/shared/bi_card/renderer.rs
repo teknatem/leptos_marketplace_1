@@ -1,47 +1,84 @@
 //! Template-based renderer for BI indicator cards.
 //!
-//! CSS and card HTML are loaded from external files via `include_str!` at compile time.
-//! Reference pages (classic.html / modern.html) remain unchanged for developer preview.
-//! Template files:
-//!   - assets/dashboards/classic.css      — CSS for classic style
-//!   - assets/dashboards/classic_card.html — single card with {{placeholders}}
-//!   - assets/dashboards/modern.css       — CSS for modern style
-//!   - assets/dashboards/modern_card.html  — single card with {{placeholders}}
+//! One universal HTML template is combined with one of the style packs:
+//!   - assets/dashboards/classic.css
+//!   - assets/dashboards/modern.css
+//!   - assets/dashboards/retro.css
+//!   - assets/dashboards/future.css
+//! Optional per-indicator custom CSS is supported via design `custom`.
 
 use super::spark::{demo_spark_points, points_to_svg_path};
 use super::IndicatorCardParams;
 
-// ── Embedded templates (compile-time) ────────────────────────────────────────
-
 const CLASSIC_CSS: &str = include_str!("../../../assets/dashboards/classic.css");
-const CLASSIC_CARD: &str = include_str!("../../../assets/dashboards/classic_card.html");
 const MODERN_CSS: &str = include_str!("../../../assets/dashboards/modern.css");
-const MODERN_CARD: &str = include_str!("../../../assets/dashboards/modern_card.html");
-
-// ── Arrow SVGs ────────────────────────────────────────────────────────────────
+const RETRO_CSS: &str = include_str!("../../../assets/dashboards/retro.css");
+const FUTURE_CSS: &str = include_str!("../../../assets/dashboards/future.css");
+const INDICATOR_HTML: &str = include_str!("../../../assets/dashboards/indicator.html");
 
 const ARROW_UP: &str = r#"<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:14px;height:14px"><path d="M7 14l5-5 5 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 const ARROW_DOWN: &str = r#"<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:14px;height:14px"><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 const ARROW_FLAT: &str = r#"<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:14px;height:14px"><path d="M6 12h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>"#;
 
-// ── Public render entry point ─────────────────────────────────────────────────
-
-/// Render a full HTML document (srcdoc) for a single indicator card.
 pub fn render_srcdoc(params: &IndicatorCardParams) -> String {
-    match params.style_name.as_str() {
-        "modern" => render_modern(params),
-        "custom" => render_custom(params),
-        _ => render_classic(params),
+    let style_name = normalize_style_name(&params.style_name, params.custom_css.as_deref());
+    let card = render_base_card_html(params, style_name);
+    let extra_css = if style_name == "custom" {
+        params.custom_css.as_deref()
+    } else {
+        None
+    };
+    wrap_in_page(get_style_css(style_name), &card, &params.theme, extra_css)
+}
+
+pub fn render_card_html(params: &IndicatorCardParams) -> String {
+    let style_name = normalize_style_name(&params.style_name, params.custom_css.as_deref());
+    let card = render_base_card_html(params, style_name);
+    if style_name == "custom" {
+        if let Some(user_css) = params.custom_css.as_deref() {
+            if !user_css.trim().is_empty() {
+                let safe_css = user_css.replace("</style", "<\\/style");
+                return format!(r#"<style>{safe_css}</style>{card}"#);
+            }
+        }
+    }
+    card
+}
+
+pub fn get_style_css(style_name: &str) -> &'static str {
+    match style_name {
+        "modern" => MODERN_CSS,
+        "retro" => RETRO_CSS,
+        "future" => FUTURE_CSS,
+        "custom" => MODERN_CSS,
+        _ => CLASSIC_CSS,
     }
 }
 
-// ── Classic ───────────────────────────────────────────────────────────────────
+fn normalize_style_name<'a>(style_name: &'a str, custom_css: Option<&str>) -> &'a str {
+    match style_name {
+        "classic" | "modern" | "retro" | "future" => style_name,
+        "custom" => {
+            if custom_css.unwrap_or_default().trim().is_empty() {
+                "classic"
+            } else {
+                "custom"
+            }
+        }
+        _ => "classic",
+    }
+}
 
-fn render_classic(p: &IndicatorCardParams) -> String {
-    let spark_pts = if p.spark_points.is_empty() {
-        demo_spark_points()
+fn render_base_card_html(p: &IndicatorCardParams, style_name: &str) -> String {
+    let graph_type = p.graph_type.min(2);
+    let spark_pts = if graph_type == 2 {
+        if p.spark_points.is_empty() {
+            demo_spark_points()
+        } else {
+            p.spark_points.clone()
+        }
     } else {
-        p.spark_points.clone()
+        vec![]
     };
     let (spark_line, spark_fill) = points_to_svg_path(&spark_pts);
 
@@ -52,9 +89,11 @@ fn render_classic(p: &IndicatorCardParams) -> String {
     };
     let delta_neutral_class = if p.delta_dir == "flat" { "neutral" } else { "" };
 
-    let card = CLASSIC_CARD
+    INDICATOR_HTML
         .replace("{{col_class}}", &p.col_class)
         .replace("{{status}}", &p.status)
+        .replace("{{graph_type}}", &graph_type.to_string())
+        .replace("{{style_key}}", style_name)
         .replace("{{name}}", &p.name)
         .replace("{{meta_1}}", &p.meta_1)
         .replace("{{meta_2}}", &p.meta_2)
@@ -65,94 +104,27 @@ fn render_classic(p: &IndicatorCardParams) -> String {
         .replace("{{delta_arrow_svg}}", delta_arrow)
         .replace("{{delta_neutral_class}}", delta_neutral_class)
         .replace("{{spark_line}}", &spark_line)
-        .replace("{{spark_fill}}", &spark_fill);
-
-    wrap_in_page(CLASSIC_CSS, &card, &p.theme)
-}
-
-// ── Modern ────────────────────────────────────────────────────────────────────
-
-fn render_modern(p: &IndicatorCardParams) -> String {
-    let progress = p.progress.to_string();
-
-    let card = MODERN_CARD
-        .replace("{{col_class}}", &p.col_class)
-        .replace("{{status}}", &p.status)
-        .replace("{{progress}}", &progress)
-        .replace("{{name}}", &p.name)
-        .replace("{{meta_1}}", &p.meta_1)
-        .replace("{{meta_2}}", &p.meta_2)
-        .replace("{{chip}}", &p.chip)
-        .replace("{{value}}", &p.value)
-        .replace("{{delta}}", &p.delta)
+        .replace("{{spark_fill}}", &spark_fill)
+        .replace("{{progress}}", &p.progress.to_string())
         .replace("{{hint}}", &p.hint)
         .replace("{{footer_1}}", &p.footer_1)
-        .replace("{{footer_2}}", &p.footer_2);
-
-    wrap_in_page(MODERN_CSS, &card, &p.theme)
+        .replace("{{footer_2}}", &p.footer_2)
 }
 
-// ── Custom (backward compat) ──────────────────────────────────────────────────
-
-fn render_custom(p: &IndicatorCardParams) -> String {
-    let rendered = p
-        .custom_html
-        .as_deref()
-        .unwrap_or("")
-        .replace("{{title}}", &p.name)
-        .replace("{{name}}", &p.name)
-        .replace("{{value}}", &p.value)
-        .replace("{{delta}}", &p.delta)
-        .replace("{{unit}}", &p.unit)
-        .replace("{{status}}", &p.status)
-        .replace("{{chip}}", &p.chip);
-
-    let user_css = p.custom_css.as_deref().unwrap_or("");
-    let theme = if p.theme.is_empty() { "dark" } else { &p.theme };
-
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
-body{{
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  background:var(--bi-bg,#ffffff);color:var(--bi-text,#1a1a2e);padding:16px;min-height:100%;
-}}
-:root{{
-  --bi-primary:#3b82f6;--bi-success:#22c55e;--bi-danger:#ef4444;--bi-warning:#f59e0b;
-  --bi-text:#1e293b;--bi-text-secondary:#64748b;--bi-bg:#ffffff;--bi-bg-secondary:#f8fafc;
-  --bi-border:#e2e8f0;
-}}
-body[data-theme="dark"]{{
-  --bi-text:#e5e7eb;--bi-text-secondary:#9aa4b2;--bi-bg:#0b1220;--bi-bg-secondary:#0f1a2e;
-  --bi-border:rgba(255,255,255,.12);
-}}
-{user_css}
-</style>
-</head>
-<body data-theme="{theme}"><div class="indicator-cell">{rendered}</div></body>
-</html>"#,
-        user_css = user_css,
-        theme = theme,
-        rendered = rendered,
-    )
-}
-
-// ── Shared page wrapper ───────────────────────────────────────────────────────
-
-/// Wraps a single card in a minimal centering page.
-/// Uses a 280px-wide wrapper (≈ col-3 in 1200px grid) to preserve natural card size.
-fn wrap_in_page(css: &str, card: &str, theme: &str) -> String {
+fn wrap_in_page(css: &str, card: &str, theme: &str, extra_css: Option<&str>) -> String {
     let theme = if theme.is_empty() { "dark" } else { theme };
+    let extra_css = extra_css
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.replace("</style", "<\\/style"))
+        .unwrap_or_default();
     format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <style>{css}</style>
+<style>{extra_css}</style>
 </head>
 <body data-theme="{theme}">
 <div style="width:min(280px,100%)">
@@ -161,6 +133,7 @@ fn wrap_in_page(css: &str, card: &str, theme: &str) -> String {
 </body>
 </html>"#,
         css = css,
+        extra_css = extra_css,
         theme = theme,
         card = card,
     )

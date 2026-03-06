@@ -25,7 +25,13 @@ pub struct UtNomenclatureBarcodeOData {
 
     /// Владелец штрихкода - ссылка на номенклатуру (измерение)
     /// Это может быть "Владелец_Key" или "Номенклатура_Key" в зависимости от конфигурации
-    #[serde(rename = "Владелец_Key", alias = "Owner_Key", alias = "Номенклатура_Key", alias = "Nomenclature_Key", default)]
+    #[serde(
+        rename = "Владелец_Key",
+        alias = "Owner_Key",
+        alias = "Номенклатура_Key",
+        alias = "Nomenclature_Key",
+        default
+    )]
     pub owner_key: String,
 
     /// Номенклатура (если используем $expand=Номенклатура)
@@ -55,14 +61,15 @@ impl UtNomenclatureBarcodeOData {
             Some(
                 Uuid::parse_str(&self.owner_key)
                     .map_err(|e| format!("Invalid nomenclature UUID: {}", e))?
-                    .to_string()
+                    .to_string(),
             )
         } else {
             None
         };
 
         // Получить артикул: сначала из развернутой номенклатуры, потом из прямого поля
-        let article = self.nomenclature
+        let article = self
+            .nomenclature
             .as_ref()
             .and_then(|n| n.article.clone())
             .or_else(|| self.article.clone());
@@ -81,17 +88,19 @@ impl UtNomenclatureBarcodeOData {
     }
 
     /// Проверка, нужно ли обновлять существующую запись
-    pub fn should_update(&self, existing: &crate::projections::p901_nomenclature_barcodes::repository::Model) -> bool {
+    pub fn should_update(
+        &self,
+        existing: &crate::projections::p901_nomenclature_barcodes::repository::Model,
+    ) -> bool {
         let nomenclature_ref = if !self.owner_key.is_empty() {
-            Uuid::parse_str(&self.owner_key)
-                .ok()
-                .map(|u| u.to_string())
+            Uuid::parse_str(&self.owner_key).ok().map(|u| u.to_string())
         } else {
             None
         };
 
         // Получить артикул: сначала из развернутой номенклатуры, потом из прямого поля
-        let article = self.nomenclature
+        let article = self
+            .nomenclature
             .as_ref()
             .and_then(|n| n.article.clone())
             .or_else(|| self.article.clone());

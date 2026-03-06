@@ -1,6 +1,8 @@
+use crate::domain::common::{
+    AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::domain::common::{AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin};
 
 // ============================================================================
 // ID Type
@@ -102,11 +104,7 @@ impl MarketplaceProduct {
         nomenclature_ref: Option<String>,
         comment: Option<String>,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            MarketplaceProductId::new_v4(),
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(MarketplaceProductId::new_v4(), code, description);
         base.comment = comment;
 
         Self {
@@ -142,11 +140,7 @@ impl MarketplaceProduct {
         nomenclature_ref: Option<String>,
         comment: Option<String>,
     ) -> Self {
-        let mut base = BaseAggregate::new(
-            id,
-            code,
-            description,
-        );
+        let mut base = BaseAggregate::new(id, code, description);
         base.comment = comment;
 
         Self {

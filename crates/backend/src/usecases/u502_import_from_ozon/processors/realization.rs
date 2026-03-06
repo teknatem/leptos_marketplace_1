@@ -1,8 +1,8 @@
+use super::super::ozon_api_client::OzonFinanceRealizationRow;
+use crate::projections::p902_ozon_finance_realization::{repository, service};
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
-use crate::projections::p902_ozon_finance_realization::{repository, service};
-use super::super::ozon_api_client::OzonFinanceRealizationRow;
 
 pub async fn process_realization_row(
     connection: &ConnectionMP,
@@ -14,7 +14,7 @@ pub async fn process_realization_row(
 ) -> Result<(i32, i32)> {
     let mut inserted = 0;
     let mut updated = 0;
-    
+
     let row_for_json = row.clone();
     let item = &row.item;
     let posting_number = if let Some(ref order) = row.order {
@@ -66,7 +66,11 @@ pub async fn process_realization_row(
         };
 
         service::upsert_realization_row(entry).await?;
-        if is_new { inserted += 1; } else { updated += 1; }
+        if is_new {
+            inserted += 1;
+        } else {
+            updated += 1;
+        }
     }
 
     // Обрабатываем return_commission (возврат)
@@ -108,9 +112,12 @@ pub async fn process_realization_row(
         };
 
         service::upsert_realization_row(entry).await?;
-        if is_new { inserted += 1; } else { updated += 1; }
+        if is_new {
+            inserted += 1;
+        } else {
+            updated += 1;
+        }
     }
 
     Ok((inserted, updated))
 }
-

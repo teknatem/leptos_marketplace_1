@@ -41,12 +41,10 @@ pub async fn list_goods_prices(
 pub async fn get_goods_price(
     Path(nm_id): Path<i64>,
 ) -> Result<Json<WbGoodsPriceDto>, axum::http::StatusCode> {
-    let item = repository::get_by_nm_id(nm_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get WB goods price: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let item = repository::get_by_nm_id(nm_id).await.map_err(|e| {
+        tracing::error!("Failed to get WB goods price: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     match item {
         Some(model) => Ok(Json(model_to_dto(model))),

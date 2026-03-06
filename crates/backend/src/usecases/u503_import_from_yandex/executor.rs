@@ -1,6 +1,6 @@
 use super::{
-    progress_tracker::ProgressTracker,
     processors::{order, payment_report, product, returns},
+    progress_tracker::ProgressTracker,
     yandex_api_client::YandexApiClient,
 };
 use anyhow::Result;
@@ -533,10 +533,7 @@ impl ImportExecutor {
     ) -> Result<()> {
         use crate::domain::a002_organization;
 
-        tracing::info!(
-            "Importing YM payment report for session: {}",
-            session_id
-        );
+        tracing::info!("Importing YM payment report for session: {}", session_id);
 
         let aggregate_index = "p907_ym_payment_report";
 
@@ -618,11 +615,7 @@ impl ImportExecutor {
                     e
                 })?;
 
-            tracing::info!(
-                "Payment report status (attempt {}): {}",
-                attempt,
-                status
-            );
+            tracing::info!("Payment report status (attempt {}): {}", attempt, status);
 
             match status.as_str() {
                 "DONE" => {
@@ -704,21 +697,18 @@ impl ImportExecutor {
             Some(format!("Разбор и загрузка CSV ({})...", csv_path)),
         );
 
-        let (inserted, updated) = payment_report::process_payment_report_csv(
-            connection,
-            &organization_id,
-            &csv_text,
-        )
-        .await
-        .map_err(|e| {
-            self.progress_tracker.add_error(
-                session_id,
-                Some(aggregate_index.to_string()),
-                format!("Ошибка обработки CSV: {}", e),
-                None,
-            );
-            e
-        })?;
+        let (inserted, updated) =
+            payment_report::process_payment_report_csv(connection, &organization_id, &csv_text)
+                .await
+                .map_err(|e| {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка обработки CSV: {}", e),
+                        None,
+                    );
+                    e
+                })?;
 
         let total = inserted + updated;
         self.progress_tracker.update_aggregate(

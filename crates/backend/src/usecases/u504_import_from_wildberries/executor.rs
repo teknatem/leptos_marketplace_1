@@ -1,7 +1,7 @@
 use super::{
+    processors::{commission, finance_report, goods_prices, order, product, promotion, sales},
     progress_tracker::ProgressTracker,
     wildberries_api_client::WildberriesApiClient,
-    processors::{product, sales, order, finance_report, commission, goods_prices, promotion},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -524,7 +524,7 @@ impl ImportExecutor {
     }
 
     /// Импорт финансовых отчетов Wildberries из API в p903_wb_finance_report
-    /// 
+    ///
     /// ВАЖНО: API reportDetailByPeriod имеет лимит 1 запрос в минуту!
     /// Данные загружаются за весь период с пагинацией, а не по дням.
     async fn import_wb_finance_report(
@@ -609,7 +609,9 @@ impl ImportExecutor {
 
         // Вставляем новые записи
         for row in report_rows {
-            match finance_report::process_finance_report_row(connection, &organization_id, &row).await {
+            match finance_report::process_finance_report_row(connection, &organization_id, &row)
+                .await
+            {
                 Ok(_) => {
                     total_inserted += 1;
                 }
@@ -671,7 +673,10 @@ impl ImportExecutor {
         let mut updated_records = 0;
         let mut skipped_records = 0;
 
-        tracing::info!("Importing WB commission history for session: {}", session_id);
+        tracing::info!(
+            "Importing WB commission history for session: {}",
+            session_id
+        );
 
         // Получаем тарифы из API
         let tariffs = self.api_client.fetch_commission_tariffs(connection).await?;
@@ -817,7 +822,10 @@ impl ImportExecutor {
             use contracts::domain::common::AggregateId;
             let org_id = connection.organization_ref.clone();
             if org_id.is_empty() {
-                tracing::warn!("organization_ref is empty for connection {}", connection.base.id.as_string());
+                tracing::warn!(
+                    "organization_ref is empty for connection {}",
+                    connection.base.id.as_string()
+                );
             }
             org_id
         };
@@ -878,7 +886,10 @@ impl ImportExecutor {
         }
 
         for promo in &promotions {
-            let promo_name = promo.name.clone().unwrap_or_else(|| format!("{}", promo.id));
+            let promo_name = promo
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("{}", promo.id));
             self.progress_tracker.set_current_item(
                 session_id,
                 aggregate_index,
@@ -905,7 +916,9 @@ impl ImportExecutor {
 
             let details = details_map.get(&promo.id);
 
-            match promotion::process_promotion(connection, &organization_id, promo, nm_ids, details).await {
+            match promotion::process_promotion(connection, &organization_id, promo, nm_ids, details)
+                .await
+            {
                 Ok(is_new) => {
                     total_processed += 1;
                     if is_new {
@@ -915,11 +928,7 @@ impl ImportExecutor {
                     }
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to process promotion {}: {}",
-                        promo.id,
-                        e
-                    );
+                    tracing::error!("Failed to process promotion {}: {}", promo.id, e);
                     self.progress_tracker.add_error(
                         session_id,
                         Some(aggregate_index.to_string()),

@@ -27,12 +27,11 @@ fn candidate_migrations_dirs() -> Vec<PathBuf> {
 }
 
 async fn has_table(pool: &SqlitePool, table_name: &str) -> anyhow::Result<bool> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name = ?1",
-    )
-    .bind(table_name)
-    .fetch_one(pool)
-    .await?;
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name = ?1")
+            .bind(table_name)
+            .fetch_one(pool)
+            .await?;
     Ok(count > 0)
 }
 

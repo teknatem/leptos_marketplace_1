@@ -1680,7 +1680,7 @@ impl WildberriesApiClient {
 
     /// Загрузить финансовые отчеты из Wildberries по периоду (reportDetailByPeriod)
     /// Возвращает только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
-    /// 
+    ///
     /// ВАЖНО: API имеет лимит 1 запрос в минуту!
     /// Используется пагинация через rrdid для загрузки больших объемов данных.
     pub async fn fetch_finance_report_by_period(
@@ -1705,14 +1705,16 @@ impl WildberriesApiClient {
             "║ WILDBERRIES FINANCE REPORT API - reportDetailByPeriod"
         ));
         self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
-        self.log_to_file(&format!("║ Rate limit: 1 request per minute (using pagination)"));
+        self.log_to_file(&format!(
+            "║ Rate limit: 1 request per minute (using pagination)"
+        ));
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝"
         ));
 
         let mut all_daily_reports: Vec<WbFinanceReportRow> = Vec::new();
-        let mut rrdid: i64 = 0;  // Начинаем с 0 для первой страницы
-        let limit = 100000;  // Максимальный лимит записей
+        let mut rrdid: i64 = 0; // Начинаем с 0 для первой страницы
+        let limit = 100000; // Максимальный лимит записей
         let mut page_num = 1;
 
         loop {
@@ -1795,7 +1797,7 @@ impl WildberriesApiClient {
             }
 
             let body = response.text().await?;
-            
+
             // Пустой ответ - конец данных
             if body.trim().is_empty() || body.trim() == "[]" {
                 self.log_to_file(&format!("│ Empty response - no more data"));
@@ -1824,7 +1826,10 @@ impl WildberriesApiClient {
             };
 
             let page_count = page_rows.len();
-            self.log_to_file(&format!("│ Received {} records on page {}", page_count, page_num));
+            self.log_to_file(&format!(
+                "│ Received {} records on page {}",
+                page_count, page_num
+            ));
 
             if page_count == 0 {
                 self.log_to_file(&format!("│ No records on this page - done"));
@@ -1832,11 +1837,7 @@ impl WildberriesApiClient {
             }
 
             // Находим максимальный rrd_id для следующей страницы
-            let max_rrd_id = page_rows
-                .iter()
-                .filter_map(|r| r.rrd_id)
-                .max()
-                .unwrap_or(0);
+            let max_rrd_id = page_rows.iter().filter_map(|r| r.rrd_id).max().unwrap_or(0);
 
             // Фильтруем только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
             let daily_rows: Vec<WbFinanceReportRow> = page_rows
@@ -1871,7 +1872,7 @@ impl WildberriesApiClient {
             self.log_to_file(&format!(
                 "│ ⏳ Waiting 65 seconds before next request (rate limit: 1 req/min)..."
             ));
-            
+
             // ВАЖНО: API имеет лимит 1 запрос в минуту!
             // Ждем 65 секунд для надежности
             tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
@@ -1902,7 +1903,8 @@ impl WildberriesApiClient {
         ));
         self.log_to_file(&format!(
             "║ COMPLETED: Loaded {} daily finance report records ({} pages)",
-            all_daily_reports.len(), page_num
+            all_daily_reports.len(),
+            page_num
         ));
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝\n"
@@ -1951,7 +1953,9 @@ impl WildberriesApiClient {
             chrono::DateTime::parse_from_rfc3339(value)
                 .ok()
                 .map(|dt| dt.naive_utc())
-                .or_else(|| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f").ok())
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f").ok()
+                })
                 .or_else(|| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S").ok())
         }
 
@@ -1976,10 +1980,7 @@ impl WildberriesApiClient {
             self.log_to_file(&format!(
                 "\n┌────────────────────────────────────────────────────────────┐"
             ));
-            self.log_to_file(&format!(
-                "│ Page {}: dateFrom={}, flag=0",
-                page_num, cursor
-            ));
+            self.log_to_file(&format!("│ Page {}: dateFrom={}, flag=0", page_num, cursor));
 
             self.log_to_file(&format!(
                 "=== REQUEST ===\nGET {}?dateFrom={}&flag=0\nAuthorization: ****",
@@ -1990,10 +1991,7 @@ impl WildberriesApiClient {
                 .client
                 .get(url)
                 .header("Authorization", &connection.api_key)
-                .query(&[
-                    ("dateFrom", cursor.as_str()),
-                    ("flag", "0"),
-                ])
+                .query(&[("dateFrom", cursor.as_str()), ("flag", "0")])
                 .send()
                 .await
             {
@@ -2104,11 +2102,7 @@ impl WildberriesApiClient {
                 Ok(b) => b,
                 Err(e) => {
                     self.log_to_file(&format!("│ ⚠️ Failed to read response body: {}", e));
-                    tracing::error!(
-                        "Failed to read response body for cursor {}: {}",
-                        cursor,
-                        e
-                    );
+                    tracing::error!("Failed to read response body for cursor {}: {}", cursor, e);
                     anyhow::bail!("Failed to read response body: {}", e);
                 }
             };
@@ -2155,10 +2149,7 @@ impl WildberriesApiClient {
                     let mut max_last_change = None::<chrono::NaiveDateTime>;
                     let mut kept_rows = 0usize;
                     for row in page_data {
-                        let row_last_change = row
-                            .last_change_date
-                            .as_deref()
-                            .and_then(parse_wb_dt);
+                        let row_last_change = row.last_change_date.as_deref().and_then(parse_wb_dt);
 
                         if let Some(parsed) = row_last_change {
                             if max_last_change.map(|v| parsed > v).unwrap_or(true) {
@@ -2174,10 +2165,7 @@ impl WildberriesApiClient {
                         }
                     }
 
-                    self.log_to_file(&format!(
-                        "│ Kept {} rows after soft-stop filter",
-                        kept_rows
-                    ));
+                    self.log_to_file(&format!("│ Kept {} rows after soft-stop filter", kept_rows));
 
                     let Some(max_dt) = max_last_change else {
                         self.log_to_file("│ No lastChangeDate found on page; stopping");
@@ -2199,10 +2187,7 @@ impl WildberriesApiClient {
                 Err(e) => {
                     self.log_to_file(&format!("Failed to parse JSON: {}", e));
                     self.log_to_file(&format!("Response body: {}", body_preview));
-                    tracing::error!(
-                        "Failed to parse Wildberries orders response: {}",
-                        e
-                    );
+                    tracing::error!("Failed to parse Wildberries orders response: {}", e);
                     anyhow::bail!("Failed to parse orders response: {}", e)
                 }
             }
@@ -2343,7 +2328,10 @@ impl WildberriesApiClient {
             anyhow::bail!("API Key is required for Wildberries Prices API");
         }
 
-        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
 
         let response = match self
             .client
@@ -2382,7 +2370,10 @@ impl WildberriesApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", &body[..body.len().min(2000)]));
+        self.log_to_file(&format!(
+            "=== RESPONSE BODY ===\n{}\n",
+            &body[..body.len().min(2000)]
+        ));
 
         let parsed: WbGoodsPriceFilterResponse = serde_json::from_str(&body).map_err(|e| {
             self.log_to_file(&format!("ERROR: Failed to parse JSON: {}", e));
@@ -2391,7 +2382,11 @@ impl WildberriesApiClient {
 
         let rows = parsed.data.map(|d| d.list_goods).unwrap_or_default();
         self.log_to_file(&format!("✓ Parsed {} goods price rows", rows.len()));
-        tracing::info!("WB Prices API: loaded {} rows (offset={})", rows.len(), offset);
+        tracing::info!(
+            "WB Prices API: loaded {} rows (offset={})",
+            rows.len(),
+            offset
+        );
 
         Ok(rows)
     }
@@ -2413,7 +2408,10 @@ impl WildberriesApiClient {
             anyhow::bail!("API Key is required for Wildberries Promotion API");
         }
 
-        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
 
         let response = match self
             .client
@@ -2428,7 +2426,9 @@ impl WildberriesApiClient {
                 self.log_to_file(&error_msg);
                 tracing::error!("WB Promotion API connection error: {}", e);
                 if e.is_timeout() {
-                    anyhow::bail!("Request timeout: WB Promotion API не ответил в течение 60 секунд");
+                    anyhow::bail!(
+                        "Request timeout: WB Promotion API не ответил в течение 60 секунд"
+                    );
                 } else if e.is_connect() {
                     anyhow::bail!("Connection error: не удалось подключиться к dp-calendar-api.wildberries.ru");
                 } else {
@@ -2457,8 +2457,15 @@ impl WildberriesApiClient {
 
         let parsed: WbCalendarPromotionsResponse = serde_json::from_str(&body).map_err(|e| {
             let snippet: String = body.chars().take(400).collect();
-            self.log_to_file(&format!("ERROR: Failed to parse JSON: {}\nRaw body: {}", e, snippet));
-            tracing::error!("WB Calendar Promotions parse error: {} | body: {}", e, snippet);
+            self.log_to_file(&format!(
+                "ERROR: Failed to parse JSON: {}\nRaw body: {}",
+                e, snippet
+            ));
+            tracing::error!(
+                "WB Calendar Promotions parse error: {} | body: {}",
+                e,
+                snippet
+            );
             anyhow::anyhow!("Failed to parse WB Calendar Promotions response: {}", e)
         })?;
 
@@ -2500,7 +2507,10 @@ impl WildberriesApiClient {
             query
         );
 
-        self.log_to_file(&format!("=== REQUEST ===\nGET {}\nAuthorization: ****", url));
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
 
         let response = match self
             .client
@@ -2519,11 +2529,7 @@ impl WildberriesApiClient {
         let status = response.status();
         if !status.is_success() {
             let err_body = response.text().await.unwrap_or_default();
-            tracing::warn!(
-                "WB Promotion Details API failed: {} - {}",
-                status,
-                err_body
-            );
+            tracing::warn!("WB Promotion Details API failed: {} - {}", status, err_body);
             return Ok(vec![]);
         }
 
@@ -2531,25 +2537,21 @@ impl WildberriesApiClient {
         let body_preview: String = body.chars().take(500).collect();
         self.log_to_file(&format!("=== DETAILS RESPONSE ===\n{}\n", body_preview));
 
-        let parsed: WbCalendarPromotionDetailsResponse =
-            match serde_json::from_str(&body) {
-                Ok(p) => p,
-                Err(e) => {
-                    let snippet: String = body.chars().take(400).collect();
-                    tracing::error!(
-                        "WB Promotion Details parse error: {} | body: {}",
-                        e,
-                        snippet
-                    );
-                    return Ok(vec![]);
-                }
-            };
+        let parsed: WbCalendarPromotionDetailsResponse = match serde_json::from_str(&body) {
+            Ok(p) => p,
+            Err(e) => {
+                let snippet: String = body.chars().take(400).collect();
+                tracing::error!(
+                    "WB Promotion Details parse error: {} | body: {}",
+                    e,
+                    snippet
+                );
+                return Ok(vec![]);
+            }
+        };
 
         let details = parsed.data.map(|d| d.promotions).unwrap_or_default();
-        tracing::info!(
-            "WB Promotion Details: {} promotions loaded",
-            details.len()
-        );
+        tracing::info!("WB Promotion Details: {} promotions loaded", details.len());
 
         Ok(details)
     }
@@ -2626,23 +2628,20 @@ impl WildberriesApiClient {
                 let body_preview: String = body.chars().take(500).collect();
                 self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
 
-                let parsed: WbPromotionNomenclaturesResponse =
-                    match serde_json::from_str(&body) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            let snippet: String = body.chars().take(400).collect();
-                            tracing::error!(
-                                "WB Promotion Nomenclatures parse error: {} | body: {}",
-                                e, snippet
-                            );
-                            break;
-                        }
-                    };
+                let parsed: WbPromotionNomenclaturesResponse = match serde_json::from_str(&body) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        let snippet: String = body.chars().take(400).collect();
+                        tracing::error!(
+                            "WB Promotion Nomenclatures parse error: {} | body: {}",
+                            e,
+                            snippet
+                        );
+                        break;
+                    }
+                };
 
-                let items = parsed
-                    .data
-                    .map(|d| d.nomenclatures)
-                    .unwrap_or_default();
+                let items = parsed.data.map(|d| d.nomenclatures).unwrap_or_default();
 
                 let page_len = items.len() as u32;
                 for item in items {
@@ -2666,7 +2665,6 @@ impl WildberriesApiClient {
 
         Ok(all_nm_ids)
     }
-
 }
 
 impl Default for WildberriesApiClient {

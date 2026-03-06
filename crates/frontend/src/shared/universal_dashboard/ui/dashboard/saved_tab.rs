@@ -1,8 +1,8 @@
 //! Saved Tab - saved configurations list
 
-use leptos::prelude::*;
-use contracts::shared::universal_dashboard::SavedDashboardConfigSummary;
 use crate::shared::universal_dashboard::ui::SavedConfigsList;
+use contracts::shared::universal_dashboard::SavedDashboardConfigSummary;
+use leptos::prelude::*;
 
 #[component]
 pub fn SavedTab(
