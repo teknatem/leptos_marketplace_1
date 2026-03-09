@@ -6,13 +6,12 @@ use super::super::dimension_input::DimensionInput;
 use super::super::view_model::NomenclatureDetailsVm;
 use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
-use thaw::*;
 
 /// Dimensions tab component with all dimension fields
 #[component]
 pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a004_nomenclature_details_dimensions_main">
             <h4 class="details-section__title">"Измерения"</h4>
             <DimensionInput
                 id="dim1_category"

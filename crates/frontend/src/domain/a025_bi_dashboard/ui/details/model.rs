@@ -19,8 +19,8 @@ pub struct BiDashboardSaveDto {
     pub version: i64,
     /// DashboardLayout как raw JSON
     pub layout: serde_json::Value,
-    /// Vec<GlobalFilter> как raw JSON-массив
-    pub global_filters: serde_json::Value,
+    /// Vec<FilterRef> как raw JSON-массив
+    pub filters: serde_json::Value,
 }
 
 pub async fn fetch_by_id(id: &str) -> Result<serde_json::Value, String> {

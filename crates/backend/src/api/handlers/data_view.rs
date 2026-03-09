@@ -144,6 +144,10 @@ pub struct DvDrilldownBody {
     pub group_by: String,
     #[serde(default)]
     pub connection_mp_refs: Vec<String>,
+    #[serde(default)]
+    pub metric_id: Option<String>,
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
 }
 
 /// POST /api/data-view/:id/drilldown
@@ -158,13 +162,18 @@ pub async fn drilldown(
         return Err((StatusCode::NOT_FOUND, format!("DataView not found: {}", id)));
     }
 
+    let mut extra_params = body.params;
+    if let Some(metric_id) = body.metric_id.filter(|value| !value.trim().is_empty()) {
+        extra_params.insert("metric".to_string(), metric_id);
+    }
+
     let ctx = ViewContext {
         date_from: body.date_from,
         date_to: body.date_to,
         period2_from: body.period2_from,
         period2_to: body.period2_to,
         connection_mp_refs: body.connection_mp_refs,
-        params: Default::default(),
+        params: extra_params,
     };
 
     match registry.compute_drilldown(&id, &ctx, &body.group_by).await {

@@ -13,7 +13,7 @@ pub fn JsonTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             if vm.raw_json_loading.get() {
                 return view! {
                     <div class="detail-grid">
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_json_loading">
                             <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-xl);">
                                 <Spinner />
                                 <span>"Загрузка JSON..."</span>
@@ -27,7 +27,11 @@ pub fn JsonTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             if let Some(json) = vm.raw_json.get() {
                 view! {
                     <div class="detail-grid">
-                        <CardAnimated delay_ms=0 style="padding: var(--spacing-sm);">
+                        <CardAnimated
+                            delay_ms=0
+                            nav_id="a015_wb_orders_details_json_main"
+                            style="padding: var(--spacing-sm);"
+                        >
                             <h4 class="details-section__title">"JSON данные Wildberries"</h4>
                             <div style="margin-bottom: var(--spacing-sm); color: var(--color-text-secondary);">
                                 "Исходный ответ API WB для этого документа."
@@ -42,7 +46,7 @@ pub fn JsonTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             } else {
                 view! {
                     <div class="detail-grid">
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_json_empty">
                             <h4 class="details-section__title">"JSON данные Wildberries"</h4>
                             <div style="color: var(--color-text-secondary);">
                                 "JSON данные не загружены"

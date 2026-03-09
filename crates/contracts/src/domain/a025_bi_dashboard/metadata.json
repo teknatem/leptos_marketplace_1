@@ -191,19 +191,19 @@
       "ai_hint": "Иерархическое дерево категорий (DashboardGroup) с индикаторами (DashboardItem)"
     },
     {
-      "name": "global_filters",
-      "rust_type": "Vec<GlobalFilter>",
+      "name": "filters",
+      "rust_type": "Vec<FilterRef>",
       "field_type": "nested_table",
       "source": "specific",
       "ui": {
-        "label": "Глобальные фильтры",
-        "label_en": "Global Filters",
+        "label": "Фильтры",
+        "label_en": "Filters",
         "hint": "Фильтры, применяемые ко всем индикаторам дашборда",
         "visible_in_list": false,
         "visible_in_form": true,
         "widget": "table"
       },
-      "ai_hint": "Список глобальных фильтров: key совпадает с ParamDef.global_filter_key из a024"
+      "ai_hint": "Список FilterRef, связывающих дашборд с глобальным реестром фильтров"
     },
     {
       "name": "created_by",

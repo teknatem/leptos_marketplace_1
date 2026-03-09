@@ -8,7 +8,7 @@ use leptos::prelude::*;
 pub fn MetaTab(vm: BiDashboardDetailsVm) -> impl IntoView {
     view! {
         <div class="details-tabs__content">
-            <CardAnimated delay_ms=0>
+            <CardAnimated delay_ms=0 nav_id="a025_bi_dashboard_details_meta_main">
                 <div class="details-section">
                     <h4 class="details-section__title">"Метаданные"</h4>
                     <table class="form__meta-table">

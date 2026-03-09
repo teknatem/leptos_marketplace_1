@@ -19,8 +19,8 @@ pub struct BiDashboardDetailsVm {
     // Layout (whole DashboardLayout as JSON string for the tree editor)
     pub layout_json: RwSignal<String>,
 
-    // Global filters (whole Vec<GlobalFilter> as JSON string)
-    pub global_filters_json: RwSignal<String>,
+    // Filters (whole Vec<FilterRef> as JSON string)
+    pub filters_json: RwSignal<String>,
 
     // Meta (read-only)
     pub created_at: RwSignal<String>,
@@ -49,7 +49,7 @@ impl BiDashboardDetailsVm {
             rating: RwSignal::new(None),
             version: RwSignal::new(1),
             layout_json: RwSignal::new(r#"{"groups":[]}"#.to_string()),
-            global_filters_json: RwSignal::new("[]".to_string()),
+            filters_json: RwSignal::new("[]".to_string()),
             created_at: RwSignal::new(String::new()),
             updated_at: RwSignal::new(String::new()),
             created_by: RwSignal::new(String::new()),
@@ -135,9 +135,9 @@ impl BiDashboardDetailsVm {
             );
         }
 
-        // Global filters
-        if let Some(filters) = raw.get("global_filters") {
-            self.global_filters_json
+        // Filters
+        if let Some(filters) = raw.get("filters") {
+            self.filters_json
                 .set(serde_json::to_string_pretty(filters).unwrap_or_else(|_| "[]".to_string()));
         }
 
@@ -161,8 +161,8 @@ impl BiDashboardDetailsVm {
     pub fn to_dto(&self) -> BiDashboardSaveDto {
         let layout: serde_json::Value = serde_json::from_str(&self.layout_json.get_untracked())
             .unwrap_or_else(|_| serde_json::json!({"groups": []}));
-        let global_filters: serde_json::Value =
-            serde_json::from_str(&self.global_filters_json.get_untracked())
+        let filters: serde_json::Value =
+            serde_json::from_str(&self.filters_json.get_untracked())
                 .unwrap_or_else(|_| serde_json::json!([]));
 
         let comment = {
@@ -185,7 +185,7 @@ impl BiDashboardDetailsVm {
             rating: self.rating.get_untracked(),
             version: self.version.get_untracked(),
             layout,
-            global_filters,
+            filters,
         }
     }
 

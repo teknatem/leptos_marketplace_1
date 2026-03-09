@@ -2,6 +2,7 @@
 
 use super::super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::prelude::*;
 use thaw::*;
@@ -16,34 +17,34 @@ pub fn LinksTab(vm: WbSalesDetailsVm) -> impl IntoView {
         {move || {
             if vm.finance_reports_loading.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_links_loading">
                         <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-xl);">
                             <Spinner />
                             <span>"Загрузка финансовых отчетов..."</span>
                         </Flex>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
             if let Some(err) = vm.finance_reports_error.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_links_error">
                         <div style="color: var(--color-error);">
                             "Ошибка загрузки: " {err}
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
             let reports = vm.finance_reports.get();
             if reports.is_empty() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_links_empty">
                         <h4 class="details-section__title">"Финансовые отчеты"</h4>
                         <div style="color: var(--color-text-secondary);">
                             "Связанные финансовые отчеты не найдены для данного SRID."
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
@@ -59,7 +60,7 @@ pub fn LinksTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let reports_for_table = reports;
 
             view! {
-                <Card>
+                <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_links_main">
                     <h4 class="details-section__title">"Финансовые отчеты"</h4>
 
                     // Summary badges
@@ -136,7 +137,7 @@ pub fn LinksTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </TableBody>
                         </Table>
                     </div>
-                </Card>
+                </CardAnimated>
             }.into_any()
         }}
     }

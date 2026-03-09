@@ -8,17 +8,19 @@ use thaw::*;
 #[component]
 pub fn ParamsTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
-            <h4 class="details-section__title">"Параметры (ParamDef[])"</h4>
-            <p class="details-section__hint" style="color: var(--color-text-secondary); font-size: 12px; margin-bottom: var(--spacing-sm);">
-                {"Массив параметров. Каждый элемент: { \"key\": \"...\", \"label\": \"...\", \"param_type\": \"Date|Period|...\", \"default_value\": ..., \"global_filter_key\": \"...\" }"}
+        <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_params_main">
+            <h4 class="details-section__title">"Параметры индикатора (ParamDef[])"</h4>
+            <p class="form__hint">
+                "Используйте только актуальные типы: "
+                <code>"date | date_range | string | integer | float | boolean | ref"</code>
+                ". Если метрика и фильтры уже задаются через DataView, не дублируйте их здесь без необходимости."
             </p>
             <div class="form__group">
                 <Textarea
                     value=vm.params_json
                     placeholder="[]"
                     attr:rows=22
-                    attr:style="font-family: monospace; font-size: 12px; width: 100%;"
+                    attr:class="code-editor bi-viewspec__json-editor"
                 />
             </div>
         </CardAnimated>

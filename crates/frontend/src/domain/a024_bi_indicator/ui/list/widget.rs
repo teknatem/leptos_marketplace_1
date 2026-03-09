@@ -286,7 +286,7 @@ pub fn BiIndicatorList() -> impl IntoView {
             use contracts::domain::a024_bi_indicator::ENTITY_METADATA as A024;
             let identifier = pick_identifier(None, Some(&code), Some(&description), &id);
             let title = detail_tab_label(A024.ui.element_name, identifier);
-            tabs_store.open_tab(&format!("a024_bi_indicator_detail_{}", id), &title);
+            tabs_store.open_tab(&format!("a024_bi_indicator_details_{}", id), &title);
         }
     };
 
@@ -295,7 +295,7 @@ pub fn BiIndicatorList() -> impl IntoView {
         move |_| {
             use contracts::domain::a024_bi_indicator::ENTITY_METADATA as A024;
             let title = format!("Новый {}", A024.ui.element_name);
-            tabs_store.open_tab("a024_bi_indicator_detail_new", &title);
+            tabs_store.open_tab("a024_bi_indicator_details_new", &title);
         }
     };
 

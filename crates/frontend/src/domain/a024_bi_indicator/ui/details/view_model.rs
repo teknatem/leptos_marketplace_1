@@ -5,6 +5,7 @@ use crate::shared::bi_card::{
     default_design_name, is_known_design, render_srcdoc, IndicatorCardParams,
 };
 use crate::shared::code_format;
+use contracts::shared::data_view::ViewContext;
 use leptos::prelude::*;
 
 /// Read the current app theme from localStorage (key "app_theme").
@@ -44,6 +45,30 @@ fn default_query_config_value() -> serde_json::Value {
     })
 }
 
+fn default_data_spec_value() -> serde_json::Value {
+    serde_json::json!({
+        "schema_id": "",
+        "query_config": default_query_config_value(),
+        "sql_artifact_id": serde_json::Value::Null,
+        "view_id": serde_json::Value::Null,
+        "metric_id": serde_json::Value::Null,
+        "data_source_config": serde_json::Value::Null,
+        "schema_query": serde_json::Value::Null,
+    })
+}
+
+fn merge_top_level_object(target: &mut serde_json::Value, source: &serde_json::Value) {
+    let Some(target_obj) = target.as_object_mut() else {
+        return;
+    };
+    let Some(source_obj) = source.as_object() else {
+        return;
+    };
+    for (key, value) in source_obj {
+        target_obj.insert(key.clone(), value.clone());
+    }
+}
+
 
 fn format_money(v: f64, symbol: &str) -> String {
     let abs = v.abs();
@@ -64,6 +89,92 @@ fn default_value_format_value() -> serde_json::Value {
         "kind": "Number",
         "decimals": 2
     })
+}
+
+fn default_test_ctx() -> ViewContext {
+    let date_from = {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use js_sys::Date;
+            let d = Date::new_0();
+            format!("{}-{:02}-01", d.get_full_year(), d.get_month() + 1)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            "2026-03-01".to_string()
+        }
+    };
+
+    let date_to = {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use js_sys::Date;
+            let d = Date::new_0();
+            format!(
+                "{}-{:02}-{:02}",
+                d.get_full_year(),
+                d.get_month() + 1,
+                d.get_date()
+            )
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            "2026-03-05".to_string()
+        }
+    };
+
+    let period2_from = {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use js_sys::Date;
+            let d = Date::new_0();
+            let y = d.get_full_year();
+            let m = d.get_month();
+            if m == 0 {
+                Some(format!("{}-12-01", y - 1))
+            } else {
+                Some(format!("{}-{:02}-01", y, m))
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Some("2026-02-01".to_string())
+        }
+    };
+
+    let period2_to = {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use js_sys::Date;
+            let d = Date::new_0();
+            let y = d.get_full_year();
+            let m = d.get_month();
+            let last_day = if m == 0 {
+                Date::new_with_year_month_day(y as u32 - 1, 12, 0)
+            } else {
+                Date::new_with_year_month_day(y as u32, m as i32, 0)
+            };
+            Some(format!(
+                "{}-{:02}-{:02}",
+                last_day.get_full_year(),
+                last_day.get_month() + 1,
+                last_day.get_date()
+            ))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Some("2026-02-28".to_string())
+        }
+    };
+
+    ViewContext {
+        date_from,
+        date_to,
+        period2_from,
+        period2_to,
+        connection_mp_refs: vec![],
+        params: std::collections::HashMap::new(),
+    }
 }
 
 fn normalized_value_format(value: serde_json::Value) -> serde_json::Value {
@@ -164,8 +275,11 @@ pub struct BiIndicatorDetailsVm {
     pub version: RwSignal<i64>,
 
     // DataView config
+    pub data_spec_json: RwSignal<String>,
     /// DataView ID (e.g. "dv001_revenue") — единственный путь вычисления индикатора.
     pub dsc_view_id: RwSignal<String>,
+    /// Resource/metric ID from DataViewMeta.available_resources.
+    pub dsc_metric_id: RwSignal<String>,
 
     // Params (whole Vec<ParamDef> as JSON string)
     pub params_json: RwSignal<String>,
@@ -220,13 +334,7 @@ pub struct BiIndicatorDetailsVm {
     pub llm_panel_open: RwSignal<bool>,
 
     // === DataSpec live test ===
-    pub test_date_from: RwSignal<String>,
-    pub test_date_to: RwSignal<String>,
-    /// Second period (for DataView comparison)
-    pub test_period2_from: RwSignal<String>,
-    pub test_period2_to: RwSignal<String>,
-    /// Newline- or comma-separated connection_mp IDs (empty = all)
-    pub test_connection_ids: RwSignal<String>,
+    pub test_ctx: RwSignal<ViewContext>,
     pub test_loading: RwSignal<bool>,
     pub test_error: RwSignal<Option<String>>,
     pub test_result: RwSignal<Option<ComputedIndicatorValue>>,
@@ -244,7 +352,12 @@ impl BiIndicatorDetailsVm {
             is_public: RwSignal::new(false),
             version: RwSignal::new(1),
 
+            data_spec_json: RwSignal::new(
+                serde_json::to_string_pretty(&default_data_spec_value())
+                    .unwrap_or_else(|_| "{}".to_string()),
+            ),
             dsc_view_id: RwSignal::new(String::new()),
+            dsc_metric_id: RwSignal::new(String::new()),
 
             params_json: RwSignal::new("[]".to_string()),
 
@@ -294,72 +407,7 @@ impl BiIndicatorDetailsVm {
             llm_history: RwSignal::new(Vec::new()),
             llm_panel_open: RwSignal::new(false),
 
-            test_date_from: RwSignal::new({
-                // Default: first day of current month
-                #[cfg(target_arch = "wasm32")]
-                {
-                    use js_sys::Date;
-                    let d = Date::new_0();
-                    format!("{}-{:02}-01", d.get_full_year(), d.get_month() + 1)
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                "2026-03-01".to_string()
-            }),
-            test_date_to: RwSignal::new({
-                #[cfg(target_arch = "wasm32")]
-                {
-                    use js_sys::Date;
-                    let d = Date::new_0();
-                    format!(
-                        "{}-{:02}-{:02}",
-                        d.get_full_year(),
-                        d.get_month() + 1,
-                        d.get_date()
-                    )
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                "2026-03-05".to_string()
-            }),
-            test_period2_from: RwSignal::new({
-                #[cfg(target_arch = "wasm32")]
-                {
-                    use js_sys::Date;
-                    let d = Date::new_0();
-                    let y = d.get_full_year();
-                    let m = d.get_month(); // 0-based
-                    if m == 0 {
-                        format!("{}-12-01", y - 1)
-                    } else {
-                        format!("{}-{:02}-01", y, m)
-                    }
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                "2026-02-01".to_string()
-            }),
-            test_period2_to: RwSignal::new({
-                #[cfg(target_arch = "wasm32")]
-                {
-                    use js_sys::Date;
-                    let d = Date::new_0();
-                    let y = d.get_full_year();
-                    let m = d.get_month(); // 0-based: current month
-                    // last day of previous month = day 0 of current month
-                    let last_day = if m == 0 {
-                        Date::new_with_year_month_day(y as u32 - 1, 12, 0)
-                    } else {
-                        Date::new_with_year_month_day(y as u32, m as i32, 0)
-                    };
-                    format!(
-                        "{}-{:02}-{:02}",
-                        last_day.get_full_year(),
-                        last_day.get_month() + 1,
-                        last_day.get_date()
-                    )
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                "2026-02-28".to_string()
-            }),
-            test_connection_ids: RwSignal::new(String::new()),
+            test_ctx: RwSignal::new(default_test_ctx()),
             test_loading: RwSignal::new(false),
             test_error: RwSignal::new(None),
             test_result: RwSignal::new(None),
@@ -387,6 +435,7 @@ impl BiIndicatorDetailsVm {
     /// Build the iframe srcdoc from current ViewSpec + preview field values
     pub fn build_preview_srcdoc(&self) -> Signal<String> {
         let style_sig = self.view_spec_style_name;
+        let html_sig = self.view_spec_custom_html;
         let css_sig = self.view_spec_custom_css;
         let name_sig = self.preview_title;
         let value_sig = self.preview_value;
@@ -454,7 +503,14 @@ impl BiIndicatorDetailsVm {
                 hint: vis("hint", hint_sig.get()),
                 footer_1: vis("footer_1", footer_1_sig.get()),
                 footer_2: vis("footer_2", footer_2_sig.get()),
-                custom_html: None,
+                custom_html: {
+                    let html = html_sig.get();
+                    if html.trim().is_empty() {
+                        None
+                    } else {
+                        Some(html)
+                    }
+                },
                 custom_css: {
                     let c = css_sig.get();
                     if c.trim().is_empty() {
@@ -550,12 +606,20 @@ impl BiIndicatorDetailsVm {
                 Some(c)
             }
         };
+        let current_html = {
+            let html = this.view_spec_custom_html.get();
+            if html.trim().is_empty() {
+                None
+            } else {
+                Some(html)
+            }
+        };
         let indicator_description = this.description.get();
 
         leptos::task::spawn_local(async move {
             match model::generate_view(
                 &prompt,
-                None,
+                current_html.as_deref(),
                 current_css.as_deref(),
                 &indicator_description,
             )
@@ -586,6 +650,7 @@ impl BiIndicatorDetailsVm {
 
     /// Apply a specific LLM generation entry to the ViewSpec fields
     pub fn apply_generation(&self, entry: &LlmGenerationEntry) {
+        self.view_spec_custom_html.set(entry.html.clone());
         self.view_spec_custom_css
             .set(code_format::format_css(&entry.css));
         if !entry.css.trim().is_empty() {
@@ -600,19 +665,7 @@ impl BiIndicatorDetailsVm {
             return;
         };
 
-        let date_from = self.test_date_from.get();
-        let date_to = self.test_date_to.get();
-        let period2_from = self.test_period2_from.get();
-        let period2_to = self.test_period2_to.get();
-        let raw_ids = self.test_connection_ids.get();
-        let connection_ids: Vec<String> = raw_ids
-            .split([',', '\n'])
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let p2_from = if period2_from.trim().is_empty() { None } else { Some(period2_from) };
-        let p2_to   = if period2_to.trim().is_empty()   { None } else { Some(period2_to)   };
+        let ctx = self.test_ctx.get();
 
         let this = self.clone();
         this.test_loading.set(true);
@@ -622,11 +675,11 @@ impl BiIndicatorDetailsVm {
         leptos::task::spawn_local(async move {
             match model::compute_indicator_by_id(
                 &uuid,
-                &date_from,
-                &date_to,
-                p2_from.as_deref(),
-                p2_to.as_deref(),
-                connection_ids,
+                &ctx.date_from,
+                &ctx.date_to,
+                ctx.period2_from.as_deref(),
+                ctx.period2_to.as_deref(),
+                ctx.connection_mp_refs,
             )
             .await
             {
@@ -736,13 +789,21 @@ impl BiIndicatorDetailsVm {
         } else {
             serde_json::Value::String(view_id)
         };
+        let metric_id = self.dsc_metric_id.get();
+        let metric_id_value = if metric_id.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(metric_id)
+        };
 
-        let data_spec = serde_json::json!({
-            "schema_id": "",
-            "query_config": default_query_config_value(),
-            "sql_artifact_id": serde_json::Value::Null,
-            "view_id": view_id_value,
-        });
+        let loaded_data_spec = serde_json::from_str::<serde_json::Value>(&self.data_spec_json.get())
+            .unwrap_or_else(|_| serde_json::json!({}));
+        let mut data_spec = default_data_spec_value();
+        merge_top_level_object(&mut data_spec, &loaded_data_spec);
+        if let Some(data_spec_obj) = data_spec.as_object_mut() {
+            data_spec_obj.insert("view_id".to_string(), view_id_value);
+            data_spec_obj.insert("metric_id".to_string(), metric_id_value);
+        }
 
         let params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
             .unwrap_or(serde_json::json!([]));
@@ -766,6 +827,14 @@ impl BiIndicatorDetailsVm {
                 serde_json::Value::Null
             } else {
                 serde_json::Value::String(c)
+            }
+        };
+        let custom_html = {
+            let html = self.view_spec_custom_html.get();
+            if html.trim().is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(html)
             }
         };
 
@@ -795,7 +864,7 @@ impl BiIndicatorDetailsVm {
 
         let view_spec = serde_json::json!({
             "style_name": style_name,
-            "custom_html": serde_json::Value::Null,
+            "custom_html": custom_html,
             "custom_css": custom_css,
             "format": format,
             "thresholds": thresholds,
@@ -847,11 +916,23 @@ impl BiIndicatorDetailsVm {
             .set(v["is_public"].as_bool().unwrap_or(false));
         self.version.set(read_i64_field(v, "version", "version", 1));
 
-        // DataSpec — только view_id
+        // DataSpec
+        self.data_spec_json.set(
+            serde_json::to_string_pretty(
+                &v.get("data_spec")
+                    .cloned()
+                    .unwrap_or_else(default_data_spec_value),
+            )
+            .unwrap_or_else(|_| "{}".to_string()),
+        );
         self.dsc_view_id.set(String::new());
+        self.dsc_metric_id.set(String::new());
         if let Some(ds) = v.get("data_spec") {
             if let Some(vid) = ds.get("view_id").and_then(|v| v.as_str()) {
                 self.dsc_view_id.set(vid.to_string());
+            }
+            if let Some(metric_id) = ds.get("metric_id").and_then(|v| v.as_str()) {
+                self.dsc_metric_id.set(metric_id.to_string());
             }
         }
 
@@ -866,7 +947,8 @@ impl BiIndicatorDetailsVm {
             let raw_css = vs["custom_css"].as_str().unwrap_or("").to_string();
             self.view_spec_custom_css
                 .set(code_format::format_css(&raw_css));
-            self.view_spec_custom_html.set(String::new());
+            self.view_spec_custom_html
+                .set(vs["custom_html"].as_str().unwrap_or("").to_string());
             let normalized_style =
                 normalize_design(vs["style_name"].as_str().unwrap_or("classic"), &raw_css);
             self.view_spec_style_name.set(normalized_style);

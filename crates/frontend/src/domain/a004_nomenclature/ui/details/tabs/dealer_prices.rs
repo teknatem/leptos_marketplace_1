@@ -42,7 +42,7 @@ pub fn DealerPricesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     let dealer_prices_loading = vm.dealer_prices_loading;
 
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a004_nomenclature_details_dealer_prices_main">
             <h4 class="details-section__title">
                 {move || format!("Дилерские цены ({})", dealer_prices.get().len())}
             </h4>

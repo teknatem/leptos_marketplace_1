@@ -45,7 +45,7 @@ pub fn FilterBar(
     ctx: RwSignal<ViewContext>,
 ) -> impl IntoView {
     view! {
-        <div class="filter-bar">
+        <div class="filter-bar filter-bar--compact">
             {filters.into_iter().map(|def| render_filter(def, ctx)).collect_view()}
         </div>
     }
@@ -112,14 +112,14 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
         FilterKind::MultiSelect { source } if source == "connection_mp" => {
             // Use the dedicated ConnectionMpMultiSelect component that loads
             // options from the backend and renders a collapsible checkbox panel.
-            let local_sel = RwSignal::new(ctx.get().connection_mp_refs.clone());
+            let local_sel = RwSignal::new(ctx.get_untracked().connection_mp_refs.clone());
             // Sync selection changes back into the shared ViewContext.
             Effect::new(move |_| {
                 let ids = local_sel.get();
                 ctx.update(|c| c.connection_mp_refs = ids);
             });
             view! {
-                <div class="filter-bar__item">
+                <div class="filter-bar__item filter-bar__item--connection-mp">
                     <label class="filter-bar__label">{label}</label>
                     <ConnectionMpMultiSelect selected=local_sel />
                 </div>
@@ -147,7 +147,7 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
                         value=text_signal
                         placeholder="Через запятую, пусто = все"
                         attr:rows=2
-                        attr:class="form__input filter-bar__textarea"
+                        attr:class="form__input filter-bar__textarea filter-bar__control"
                         on_blur=on_change
                     />
                 </div>
@@ -171,7 +171,7 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
                 <div class="filter-bar__item">
                     <label class="filter-bar__label">{label}</label>
                     <select
-                        class="form__input filter-bar__select"
+                        class="form__input filter-bar__select filter-bar__control"
                         on:change=on_change
                     >
                         <option value="">"— не выбрано —"</option>
@@ -206,6 +206,7 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
                     <Input
                         value=text_signal
                         placeholder="Поиск..."
+                        class="filter-bar__control"
                         on_blur=on_change
                     />
                 </div>

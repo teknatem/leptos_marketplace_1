@@ -3,6 +3,7 @@
 use super::super::model::WbSalesListItemDto;
 use super::super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCellMoney;
 use leptos::prelude::*;
 use thaw::*;
@@ -25,23 +26,23 @@ pub fn SalesTab(vm: WbOrdersDetailsVm) -> impl IntoView {
         {move || {
             if vm.wb_sales_loading.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_sales_loading">
                         <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-xl);">
                             <Spinner />
                             <span>"Загрузка WB Sales..."</span>
                         </Flex>
-                    </Card>
+                    </CardAnimated>
                 }
                 .into_any();
             }
 
             if let Some(err) = vm.wb_sales_error.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_sales_error">
                         <div style="color: var(--color-error);">
                             "Ошибка загрузки: " {err}
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }
                 .into_any();
             }
@@ -49,12 +50,12 @@ pub fn SalesTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let sales = vm.wb_sales.get();
             if sales.is_empty() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_sales_empty">
                         <h4 class="details-section__title">"WB Sales"</h4>
                         <div style="color: var(--color-text-secondary);">
                             "Связанные продажи не найдены для данного SRID."
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }
                 .into_any();
             }
@@ -65,7 +66,7 @@ pub fn SalesTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let sales_for_table = sales;
 
             view! {
-                <Card>
+                <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_sales_main">
                     <h4 class="details-section__title">"WB Sales"</h4>
 
                     <Flex gap=FlexGap::Medium style="flex-wrap: wrap; margin-bottom: var(--spacing-md);">
@@ -141,7 +142,7 @@ pub fn SalesTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             </TableBody>
                         </Table>
                     </div>
-                </Card>
+                </CardAnimated>
             }
             .into_any()
         }}

@@ -1,5 +1,6 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::page_frame::PageFrame;
 use contracts::domain::a023_purchase_of_goods::aggregate::{PurchaseOfGoods, PurchaseOfGoodsLine};
 use gloo_net::http::Request;
@@ -111,8 +112,9 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                         let total_vat: f64 = lines.iter().map(|l| l.vat_amount).sum();
 
                         view! {
-                            <div style="padding:var(--spacing-lg);display:flex;flex-direction:column;gap:var(--spacing-lg);">
-                                <Card>
+                            <div class="detail-grid">
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=0 nav_id="a023_purchase_of_goods_detail_summary">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номер документа:"</span>
                                         <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
@@ -134,11 +136,13 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                         <span class="form__label">"Итого НДС:"</span>
                                         <span>{format_money(total_vat)}</span>
                                     </div>
-                                </Card>
+                                    </CardAnimated>
+                                </div>
 
-                                {if !lines.is_empty() {
-                                    view! {
-                                        <Card>
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=40 nav_id="a023_purchase_of_goods_detail_lines">
+                                        {if !lines.is_empty() {
+                                            view! {
                                             <div style="padding:var(--spacing-md);">
                                                 <h3 style="margin:0 0 var(--spacing-md) 0;font-size:var(--font-size-md);">"Табличная часть «Товары»"</h3>
                                                 <div class="table-wrapper">
@@ -202,15 +206,16 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                     </Table>
                                                 </div>
                                             </div>
-                                        </Card>
-                                    }.into_any()
-                                } else {
-                                    view! {
-                                        <div style="padding:var(--spacing-md);color:var(--color-text-secondary);">
-                                            "Строки табличной части отсутствуют"
-                                        </div>
-                                    }.into_any()
-                                }}
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div style="padding:var(--spacing-md);color:var(--color-text-secondary);">
+                                                    "Строки табличной части отсутствуют"
+                                                </div>
+                                            }.into_any()
+                                        }}
+                                    </CardAnimated>
+                                </div>
                             </div>
                         }.into_any()
                     } else {

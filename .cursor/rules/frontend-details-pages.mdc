@@ -1,0 +1,98 @@
+---
+description: Standards for frontend details pages, including card nav ids and Info UI
+globs: crates/frontend/src/**/ui/detail*/**/*.rs
+alwaysApply: false
+---
+
+# Frontend Details Pages
+
+This file is the shared rule set for `details` and `detail` pages. Add future rules here; keep them numbered and concise.
+
+## Rule 1. Route and page key consistency
+
+- For a details form, the route/tab key, `PageFrame page_id`, and card `nav_id` prefix must describe the same page.
+- Canonical naming uses `details`, not `detail`.
+- Prefer indexed ASCII names such as `a024_bi_indicator_details`.
+- Use:
+  - route/tab key: `a024_bi_indicator_details_<id|new>`
+  - `PageFrame page_id`: `a024_bi_indicator_details`
+- Treat legacy `*_detail_*` and `*--detail` names as deprecated and migrate touched pages to `details`.
+
+## Rule 2. Card nav id is required
+
+- Every `CardAnimated` in a details page must have a unique `nav_id`.
+- If a raw `Card` is used instead of `CardAnimated`, add the same nav-id behavior or migrate to `CardAnimated`.
+- When editing an existing details page, add missing `nav_id` to all touched cards.
+
+## Rule 3. Nav id naming
+
+- Format: `<route>_<card_name>`.
+- `card_name` must be short, ASCII-only, and reflect the card purpose.
+- Good examples:
+  - `a024_bi_indicator_details_preview_fields`
+  - `a024_bi_indicator_details_preview_render`
+  - `a025_bi_dashboard_details_filters_main`
+
+## Rule 4. Info UI for card id
+
+- The same `nav_id` must exist:
+  - in component props
+  - in the UI Info popup/control
+  - in DOM as `id` and/or `data-nav-id`
+- The card-level Info UI must allow the user to see and copy the id from the page.
+
+## Rule 5. Allowed layout patterns
+
+- In-scope only: domain/projection pages in `ui/details/`.
+- Use only these layout patterns:
+  - `TwoColumnOverview`: `detail-grid` → two `detail-grid__col` → stacked `CardAnimated`
+  - `SingleCard`: one full-width `CardAnimated` for form/config/meta tabs
+  - `DataTab`: one full-width `CardAnimated` for JSON/table/test/linked-record tabs, including loading/error/empty states
+
+## Rule 6. Card content types
+
+- Each in-scope `CardAnimated` must match one of these internal content types:
+  - `EditCard`: editable or read-only form controls based on `details-section__title`, `form__group`, `form__label`
+  - `ViewCard`: read-only label/value presentation, summary grids, badges, links, or metadata blocks
+  - `ActionCard`: interactive cards with controls plus explicit state/result sections
+- `ExceptionCard` is allowed only for special-review pages that do not fit the standard types and must not become a reusable default.
+
+## Rule 7. Card content structure
+
+- `EditCard`:
+  - start with `details-section__title`
+  - use `form__group` for fields
+  - use `form__label` for field captions
+- `ViewCard`:
+  - start with `details-section__title`
+  - keep a consistent label/value layout inside the card
+  - do not imitate edit forms when no form controls exist
+- `ActionCard`:
+  - start with `details-section__title`
+  - optional `form__hint` is allowed under the title
+  - split content into clear controls/state/result sections instead of ad-hoc blocks
+
+## Rule 8. Excluded pages
+
+- Do not force this standard onto pages outside domain/projection `ui/details/`.
+- Exclude generic/shared tooling, dashboard/view surfaces, LLM workflow pages, system/admin details, and modal-like pages that are not real details tabs/pages.
+
+## Rule 9. Anti-patterns
+
+- Do not use raw `Card` in standard details pages; migrate to `CardAnimated`.
+- Do not use ad-hoc layout wrappers when one of the allowed patterns fits.
+- Do not render empty placeholder `<div></div>` blocks instead of omitting a card.
+- Do not leave a `CardAnimated` without `nav_id`.
+- Do not rely on repeated inline styles for spacing, layout, colors, and typography when a shared class or card type pattern can express the same structure.
+- Do not use `CustomCard` as a normal pattern; if the card does not fit `EditCard`, `ViewCard`, or `ActionCard`, treat it as `ExceptionCard` and review it explicitly.
+
+## Rule 10. Editing checklist
+
+- When creating or editing a details page:
+  - verify route/page key naming
+  - verify the tab fits one of the allowed layout patterns
+  - verify each card fits `EditCard`, `ViewCard`, or `ActionCard`
+  - verify every card has a unique `nav_id`
+  - verify the Info UI is present and usable
+  - verify copied ids are searchable in IDE
+  - verify the page is not on the exclusions list before refactoring

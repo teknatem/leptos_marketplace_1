@@ -24,7 +24,7 @@ use crate::domain::a013_ym_order::ui::details::YmOrderDetail;
 use crate::domain::a013_ym_order::ui::list::YmOrderList;
 use crate::domain::a014_ozon_transactions::ui::details::OzonTransactionsDetail;
 use crate::domain::a014_ozon_transactions::ui::list::OzonTransactionsList;
-use crate::domain::a015_wb_orders::ui::details::WbOrdersDetail;
+use crate::domain::a015_wb_orders::ui::details::WbOrdersDetails;
 use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
@@ -289,14 +289,14 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a015: Wildberries Orders
         "a015_wb_orders" => view! { <WbOrdersList /> }.into_any(),
-        k if k.starts_with("a015_wb_orders_detail_") => {
+        k if k.starts_with("a015_wb_orders_details_") => {
             let id = k
-                .strip_prefix("a015_wb_orders_detail_")
+                .strip_prefix("a015_wb_orders_details_")
                 .unwrap()
                 .to_string();
-            log!("✅ Creating WbOrdersDetail with id: {}", id);
+            log!("✅ Creating WbOrdersDetails with id: {}", id);
             view! {
-                <WbOrdersDetail
+                <WbOrdersDetails
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
@@ -441,9 +441,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a024: BI Indicators
         "a024_bi_indicator" => view! { <BiIndicatorList /> }.into_any(),
-        k if k.starts_with("a024_bi_indicator_detail_") => {
+        k if k.starts_with("a024_bi_indicator_details_") => {
             let raw_id = k
-                .strip_prefix("a024_bi_indicator_detail_")
+                .strip_prefix("a024_bi_indicator_details_")
                 .unwrap()
                 .to_string();
             let id = if raw_id == "new" { None } else { Some(raw_id) };
@@ -469,9 +469,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a025: BI Dashboards
         "a025_bi_dashboard" => view! { <BiDashboardList /> }.into_any(),
-        k if k.starts_with("a025_bi_dashboard_detail_") => {
+        k if k.starts_with("a025_bi_dashboard_details_") => {
             let raw_id = k
-                .strip_prefix("a025_bi_dashboard_detail_")
+                .strip_prefix("a025_bi_dashboard_details_")
                 .unwrap()
                 .to_string();
             let id = if raw_id == "new" { None } else { Some(raw_id) };

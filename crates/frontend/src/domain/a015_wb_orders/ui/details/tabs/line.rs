@@ -25,7 +25,7 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                 <div class="detail-grid">
                     // Left column
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a015_wb_orders_details_line_amounts">
                             <h4 class="details-section__title">"Суммы и проценты"</h4>
                             <Table>
                                 <TableHeader>
@@ -77,7 +77,7 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             </Table>
                         </CardAnimated>
 
-                        <CardAnimated delay_ms=80>
+                        <CardAnimated delay_ms=80 nav_id="a015_wb_orders_details_line_margin">
                             <h4 class="details-section__title">"Расчет маржи"</h4>
                             <Table>
                                 <TableHeader>
@@ -108,7 +108,7 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
 
                     // Right column
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=40>
+                        <CardAnimated delay_ms=40 nav_id="a015_wb_orders_details_line_finance_summary">
                             <h4 class="details-section__title">"Сводка по финансовым отчетам (p903)"</h4>
                             <Flex gap=FlexGap::Medium style="flex-wrap: wrap;">
                                 <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
@@ -143,7 +143,7 @@ fn SalesDetailsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
             let line = first_sale.line.clone();
 
             view! {
-                <CardAnimated delay_ms=120>
+                <CardAnimated delay_ms=120 nav_id="a015_wb_orders_details_line_sales_details">
                     <h4 class="details-section__title">"Детализация Sales WB"</h4>
                     <Table>
                         <TableHeader>

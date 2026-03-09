@@ -25,7 +25,7 @@ pub fn BiDashboardDetails(
     let vm_content = vm.clone();
 
     view! {
-        <PageFrame page_id="a025_bi_dashboard--detail" category="detail">
+        <PageFrame page_id="a025_bi_dashboard_details" category="detail">
             <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
             <TabBar vm=vm_tabs />
             <div class="page__content">

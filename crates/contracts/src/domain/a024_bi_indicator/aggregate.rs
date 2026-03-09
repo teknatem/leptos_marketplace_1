@@ -183,6 +183,10 @@ pub struct DataSpec {
     /// Наивысший приоритет при вычислении индикатора и drilldown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view_id: Option<String>,
+    /// ID ресурса/метрики внутри выбранного DataView.
+    /// Прокидывается в `ViewContext.params["metric"]` при вычислении.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_id: Option<String>,
     /// Универсальный конфиг источника данных (заменяет schema_query).
     /// Приоритет над schema_query при вычислении индикатора.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -209,6 +213,7 @@ impl Default for DataSpec {
             },
             sql_artifact_id: None,
             view_id: None,
+            metric_id: None,
             data_source_config: None,
             schema_query: None,
         }

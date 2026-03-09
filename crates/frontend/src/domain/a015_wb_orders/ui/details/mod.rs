@@ -11,5 +11,5 @@ mod page;
 mod tabs;
 mod view_model;
 
-pub use page::WbOrdersDetail;
+pub use page::WbOrdersDetails;
 pub use view_model::WbOrdersDetailsVm;

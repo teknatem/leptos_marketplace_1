@@ -2,7 +2,6 @@
 
 use super::super::view_model::BiDashboardDetailsVm;
 use crate::shared::api_utils::api_base;
-use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use std::collections::HashMap;

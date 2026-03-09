@@ -1,6 +1,7 @@
 use crate::domain::common::{
     AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
 };
+use crate::shared::data_view::FilterRef;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -107,28 +108,6 @@ impl Default for DashboardLayout {
 }
 
 // ============================================================================
-// GlobalFilter — глобальные фильтры дашборда
-// ============================================================================
-
-fn default_filter_type() -> String {
-    "text".to_string()
-}
-
-/// Глобальный фильтр дашборда. Ключ совпадает с `ParamDef.global_filter_key` из a024
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GlobalFilter {
-    /// Ключ фильтра (например "date_range", "organization_id")
-    pub key: String,
-    /// Человекочитаемая метка
-    pub label: String,
-    /// Значение по умолчанию
-    pub value: String,
-    /// Тип UI-контрола: "text" | "date" | "connection_multiselect"
-    #[serde(default = "default_filter_type")]
-    pub filter_type: String,
-}
-
-// ============================================================================
 // Status
 // ============================================================================
 
@@ -174,8 +153,9 @@ pub struct BiDashboard {
 
     /// Раскладка — дерево групп с индикаторами
     pub layout: DashboardLayout,
-    /// Глобальные фильтры с дефолтными значениями
-    pub global_filters: Vec<GlobalFilter>,
+    /// Ссылки на глобальный реестр фильтров для этого дашборда
+    #[serde(default)]
+    pub filters: Vec<FilterRef>,
 
     /// Статус: Draft | Active | Archived
     pub status: BiDashboardStatus,
@@ -197,7 +177,7 @@ impl BiDashboard {
         Self {
             base,
             layout: DashboardLayout::default(),
-            global_filters: vec![],
+            filters: vec![],
             status: BiDashboardStatus::Draft,
             owner_user_id,
             is_public: false,

@@ -320,7 +320,7 @@ pub fn BiDashboardList() -> impl IntoView {
                     </Button>
                     <Button
                         appearance=ButtonAppearance::Primary
-                        on_click=move |_| ctx.open_tab("a025_bi_dashboard_detail_new", "Новый BI Дашборд")
+                        on_click=move |_| ctx.open_tab("a025_bi_dashboard_details_new", "Новый BI Дашборд")
                     >
                         {icon("plus")} " Новый"
                     </Button>
@@ -443,7 +443,7 @@ pub fn BiDashboardList() -> impl IntoView {
                                 let id_sel  = id.clone();
                                 let is_sel  = state.selected.get().contains(&id);
 
-                                let tab_key   = format!("a025_bi_dashboard_detail_{}", id);
+                                let tab_key   = format!("a025_bi_dashboard_details_{}", id);
                                 let tab_title = format!("Дашборд · {}", row.code);
                                 let tab_key2  = tab_key.clone();
                                 let tab_title2 = tab_title.clone();

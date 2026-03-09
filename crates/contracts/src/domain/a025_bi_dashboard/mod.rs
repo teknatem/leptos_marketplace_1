@@ -8,6 +8,6 @@ pub mod metadata_gen;
 
 pub use aggregate::{
     BiDashboard, BiDashboardId, BiDashboardListItem, BiDashboardStatus, DashboardGroup,
-    DashboardItem, DashboardLayout, GlobalFilter,
+    DashboardItem, DashboardLayout,
 };
 pub use metadata_gen::{ENTITY_METADATA, FIELDS};

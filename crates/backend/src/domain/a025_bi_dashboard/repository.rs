@@ -1,8 +1,9 @@
 use chrono::Utc;
 use contracts::domain::a025_bi_dashboard::aggregate::{
-    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout, GlobalFilter,
+    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout,
 };
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
+use contracts::shared::data_view::FilterRef;
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
@@ -56,7 +57,7 @@ impl From<bi_dashboard::Model> for BiDashboard {
         let layout: DashboardLayout =
             serde_json::from_str(&m.layout_json).unwrap_or_else(|_| DashboardLayout::default());
 
-        let global_filters: Vec<GlobalFilter> =
+        let filters: Vec<FilterRef> =
             serde_json::from_str(&m.global_filters_json).unwrap_or_default();
 
         let status = BiDashboardStatus::from_str(&m.status).unwrap_or(BiDashboardStatus::Draft);
@@ -80,7 +81,7 @@ impl From<bi_dashboard::Model> for BiDashboard {
                 events: Default::default(),
             },
             layout,
-            global_filters,
+            filters,
             status,
             owner_user_id: m.owner_user_id,
             is_public: m.is_public,
@@ -188,7 +189,7 @@ pub async fn insert(db: &DatabaseConnection, dashboard: &BiDashboard) -> Result<
     let layout_json =
         serde_json::to_string(&dashboard.layout).unwrap_or_else(|_| r#"{"groups":[]}"#.to_string());
     let global_filters_json =
-        serde_json::to_string(&dashboard.global_filters).unwrap_or_else(|_| "[]".to_string());
+        serde_json::to_string(&dashboard.filters).unwrap_or_else(|_| "[]".to_string());
 
     let active_model = bi_dashboard::ActiveModel {
         id: Set(dashboard.base.id.as_string()),
@@ -221,7 +222,7 @@ pub async fn update(db: &DatabaseConnection, dashboard: &BiDashboard) -> Result<
     let layout_json =
         serde_json::to_string(&dashboard.layout).unwrap_or_else(|_| r#"{"groups":[]}"#.to_string());
     let global_filters_json =
-        serde_json::to_string(&dashboard.global_filters).unwrap_or_else(|_| "[]".to_string());
+        serde_json::to_string(&dashboard.filters).unwrap_or_else(|_| "[]".to_string());
 
     let active_model = bi_dashboard::ActiveModel {
         id: Set(dashboard.base.id.as_string()),

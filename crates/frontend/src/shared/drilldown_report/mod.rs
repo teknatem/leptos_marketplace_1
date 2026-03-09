@@ -5,37 +5,20 @@
 //!
 //! Tab key: `drilldown__{session_id}` — параметры хранятся в таблице sys_drilldown.
 
+use crate::data_view::api as dv_api;
+use crate::data_view::types::FilterDef;
+use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
-use contracts::shared::data_view::DataViewMeta;
+use contracts::shared::data_view::ViewContext;
 use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow};
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use thaw::*;
 
 // ── Local types ───────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct ConnItem {
-    pub id: String,
-    #[serde(default)]
-    pub code: String,
-    #[serde(default)]
-    pub description: String,
-}
-
-impl ConnItem {
-    fn display_name(&self) -> String {
-        if !self.code.is_empty() {
-            self.code.clone()
-        } else if !self.description.is_empty() {
-            self.description.clone()
-        } else {
-            self.id.clone()
-        }
-    }
-}
 
 /// Десериализованная запись из GET /api/sys-drilldown/:id
 #[derive(Debug, Clone, Deserialize)]
@@ -49,7 +32,7 @@ struct DrilldownSessionRecord {
 struct DrilldownSessionParams {
     pub group_by: String,
     #[serde(default)]
-    pub group_by_label: String,
+    pub metric_id: Option<String>,
     pub date_from: String,
     pub date_to: String,
     #[serde(default)]
@@ -58,6 +41,8 @@ struct DrilldownSessionParams {
     pub period2_to: Option<String>,
     #[serde(default)]
     pub connection_mp_refs: Vec<String>,
+    #[serde(default)]
+    pub params: HashMap<String, String>,
 }
 
 // ── Request payload (for re-fetch on "Сформировать") ─────────────────────────
@@ -72,6 +57,10 @@ struct DvDrilldownRequest {
     pub period2_to: Option<String>,
     pub group_by: String,
     pub connection_mp_refs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metric_id: Option<String>,
+    #[serde(default)]
+    pub params: HashMap<String, String>,
 }
 
 // ── Sorting ───────────────────────────────────────────────────────────────────
@@ -186,16 +175,15 @@ pub fn DrilldownReportPage(
     let view_id_sig    = RwSignal::new(String::new());
 
     // ── Editable form params ──────────────────────────────────────────────────
-    let p_date_from = RwSignal::new(String::new());
-    let p_date_to   = RwSignal::new(String::new());
-    let p_p2_from   = RwSignal::new(String::new());
-    let p_p2_to     = RwSignal::new(String::new());
-    let p_group_by  = RwSignal::new(String::new());
-    let p_mp_refs: RwSignal<Vec<String>> = RwSignal::new(vec![]);
+    let view_ctx = RwSignal::new(ViewContext::default());
+    let p_group_by = RwSignal::new(String::new());
+    let p_metric_id = RwSignal::new(None::<String>);
 
     // ── Metadata (fetched on mount) ───────────────────────────────────────────
+    let filter_defs: RwSignal<Vec<FilterDef>> = RwSignal::new(vec![]);
+    let filters_loading = RwSignal::new(false);
+    let filters_error = RwSignal::new(None::<String>);
     let dv_dims: RwSignal<Vec<(String, String)>> = RwSignal::new(vec![]);
-    let connections: RwSignal<Vec<ConnItem>>     = RwSignal::new(vec![]);
 
     // ── Report state ─────────────────────────────────────────────────────────
     let loading   = RwSignal::new(false);
@@ -228,38 +216,34 @@ pub fn DrilldownReportPage(
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| shift_month(&dt, -1));
 
-            p_date_from.set(df);
-            p_date_to.set(dt);
-            p_p2_from.set(p2f);
-            p_p2_to.set(p2t);
+            view_ctx.set(ViewContext {
+                date_from: df,
+                date_to: dt,
+                period2_from: Some(p2f),
+                period2_to: Some(p2t),
+                connection_mp_refs: record.params.connection_mp_refs.clone(),
+                params: record.params.params.clone(),
+            });
             p_group_by.set(record.params.group_by.clone());
-            p_mp_refs.set(record.params.connection_mp_refs.clone());
+            p_metric_id.set(record.params.metric_id.clone());
 
             session_loaded.set(true);
 
-            // Load DataView dimensions
-            let url2 = format!("{}/api/data-view/{}", api_base(), record.view_id);
-            if let Ok(r) = Request::get(&url2).send().await {
-                if r.ok() {
-                    if let Ok(meta) = r.json::<DataViewMeta>().await {
-                        dv_dims.set(
-                            meta.available_dimensions
-                                .into_iter()
-                                .map(|d| (d.id, d.label))
-                                .collect(),
-                        );
-                    }
-                }
+            filters_loading.set(true);
+            filters_error.set(None);
+            match dv_api::fetch_view_filters(&record.view_id).await {
+                Ok(defs) => filter_defs.set(defs),
+                Err(err) => filters_error.set(Some(err)),
             }
+            filters_loading.set(false);
 
-            // Load connections
-            let url3 = format!("{}/api/connection_mp", api_base());
-            if let Ok(r) = Request::get(&url3).send().await {
-                if r.ok() {
-                    if let Ok(conns) = r.json::<Vec<ConnItem>>().await {
-                        connections.set(conns);
-                    }
-                }
+            if let Ok(meta) = dv_api::fetch_by_id(&record.view_id).await {
+                dv_dims.set(
+                    meta.available_dimensions
+                        .into_iter()
+                        .map(|dim| (dim.id, dim.label))
+                        .collect(),
+                );
             }
 
             // Auto-run report
@@ -273,22 +257,20 @@ pub fn DrilldownReportPage(
         if v == 0 { return; } // skip initial mount (session not loaded yet)
 
         let view_id = view_id_sig.get_untracked();
-        if view_id.is_empty() { return; }
+        let group_by = p_group_by.get_untracked();
+        if view_id.is_empty() || group_by.is_empty() { return; }
 
         let url = format!("{}/api/data-view/{}/drilldown", api_base(), view_id);
+        let ctx = view_ctx.get_untracked();
         let req = DvDrilldownRequest {
-            date_from: p_date_from.get_untracked(),
-            date_to:   p_date_to.get_untracked(),
-            period2_from: {
-                let v = p_p2_from.get_untracked();
-                if v.is_empty() { None } else { Some(v) }
-            },
-            period2_to: {
-                let v = p_p2_to.get_untracked();
-                if v.is_empty() { None } else { Some(v) }
-            },
-            group_by: p_group_by.get_untracked(),
-            connection_mp_refs: p_mp_refs.get_untracked(),
+            date_from: ctx.date_from,
+            date_to: ctx.date_to,
+            period2_from: ctx.period2_from,
+            period2_to: ctx.period2_to,
+            group_by,
+            connection_mp_refs: ctx.connection_mp_refs,
+            metric_id: p_metric_id.get_untracked(),
+            params: ctx.params,
         };
         loading.set(true);
         error_msg.set(None);
@@ -362,56 +344,30 @@ pub fn DrilldownReportPage(
 
                 // ── Filter panel ─────────────────────────────────────────────
                 <div class="drilldown-report__filters">
+                    <div class="drilldown-report__filters-main">
+                        {move || {
+                            if filters_loading.get() {
+                                view! {
+                                    <div class="drilldown-report__loading">
+                                        <span class="spinner" />
+                                        " Загрузка фильтров DataView..."
+                                    </div>
+                                }.into_any()
+                            } else if let Some(err) = filters_error.get() {
+                                view! { <div class="drilldown-report__error">{err}</div> }.into_any()
+                            } else if filter_defs.get().is_empty() {
+                                view! {
+                                    <div class="placeholder placeholder--small">
+                                        "Для этого drilldown нет фильтров DataView."
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <FilterBar filters=filter_defs.get() ctx=view_ctx /> }.into_any()
+                            }
+                        }}
+                    </div>
 
-                    // Row 1: period inputs + grouping + submit
-                    <div class="drilldown-report__filters-row">
-
-                        <div class="drilldown-report__filter-group">
-                            <label class="drilldown-report__filter-label">"П1 с"</label>
-                            <input
-                                type="date"
-                                class="drilldown-report__filter-input"
-                                prop:value=move || p_date_from.get()
-                                on:change=move |ev| p_date_from.set(event_target_value(&ev))
-                            />
-                        </div>
-
-                        <div class="drilldown-report__filter-group">
-                            <label class="drilldown-report__filter-label">"по"</label>
-                            <input
-                                type="date"
-                                class="drilldown-report__filter-input"
-                                prop:value=move || p_date_to.get()
-                                on:change=move |ev| p_date_to.set(event_target_value(&ev))
-                            />
-                        </div>
-
-                        <span class="drilldown-report__filter-sep">"·"</span>
-
-                        <div class="drilldown-report__filter-group">
-                            <label class="drilldown-report__filter-label">"П2 с"</label>
-                            <input
-                                type="date"
-                                class="drilldown-report__filter-input"
-                                placeholder="авто"
-                                prop:value=move || p_p2_from.get()
-                                on:change=move |ev| p_p2_from.set(event_target_value(&ev))
-                            />
-                        </div>
-
-                        <div class="drilldown-report__filter-group">
-                            <label class="drilldown-report__filter-label">"по"</label>
-                            <input
-                                type="date"
-                                class="drilldown-report__filter-input"
-                                placeholder="авто"
-                                prop:value=move || p_p2_to.get()
-                                on:change=move |ev| p_p2_to.set(event_target_value(&ev))
-                            />
-                        </div>
-
-                        <span class="drilldown-report__filter-sep">"·"</span>
-
+                    <div class="drilldown-report__filters-actions">
                         <div class="drilldown-report__filter-group">
                             <label class="drilldown-report__filter-label">"Группировка"</label>
                             <select
@@ -438,41 +394,6 @@ pub fn DrilldownReportPage(
                             {move || if loading.get() { "Загрузка…" } else { "Сформировать" }}
                         </button>
                     </div>
-
-                    // Row 2: connections (only when available)
-                    <Show when=move || !connections.get().is_empty()>
-                        <div class="drilldown-report__filter-connections">
-                            <span class="drilldown-report__filter-label">"Кабинеты:"</span>
-                            {move || {
-                                connections.get().into_iter().map(|conn| {
-                                    let id1 = conn.id.clone();
-                                    let id2 = conn.id.clone();
-                                    let label = conn.display_name();
-                                    view! {
-                                        <label class="drilldown-report__mp-check">
-                                            <input
-                                                type="checkbox"
-                                                checked=move || p_mp_refs.get().contains(&id1)
-                                                on:change=move |ev| {
-                                                    let checked = event_target_checked(&ev);
-                                                    p_mp_refs.update(|v| {
-                                                        if checked {
-                                                            if !v.contains(&id2) {
-                                                                v.push(id2.clone());
-                                                            }
-                                                        } else {
-                                                            v.retain(|x| x != &id2);
-                                                        }
-                                                    });
-                                                }
-                                            />
-                                            " " {label}
-                                        </label>
-                                    }
-                                }).collect_view()
-                            }}
-                        </div>
-                    </Show>
                 </div>
 
             </Show>

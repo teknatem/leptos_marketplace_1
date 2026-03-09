@@ -1,6 +1,7 @@
 //! Line tab - line details, amounts table, and finance details
 
 use super::super::view_model::WbSalesDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCellMoney;
 use leptos::prelude::*;
 use thaw::*;
@@ -56,9 +57,9 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let has_finance_data = !finance_rows.is_empty();
 
             view! {
-                <div style="display: grid; grid-template-columns: 1200px; gap: var(--spacing-md); align-items: start; justify-items: start;">
-                    // Line info card
-                    <Card>
+                <div class="detail-grid">
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_line_info">
                         <h4 class="details-section__title">"Строка"</h4>
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-md);">
                             <div class="form__group">
@@ -118,10 +119,9 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 </Flex>
                             </div>
                         </div>
-                    </Card>
+                        </CardAnimated>
 
-                    // Amounts table
-                    <Card>
+                        <CardAnimated delay_ms=80 nav_id="a012_wb_sales_details_line_amounts">
                         <h4 class="details-section__title">"Деталазация Sales WD"</h4>
                         <Table>
                             <TableHeader>
@@ -149,46 +149,52 @@ pub fn LineTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 />
                             </TableBody>
                         </Table>
-                    </Card>
+                        </CardAnimated>
+                    </div>
 
-                    // Finance details table (if data exists)
-                    {if has_finance_data {
-                        view! {
-                            <Card>
-                                <h4 class="details-section__title">"Финансовые детали"</h4>
-                                <div style="max-height: 60vh; overflow: auto;">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHeaderCell>"#"</TableHeaderCell>
-                                                <TableHeaderCell>"Наименование"</TableHeaderCell>
-                                                <TableHeaderCell>"Поле"</TableHeaderCell>
-                                                <TableHeaderCell>"Значение"</TableHeaderCell>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            <For
-                                                each=move || finance_rows.clone()
-                                                key=|r| format!("{}-{}-{}", r.0, r.2, r.1)
-                                                children=move |(num, name, field, value)| {
-                                                    view! {
-                                                        <TableRow>
-                                                    <TableCell><TableCellLayout>{num}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{name}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout><code>{field}</code></TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{value}</TableCellLayout></TableCell>
-                                                        </TableRow>
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=40 nav_id="a012_wb_sales_details_line_finance">
+                            <h4 class="details-section__title">"Финансовые детали"</h4>
+                            {if has_finance_data {
+                                view! {
+                                    <div style="max-height: 60vh; overflow: auto;">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHeaderCell>"#"</TableHeaderCell>
+                                                    <TableHeaderCell>"Наименование"</TableHeaderCell>
+                                                    <TableHeaderCell>"Поле"</TableHeaderCell>
+                                                    <TableHeaderCell>"Значение"</TableHeaderCell>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                <For
+                                                    each=move || finance_rows.clone()
+                                                    key=|r| format!("{}-{}-{}", r.0, r.2, r.1)
+                                                    children=move |(num, name, field, value)| {
+                                                        view! {
+                                                            <TableRow>
+                                                                <TableCell><TableCellLayout>{num}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout>{name}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout><code>{field}</code></TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout>{value}</TableCellLayout></TableCell>
+                                                            </TableRow>
+                                                        }
                                                     }
-                                                }
-                                            />
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </Card>
-                        }.into_any()
-                    } else {
-                        view! { <></> }.into_any()
-                    }}
+                                                />
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div style="color: var(--color-text-secondary);">
+                                        "Связанные финансовые детали отсутствуют."
+                                    </div>
+                                }.into_any()
+                            }}
+                        </CardAnimated>
+                    </div>
                 </div>
             }.into_any()
         }}

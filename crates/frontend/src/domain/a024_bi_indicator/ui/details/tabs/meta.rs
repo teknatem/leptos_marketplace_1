@@ -8,7 +8,7 @@ use thaw::*;
 #[component]
 pub fn MetaTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_meta_main">
             <h4 class="details-section__title">"Метаданные"</h4>
             <div class="details-grid--3col">
                 <div class="form__group">

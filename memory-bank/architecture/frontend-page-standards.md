@@ -11,6 +11,36 @@ This document defines the standard structure and patterns for frontend pages in 
 3. **Full Width Layout** - Pages should occupy 100% of available space
 4. **Consistent Structure** - All pages follow the same hierarchy
 
+## Details Pages Layout Standard
+
+For domain/projection details pages in `crates/frontend/src/**/ui/details/**`, use the dedicated details-page layout standard.
+
+Allowed patterns:
+- `TwoColumnOverview` - `detail-grid` with two `detail-grid__col` columns and stacked `CardAnimated`
+- `SingleCard` - one full-width `CardAnimated` for form/config/meta tabs
+- `DataTab` - one full-width `CardAnimated` for JSON/table/test/linked-record tabs, including loading/error/empty states
+
+Card content types:
+- `EditCard` - `details-section__title` + `form__group` + `form__label`
+- `ViewCard` - read-only label/value or summary presentation
+- `ActionCard` - interactive controls plus explicit state/result sections
+- `ExceptionCard` - special-review only, not a reusable default
+
+Required rules:
+- Use `CardAnimated`, not raw `Card`
+- Every `CardAnimated` must have `nav_id`
+- Do not introduce ad-hoc layout wrappers when one of the allowed patterns fits
+- Avoid repeated inline layout styles inside cards when a shared class or card content type can express the same structure
+
+Out of scope:
+- generic/shared tooling pages
+- dashboard/view surfaces
+- LLM workflow pages
+- system/admin details
+
+See full standard and inventory:
+- `memory-bank/architecture/details-page-layout-standard.md`
+
 ## Container Structure
 
 ### Root Container
@@ -731,4 +761,5 @@ view! {
 - `systemPatterns.md` - Overall architecture patterns
 - `memory-bank/runbooks/RB-thaw-ui-migration-v1.md` - Thaw UI migration guide
 - `memory-bank/runbooks/RB-thaw-table-sorting-v1.md` - Table sorting patterns
+- `memory-bank/architecture/details-page-layout-standard.md` - Details layouts, inventory, exclusions
 - `.cursor/skills/audit-page-bem-thaw/SKILL.md` - Automated audit skill

@@ -1,8 +1,9 @@
 use super::repository;
 use crate::domain::a024_bi_indicator;
+use contracts::shared::data_view::FilterRef;
 use contracts::domain::a024_bi_indicator::aggregate::BiIndicatorId;
 use contracts::domain::a025_bi_dashboard::aggregate::{
-    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout, GlobalFilter,
+    BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -17,7 +18,7 @@ pub struct BiDashboardDto {
     pub comment: Option<String>,
 
     pub layout: Option<DashboardLayout>,
-    pub global_filters: Option<Vec<GlobalFilter>>,
+    pub filters: Option<Vec<FilterRef>>,
 
     pub status: Option<String>,
     pub owner_user_id: String,
@@ -81,8 +82,8 @@ pub async fn create(dto: BiDashboardDto) -> anyhow::Result<Uuid> {
         validate_indicator_refs(&layout).await?;
         dashboard.layout = layout;
     }
-    if let Some(filters) = dto.global_filters {
-        dashboard.global_filters = filters;
+    if let Some(filters) = dto.filters {
+        dashboard.filters = filters;
     }
     if let Some(status_str) = &dto.status {
         dashboard.status =
@@ -140,8 +141,8 @@ pub async fn update(dto: BiDashboardDto) -> anyhow::Result<()> {
         validate_indicator_refs(&layout).await?;
         dashboard.layout = layout;
     }
-    if let Some(filters) = dto.global_filters {
-        dashboard.global_filters = filters;
+    if let Some(filters) = dto.filters {
+        dashboard.filters = filters;
     }
     if let Some(status_str) = &dto.status {
         dashboard.status =
@@ -280,9 +281,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
 
     let filters_ops = serde_json::json!([
         {
-            "key": "date_range",
-            "label": "Период",
-            "value": "last_30_days"
+            "filter_id": "date_range_1",
+            "required": true,
+            "order": 0,
+            "default_value": "2025-01-01,2025-01-31",
+            "label_override": "Период"
         }
     ]);
 
@@ -314,9 +317,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
 
     let filters_fin = serde_json::json!([
         {
-            "key": "date_range",
-            "label": "Период",
-            "value": "this_month"
+            "filter_id": "date_range_1",
+            "required": true,
+            "order": 0,
+            "default_value": "2025-03-01,2025-03-31",
+            "label_override": "Период"
         }
     ]);
 
@@ -352,25 +357,19 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         ]
     });
 
-    // Фильтры с явными типами: дата-пикеры и мульти-выбор кабинетов
+    // Сквозные фильтры через реестр FilterDef / FilterRef
     let filters_revenue = serde_json::json!([
         {
-            "key": "date_from",
-            "label": "Начало периода",
-            "value": "2025-01-01",
-            "filter_type": "date"
+            "filter_id": "date_range_1",
+            "required": true,
+            "order": 0,
+            "default_value": "2025-01-01,2025-03-31"
         },
         {
-            "key": "date_to",
-            "label": "Конец периода",
-            "value": "2025-03-31",
-            "filter_type": "date"
-        },
-        {
-            "key": "connection_ids",
-            "label": "Кабинеты МП",
-            "value": "",
-            "filter_type": "connection_multiselect"
+            "filter_id": "connection_mp_refs",
+            "required": false,
+            "order": 1,
+            "default_value": ""
         }
     ]);
 

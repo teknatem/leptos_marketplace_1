@@ -15,7 +15,7 @@ pub fn BarcodesTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     let barcodes_loading = vm.barcodes_loading;
 
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a004_nomenclature_details_barcodes_main">
             <h4 class="details-section__title">
                 {move || format!("Штрихкоды ({})", barcodes_count.get())}
             </h4>
