@@ -16,6 +16,7 @@
 pub mod api;
 pub mod dashboards;
 pub mod data_schemes;
+pub mod data_view;
 pub mod domain;
 pub mod projections;
 pub mod shared;

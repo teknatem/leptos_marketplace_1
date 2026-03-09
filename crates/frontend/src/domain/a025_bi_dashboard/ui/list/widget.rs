@@ -433,7 +433,7 @@ pub fn BiDashboardList() -> impl IntoView {
                                         {move || get_sort_indicator("created_at", &state.sort_by.get(), state.sort_desc.get())}
                                     </span>
                                 </TableHeaderCell>
-                                <TableHeaderCell resizable=false min_width=90.0>"View"</TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=90.0>"Edit"</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
@@ -445,10 +445,13 @@ pub fn BiDashboardList() -> impl IntoView {
 
                                 let tab_key   = format!("a025_bi_dashboard_detail_{}", id);
                                 let tab_title = format!("Дашборд · {}", row.code);
+                                let tab_key2  = tab_key.clone();
+                                let tab_title2 = tab_title.clone();
                                 let ctx_open  = ctx.clone();
+                                let ctx_view  = ctx.clone();
                                 let view_tab_key = format!("a025_bi_dashboard_view_{}", row.id);
                                 let view_tab_title = format!("View · {}", row.code);
-                                let ctx_view = ctx.clone();
+                                let ctx_desc  = ctx.clone();
 
                                 view! {
                                     <TableRow class:table__row--selected=is_sel>
@@ -474,7 +477,18 @@ pub fn BiDashboardList() -> impl IntoView {
                                             </TableCellLayout>
                                         </TableCell>
                                         <TableCell>
-                                            <TableCellLayout>{row.description.clone()}</TableCellLayout>
+                                            <TableCellLayout>
+                                                <a
+                                                    href="#"
+                                                    class="table__link"
+                                                    on:click=move |e| {
+                                                        e.prevent_default();
+                                                        ctx_desc.open_tab(&view_tab_key, &view_tab_title);
+                                                    }
+                                                >
+                                                    {row.description.clone()}
+                                                </a>
+                                            </TableCellLayout>
                                         </TableCell>
                                         <TableCell>
                                             <TableCellLayout>{status_badge(&row.status)}</TableCellLayout>
@@ -503,10 +517,10 @@ pub fn BiDashboardList() -> impl IntoView {
                                                     class="table__link"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        ctx_view.open_tab(&view_tab_key, &view_tab_title);
+                                                        ctx_view.open_tab(&tab_key2, &tab_title2);
                                                     }
                                                 >
-                                                    {icon("eye")} " Open"
+                                                    {icon("edit")} " Edit"
                                                 </a>
                                             </TableCellLayout>
                                         </TableCell>

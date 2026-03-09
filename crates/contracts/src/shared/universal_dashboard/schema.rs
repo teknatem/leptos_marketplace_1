@@ -33,6 +33,10 @@ pub struct DataSourceSchema {
     pub name: &'static str,
     /// Available fields in this data source
     pub fields: &'static [FieldDef],
+    /// Ordered list of field IDs that serve as the primary/recommended filters for this schema.
+    /// These are the "default" filters surfaced prominently in the UI.
+    /// Every listed field must have `can_filter: true` in its `FieldDef`.
+    pub schema_filters: &'static [&'static str],
 }
 
 /// Owned version of DataSourceSchema for API responses
@@ -44,6 +48,9 @@ pub struct DataSourceSchemaOwned {
     pub name: String,
     /// Available fields in this data source
     pub fields: Vec<FieldDefOwned>,
+    /// Ordered list of field IDs for the primary/recommended filters
+    #[serde(default)]
+    pub schema_filters: Vec<String>,
 }
 
 impl From<&DataSourceSchema> for DataSourceSchemaOwned {
@@ -52,6 +59,7 @@ impl From<&DataSourceSchema> for DataSourceSchemaOwned {
             id: schema.id.to_string(),
             name: schema.name.to_string(),
             fields: schema.fields.iter().map(|f| f.into()).collect(),
+            schema_filters: schema.schema_filters.iter().map(|s| s.to_string()).collect(),
         }
     }
 }
@@ -70,6 +78,9 @@ pub struct FieldDef {
     pub can_group: bool,
     /// Can this field be aggregated (SUM, AVG, etc.)
     pub can_aggregate: bool,
+    /// Can this field be used as a filter condition in reports.
+    /// Typically true for dimension/date fields, false for pure metrics.
+    pub can_filter: bool,
     /// Actual database column name
     pub db_column: &'static str,
     /// Reference table for JOIN (e.g., "a006_connection_mp")
@@ -106,6 +117,9 @@ pub struct FieldDefOwned {
     pub can_group: bool,
     /// Can this field be aggregated
     pub can_aggregate: bool,
+    /// Can this field be used as a filter condition
+    #[serde(default = "default_true")]
+    pub can_filter: bool,
     /// Actual database column name
     pub db_column: String,
     /// Reference display column (for Ref types)
@@ -125,6 +139,10 @@ pub struct FieldDefOwned {
     pub ref_table: Option<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl FieldDefOwned {
     /// Get the ValueType for this field (from value_type or computed from field_type)
     pub fn get_value_type(&self) -> ValueType {
@@ -141,6 +159,7 @@ impl From<&FieldDef> for FieldDefOwned {
             value_type: field.get_value_type(),
             can_group: field.can_group,
             can_aggregate: field.can_aggregate,
+            can_filter: field.can_filter,
             db_column: field.db_column.to_string(),
             ref_display_column: field.ref_display_column.map(|s| s.to_string()),
             source_table: field.source_table.map(|s| s.to_string()),

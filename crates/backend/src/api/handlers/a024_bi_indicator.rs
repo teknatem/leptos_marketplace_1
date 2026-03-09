@@ -9,6 +9,8 @@ use crate::domain::a024_bi_indicator;
 use contracts::domain::a024_bi_indicator::aggregate::{
     BiIndicator, GenerateViewRequest, GenerateViewResponse,
 };
+use contracts::shared::drilldown::{DrilldownRequest, DrilldownResponse};
+use contracts::shared::indicators::IndicatorContext;
 
 #[derive(Deserialize)]
 pub struct BiIndicatorListParams {
@@ -152,6 +154,152 @@ pub async fn generate_view(
         Err(e) => {
             tracing::error!("Failed to generate BI indicator view: {}", e);
             Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Compute (for DataView / DataSourceConfig path)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct ComputeParams {
+    pub date_from: String,
+    pub date_to: String,
+    #[serde(default)]
+    pub period2_from: Option<String>,
+    #[serde(default)]
+    pub period2_to: Option<String>,
+    /// Comma-separated list of connection_mp UUIDs
+    #[serde(default)]
+    pub connection_mp_refs: Option<String>,
+}
+
+/// POST /api/a024-bi-indicator/:id/compute
+///
+/// Вычисляет значение индикатора через его собственный data_spec
+/// (DataView → DataSourceConfig → IndicatorRegistry).
+pub async fn compute(
+    Path(id): Path<String>,
+    Json(params): Json<ComputeParams>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    let connection_mp_refs: Vec<String> = params
+        .connection_mp_refs
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut extra = std::collections::HashMap::new();
+    if let Some(ref f) = params.period2_from {
+        extra.insert("period2_from".to_string(), f.clone());
+    }
+    if let Some(ref t) = params.period2_to {
+        extra.insert("period2_to".to_string(), t.clone());
+    }
+
+    let ctx = IndicatorContext {
+        date_from: params.date_from.clone(),
+        date_to: params.date_to.clone(),
+        organization_ref: None,
+        marketplace: None,
+        connection_mp_refs,
+        extra,
+    };
+
+    match a024_bi_indicator::service::compute_indicator(&id, &ctx).await {
+        Ok(val) => Ok(Json(serde_json::json!({
+            "value": val.value,
+            "previous_value": val.previous_value,
+            "change_percent": val.change_percent,
+            "status": val.status,
+            "subtitle": val.subtitle,
+            "spark_points": val.spark_points,
+        }))),
+        Err(e) => {
+            tracing::error!("compute error for indicator {}: {}", id, e);
+            Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drilldown
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct DrilldownParams {
+    pub group_by: String,
+    pub date_from: String,
+    pub date_to: String,
+    #[serde(default)]
+    pub period2_from: Option<String>,
+    #[serde(default)]
+    pub period2_to: Option<String>,
+    /// Comma-separated list of connection_mp UUIDs
+    #[serde(default)]
+    pub connection_mp_refs: Option<String>,
+}
+
+/// GET /api/a024-bi-indicator/:id/drilldown
+///
+/// Возвращает детализацию индикатора по выбранному измерению за 2 периода.
+pub async fn drilldown(
+    Path(id): Path<String>,
+    Query(params): Query<DrilldownParams>,
+) -> Result<Json<DrilldownResponse>, axum::http::StatusCode> {
+    let connection_mp_refs: Vec<String> = params
+        .connection_mp_refs
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut extra = std::collections::HashMap::new();
+    if let Some(ref f) = params.period2_from {
+        extra.insert("period2_from".to_string(), f.clone());
+    }
+    if let Some(ref t) = params.period2_to {
+        extra.insert("period2_to".to_string(), t.clone());
+    }
+
+    let ctx = IndicatorContext {
+        date_from: params.date_from.clone(),
+        date_to: params.date_to.clone(),
+        organization_ref: None,
+        marketplace: None,
+        connection_mp_refs,
+        extra,
+    };
+
+    match a024_bi_indicator::service::get_indicator_drilldown(&id, params.group_by, &ctx).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            tracing::error!("Drilldown error for indicator {}: {}", id, e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Universal drilldown endpoint
+// ---------------------------------------------------------------------------
+
+/// POST /api/drilldown/execute
+///
+/// Универсальный drilldown — принимает schema_id явно, без привязки к индикатору.
+pub async fn execute_drilldown(
+    Json(req): Json<DrilldownRequest>,
+) -> Result<Json<DrilldownResponse>, axum::http::StatusCode> {
+    match crate::shared::indicators::schema_executor::execute_drilldown(&req).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            tracing::error!("Universal drilldown error: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }

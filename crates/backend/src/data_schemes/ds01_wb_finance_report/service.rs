@@ -19,7 +19,7 @@ use super::schema::DS01_SCHEMA;
 
 /// Execute a dashboard query
 pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboardResponse> {
-    // Support DS01 and DS02 schemas, with backward compatibility for old IDs
+    // Support DS01, DS02, DS03 schemas, with backward compatibility for old IDs
     let schema = match config.data_source.as_str() {
         "ds01_wb_finance_report" => &DS01_SCHEMA,
         // Backward compatibility
@@ -27,18 +27,19 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
         "ds02_mp_sales_register" | "p900_sales_register" => {
             &crate::data_schemes::ds02_mp_sales_register::schema::DS02_SCHEMA
         }
+        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
         _ => {
             // Try registry for other data sources
             let registry = get_registry();
             if registry.has_schema(&config.data_source) {
                 // Schema found but not yet supported for execution
                 return Err(anyhow::anyhow!(
-                    "Data source '{}' is registered but not yet supported for execution",
+                    "Data source '{}' is registered but not yet supported for execution. Supported: ds01_wb_finance_report, ds02_mp_sales_register, ds03_p904_sales",
                     config.data_source
                 ));
             } else {
                 return Err(anyhow::anyhow!(
-                    "Unknown data source: {}",
+                    "Unknown data source: '{}'. Check schema ID spelling.",
                     config.data_source
                 ));
             }
@@ -370,7 +371,7 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse> {
-    // Support DS01 and DS02 schemas, with backward compatibility
+    // Support DS01, DS02, DS03 schemas, with backward compatibility
     let schema = match config.data_source.as_str() {
         "ds01_wb_finance_report" => &DS01_SCHEMA,
         // Backward compatibility
@@ -378,9 +379,10 @@ pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse
         "ds02_mp_sales_register" | "p900_sales_register" => {
             &crate::data_schemes::ds02_mp_sales_register::schema::DS02_SCHEMA
         }
+        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
         _ => {
             return Err(anyhow::anyhow!(
-                "Unsupported data source: {}",
+                "Unsupported data source for SQL generation: '{}'. Supported: ds01_wb_finance_report, ds02_mp_sales_register, ds03_p904_sales",
                 config.data_source
             ));
         }

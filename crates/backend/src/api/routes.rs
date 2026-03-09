@@ -539,6 +539,18 @@ pub fn configure_business_routes() -> Router {
             "/api/a024-bi-indicator/:id",
             get(handlers::a024_bi_indicator::get_by_id).delete(handlers::a024_bi_indicator::delete),
         )
+        .route(
+            "/api/a024-bi-indicator/:id/compute",
+            post(handlers::a024_bi_indicator::compute),
+        )
+        .route(
+            "/api/a024-bi-indicator/:id/drilldown",
+            get(handlers::a024_bi_indicator::drilldown),
+        )
+        .route(
+            "/api/drilldown/execute",
+            post(handlers::a024_bi_indicator::execute_drilldown),
+        )
         // ========================================
         // USECASES (U501-U506)
         // ========================================
@@ -949,5 +961,48 @@ pub fn configure_business_routes() -> Router {
         .route(
             "/api/a025-bi-dashboard/:id",
             get(handlers::a025_bi_dashboard::get_by_id).delete(handlers::a025_bi_dashboard::delete),
+        )
+        // ========================================
+        // DataView semantic layer catalog
+        // ========================================
+        .route(
+            "/api/data-view",
+            get(handlers::data_view::list),
+        )
+        // Static routes must come before /:id to avoid shadowing
+        .route(
+            "/api/data-view/filters",
+            get(handlers::data_view::list_filters),
+        )
+        .route(
+            "/api/data-view/:id",
+            get(handlers::data_view::get_by_id),
+        )
+        .route(
+            "/api/data-view/:id/filters",
+            get(handlers::data_view::get_view_filters),
+        )
+        .route(
+            "/api/data-view/:id/compute",
+            axum::routing::post(handlers::data_view::compute),
+        )
+        .route(
+            "/api/data-view/:id/drilldown",
+            axum::routing::post(handlers::data_view::drilldown),
+        )
+        // ========================================
+        // Drilldown session store (sys_drilldown)
+        // ========================================
+        .route(
+            "/api/sys-drilldown",
+            axum::routing::post(handlers::sys_drilldown::create),
+        )
+        .route(
+            "/api/sys-drilldown/:id",
+            axum::routing::get(handlers::sys_drilldown::get_by_id),
+        )
+        .route(
+            "/api/sys-drilldown/:id/data",
+            axum::routing::get(handlers::sys_drilldown::get_data),
         )
 }

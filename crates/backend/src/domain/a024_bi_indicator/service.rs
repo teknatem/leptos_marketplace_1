@@ -3,6 +3,8 @@ use contracts::domain::a024_bi_indicator::aggregate::{
     BiIndicator, BiIndicatorId, BiIndicatorStatus, DataSpec, DrillSpec, ParamDef, ViewSpec,
 };
 use contracts::domain::common::AggregateId;
+use contracts::shared::drilldown::{DrilldownRequest, DrilldownResponse};
+use contracts::shared::indicators::{IndicatorContext, IndicatorId, IndicatorValue};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -238,7 +240,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "IND-REVENUE-WB",
             "Выручка WB",
             "Сквозной пример: суммарная выручка по выбранным кабинетам WB за период. schema_id=sales_revenue.",
-            r#"{"schema_id":"sales_revenue","query_config":{"data_source":"p904_sales_data","selected_fields":["revenue"],"groupings":[],"filters":{},"display_fields":[],"sort":{"field":"","ascending":true},"enabled_fields":[]},"sql_artifact_id":null}"#,
+            r#"{"schema_id":"sales_revenue","view_id":"dv001_revenue","query_config":{"data_source":"p904_sales_data","selected_fields":["revenue"],"groupings":[],"filters":{},"display_fields":[],"sort":{"field":"","ascending":true},"enabled_fields":[]},"sql_artifact_id":null}"#,
             r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"},{"key":"connection_ids","param_type":"ref","label":"Кабинеты МП","default_value":null,"required":false,"global_filter_key":"connection_ids"}]"#,
             r#"{"style_name":"custom","custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
             "active",
@@ -302,6 +304,134 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+// ============================================================================
+// Schema-based indicator compute
+// ============================================================================
+
+/// Вычислить значение индикатора по его ID.
+///
+/// Приоритет диспетчера:
+/// 1. `data_spec.data_source_config` — новый универсальный путь (IndicatorDataSourceConfig)
+/// 2. `data_spec.schema_query` — устаревший p904-специфичный путь (backward compat)
+/// 3. IndicatorRegistry — legacy-путь по schema_id строке
+pub async fn compute_indicator(
+    id: &str,
+    ctx: &IndicatorContext,
+) -> anyhow::Result<IndicatorValue> {
+    let indicator_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
+    let indicator_id = BiIndicatorId::new(indicator_uuid);
+
+    let db = crate::shared::data::db::get_connection();
+    let indicator = repository::find_by_id(&db, &indicator_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("BI Indicator not found: {}", id))?;
+
+    // DataView path (highest priority)
+    if let Some(view_id) = &indicator.data_spec.view_id {
+        use crate::data_view::DataViewRegistry;
+        use contracts::shared::data_view::ViewContext;
+        let registry = DataViewRegistry::new();
+        let view_ctx = ViewContext::from(ctx);
+        return registry
+            .compute_scalar(view_id, &view_ctx)
+            .await
+            .map_err(|e| anyhow::anyhow!("DataView '{}' compute error: {}", view_id, e));
+    }
+
+    if let Some(dsc) = &indicator.data_spec.data_source_config {
+        // New universal path
+        crate::shared::indicators::schema_executor::compute_from_data_source(
+            dsc,
+            ctx,
+            IndicatorId::new(id),
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("DataSourceConfig compute error: {}", e))
+    } else if let Some(schema_config) = &indicator.data_spec.schema_query {
+        // Legacy p904 schema path (backward compat)
+        crate::shared::indicators::schema_executor::compute_p904(
+            schema_config,
+            ctx,
+            IndicatorId::new(id),
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("Schema compute error: {}", e))
+    } else {
+        // Legacy registry path
+        use crate::shared::indicators::registry::IndicatorRegistry;
+        let schema_id = &indicator.data_spec.schema_id;
+        let ind_id = IndicatorId::new(schema_id);
+        let registry = IndicatorRegistry::new();
+        let results = registry.compute(&[ind_id.clone()], ctx).await;
+        results
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No result from registry for schema_id={}", schema_id))
+    }
+}
+
+/// Выполнить drilldown для индикатора.
+///
+/// Schema_id берётся из `data_spec.schema_id` (или "ds03_p904_sales" если задан schema_query).
+pub async fn get_indicator_drilldown(
+    id: &str,
+    group_by: String,
+    ctx: &IndicatorContext,
+) -> anyhow::Result<DrilldownResponse> {
+    let indicator_uuid =
+        Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
+    let indicator_id = BiIndicatorId::new(indicator_uuid);
+
+    let db = crate::shared::data::db::get_connection();
+    let indicator = repository::find_by_id(&db, &indicator_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("BI Indicator not found: {}", id))?;
+
+    // DataView path (highest priority)
+    if let Some(view_id) = &indicator.data_spec.view_id {
+        use crate::data_view::DataViewRegistry;
+        use contracts::shared::data_view::ViewContext;
+        let registry = DataViewRegistry::new();
+        let view_ctx = ViewContext::from(ctx);
+        return registry
+            .compute_drilldown(view_id, &view_ctx, &group_by)
+            .await
+            .map_err(|e| anyhow::anyhow!("DataView '{}' drilldown error: {}", view_id, e));
+    }
+
+    // Determine schema_id and metric_column — prefer new data_source_config
+    let (schema_id, metric_column) = if let Some(dsc) = &indicator.data_spec.data_source_config {
+        (dsc.schema_id.clone(), dsc.metric_field_id.clone())
+    } else if indicator.data_spec.schema_query.is_some() {
+        let metric = indicator
+            .data_spec
+            .schema_query
+            .as_ref()
+            .map(|sq| sq.metric.column_name().to_string())
+            .unwrap_or_else(|| "customer_in".to_string());
+        ("ds03_p904_sales".to_string(), metric)
+    } else {
+        (indicator.data_spec.schema_id.clone(), "customer_in".to_string())
+    };
+
+    let req = DrilldownRequest {
+        schema_id,
+        group_by,
+        date_from: ctx.date_from.clone(),
+        date_to: ctx.date_to.clone(),
+        period2_from: ctx.extra.get("period2_from").cloned(),
+        period2_to: ctx.extra.get("period2_to").cloned(),
+        connection_mp_refs: ctx.connection_mp_refs.clone(),
+        extra_filters: std::collections::HashMap::new(),
+        metric_column,
+    };
+
+    crate::shared::indicators::schema_executor::execute_drilldown(&req)
+        .await
+        .map_err(|e| anyhow::anyhow!("Drilldown error: {}", e))
 }
 
 // ============================================================================

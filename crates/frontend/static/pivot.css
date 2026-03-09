@@ -313,12 +313,12 @@
 }
 
 .sql-query {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: var(--fontFamilyMonospace);
     background: var(--thaw-color-neutral-background-2);
     padding: 16px;
     border-radius: 8px;
-    line-height: 1.8;
-    font-size: 13px;
+    line-height: 1.2;
+    font-size: 15px;
     overflow-x: auto;
     border: 1px solid var(--thaw-color-neutral-stroke-1);
 }

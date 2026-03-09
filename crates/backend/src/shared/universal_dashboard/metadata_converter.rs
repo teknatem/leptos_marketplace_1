@@ -31,6 +31,8 @@ pub fn metadata_to_pivot_schema(
         id: entity.entity_index.to_string(),
         name: entity.ui.list_name.to_string(),
         fields: pivot_fields,
+        // Auto-schemas don't declare explicit recommended filters
+        schema_filters: Vec::new(),
     }
 }
 
@@ -55,6 +57,8 @@ fn field_to_pivot_def(field: &FieldMetadata, resolver: &impl RefResolver) -> Fie
         value_type: ValueType::from_field_type(pivot_type, ref_table.as_deref()),
         can_group,
         can_aggregate,
+        // For auto-generated schemas: dimensions (can_group) are filterable, metrics are not
+        can_filter: can_group,
         db_column: field.name.to_string(),
         ref_display_column: ref_display,
         source_table: None,

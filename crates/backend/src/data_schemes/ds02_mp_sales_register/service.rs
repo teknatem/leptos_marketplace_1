@@ -19,7 +19,7 @@ use super::schema::DS02_SCHEMA;
 
 /// Execute a dashboard query
 pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboardResponse> {
-    // Support DS01 and DS02 schemas, with backward compatibility for old IDs
+    // Support DS01, DS02, DS03 schemas, with backward compatibility for old IDs
     let schema = match config.data_source.as_str() {
         "ds02_mp_sales_register" => &DS02_SCHEMA,
         // Backward compatibility
@@ -27,6 +27,7 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
         "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
             &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
         }
+        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
         _ => {
             // Try registry for other data sources
             let registry = get_registry();
@@ -379,7 +380,7 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse> {
-    // Support DS01 and DS02 schemas, with backward compatibility
+    // Support DS01, DS02, DS03 schemas, with backward compatibility
     let schema = match config.data_source.as_str() {
         "ds02_mp_sales_register" => &DS02_SCHEMA,
         // Backward compatibility
@@ -387,9 +388,10 @@ pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse
         "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
             &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
         }
+        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
         _ => {
             return Err(anyhow::anyhow!(
-                "Unsupported data source: {}",
+                "Unsupported data source for SQL generation: '{}'. Supported: ds01_wb_finance_report, ds02_mp_sales_register, ds03_p904_sales",
                 config.data_source
             ));
         }

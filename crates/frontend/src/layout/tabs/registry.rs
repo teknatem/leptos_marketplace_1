@@ -44,8 +44,10 @@ use crate::domain::a023_purchase_of_goods::ui::list::PurchaseOfGoodsList;
 use crate::domain::a024_bi_indicator::ui::details::BiIndicatorDetails;
 use crate::domain::a024_bi_indicator::ui::list::BiIndicatorList;
 use crate::domain::a025_bi_dashboard::ui::dashboard::BiDashboardView;
+use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
 use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
+use crate::data_view::ui::{DataViewDetail, DataViewList, FilterRegistryPage};
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -503,6 +505,17 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             .into_any()
         }
 
+        // DataView semantic layer catalog
+        "data_view" => view! { <DataViewList /> }.into_any(),
+        "filter_registry" => view! { <FilterRegistryPage /> }.into_any(),
+        k if k.starts_with("data_view_detail_") => {
+            let view_id = k
+                .strip_prefix("data_view_detail_")
+                .unwrap()
+                .to_string();
+            view! { <DataViewDetail view_id=view_id /> }.into_any()
+        }
+
         "a020_wb_promotion" => view! { <WbPromotionList /> }.into_any(),
         k if k.starts_with("a020_wb_promotion_detail_") => {
             let id = k
@@ -746,6 +759,27 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 log!("⚠️ Bad universal_dashboard_report tab key: {}", k);
                 view! { <div class="placeholder">{"Bad report tab key"}</div> }.into_any()
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Drilldown Report (DataView-based, session-stored)
+        // Tab key format: "drilldown__{session_id}"
+        // Full params are stored in sys_drilldown table on the server.
+        // ═══════════════════════════════════════════════════════════════════
+        k if k.starts_with("drilldown__") => {
+            let session_id = k.strip_prefix("drilldown__").unwrap_or("").to_string();
+            log!("✅ DrilldownReportPage session_id={}", session_id);
+
+            let key_for_close2 = key_for_close.clone();
+            view! {
+                <DrilldownReportPage
+                    session_id=session_id
+                    on_close=Some(Callback::new(move |_| {
+                        tabs_store.close_tab(&key_for_close2);
+                    }))
+                />
+            }
+            .into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

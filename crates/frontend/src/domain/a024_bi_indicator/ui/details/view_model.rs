@@ -30,51 +30,20 @@ fn get_app_theme() -> String {
 }
 
 fn default_query_config_value() -> serde_json::Value {
+    // filters and sort MUST be objects (structs on backend), NOT arrays.
+    // DashboardFilters = struct { date_from, date_to, dimensions, conditions, ... }
+    // DashboardSort   = struct { rules: [] }
     serde_json::json!({
         "data_source": "",
         "selected_fields": [],
         "groupings": [],
         "display_fields": [],
-        "filters": [],
-        "sort": [],
+        "filters": {},
+        "sort": { "rules": [] },
         "enabled_fields": []
     })
 }
 
-fn normalized_query_config(value: serde_json::Value) -> serde_json::Value {
-    let mut obj = if let Some(obj) = value.as_object() {
-        obj.clone()
-    } else {
-        serde_json::Map::new()
-    };
-
-    if !obj.contains_key("data_source") {
-        obj.insert(
-            "data_source".to_string(),
-            serde_json::Value::String(String::new()),
-        );
-    }
-    if !obj.contains_key("selected_fields") {
-        obj.insert("selected_fields".to_string(), serde_json::json!([]));
-    }
-    if !obj.contains_key("groupings") {
-        obj.insert("groupings".to_string(), serde_json::json!([]));
-    }
-    if !obj.contains_key("display_fields") {
-        obj.insert("display_fields".to_string(), serde_json::json!([]));
-    }
-    if !obj.contains_key("filters") {
-        obj.insert("filters".to_string(), serde_json::json!([]));
-    }
-    if !obj.contains_key("sort") {
-        obj.insert("sort".to_string(), serde_json::json!([]));
-    }
-    if !obj.contains_key("enabled_fields") {
-        obj.insert("enabled_fields".to_string(), serde_json::json!([]));
-    }
-
-    serde_json::Value::Object(obj)
-}
 
 fn format_money(v: f64, symbol: &str) -> String {
     let abs = v.abs();
@@ -145,6 +114,35 @@ fn normalize_design(style_name: &str, custom_css: &str) -> String {
     }
 }
 
+fn normalized_loaded_status(value: &serde_json::Value) -> String {
+    let raw = value.as_str().unwrap_or("draft").trim();
+    match raw {
+        "Draft" | "draft" => "draft".to_string(),
+        "Active" | "active" => "active".to_string(),
+        "Archived" | "archived" => "archived".to_string(),
+        _ => "draft".to_string(),
+    }
+}
+
+fn read_i64_field(root: &serde_json::Value, top_level_key: &str, metadata_key: &str, default: i64) -> i64 {
+    root[top_level_key]
+        .as_i64()
+        .or_else(|| root["metadata"][metadata_key].as_i64())
+        .unwrap_or(default)
+}
+
+fn read_string_field(
+    root: &serde_json::Value,
+    top_level_key: &str,
+    metadata_key: &str,
+) -> String {
+    root[top_level_key]
+        .as_str()
+        .or_else(|| root["metadata"][metadata_key].as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 #[derive(Clone, Debug)]
 pub struct LlmGenerationEntry {
     pub prompt: String,
@@ -165,10 +163,9 @@ pub struct BiIndicatorDetailsVm {
     pub is_public: RwSignal<bool>,
     pub version: RwSignal<i64>,
 
-    // DataSpec fields
-    pub data_spec_schema_id: RwSignal<String>,
-    pub data_spec_sql_artifact_id: RwSignal<String>,
-    pub data_spec_query_config_json: RwSignal<String>,
+    // DataView config
+    /// DataView ID (e.g. "dv001_revenue") — единственный путь вычисления индикатора.
+    pub dsc_view_id: RwSignal<String>,
 
     // Params (whole Vec<ParamDef> as JSON string)
     pub params_json: RwSignal<String>,
@@ -225,6 +222,9 @@ pub struct BiIndicatorDetailsVm {
     // === DataSpec live test ===
     pub test_date_from: RwSignal<String>,
     pub test_date_to: RwSignal<String>,
+    /// Second period (for DataView comparison)
+    pub test_period2_from: RwSignal<String>,
+    pub test_period2_to: RwSignal<String>,
     /// Newline- or comma-separated connection_mp IDs (empty = all)
     pub test_connection_ids: RwSignal<String>,
     pub test_loading: RwSignal<bool>,
@@ -244,12 +244,7 @@ impl BiIndicatorDetailsVm {
             is_public: RwSignal::new(false),
             version: RwSignal::new(1),
 
-            data_spec_schema_id: RwSignal::new(String::new()),
-            data_spec_sql_artifact_id: RwSignal::new(String::new()),
-            data_spec_query_config_json: RwSignal::new(
-                serde_json::to_string_pretty(&default_query_config_value())
-                    .unwrap_or_else(|_| "{}".to_string()),
-            ),
+            dsc_view_id: RwSignal::new(String::new()),
 
             params_json: RwSignal::new("[]".to_string()),
 
@@ -269,7 +264,7 @@ impl BiIndicatorDetailsVm {
             created_by: RwSignal::new(String::new()),
             updated_by: RwSignal::new(String::new()),
 
-            active_tab: RwSignal::new("general"),
+            active_tab: RwSignal::new("preview"),
             loading: RwSignal::new(false),
             saving: RwSignal::new(false),
             error: RwSignal::new(None),
@@ -324,6 +319,45 @@ impl BiIndicatorDetailsVm {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 "2026-03-05".to_string()
+            }),
+            test_period2_from: RwSignal::new({
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use js_sys::Date;
+                    let d = Date::new_0();
+                    let y = d.get_full_year();
+                    let m = d.get_month(); // 0-based
+                    if m == 0 {
+                        format!("{}-12-01", y - 1)
+                    } else {
+                        format!("{}-{:02}-01", y, m)
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                "2026-02-01".to_string()
+            }),
+            test_period2_to: RwSignal::new({
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use js_sys::Date;
+                    let d = Date::new_0();
+                    let y = d.get_full_year();
+                    let m = d.get_month(); // 0-based: current month
+                    // last day of previous month = day 0 of current month
+                    let last_day = if m == 0 {
+                        Date::new_with_year_month_day(y as u32 - 1, 12, 0)
+                    } else {
+                        Date::new_with_year_month_day(y as u32, m as i32, 0)
+                    };
+                    format!(
+                        "{}-{:02}-{:02}",
+                        last_day.get_full_year(),
+                        last_day.get_month() + 1,
+                        last_day.get_date()
+                    )
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                "2026-02-28".to_string()
             }),
             test_connection_ids: RwSignal::new(String::new()),
             test_loading: RwSignal::new(false),
@@ -559,15 +593,17 @@ impl BiIndicatorDetailsVm {
         }
     }
 
-    /// Run the indicator compute against real data using the current DataSpec schema_id
+    /// Вычислить индикатор через DataView. Требует сохранённого UUID.
     pub fn run_test(&self) {
-        let schema_id = self.data_spec_schema_id.get();
-        if schema_id.trim().is_empty() {
-            self.test_error.set(Some("Schema ID не задан".into()));
+        let Some(uuid) = self.id.get() else {
+            self.test_error.set(Some("Сохраните индикатор перед тестированием".into()));
             return;
-        }
+        };
+
         let date_from = self.test_date_from.get();
         let date_to = self.test_date_to.get();
+        let period2_from = self.test_period2_from.get();
+        let period2_to = self.test_period2_to.get();
         let raw_ids = self.test_connection_ids.get();
         let connection_ids: Vec<String> = raw_ids
             .split([',', '\n'])
@@ -575,14 +611,24 @@ impl BiIndicatorDetailsVm {
             .filter(|s| !s.is_empty())
             .collect();
 
+        let p2_from = if period2_from.trim().is_empty() { None } else { Some(period2_from) };
+        let p2_to   = if period2_to.trim().is_empty()   { None } else { Some(period2_to)   };
+
         let this = self.clone();
         this.test_loading.set(true);
         this.test_error.set(None);
         this.test_result.set(None);
 
         leptos::task::spawn_local(async move {
-            match model::compute_indicator_schema(&schema_id, &date_from, &date_to, connection_ids)
-                .await
+            match model::compute_indicator_by_id(
+                &uuid,
+                &date_from,
+                &date_to,
+                p2_from.as_deref(),
+                p2_to.as_deref(),
+                connection_ids,
+            )
+            .await
             {
                 Ok(result) => {
                     this.test_loading.set(false);
@@ -684,24 +730,18 @@ impl BiIndicatorDetailsVm {
     // === Private helpers ===
 
     fn to_dto(&self) -> BiIndicatorSaveDto {
-        let query_config_raw =
-            serde_json::from_str::<serde_json::Value>(&self.data_spec_query_config_json.get())
-                .unwrap_or_else(|_| default_query_config_value());
-        let query_config = normalized_query_config(query_config_raw);
-
-        let sql_artifact_id = {
-            let s = self.data_spec_sql_artifact_id.get();
-            if s.trim().is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::Value::String(s)
-            }
+        let view_id = self.dsc_view_id.get();
+        let view_id_value = if view_id.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(view_id)
         };
 
         let data_spec = serde_json::json!({
-            "schema_id": self.data_spec_schema_id.get(),
-            "query_config": query_config,
-            "sql_artifact_id": sql_artifact_id,
+            "schema_id": "",
+            "query_config": default_query_config_value(),
+            "sql_artifact_id": serde_json::Value::Null,
+            "view_id": view_id_value,
         });
 
         let params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
@@ -800,28 +840,19 @@ impl BiIndicatorDetailsVm {
             .set(v["description"].as_str().unwrap_or("").to_string());
         self.comment
             .set(v["comment"].as_str().unwrap_or("").to_string());
-        self.status
-            .set(v["status"].as_str().unwrap_or("draft").to_string());
+        self.status.set(normalized_loaded_status(&v["status"]));
         self.owner_user_id
             .set(v["owner_user_id"].as_str().unwrap_or("").to_string());
         self.is_public
             .set(v["is_public"].as_bool().unwrap_or(false));
-        self.version.set(v["version"].as_i64().unwrap_or(1));
+        self.version.set(read_i64_field(v, "version", "version", 1));
 
-        // DataSpec
+        // DataSpec — только view_id
+        self.dsc_view_id.set(String::new());
         if let Some(ds) = v.get("data_spec") {
-            self.data_spec_schema_id
-                .set(ds["schema_id"].as_str().unwrap_or("").to_string());
-            self.data_spec_sql_artifact_id
-                .set(ds["sql_artifact_id"].as_str().unwrap_or("").to_string());
-            let normalized = normalized_query_config(
-                ds.get("query_config")
-                    .cloned()
-                    .unwrap_or_else(default_query_config_value),
-            );
-            self.data_spec_query_config_json.set(
-                serde_json::to_string_pretty(&normalized).unwrap_or_else(|_| "{}".to_string()),
-            );
+            if let Some(vid) = ds.get("view_id").and_then(|v| v.as_str()) {
+                self.dsc_view_id.set(vid.to_string());
+            }
         }
 
         // Params
@@ -932,9 +963,9 @@ impl BiIndicatorDetailsVm {
 
         // Meta
         self.created_at
-            .set(v["created_at"].as_str().unwrap_or("").to_string());
+            .set(read_string_field(v, "created_at", "created_at"));
         self.updated_at
-            .set(v["updated_at"].as_str().unwrap_or("").to_string());
+            .set(read_string_field(v, "updated_at", "updated_at"));
         self.created_by
             .set(v["created_by"].as_str().unwrap_or("").to_string());
         self.updated_by

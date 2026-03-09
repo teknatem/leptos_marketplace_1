@@ -8,7 +8,7 @@ use super::condition::FilterCondition;
 use super::schema::{AggregateFunction, FilterOperator};
 
 /// Dashboard configuration selected by the user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DashboardConfig {
     /// Data source identifier (e.g., "p903_wb_finance_report")
     pub data_source: String,

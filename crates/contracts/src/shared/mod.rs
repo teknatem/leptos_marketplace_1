@@ -1,3 +1,5 @@
+pub mod data_view;
+pub mod drilldown;
 pub mod form_settings;
 pub mod indicators;
 pub mod logger;

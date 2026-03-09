@@ -94,17 +94,6 @@ fn TabBar(vm: BiIndicatorDetailsVm) -> impl IntoView {
         <div class="page__tabs">
             <button
                 class="page__tab"
-                class:page__tab--active=move || active_tab.get() == "general"
-                on:click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("general")
-                }
-            >
-                {icon("file-text")} " Основная"
-            </button>
-
-            <button
-                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "preview"
                 on:click={
                     let vm = vm.clone();
@@ -112,6 +101,17 @@ fn TabBar(vm: BiIndicatorDetailsVm) -> impl IntoView {
                 }
             >
                 {icon("eye")} " Превью"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("general")
+                }
+            >
+                {icon("file-text")} " Основная"
             </button>
 
             <button

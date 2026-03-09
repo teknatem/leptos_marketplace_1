@@ -56,6 +56,7 @@ impl IndicatorRegistry {
                             change_percent: None,
                             status: IndicatorStatus::Neutral,
                             subtitle: Some(format!("Ошибка: {e}")),
+                            spark_points: vec![],
                         });
                     }
                 }
