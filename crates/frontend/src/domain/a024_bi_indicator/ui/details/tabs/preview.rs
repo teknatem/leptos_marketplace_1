@@ -67,24 +67,6 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
             })}
 
             <div style="margin-bottom: var(--spacing-sm); display: flex; align-items: center; gap: 8px;">
-                <span class="text-muted" style="font-size: 12px;">"Дизайн"</span>
-                <select
-                    class="form__select form__select--sm"
-                    prop:value=move || style_sig.get()
-                    on:change=move |ev| {
-                        let target = ev.target().unwrap();
-                        let sel: &web_sys::HtmlSelectElement = target.unchecked_ref();
-                        style_sig.set(sel.value());
-                    }
-                >
-                    {move || {
-                        design_options
-                            .get()
-                            .into_iter()
-                            .map(|entry| view! { <option value=entry.key>{entry.label}</option> })
-                            .collect_view()
-                    }}
-                </select>
                 <Button appearance=ButtonAppearance::Subtle on_click=fill_demo.clone()>
                     "Заполнить"
                 </Button>
@@ -136,10 +118,32 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                 // Right: sticky live preview.
                 <div class="bi-preview__split-preview">
                     <CardAnimated delay_ms=40>
-                        <h4 class="details-section__title">
-                            {icon("eye")} " Предпросмотр"
-                        </h4>
-                        <div class="bi-preview__sandbox" style="margin-top: var(--spacing-sm);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--spacing-sm);">
+                            <h4 class="details-section__title" style="margin: 0;">
+                                {icon("eye")} " Предпросмотр"
+                            </h4>
+                            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                                <span class="text-muted" style="font-size: 12px;">"Дизайн"</span>
+                                <select
+                                    class="form__select form__select--sm"
+                                    prop:value=move || style_sig.get()
+                                    on:change=move |ev| {
+                                        let target = ev.target().unwrap();
+                                        let sel: &web_sys::HtmlSelectElement = target.unchecked_ref();
+                                        style_sig.set(sel.value());
+                                    }
+                                >
+                                    {move || {
+                                        design_options
+                                            .get()
+                                            .into_iter()
+                                            .map(|entry| view! { <option value=entry.key>{entry.label}</option> })
+                                            .collect_view()
+                                    }}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="bi-preview__sandbox">
                             <div class="bi-preview__frame-wrapper">
                                 <iframe
                                     class="bi-preview__iframe"

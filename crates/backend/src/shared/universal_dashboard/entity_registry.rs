@@ -13,6 +13,7 @@ use contracts::shared::universal_dashboard::{
 use super::metadata_converter::{metadata_to_pivot_schema, RefResolver};
 use crate::data_schemes::ds01_wb_finance_report::schema::{DS01_SCHEMA, DS01_TABLE_NAME};
 use crate::data_schemes::ds02_mp_sales_register::schema::{DS02_SCHEMA, DS02_TABLE_NAME};
+use crate::data_schemes::ds03_p904_sales::schema::{DS03_SCHEMA, DS03_TABLE_NAME};
 
 /// Information about a registered entity with metadata
 pub struct RegisteredEntity {
@@ -45,6 +46,7 @@ impl SchemaRegistry {
         // Register custom schemas
         registry.register_custom_schema(&DS01_SCHEMA, DS01_TABLE_NAME);
         registry.register_custom_schema(&DS02_SCHEMA, DS02_TABLE_NAME);
+        registry.register_custom_schema(&DS03_SCHEMA, DS03_TABLE_NAME);
 
         // Register auto schemas from metadata
         // Currently only a001, a017, a018, a019 have metadata

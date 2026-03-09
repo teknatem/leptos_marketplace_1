@@ -49,6 +49,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "layout-dashboard",
                 ),
                 (
+                    "data_view",
+                    tab_label_for_key("data_view"),
+                    "layers",
+                ),
+                (
                     "universal_dashboard",
                     tab_label_for_key("universal_dashboard"),
                     "table-pivot",
@@ -307,6 +312,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a017_llm_agent",
                     tab_label_for_key("a017_llm_agent"),
                     "robot",
+                ),
+                (
+                    "filter_registry",
+                    tab_label_for_key("filter_registry"),
+                    "filter",
                 ),
                 (
                     "sys_thaw_test",

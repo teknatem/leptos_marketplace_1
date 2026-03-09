@@ -90,28 +90,50 @@ pub async fn validate_all_schemas() -> Result<ValidateAllSchemasResponse, String
 pub async fn execute_dashboard(
     request: ExecuteDashboardRequest,
 ) -> Result<ExecuteDashboardResponse, String> {
-    Request::post(&format!("{}/execute", BASE_URL))
+    let resp = Request::post(&format!("{}/execute", BASE_URL))
         .json(&request)
         .map_err(|e| e.to_string())?
         .send()
         .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+            if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+                return Err(msg.to_string());
+            }
+        }
+        return Err(format!("HTTP {}: {}", status, body.chars().take(200).collect::<String>()));
+    }
+
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse, String> {
-    Request::post(&format!("{}/generate-sql", BASE_URL))
+    let resp = Request::post(&format!("{}/generate-sql", BASE_URL))
         .json(&ExecuteDashboardRequest { config })
         .map_err(|e| e.to_string())?
         .send()
         .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        // Try to get a meaningful error message from the response body
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        // Try to parse {"error": "..."} from body
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+            if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+                return Err(msg.to_string());
+            }
+        }
+        return Err(format!("HTTP {}: {}", status, body.chars().take(200).collect::<String>()));
+    }
+
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 // ============================================================================

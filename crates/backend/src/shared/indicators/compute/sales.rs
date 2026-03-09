@@ -154,6 +154,7 @@ pub async fn compute_sales_revenue(ctx: &IndicatorContext) -> Result<IndicatorVa
         change_percent: change,
         status: status_by_change(change, true),
         subtitle: None,
+        spark_points: vec![],
     })
 }
 
@@ -168,6 +169,7 @@ pub async fn compute_sales_order_count(ctx: &IndicatorContext) -> Result<Indicat
         change_percent: change,
         status: status_by_change(change, true),
         subtitle: None,
+        spark_points: vec![],
     })
 }
 
@@ -194,6 +196,7 @@ pub async fn compute_sales_avg_check(ctx: &IndicatorContext) -> Result<Indicator
         change_percent: change,
         status: status_by_change(change, true),
         subtitle: None,
+        spark_points: vec![],
     })
 }
 
@@ -208,5 +211,6 @@ pub async fn compute_sales_returns_sum(ctx: &IndicatorContext) -> Result<Indicat
         change_percent: change,
         status: status_by_change(change, false),
         subtitle: None,
+        spark_points: vec![],
     })
 }

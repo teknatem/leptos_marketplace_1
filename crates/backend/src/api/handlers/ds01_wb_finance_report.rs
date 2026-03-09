@@ -9,6 +9,7 @@ use contracts::shared::universal_dashboard::{
     ListSchemasResponse, SaveDashboardConfigRequest, SaveDashboardConfigResponse,
     SavedDashboardConfig, UpdateDashboardConfigRequest,
 };
+use serde_json::json;
 
 use crate::data_schemes::ds01_wb_finance_report::service;
 
@@ -42,7 +43,7 @@ pub async fn execute_dashboard(
 /// Generate SQL query without executing
 pub async fn generate_sql(
     Json(request): Json<ExecuteDashboardRequest>,
-) -> Result<Json<GenerateSqlResponse>, StatusCode> {
+) -> Result<Json<GenerateSqlResponse>, (StatusCode, Json<serde_json::Value>)> {
     tracing::info!(
         "DS01 Dashboard: Generating SQL for data source: {}",
         request.config.data_source
@@ -55,7 +56,10 @@ pub async fn generate_sql(
         }
         Err(e) => {
             tracing::error!("DS01 Dashboard: Failed to generate SQL: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({"error": e.to_string()})),
+            ))
         }
     }
 }

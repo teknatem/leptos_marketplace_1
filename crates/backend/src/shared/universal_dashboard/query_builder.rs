@@ -529,6 +529,12 @@ impl<'a> QueryBuilder<'a> {
         table_alias: &str,
     ) -> Result<(String, Vec<QueryParam>), String> {
         let field = self.find_field(&condition.field_id)?;
+        if !field.can_filter {
+            return Err(format!(
+                "Field '{}' is not filterable (can_filter = false)",
+                condition.field_id
+            ));
+        }
         let column_ref = format!("{}.{}", table_alias, field.db_column);
 
         let mut params = Vec::new();
@@ -776,6 +782,7 @@ mod tests {
                     field_type: FieldType::Date,
                     can_group: true,
                     can_aggregate: false,
+                    can_filter: true,
                     db_column: "date",
                     ref_table: None,
                     ref_display_column: None,
@@ -788,6 +795,7 @@ mod tests {
                     field_type: FieldType::Numeric,
                     can_group: false,
                     can_aggregate: true,
+                    can_filter: false,
                     db_column: "amount",
                     ref_table: None,
                     ref_display_column: None,
@@ -795,6 +803,7 @@ mod tests {
                     join_on_column: None,
                 },
             ],
+            schema_filters: &[],
         };
 
         let config = DashboardConfig {

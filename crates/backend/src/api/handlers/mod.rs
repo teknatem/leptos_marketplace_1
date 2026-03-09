@@ -39,6 +39,12 @@ pub mod p908_wb_goods_prices;
 // Indicator handlers
 pub mod indicators;
 
+// DataView semantic layer handlers
+pub mod data_view;
+
+// Drilldown session store
+pub mod sys_drilldown;
+
 // Dashboard handlers (d400)
 pub mod d400_monthly_summary;
 

@@ -194,14 +194,19 @@ pub fn SettingsTable(
                     <For
                         each=move || filtered_fields()
                         key=|field| field.id.clone()
-                        children=move |field| {
-                            view! {
-                                <FieldRow
-                                    field=field
-                                    config=config
-                                    is_loading_config=is_loading_config
-                                    on_config_change=on_config_change
-                                />
+                        children={
+                            let schema_filter_ids = schema.schema_filters.clone();
+                            move |field| {
+                                let is_schema_filter = schema_filter_ids.contains(&field.id);
+                                view! {
+                                    <FieldRow
+                                        field=field
+                                        config=config
+                                        is_loading_config=is_loading_config
+                                        on_config_change=on_config_change
+                                        is_schema_filter=is_schema_filter
+                                    />
+                                }
                             }
                         }
                     />
@@ -217,12 +222,16 @@ fn FieldRow(
     #[prop(into)] config: Signal<DashboardConfig>,
     is_loading_config: RwSignal<bool>,
     on_config_change: Callback<DashboardConfig>,
+    /// Whether this field is in the schema's recommended filter list
+    #[prop(default = false)]
+    is_schema_filter: bool,
 ) -> impl IntoView {
     let field_id = field.id.clone();
     let field_id_for_code = field_id.clone();
     let field_name = field.name.clone();
     let can_group = field.can_group;
     let can_aggregate = field.can_aggregate;
+    let can_filter = field.can_filter;
 
     // Get current role for function display (wrapped in StoredValue for multi-use)
     let get_role_func = StoredValue::new({
@@ -605,7 +614,20 @@ fn FieldRow(
                 </TableCellLayout>
             </TableCell>
             <TableCell>
-                <TableCellLayout>{field_name}</TableCellLayout>
+                <TableCellLayout>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        {field_name}
+                        {is_schema_filter.then(|| view! {
+                            <Badge
+                                appearance=BadgeAppearance::Tint
+                                color=BadgeColor::Success
+                                attr:title="Рекомендованный фильтр схемы"
+                            >
+                                "Ф"
+                            </Badge>
+                        })}
+                    </div>
+                </TableCellLayout>
             </TableCell>
             <TableCell>
                 <TableCellLayout>
@@ -696,27 +718,42 @@ fn FieldRow(
             </TableCell>
             <TableCell>
                 <TableCellLayout>
-                    {move || {
-                        let cond = get_condition.with_value(|f| f());
+                    {if can_filter {
                         view! {
-                            <ConditionDisplay
-                                condition=cond
-                                on_edit=on_edit_callback
-                                on_toggle=on_toggle_callback
-                            />
-                        }
-                    }}
-                    {move || {
-                        let cond = get_condition.with_value(|f| f());
+                            <div>
+                                {move || {
+                                    let cond = get_condition.with_value(|f| f());
+                                    view! {
+                                        <ConditionDisplay
+                                            condition=cond
+                                            on_edit=on_edit_callback
+                                            on_toggle=on_toggle_callback
+                                        />
+                                    }
+                                }}
+                                {move || {
+                                    let cond = get_condition.with_value(|f| f());
+                                    view! {
+                                        <ConditionEditorModal
+                                            open=editor_open
+                                            field=editing_field
+                                            existing_condition=cond
+                                            on_save=on_save_callback
+                                            on_delete=on_clear_callback
+                                        />
+                                    }
+                                }}
+                            </div>
+                        }.into_any()
+                    } else {
                         view! {
-                            <ConditionEditorModal
-                                open=editor_open
-                                field=editing_field
-                                existing_condition=cond
-                                on_save=on_save_callback
-                                on_delete=on_clear_callback
-                            />
-                        }
+                            <span
+                                style="color: var(--thaw-color-neutral-foreground-disabled); font-size: 12px;"
+                                title="Метрика не используется как фильтр"
+                            >
+                                "—"
+                            </span>
+                        }.into_any()
                     }}
                 </TableCellLayout>
             </TableCell>

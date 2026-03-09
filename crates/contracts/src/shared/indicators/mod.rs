@@ -86,6 +86,10 @@ pub struct IndicatorValue {
     pub status: IndicatorStatus,
     /// Optional secondary text displayed below the value.
     pub subtitle: Option<String>,
+    /// Daily values for period 1, sorted ascending by date (used for sparkline).
+    /// Empty when the data source does not provide daily breakdown.
+    #[serde(default)]
+    pub spark_points: Vec<f64>,
 }
 
 // ---------------------------------------------------------------------------

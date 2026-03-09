@@ -7,6 +7,7 @@ use crate::shared::bi_card::{
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use gloo_net::http::Request;
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::window_event_listener;
 use leptos::prelude::*;
@@ -62,9 +63,21 @@ struct IndicatorViewSpec {
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
+struct IndicatorSchemaQuery {
+    #[serde(default)]
+    pub available_dimensions: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub metric: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
 struct IndicatorDataSpec {
     #[serde(default)]
     pub schema_id: String,
+    #[serde(default)]
+    pub schema_query: Option<IndicatorSchemaQuery>,
+    #[serde(default)]
+    pub view_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
@@ -103,6 +116,9 @@ struct ComputedValue {
     pub change_percent: Option<f64>,
     /// "Good" | "Bad" | "Neutral" | "Warning"
     pub status: Option<String>,
+    /// Daily values for period 1 (for sparkline). Empty when not available.
+    #[serde(default)]
+    pub spark_points: Vec<f64>,
 }
 
 /// Краткое представление кабинета МП для мульти-выбора
@@ -136,6 +152,51 @@ struct BiDashboardData {
     pub description: String,
     pub layout: DashboardLayout,
     pub global_filters: Vec<GlobalFilter>,
+}
+
+/// Minimal local mirror of DimensionMeta for DataView drilldown
+#[derive(Clone, Debug, serde::Deserialize)]
+struct DataViewDim {
+    pub id: String,
+    pub label: String,
+}
+
+/// Minimal local mirror of DataViewMeta (only fields needed for drilldown)
+#[derive(Clone, Debug, serde::Deserialize)]
+struct DataViewMetaLocal {
+    #[serde(default)]
+    pub available_dimensions: Vec<DataViewDim>,
+}
+
+async fn fetch_dataview_meta(view_id: &str) -> Result<DataViewMetaLocal, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/data-view/{}", api_base(), view_id);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
 
 async fn fetch_dashboard(id: &str) -> Result<serde_json::Value, String> {
@@ -231,6 +292,7 @@ async fn fetch_indicator_defs(ids: &[String]) -> Result<HashMap<String, Indicato
 
     Ok(out)
 }
+
 
 /// Загрузить список кабинетов МП для мульти-выбора
 async fn fetch_connections() -> Vec<ConnectionItem> {
@@ -393,6 +455,91 @@ async fn fetch_indicator_data(
     result
 }
 
+/// Вычислить DataView-индикаторы через /api/a024-bi-indicator/:id/compute
+/// (те у которых задан data_spec.view_id)
+async fn fetch_indicator_data_view(
+    indicator_defs: &HashMap<String, IndicatorDef>,
+    session_filters: &HashMap<String, String>,
+) -> HashMap<String, ComputedValue> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let date_from = session_filters
+        .get("date_from")
+        .cloned()
+        .unwrap_or_else(|| "2024-01-01".to_string());
+    let date_to = session_filters
+        .get("date_to")
+        .cloned()
+        .unwrap_or_else(|| "2025-12-31".to_string());
+    let period2_from = session_filters.get("period2_from").cloned();
+    let period2_to = session_filters.get("period2_to").cloned();
+    let connection_mp_refs: Vec<String> = session_filters
+        .get("connection_ids")
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut result: HashMap<String, ComputedValue> = HashMap::new();
+
+    for (ind_id, def) in indicator_defs {
+        let Some(ref _view_id) = def.data_spec.view_id else {
+            continue;
+        };
+        if _view_id.trim().is_empty() {
+            continue;
+        }
+
+        let body = serde_json::json!({
+            "date_from": date_from,
+            "date_to": date_to,
+            "period2_from": period2_from,
+            "period2_to": period2_to,
+            "connection_mp_refs": connection_mp_refs.join(","),
+        });
+
+        let opts = RequestInit::new();
+        opts.set_method("POST");
+        opts.set_mode(RequestMode::Cors);
+        let body_str = body.to_string();
+        opts.set_body(&wasm_bindgen::JsValue::from_str(&body_str));
+
+        let Some(window) = web_sys::window() else { continue; };
+        let url = format!("{}/api/a024-bi-indicator/{}/compute", crate::shared::api_utils::api_base(), ind_id);
+        let Ok(request) = Request::new_with_str_and_init(&url, &opts) else { continue; };
+        let _ = request.headers().set("Accept", "application/json");
+        let _ = request.headers().set("Content-Type", "application/json");
+
+        let Ok(resp_val) = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await else { continue; };
+        let Ok(resp): Result<Response, _> = resp_val.dyn_into() else { continue; };
+        if !resp.ok() { continue; }
+        let Ok(text_promise) = resp.text() else { continue; };
+        let Ok(text_val) = wasm_bindgen_futures::JsFuture::from(text_promise).await else { continue; };
+        let Some(text) = text_val.as_string() else { continue; };
+
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) else { continue; };
+
+        let cv = ComputedValue {
+            id: ind_id.clone(),
+            value: parsed["value"].as_f64(),
+            previous_value: parsed["previous_value"].as_f64(),
+            change_percent: parsed["change_percent"].as_f64(),
+            status: parsed["status"].as_str().map(|s| s.to_string()),
+            spark_points: parsed["spark_points"]
+                .as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_f64()).collect())
+                .unwrap_or_default(),
+        };
+        result.insert(ind_id.clone(), cv);
+    }
+
+    result
+}
+
 fn reload_dashboard_data(
     id: String,
     loading: RwSignal<bool>,
@@ -480,9 +627,14 @@ fn reload_dashboard_data(
                         });
                     }
 
-                    // Загружаем реальные значения индикаторов
+                    // Загружаем реальные значения индикаторов:
+                    // 1) legacy schema_id путь
+                    // 2) DataView путь (view_id)
                     let current_filters = session_filters.get_untracked();
-                    let computed = fetch_indicator_data(&defs, &current_filters).await;
+                    let computed_schema = fetch_indicator_data(&defs, &current_filters).await;
+                    let computed_view = fetch_indicator_data_view(&defs, &current_filters).await;
+                    let mut computed = computed_schema;
+                    computed.extend(computed_view);
                     indicator_values.set(computed);
 
                     indicator_defs.set(defs);
@@ -761,10 +913,15 @@ fn render_indicator_html(
         .map(|d| d.view_spec.format.clone())
         .unwrap_or(serde_json::Value::Null);
 
+    // For fields with a live source: use computed value, fallback to preview("key") if missing.
+    // For fields with source="—": always use preview("key").
     let value_str = computed
         .and_then(|cv| cv.value)
         .map(|v| format_value(v, &format_spec))
-        .unwrap_or_else(|| "—".to_string());
+        .unwrap_or_else(|| {
+            let pv = preview("value");
+            if !pv.is_empty() { pv } else { "—".to_string() }
+        });
 
     let change_pct = computed.and_then(|cv| cv.change_percent);
     let delta_str = change_pct
@@ -777,28 +934,34 @@ fn render_indicator_html(
                 "0.0%".to_string()
             }
         })
-        .unwrap_or_else(|| "—".to_string());
-    let delta_dir = change_pct
+        .unwrap_or_else(|| {
+            let pv = preview("delta");
+            if !pv.is_empty() { pv } else { "—".to_string() }
+        });
+    let delta_dir: String = change_pct
         .map(|pct| {
-            if pct > 0.0 {
-                "up"
-            } else if pct < 0.0 {
-                "down"
-            } else {
-                "flat"
-            }
+            if pct > 0.0 { "up".to_string() }
+            else if pct < 0.0 { "down".to_string() }
+            else { "flat".to_string() }
         })
-        .unwrap_or("flat");
+        .unwrap_or_else(|| {
+            let pv = preview("delta_dir");
+            if !pv.is_empty() { pv } else { "flat".to_string() }
+        });
 
-    let status = computed
+    let status: String = computed
         .and_then(|cv| cv.status.as_deref())
         .map(|s| match s {
-            "Good" => "ok",
-            "Bad" => "bad",
+            "Good"    => "ok",
+            "Bad"     => "bad",
             "Warning" => "warn",
-            _ => "neutral",
+            _         => "neutral",
         })
-        .unwrap_or("neutral");
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            let pv = preview("status");
+            if !pv.is_empty() { pv } else { "neutral".to_string() }
+        });
 
     let mut graph_type = preview("graph_type")
         .parse::<u8>()
@@ -824,10 +987,15 @@ fn render_indicator_html(
         0
     };
     let spark_points = if graph_type == 2 && !is_hidden("spark") {
-        preview("spark_points")
-            .split(',')
-            .filter_map(|p| p.trim().parse::<f64>().ok())
-            .collect()
+        let from_computed = computed
+            .filter(|cv| !cv.spark_points.is_empty())
+            .map(|cv| cv.spark_points.clone());
+        from_computed.unwrap_or_else(|| {
+            preview("spark_points")
+                .split(',')
+                .filter_map(|p| p.trim().parse::<f64>().ok())
+                .collect()
+        })
     } else {
         vec![]
     };
@@ -847,10 +1015,16 @@ fn render_indicator_html(
         preview("meta_2")
     };
 
+    // name: use preview("name") if set, otherwise fallback to code/description
+    let card_name = {
+        let pv = preview("name");
+        if !pv.trim().is_empty() { pv } else { item_title(item, indicator_defs) }
+    };
+
     let params = IndicatorCardParams {
         style_name: design_key.to_string(),
         theme: theme.to_string(),
-        name: item_title(item, indicator_defs),
+        name: card_name,
         value: value_str,
         unit: if is_hidden("unit") {
             String::new()
@@ -858,8 +1032,8 @@ fn render_indicator_html(
             preview("unit")
         },
         delta: delta_str,
-        delta_dir: delta_dir.to_string(),
-        status: status.to_string(),
+        delta_dir,
+        status,
         chip: if is_hidden("chip") {
             String::new()
         } else {
@@ -1231,6 +1405,24 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
         available_designs(has_custom_css_for_all(&defs))
     });
 
+    let is_filter_expanded = RwSignal::new(true);
+
+    let active_filters_count = Signal::derive(move || {
+        let filters = session_filters.get();
+        let mut count = 0usize;
+        if filters.get("date_from").map(|s| !s.is_empty()).unwrap_or(false) {
+            count += 1;
+        }
+        if filters.get("date_to").map(|s| !s.is_empty()).unwrap_or(false) {
+            count += 1;
+        }
+        let conn_str = filters.get("connection_ids").cloned().unwrap_or_default();
+        if conn_str.split(',').any(|s| !s.trim().is_empty()) {
+            count += 1;
+        }
+        count
+    });
+
     // Объединённый список фильтров: сначала из конфига дашборда, затем обнаруженные из params индикаторов
     let effective_filters = Signal::derive(move || {
         let defs = indicator_defs.get();
@@ -1301,7 +1493,10 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
             return;
         }
         leptos::task::spawn_local(async move {
-            let computed = fetch_indicator_data(&defs, &filters).await;
+            let computed_schema = fetch_indicator_data(&defs, &filters).await;
+            let computed_view = fetch_indicator_data_view(&defs, &filters).await;
+            let mut computed = computed_schema;
+            computed.extend(computed_view);
             indicator_values.set(computed);
         });
     });
@@ -1412,208 +1607,129 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                         </div>
                     </div>
 
-                    {move || {
-                        let filters = effective_filters.get();
-                        if !filters.is_empty() {
-                        // Detect date_from/date_to pairs → render as DateRangePicker
-                        let date_keys: Vec<String> = filters.iter()
-                            .filter(|f| f.filter_type == "date")
-                            .map(|f| f.key.clone())
-                            .collect();
-                        let mut date_pair_from: std::collections::HashSet<String> = std::collections::HashSet::new();
-                        let mut date_pair_skip: std::collections::HashSet<String> = std::collections::HashSet::new();
-                        for key in &date_keys {
-                            if key.ends_with("_from") {
-                                let to_key = format!("{}_to", key.trim_end_matches("_from"));
-                                if date_keys.contains(&to_key) {
-                                    date_pair_from.insert(key.clone());
-                                    date_pair_skip.insert(to_key);
-                                }
-                            }
-                        }
-
-                        view! {
-                            <div class="dashboard-filters">
-                                {filters.into_iter()
-                                    .filter(|f| !date_pair_skip.contains(&f.key))
-                                    .map(|filter| {
-                                    let key_clone = filter.key.clone();
-                                    let label = if filter.label.trim().is_empty() {
-                                        filter.key.clone()
+                    <div class="filter-panel">
+                        <div class="filter-panel-header">
+                            <div
+                                class="filter-panel-header__left"
+                                on:click=move |_| is_filter_expanded.update(|e| *e = !*e)
+                            >
+                                <svg
+                                    width="16" height="16" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round"
+                                    class=move || if is_filter_expanded.get() {
+                                        "filter-panel__chevron filter-panel__chevron--expanded"
                                     } else {
-                                        filter.label.clone()
-                                    };
-
-                                    // Date pair → DateRangePicker
-                                    if date_pair_from.contains(&key_clone) {
-                                        let from_key = key_clone.clone();
-                                        let to_key = format!("{}_to", key_clone.trim_end_matches("_from"));
-                                        let from_key_cb = from_key.clone();
-                                        let to_key_cb = to_key.clone();
-                                        let from_key_s = from_key.clone();
-                                        let to_key_s = to_key.clone();
-                                        return view! {
-                                            <div class="dashboard-filter dashboard-filter--daterange">
-                                                <DateRangePicker
-                                                    date_from=Signal::derive(move || {
-                                                        session_filters.with(|m| m.get(&from_key_s).cloned().unwrap_or_default())
-                                                    })
-                                                    date_to=Signal::derive(move || {
-                                                        session_filters.with(|m| m.get(&to_key_s).cloned().unwrap_or_default())
-                                                    })
-                                                    on_change=Callback::new(move |(from, to)| {
-                                                        session_filters.update(|m| {
-                                                            m.insert(from_key_cb.clone(), from);
-                                                            m.insert(to_key_cb.clone(), to);
-                                                        });
-                                                    })
-                                                    label=label
-                                                />
-                                            </div>
-                                        }.into_any();
+                                        "filter-panel__chevron"
                                     }
-
-                                    match filter.filter_type.as_str() {
-                                        "date" => {
-                                            // Unpaired single date input
-                                            let key_val = key_clone.clone();
-                                            let key_inp = key_clone.clone();
-                                            let default_value = filter.value.clone();
-                                            view! {
-                                                <div class="dashboard-filter">
-                                                    <label class="dashboard-filter__label">{label}</label>
-                                                    <input
-                                                        type="date"
-                                                        class="form__input form__input--sm"
-                                                        prop:value=move || {
-                                                            session_filters.with(|m| {
-                                                                m.get(&key_val)
-                                                                    .cloned()
-                                                                    .unwrap_or_else(|| default_value.clone())
-                                                            })
-                                                        }
-                                                        on:change=move |ev| {
-                                                            let val = ev.target().unwrap()
-                                                                .unchecked_into::<web_sys::HtmlInputElement>()
-                                                                .value();
-                                                            session_filters.update(|m| {
-                                                                m.insert(key_inp.clone(), val);
-                                                            });
-                                                        }
-                                                    />
-                                                </div>
-                                            }.into_any()
-                                        }
-                                        "connection_multiselect" => {
-                                            let key_ms = key_clone.clone();
-                                            view! {
-                                                <div class="dashboard-filter dashboard-filter--multiselect">
-                                                    <label class="dashboard-filter__label">{label}</label>
-                                                    <div class="dashboard-filter__checkboxes">
-                                                        {move || {
-                                                            let conns = connections.get();
-                                                            let selected_str = session_filters.with(|m| {
-                                                                m.get(&key_ms).cloned().unwrap_or_default()
-                                                            });
-                                                            let selected_ids: Vec<String> = selected_str
-                                                                .split(',')
-                                                                .map(str::trim)
-                                                                .filter(|s| !s.is_empty())
-                                                                .map(|s| s.to_string())
-                                                                .collect();
-
-                                                            if conns.is_empty() {
-                                                                return view! {
-                                                                    <span class="text-muted" style="font-size:12px">"Нет кабинетов"</span>
-                                                                }.into_any();
-                                                            }
-
-                                                            conns.into_iter().map(|conn| {
-                                                                let conn_id_val = conn.id.clone();
-                                                                let conn_id_chk = conn.id.clone();
-                                                                let conn_label = if conn.description.trim().is_empty() {
-                                                                    conn.code.clone()
-                                                                } else {
-                                                                    conn.description.clone()
-                                                                };
-                                                                let key_chk = key_ms.clone();
-                                                                let is_checked = selected_ids.contains(&conn_id_val);
-
-                                                                view! {
-                                                                    <label class="dashboard-filter__checkbox-row">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            prop:checked=is_checked
-                                                                            on:change=move |ev| {
-                                                                                let checked = ev.target().unwrap()
-                                                                                    .unchecked_into::<web_sys::HtmlInputElement>()
-                                                                                    .checked();
-                                                                                session_filters.update(|m| {
-                                                                                    let current = m.get(&key_chk).cloned().unwrap_or_default();
-                                                                                    let mut ids: Vec<String> = current
-                                                                                        .split(',')
-                                                                                        .map(str::trim)
-                                                                                        .filter(|s| !s.is_empty())
-                                                                                        .map(|s| s.to_string())
-                                                                                        .collect();
-                                                                                    if checked {
-                                                                                        if !ids.contains(&conn_id_chk) {
-                                                                                            ids.push(conn_id_chk.clone());
-                                                                                        }
-                                                                                    } else {
-                                                                                        ids.retain(|x| x != &conn_id_chk);
-                                                                                    }
-                                                                                    m.insert(key_chk.clone(), ids.join(","));
-                                                                                });
-                                                                            }
-                                                                        />
-                                                                        <span class="dashboard-filter__checkbox-label">{conn_label}</span>
-                                                                    </label>
-                                                                }
-                                                            }).collect::<Vec<_>>().into_any()
-                                                        }}
-                                                    </div>
-                                                </div>
-                                            }.into_any()
-                                        }
-                                        _ => {
-                                            // Стандартный текстовый ввод (старое поведение)
-                                            let key_val = key_clone.clone();
-                                            let key_inp = key_clone.clone();
-                                            let default_value = filter.value.clone();
-                                            view! {
-                                                <div class="dashboard-filter">
-                                                    <label class="dashboard-filter__label">{label}</label>
-                                                    <input
-                                                        type="text"
-                                                        class="form__input form__input--sm"
-                                                        prop:value=move || {
-                                                            session_filters.with(|m| {
-                                                                m.get(&key_val)
-                                                                    .cloned()
-                                                                    .unwrap_or_else(|| default_value.clone())
-                                                            })
-                                                        }
-                                                        on:input=move |ev| {
-                                                            let val = ev.target().unwrap()
-                                                                .unchecked_into::<web_sys::HtmlInputElement>()
-                                                                .value();
-                                                            session_filters.update(|m| {
-                                                                m.insert(key_inp.clone(), val);
-                                                            });
-                                                        }
-                                                    />
-                                                </div>
-                                            }.into_any()
-                                        }
+                                >
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                                {icon("filter")}
+                                <span class="filter-panel__title">"Фильтры"</span>
+                                {move || {
+                                    let count = active_filters_count.get();
+                                    if count > 0 {
+                                        view! { <span class="filter-panel__badge">{count}</span> }.into_any()
+                                    } else {
+                                        view! { <></> }.into_any()
                                     }
-                                }).collect::<Vec<_>>()}
+                                }}
                             </div>
-                        }.into_any()
-                        } else {
-                            view! { <div></div> }.into_any()
-                        }
-                    }}
+                            <div class="filter-panel-header__right" />
+                        </div>
+
+                        <Show when=move || is_filter_expanded.get()>
+                            <div class="filter-panel-content">
+                                <Flex gap=FlexGap::Small align=FlexAlign::End>
+
+                                    <DateRangePicker
+                                        date_from=Signal::derive(move || {
+                                            session_filters.with(|m| m.get("date_from").cloned().unwrap_or_default())
+                                        })
+                                        date_to=Signal::derive(move || {
+                                            session_filters.with(|m| m.get("date_to").cloned().unwrap_or_default())
+                                        })
+                                        on_change=Callback::new(move |(from, to)| {
+                                            session_filters.update(|m| {
+                                                m.insert("date_from".to_string(), from);
+                                                m.insert("date_to".to_string(), to);
+                                            });
+                                        })
+                                        label="Период:".to_string()
+                                    />
+
+                                    <div class="dashboard-filter dashboard-filter--multiselect">
+                                        <label class="dashboard-filter__label">"Кабинеты МП:"</label>
+                                        <div class="dashboard-filter__checkboxes">
+                                            {move || {
+                                                let conns = connections.get();
+                                                let selected_str = session_filters.with(|m| {
+                                                    m.get("connection_ids").cloned().unwrap_or_default()
+                                                });
+                                                let selected_ids: Vec<String> = selected_str
+                                                    .split(',')
+                                                    .map(str::trim)
+                                                    .filter(|s| !s.is_empty())
+                                                    .map(|s| s.to_string())
+                                                    .collect();
+
+                                                if conns.is_empty() {
+                                                    return view! {
+                                                        <span class="text-muted" style="font-size:12px">"Нет кабинетов"</span>
+                                                    }.into_any();
+                                                }
+
+                                                conns.into_iter().map(|conn| {
+                                                    let conn_id_val = conn.id.clone();
+                                                    let conn_id_chk = conn.id.clone();
+                                                    let conn_label = if conn.description.trim().is_empty() {
+                                                        conn.code.clone()
+                                                    } else {
+                                                        conn.description.clone()
+                                                    };
+                                                    let is_checked = selected_ids.contains(&conn_id_val);
+
+                                                    view! {
+                                                        <label class="dashboard-filter__checkbox-row">
+                                                            <input
+                                                                type="checkbox"
+                                                                prop:checked=is_checked
+                                                                on:change=move |ev| {
+                                                                    let checked = ev.target().unwrap()
+                                                                        .unchecked_into::<web_sys::HtmlInputElement>()
+                                                                        .checked();
+                                                                    session_filters.update(|m| {
+                                                                        let current = m.get("connection_ids").cloned().unwrap_or_default();
+                                                                        let mut ids: Vec<String> = current
+                                                                            .split(',')
+                                                                            .map(str::trim)
+                                                                            .filter(|s| !s.is_empty())
+                                                                            .map(|s| s.to_string())
+                                                                            .collect();
+                                                                        if checked {
+                                                                            if !ids.contains(&conn_id_chk) {
+                                                                                ids.push(conn_id_chk.clone());
+                                                                            }
+                                                                        } else {
+                                                                            ids.retain(|x| x != &conn_id_chk);
+                                                                        }
+                                                                        m.insert("connection_ids".to_string(), ids.join(","));
+                                                                    });
+                                                                }
+                                                            />
+                                                            <span class="dashboard-filter__checkbox-label">{conn_label}</span>
+                                                        </label>
+                                                    }
+                                                }).collect::<Vec<_>>().into_any()
+                                            }}
+                                        </div>
+                                    </div>
+
+                                </Flex>
+                            </div>
+                        </Show>
+                    </div>
 
                     <div class="dashboard-content">
                         <iframe
@@ -1632,12 +1748,26 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                     return view! { <></> }.into_any();
                 };
                 let on_close = Callback::new(move |_| selected_indicator.set(None));
+                let filters = session_filters.get_untracked();
+                let df = filters.get("date_from").cloned().unwrap_or_else(|| "2024-01-01".to_string());
+                let dt = filters.get("date_to").cloned().unwrap_or_else(|| "2025-12-31".to_string());
+                let p2_from = filters.get("period2_from").cloned();
+                let p2_to   = filters.get("period2_to").cloned();
+                let mp_refs: Vec<String> = filters
+                    .get("connection_ids")
+                    .map(|v| v.split(',').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect())
+                    .unwrap_or_default();
                 view! {
                     <IndicatorDetailModal
                         sel=sel
                         indicator_defs=indicator_defs
                         indicator_values=indicator_values
                         on_close=on_close
+                        date_from=df
+                        date_to=dt
+                        period2_from=p2_from
+                        period2_to=p2_to
+                        connection_mp_refs=mp_refs
                     />
                 }.into_any()
             }}
@@ -1672,6 +1802,11 @@ fn IndicatorDetailModal(
     indicator_defs: RwSignal<HashMap<String, IndicatorDef>>,
     indicator_values: RwSignal<HashMap<String, ComputedValue>>,
     on_close: Callback<()>,
+    date_from: String,
+    date_to: String,
+    period2_from: Option<String>,
+    period2_to: Option<String>,
+    connection_mp_refs: Vec<String>,
 ) -> impl IntoView {
     let def = indicator_defs.get_untracked().get(&sel.id).cloned();
     let computed = indicator_values.get_untracked().get(&sel.id).cloned();
@@ -1687,6 +1822,33 @@ fn IndicatorDetailModal(
     let code = def.as_ref().map(|d| d.code.clone()).unwrap_or_default();
     let schema_id = def.as_ref().map(|d| d.data_spec.schema_id.clone()).unwrap_or_default();
     let format_spec = def.as_ref().map(|d| d.view_spec.format.clone()).unwrap_or(serde_json::Value::Null);
+
+    // Drilldown: only available when indicator has a DataView (view_id)
+    let view_id_opt = def.as_ref().and_then(|d| d.data_spec.view_id.clone());
+    let has_drilldown = view_id_opt.is_some();
+
+    // Async-загружаемые измерения из DataViewMeta
+    let dv_dims: RwSignal<Option<Vec<(String, String)>>> = RwSignal::new(None);
+    if let Some(vid) = view_id_opt.clone() {
+        let vid2 = vid.clone();
+        spawn_local(async move {
+            match fetch_dataview_meta(&vid2).await {
+                Ok(meta) => {
+                    let dims = meta.available_dimensions
+                        .into_iter()
+                        .map(|d| (d.id, d.label))
+                        .collect();
+                    dv_dims.set(Some(dims));
+                }
+                Err(e) => {
+                    leptos::logging::warn!("DataView meta fetch failed for {}: {}", vid2, e);
+                    dv_dims.set(Some(vec![]));
+                }
+            }
+        });
+    }
+
+    let selected_dim: RwSignal<Option<String>> = RwSignal::new(None);
 
     let value_str = computed.as_ref()
         .and_then(|cv| cv.value)
@@ -1780,7 +1942,7 @@ fn IndicatorDetailModal(
             >
                 <div class="modal-header">
                     <div class="modal-header__left">
-                        <span class="modal-title">{name}</span>
+                        <span class="modal-title">{name.clone()}</span>
                         {if !code.is_empty() {
                             view! { <span class="indicator-detail__code-badge">{code}</span> }.into_any()
                         } else {
@@ -1813,15 +1975,189 @@ fn IndicatorDetailModal(
                             view! {
                                 <div class="indicator-detail__meta-row">
                                     <span class="indicator-detail__meta-label">"Источник данных"</span>
-                                    <span class="indicator-detail__meta-value">{schema_id}</span>
+                                    <span class="indicator-detail__meta-value">{schema_id.clone()}</span>
                                 </div>
                             }.into_any()
                         } else {
                             view! { <></> }.into_any()
                         }}
                     </div>
+
+                    // Drilldown section — visible only when indicator has a DataView (view_id)
+                    {if has_drilldown {
+                        let indicator_id_c = sel.id.clone();
+                        let indicator_name_c = name.clone();
+                        let view_id_c = view_id_opt.clone().unwrap_or_default();
+                        let date_from_c = date_from.clone();
+                        let date_to_c = date_to.clone();
+                        let p2_from_c = period2_from.clone();
+                        let p2_to_c   = period2_to.clone();
+                        let mp_refs_c = connection_mp_refs.clone();
+                        let tabs_store = leptos::context::use_context::<AppGlobalContext>();
+                        let date_range_label = format!("{} — {}", date_from, date_to);
+
+                        view! {
+                            <div class="drill-picker">
+                                <div class="drill-picker__header">
+                                    <span class="drill-picker__title">"Детализация"</span>
+                                    <span class="drill-picker__subtitle">{date_range_label}</span>
+                                </div>
+
+                                // Reactive: show loading or options depending on async fetch state
+                                {move || {
+                                    match dv_dims.get() {
+                                        None => view! {
+                                            <div class="drill-picker__loading">
+                                                <span class="spinner spinner--sm" />
+                                                " Загрузка измерений..."
+                                            </div>
+                                        }.into_any(),
+
+                                        Some(dims_list) => {
+                                            // Clone per reactive call so inner `move` closures can capture
+                                            let id    = indicator_id_c.clone();
+                                            let vid   = view_id_c.clone();
+                                            let df    = date_from_c.clone();
+                                            let dt    = date_to_c.clone();
+                                            let p2f   = p2_from_c.clone();
+                                            let p2t   = p2_to_c.clone();
+                                            let mps   = mp_refs_c.clone();
+                                            let iname = indicator_name_c.clone();
+                                            let ts    = tabs_store;
+
+                                            view! {
+                                                <div class="drill-picker__list">
+                                                    {dims_list.into_iter().map(|(field_id, label)| {
+                                                        let fid_sel = field_id.clone();
+                                                        let fid_click = field_id.clone();
+                                                        view! {
+                                                            <div
+                                                                class=move || {
+                                                                    if selected_dim.get().as_deref() == Some(fid_sel.as_str()) {
+                                                                        "drill-picker__item drill-picker__item--selected"
+                                                                    } else {
+                                                                        "drill-picker__item"
+                                                                    }
+                                                                }
+                                                                on:click=move |_| {
+                                                                    selected_dim.set(Some(fid_click.clone()));
+                                                                }
+                                                            >
+                                                                <span class="drill-picker__radio">
+                                                                    <span class="drill-picker__radio-dot" />
+                                                                </span>
+                                                                <span class="drill-picker__item-label">{label}</span>
+                                                            </div>
+                                                        }
+                                                    }).collect_view()}
+                                                </div>
+
+                                                <button
+                                                    class="btn btn--primary drill-picker__submit"
+                                                    disabled=move || selected_dim.get().is_none()
+                                                    on:click=move |_| {
+                                                        let Some(dim) = selected_dim.get_untracked() else { return };
+                                                        let dim_label = dv_dims.get_untracked()
+                                                            .unwrap_or_default()
+                                                            .into_iter()
+                                                            .find(|(fid, _)| fid == &dim)
+                                                            .map(|(_, lbl)| lbl)
+                                                            .unwrap_or_else(|| dim.clone());
+
+                                                        let tab_title = format!("{} — {}", iname, dim_label);
+                                                        let store_opt = ts.clone();
+
+                                                        // Clone for async block (can't move out of FnMut)
+                                                        let vid2   = vid.clone();
+                                                        let id2    = id.clone();
+                                                        let iname2 = iname.clone();
+                                                        let df2    = df.clone();
+                                                        let dt2    = dt.clone();
+                                                        let p2f2   = p2f.clone();
+                                                        let p2t2   = p2t.clone();
+                                                        let mps2   = mps.clone();
+
+                                                        spawn_local(async move {
+                                                            if let Some(session_id) = post_drilldown_session(
+                                                                vid2,
+                                                                id2,
+                                                                iname2,
+                                                                dim,
+                                                                dim_label,
+                                                                df2,
+                                                                dt2,
+                                                                p2f2,
+                                                                p2t2,
+                                                                mps2,
+                                                            ).await {
+                                                                let tab_key = format!("drilldown__{}", session_id);
+                                                                if let Some(ref store) = store_opt {
+                                                                    store.open_tab(&tab_key, &tab_title);
+                                                                }
+                                                            }
+                                                            do_close.run(());
+                                                        });
+                                                    }
+                                                >
+                                                    "Сформировать отчёт"
+                                                </button>
+                                            }.into_any()
+                                        }
+                                    }
+                                }}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }}
                 </div>
             </div>
         </div>
     }
+}
+
+// ── Drilldown session helper ──────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+async fn post_drilldown_session(
+    view_id: String,
+    indicator_id: String,
+    indicator_name: String,
+    group_by: String,
+    group_by_label: String,
+    date_from: String,
+    date_to: String,
+    period2_from: Option<String>,
+    period2_to: Option<String>,
+    connection_mp_refs: Vec<String>,
+) -> Option<String> {
+    let body = serde_json::json!({
+        "view_id": view_id,
+        "indicator_id": indicator_id,
+        "indicator_name": indicator_name,
+        "group_by": group_by,
+        "group_by_label": group_by_label,
+        "date_from": date_from,
+        "date_to": date_to,
+        "period2_from": period2_from,
+        "period2_to": period2_to,
+        "connection_mp_refs": connection_mp_refs,
+    });
+
+    let url = format!("{}/api/sys-drilldown", api_base());
+    let resp = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .ok()?
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.ok() {
+        leptos::logging::error!("post_drilldown_session: HTTP {}", resp.status());
+        return None;
+    }
+
+    let json: serde_json::Value = resp.json().await.ok()?;
+    json["session_id"].as_str().map(String::from)
 }
