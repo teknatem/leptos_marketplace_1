@@ -25,14 +25,12 @@ pub fn BiIndicatorDetails(
     let vm_tabs = vm.clone();
     let vm_content = vm.clone();
     view! {
-        <PageFrame page_id="a024_bi_indicator--detail" category="detail">
+        <PageFrame page_id="a024_bi_indicator_details" category="detail">
             <Header vm=vm_header on_saved=on_saved on_cancel=on_cancel />
             <TabBar vm=vm_tabs />
-            <div class="page__content bi-detail__layout">
-                <div class="bi-detail__main">
-                    <ErrorDisplay vm=vm.clone() />
-                    <TabContent vm=vm_content />
-                </div>
+            <div class="page__content">
+                <ErrorDisplay vm=vm.clone() />
+                <TabContent vm=vm_content />
             </div>
         </PageFrame>
     }
@@ -210,12 +208,9 @@ fn ErrorDisplay(vm: BiIndicatorDetailsVm) -> impl IntoView {
 
     view! {
         {move || error.get().map(|e| view! {
-            <div
-                class="warning-box"
-                style="background: var(--color-error-50); border-color: var(--color-error-100); margin-bottom: var(--spacing-md);"
-            >
-                <span class="warning-box__icon" style="color: var(--color-error);">"⚠"</span>
-                <span class="warning-box__text" style="color: var(--color-error);">{e}</span>
+            <div class="warning-box warning-box--error">
+                <span class="warning-box__icon">"⚠"</span>
+                <span class="warning-box__text">{e}</span>
             </div>
         })}
     }

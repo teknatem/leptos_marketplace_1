@@ -203,7 +203,7 @@ pub fn WbOrdersList() -> impl IntoView {
 
     let open_detail = move |id: String, document_no: String| {
         tabs_store.open_tab(
-            &format!("a015_wb_orders_detail_{}", id),
+            &format!("a015_wb_orders_details_{}", id),
             &format!("WB Order {}", document_no),
         );
     };

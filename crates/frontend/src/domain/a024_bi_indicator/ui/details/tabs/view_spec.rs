@@ -44,61 +44,69 @@ pub fn ViewSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     };
 
     view! {
-        <div class="bi-viewspec">
-            <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_view_spec_main">
+            <div class="bi-viewspec">
                 <div class="bi-viewspec__card-header">
                     <div>
-                        <h4 class="details-section__title">"Custom CSS"</h4>
+                        <h4 class="details-section__title">"ViewSpec"</h4>
                         <p class="bi-viewspec__hint">
-                            "Используйте селектор "
-                            <code>".indicator-card"</code>
-                            " и его дочерние элементы. Дизайн «Custom CSS» выбирается на закладке Превью."
+                            "Настройки отображения индикатора: CSS для карточки, форматирование числа и правила порогов."
                         </p>
                     </div>
                     <Button appearance=ButtonAppearance::Subtle on_click=on_format_css>
-                        {icon("code")} " Форматировать"
+                        {icon("code")} " Форматировать CSS"
                     </Button>
                 </div>
-                <textarea
-                    node_ref=css_ref
-                    class="code-editor"
-                    placeholder=".indicator-card { border-radius: 20px; }"
-                    prop:value=move || css_sig.get()
-                    on:input=on_css_input
-                ></textarea>
-            </CardAnimated>
 
-            <div class="bi-viewspec__row2">
-                <CardAnimated delay_ms=60>
-                    <h4 class="details-section__title">"Формат значения (JSON)"</h4>
-                    <p class="bi-viewspec__hint">
-                        <code>"{ \"kind\": \"Money\", \"currency\": \"RUB\" }"</code>
+                <div class="bi-indicator-action__section">
+                    <div class="bi-indicator-action__section-header">
+                        <h5 class="bi-indicator-action__section-title">"Custom CSS"</h5>
+                    </div>
+                    <p class="form__hint">
+                        "Используйте селектор " <code>".indicator-card"</code>
+                        " и его дочерние элементы. Пользовательский стиль применяется на вкладке превью и в дашборде."
                     </p>
-                    <div class="form__group">
+                    <textarea
+                        node_ref=css_ref
+                        class="code-editor"
+                        placeholder=".indicator-card { border-radius: 20px; }"
+                        prop:value=move || css_sig.get()
+                        on:input=on_css_input
+                    ></textarea>
+                </div>
+
+                <div class="bi-viewspec__row2">
+                    <div class="bi-indicator-action__section bi-indicator-action__section--compact">
+                        <div class="bi-indicator-action__section-header">
+                            <h5 class="bi-indicator-action__section-title">"Формат значения"</h5>
+                        </div>
+                        <p class="form__hint">
+                            <code>"{ \"kind\": \"Money\", \"currency\": \"RUB\" }"</code>
+                        </p>
                         <Textarea
                             value=vm.view_spec_format_json
                             placeholder="{}"
-                            attr:rows=8
-                            attr:style="font-family: monospace; font-size: 12px; width: 100%;"
+                            attr:rows=10
+                            attr:class="code-editor bi-viewspec__json-editor"
                         />
                     </div>
-                </CardAnimated>
 
-                <CardAnimated delay_ms=80>
-                    <h4 class="details-section__title">"Пороговые значения (JSON)"</h4>
-                    <p class="bi-viewspec__hint">
-                        <code>"[{ \"condition\": \"< 10\", \"color\": \"#e53935\" }]"</code>
-                    </p>
-                    <div class="form__group">
+                    <div class="bi-indicator-action__section bi-indicator-action__section--compact">
+                        <div class="bi-indicator-action__section-header">
+                            <h5 class="bi-indicator-action__section-title">"Пороги"</h5>
+                        </div>
+                        <p class="form__hint">
+                            <code>"[{ \"condition\": \"< 10\", \"color\": \"#e53935\" }]"</code>
+                        </p>
                         <Textarea
                             value=vm.view_spec_thresholds_json
                             placeholder="[]"
-                            attr:rows=8
-                            attr:style="font-family: monospace; font-size: 12px; width: 100%;"
+                            attr:rows=10
+                            attr:class="code-editor bi-viewspec__json-editor"
                         />
                     </div>
-                </CardAnimated>
+                </div>
             </div>
-        </div>
+        </CardAnimated>
     }
 }

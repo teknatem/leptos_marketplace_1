@@ -8,17 +8,19 @@ use thaw::*;
 #[component]
 pub fn DrillSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_drill_spec_main">
             <h4 class="details-section__title">"Drill-down (DrillSpec JSON)"</h4>
-            <p class="details-section__hint" style="color: var(--color-text-secondary); font-size: 12px; margin-bottom: var(--spacing-sm);">
-                {"Опционально. Оставьте пустым если drill-down не нужен. Пример: { \"target\": { \"type\": \"Explore\", \"schema_id\": \"...\" }, \"filter_mapping\": {} }"}
+            <p class="form__hint">
+                "Опционально. Оставьте пустым, если для индикатора достаточно стандартного DataView drilldown. "
+                "Текущий контракт: "
+                <code>"{ \"target_type\": \"explore\", \"target_id\": \"...\", \"filter_mapping\": {} }"</code>
             </p>
             <div class="form__group">
                 <Textarea
                     value=vm.drill_spec_json
                     placeholder=""
                     attr:rows=18
-                    attr:style="font-family: monospace; font-size: 12px; width: 100%;"
+                    attr:class="code-editor bi-viewspec__json-editor"
                 />
             </div>
         </CardAnimated>

@@ -2,6 +2,7 @@
 
 use super::super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCellMoney;
 use leptos::prelude::*;
 use thaw::*;
@@ -28,34 +29,34 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
         {move || {
             if vm.payment_reports_loading.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_links_loading">
                         <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-xl);">
                             <Spinner />
                             <span>"Загрузка платёжных отчётов..."</span>
                         </Flex>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
             if let Some(err) = vm.payment_reports_error.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_links_error">
                         <div style="color: var(--color-error);">
                             "Ошибка загрузки: " {err}
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
             let reports = vm.payment_reports.get();
             if reports.is_empty() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_links_empty">
                         <h4 class="details-section__title">"Платёжные отчёты (p907)"</h4>
                         <div style="color: var(--color-text-secondary);">
                             "Связанные платёжные транзакции для данного заказа не найдены."
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }.into_any();
             }
 
@@ -65,7 +66,7 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let reports_for_table = reports;
 
             view! {
-                <Card>
+                <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_links_main">
                     <h4 class="details-section__title">"Платёжные отчёты (p907)"</h4>
 
                     <Flex gap=FlexGap::Medium style="flex-wrap: wrap; margin-bottom: var(--spacing-md);">
@@ -182,7 +183,7 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
                             </TableBody>
                         </Table>
                     </div>
-                </Card>
+                </CardAnimated>
             }.into_any()
         }}
     }

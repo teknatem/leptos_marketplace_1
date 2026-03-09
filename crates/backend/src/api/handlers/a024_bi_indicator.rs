@@ -173,6 +173,8 @@ pub struct ComputeParams {
     /// Comma-separated list of connection_mp UUIDs
     #[serde(default)]
     pub connection_mp_refs: Option<String>,
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
 }
 
 /// POST /api/a024-bi-indicator/:id/compute
@@ -199,6 +201,7 @@ pub async fn compute(
     if let Some(ref t) = params.period2_to {
         extra.insert("period2_to".to_string(), t.clone());
     }
+    extra.extend(params.params.clone());
 
     let ctx = IndicatorContext {
         date_from: params.date_from.clone(),

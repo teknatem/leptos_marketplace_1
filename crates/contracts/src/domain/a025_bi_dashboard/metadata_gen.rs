@@ -1,6 +1,6 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-08T23:03:18Z
+// Generated: 2026-03-09T18:00:52Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -296,13 +296,13 @@ pub const FIELDS: &[FieldMetadata] = &[
         enum_values: None,
     },
     FieldMetadata {
-        name: "global_filters",
-        rust_type: "Vec<GlobalFilter>",
+        name: "filters",
+        rust_type: "Vec<FilterRef>",
         field_type: FieldType::NestedTable,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
-            label: "Глобальные фильтры",
-            label_en: Some("Global Filters"),
+            label: "Фильтры",
+            label_en: Some("Filters"),
             placeholder: None,
             hint: Some("Фильтры, применяемые ко всем индикаторам дашборда"),
             visible_in_list: false,
@@ -319,7 +319,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             pattern: None,
             custom_error: None,
         },
-        ai_hint: Some("Список глобальных фильтров: key совпадает с ParamDef.global_filter_key из a024"),
+        ai_hint: Some("Список FilterRef, связывающих дашборд с глобальным реестром фильтров"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,

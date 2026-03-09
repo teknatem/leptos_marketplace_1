@@ -83,7 +83,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                     <div class="detail-grid__col">
 
                         // Данные акции
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a020_wb_promotion_details_general_promotion">
                             <h4 class="details-section__title">"Данные акции"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -125,7 +125,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                         {
                             if !desc.is_empty() {
                                 view! {
-                                    <CardAnimated delay_ms=80>
+                                    <CardAnimated delay_ms=80 nav_id="a020_wb_promotion_details_general_description">
                                         <h4 class="details-section__title">"Описание"</h4>
                                         <p style="font-size: 13px; color: var(--colorNeutralForeground1); line-height: 1.5; margin: 0;">
                                             {desc}
@@ -133,7 +133,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                     </CardAnimated>
                                 }.into_any()
                             } else {
-                                view! { <div></div> }.into_any()
+                                view! { <></> }.into_any()
                             }
                         }
 
@@ -141,7 +141,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                         {
                             if !advantages.is_empty() {
                                 view! {
-                                    <CardAnimated delay_ms=160>
+                                    <CardAnimated delay_ms=160 nav_id="a020_wb_promotion_details_general_advantages">
                                         <h4 class="details-section__title">"Преимущества участия"</h4>
                                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                                             {advantages.into_iter().map(|adv| view! {
@@ -153,7 +153,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                     </CardAnimated>
                                 }.into_any()
                             } else {
-                                view! { <div></div> }.into_any()
+                                view! { <></> }.into_any()
                             }
                         }
 
@@ -163,7 +163,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                     <div class="detail-grid__col">
 
                         // Статистика участия
-                        <CardAnimated delay_ms=40>
+                        <CardAnimated delay_ms=40 nav_id="a020_wb_promotion_details_general_stats">
                             <h4 class="details-section__title">"Статистика участия"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -195,7 +195,7 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                         {
                             if !ranging.is_empty() {
                                 view! {
-                                    <CardAnimated delay_ms=120>
+                                    <CardAnimated delay_ms=120 nav_id="a020_wb_promotion_details_general_ranging">
                                         <h4 class="details-section__title">"Условия рейтингового буста"</h4>
                                         <table style="width: 100%; border-collapse: collapse;">
                                             <thead>
@@ -223,12 +223,12 @@ pub fn GeneralTab(vm: WbPromotionDetailsVm) -> impl IntoView {
                                     </CardAnimated>
                                 }.into_any()
                             } else {
-                                view! { <div></div> }.into_any()
+                                view! { <></> }.into_any()
                             }
                         }
 
                         // Подключение
-                        <CardAnimated delay_ms=200>
+                        <CardAnimated delay_ms=200 nav_id="a020_wb_promotion_details_general_connection">
                             <h4 class="details-section__title">"Подключение"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Номер документа"</label>

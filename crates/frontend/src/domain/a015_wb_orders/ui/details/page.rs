@@ -9,7 +9,7 @@ use leptos::prelude::*;
 use thaw::*;
 
 #[component]
-pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let vm = WbOrdersDetailsVm::new();
     let tabs_store =
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
@@ -21,7 +21,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
         let vm = vm.clone();
         move || {
             if let Some(order_data) = vm.order.get() {
-                let tab_key = format!("a015_wb_orders_detail_{}", stored_id.get_value());
+                let tab_key = format!("a015_wb_orders_details_{}", stored_id.get_value());
                 let tab_title = format!("WB Order {}", order_data.header.document_no);
                 tabs_store.update_tab_title(&tab_key, &tab_title);
             }
@@ -43,7 +43,7 @@ pub fn WbOrdersDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl 
     let vm_content = vm.clone();
 
     view! {
-        <PageFrame page_id="a015_wb_orders--detail" category="detail">
+        <PageFrame page_id="a015_wb_orders_details" category="detail">
             <Header vm=vm_header on_close=on_close />
 
             <TabBar vm=vm_tabs />

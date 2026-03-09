@@ -56,30 +56,33 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
 
     view! {
         <div class="bi-preview">
-
-            // Optional toolbar: apply test data from DataSpec test result.
-            {move || test_result.get().map(|_| view! {
-                <div style="margin-bottom: var(--spacing-sm); display: flex; align-items: center;">
-                    <Button appearance=ButtonAppearance::Subtle on_click=apply_all.clone()>
-                        {icon("download")} " Применить данные из теста"
-                    </Button>
-                </div>
-            })}
-
-            <div style="margin-bottom: var(--spacing-sm); display: flex; align-items: center; gap: 8px;">
+            <div class="bi-preview__toolbar">
                 <Button appearance=ButtonAppearance::Subtle on_click=fill_demo.clone()>
-                    "Заполнить"
+                    "Заполнить демо-данными"
                 </Button>
+                {move || {
+                    if test_result.get().is_some() {
+                        view! {
+                            <Button appearance=ButtonAppearance::Subtle on_click=apply_all.clone()>
+                                {icon("download")} " Применить данные из теста"
+                            </Button>
+                        }
+                            .into_any()
+                    } else {
+                        view! { <span /> }.into_any()
+                    }
+                }}
             </div>
 
             <div class="bi-preview__split">
-
-                // Left: template field table.
                 <div class="bi-preview__split-table">
-                    <CardAnimated delay_ms=0>
+                    <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_preview_fields">
                         <h4 class="details-section__title">
                             {icon("table")} " Поля шаблона"
                         </h4>
+                        <p class="form__hint">
+                            "Слева задаются значения для рендера. Поля со стрелкой можно быстро заполнить данными из результата теста."
+                        </p>
                         <div class="param-table-wrapper">
                             <table class="param-table">
                                 <thead>
@@ -115,15 +118,14 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                     </CardAnimated>
                 </div>
 
-                // Right: sticky live preview.
                 <div class="bi-preview__split-preview">
-                    <CardAnimated delay_ms=40>
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--spacing-sm);">
-                            <h4 class="details-section__title" style="margin: 0;">
+                    <CardAnimated delay_ms=40 nav_id="a024_bi_indicator_details_preview_render">
+                        <div class="bi-preview__preview-header">
+                            <h4 class="details-section__title">
                                 {icon("eye")} " Предпросмотр"
                             </h4>
-                            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                                <span class="text-muted" style="font-size: 12px;">"Дизайн"</span>
+                            <div class="bi-preview__design-picker">
+                                <span class="bi-preview__design-label">"Дизайн"</span>
                                 <select
                                     class="form__select form__select--sm"
                                     prop:value=move || style_sig.get()
@@ -143,19 +145,20 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                                 </select>
                             </div>
                         </div>
+                        <p class="form__hint">
+                            "Справа отображается тот же шаблон, который будет показан на дашборде."
+                        </p>
                         <div class="bi-preview__sandbox">
                             <div class="bi-preview__frame-wrapper">
                                 <iframe
                                     class="bi-preview__iframe"
                                     sandbox="allow-same-origin"
                                     srcdoc=move || srcdoc.get()
-                                    style="width: 100%; height: 100%; border: none; border-radius: 8px; background: transparent;"
                                 ></iframe>
                             </div>
                         </div>
                     </CardAnimated>
                 </div>
-
             </div>
         </div>
     }

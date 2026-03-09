@@ -62,7 +62,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 <div class="detail-grid">
                     // ── Левая колонка ────────────────────────────────────────
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_general_document">
                             <h4 class="details-section__title">"Документ"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -90,7 +90,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </div>
                         </CardAnimated>
 
-                        <CardAnimated delay_ms=80>
+                        <CardAnimated delay_ms=80 nav_id="a012_wb_sales_details_general_links">
                             <h4 class="details-section__title">"Номенклатура"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Товар маркетплейса"</label>
@@ -198,7 +198,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </div>
                         </CardAnimated>
 
-                        <CardAnimated delay_ms=160>
+                        <CardAnimated delay_ms=160 nav_id="a012_wb_sales_details_general_warehouse">
                             <h4 class="details-section__title">"Склад"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Название"</label>
@@ -213,7 +213,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
 
                     // ── Правая колонка ───────────────────────────────────────
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=40>
+                        <CardAnimated delay_ms=40 nav_id="a012_wb_sales_details_general_status">
                             <h4 class="details-section__title">"Статус"</h4>
                             <div style="margin-bottom: var(--spacing-md); display: flex; flex-wrap: wrap; gap: var(--spacing-sm);">
                                 <Badge
@@ -261,7 +261,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             </div>
                         </CardAnimated>
 
-                        <CardAnimated delay_ms=120>
+                        <CardAnimated delay_ms=120 nav_id="a012_wb_sales_details_general_tech_links">
                             <h4 class="details-section__title">"Связи"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Подключение"</label>

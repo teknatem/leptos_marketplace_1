@@ -2,7 +2,6 @@ use super::repository;
 use contracts::domain::a024_bi_indicator::aggregate::{
     BiIndicator, BiIndicatorId, BiIndicatorStatus, DataSpec, DrillSpec, ParamDef, ViewSpec,
 };
-use contracts::domain::common::AggregateId;
 use contracts::shared::drilldown::{DrilldownRequest, DrilldownResponse};
 use contracts::shared::indicators::{IndicatorContext, IndicatorId, IndicatorValue};
 use serde::{Deserialize, Serialize};
@@ -334,7 +333,17 @@ pub async fn compute_indicator(
         use crate::data_view::DataViewRegistry;
         use contracts::shared::data_view::ViewContext;
         let registry = DataViewRegistry::new();
-        let view_ctx = ViewContext::from(ctx);
+        let mut view_ctx = ViewContext::from(ctx);
+        if let Some(metric_id) = indicator
+            .data_spec
+            .metric_id
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            view_ctx
+                .params
+                .insert("metric".to_string(), metric_id.clone());
+        }
         return registry
             .compute_scalar(view_id, &view_ctx)
             .await
@@ -395,7 +404,17 @@ pub async fn get_indicator_drilldown(
         use crate::data_view::DataViewRegistry;
         use contracts::shared::data_view::ViewContext;
         let registry = DataViewRegistry::new();
-        let view_ctx = ViewContext::from(ctx);
+        let mut view_ctx = ViewContext::from(ctx);
+        if let Some(metric_id) = indicator
+            .data_spec
+            .metric_id
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            view_ctx
+                .params
+                .insert("metric".to_string(), metric_id.clone());
+        }
         return registry
             .compute_drilldown(view_id, &view_ctx, &group_by)
             .await

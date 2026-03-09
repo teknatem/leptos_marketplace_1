@@ -1,31 +1,43 @@
 //! Filters tab — global filters editor (key/label/value table)
 
 use super::super::view_model::BiDashboardDetailsVm;
+use crate::data_view::api as dv_api;
+use crate::data_view::types::{FilterDef, FilterRef};
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use thaw::*;
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct GlobalFilterRow {
-    pub key: String,
-    pub label: String,
-    pub value: String,
-}
-
-fn parse_filters(json: &str) -> Vec<GlobalFilterRow> {
+fn parse_filters(json: &str) -> Vec<FilterRef> {
     serde_json::from_str(json).unwrap_or_default()
 }
 
-fn serialize_filters(rows: &[GlobalFilterRow]) -> String {
+fn serialize_filters(rows: &[FilterRef]) -> String {
     serde_json::to_string_pretty(rows).unwrap_or_else(|_| "[]".to_string())
 }
 
 #[component]
 pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
-    let filters_sig = vm.global_filters_json;
+    let filters_sig = vm.filters_json;
+    let registry = RwSignal::new(Vec::<FilterDef>::new());
+    let registry_loading = RwSignal::new(true);
+    let registry_error = RwSignal::new(None::<String>);
 
     let rows = RwSignal::new(parse_filters(&filters_sig.get_untracked()));
+
+    Effect::new(move |_| {
+        leptos::task::spawn_local(async move {
+            match dv_api::fetch_global_filters().await {
+                Ok(mut defs) => {
+                    defs.sort_by(|a, b| a.id.cmp(&b.id));
+                    registry.set(defs);
+                    registry_error.set(None);
+                }
+                Err(err) => registry_error.set(Some(err)),
+            }
+            registry_loading.set(false);
+        });
+    });
 
     // Sync rows → JSON
     let sync_to_vm = move || {
@@ -37,10 +49,12 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
         let sync = sync_to_vm.clone();
         move |_| {
             rows.update(|v| {
-                v.push(GlobalFilterRow {
-                    key: String::new(),
-                    label: String::new(),
-                    value: String::new(),
+                v.push(FilterRef {
+                    filter_id: String::new(),
+                    required: false,
+                    order: v.len() as u32,
+                    default_value: None,
+                    label_override: None,
                 })
             });
             sync();
@@ -49,7 +63,7 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
 
     view! {
         <div class="details-tabs__content">
-            <CardAnimated delay_ms=0>
+            <CardAnimated delay_ms=0 nav_id="a025_bi_dashboard_details_filters_main">
                 <div class="details-section">
                     <div class="details-section__header">
                         <h4 class="details-section__title">"Глобальные фильтры"</h4>
@@ -62,17 +76,29 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
                         </Button>
                     </div>
                     <p class="form__hint">
-                        "Ключ фильтра должен совпадать с "
-                        <code>"global_filter_key"</code>
-                        " в параметрах индикатора (a024). Значение по умолчанию будет применено ко всем индикаторам дашборда."
+                        "Дашборд хранит "
+                        <code>"Vec<FilterRef>"</code>
+                        " и ссылается на глобальный реестр фильтров DataView. "
+                        "Здесь задаются порядок, обязательность, default_value и label_override."
                     </p>
+
+                    {move || registry_loading.get().then(|| view! {
+                        <div class="form__hint">{icon("loader")} " Загрузка реестра фильтров..."</div>
+                    })}
+                    {move || registry_error.get().map(|e| view! {
+                        <div class="form__hint" style="color: var(--color-error);">
+                            {icon("alert-circle")} " " {e}
+                        </div>
+                    })}
 
                     <table class="data-table data-table--compact">
                         <thead>
                             <tr>
-                                <th>"Ключ"</th>
-                                <th>"Метка"</th>
+                                <th>"Фильтр"</th>
+                                <th>"Обязателен"</th>
+                                <th>"Порядок"</th>
                                 <th>"Значение по умолчанию"</th>
+                                <th>"Переопред. метки"</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -80,32 +106,80 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
                             {move || {
                                 let current_rows = rows.get();
                                 current_rows.into_iter().enumerate().map(|(i, row)| {
-                                    let rows_key = rows.clone();
-                                    let rows_label = rows.clone();
-                                    let rows_value = rows.clone();
+                                    let rows_id = rows.clone();
+                                    let rows_required = rows.clone();
+                                    let rows_order = rows.clone();
+                                    let rows_default = rows.clone();
+                                    let rows_label_override = rows.clone();
                                     let rows_del = rows.clone();
-                                    let sync_key = sync_to_vm.clone();
-                                    let sync_label = sync_to_vm.clone();
-                                    let sync_value = sync_to_vm.clone();
+                                    let sync_id = sync_to_vm.clone();
+                                    let sync_required = sync_to_vm.clone();
+                                    let sync_order = sync_to_vm.clone();
+                                    let sync_default = sync_to_vm.clone();
+                                    let sync_label_override = sync_to_vm.clone();
                                     let sync_del = sync_to_vm.clone();
+                                    let registry_defs = registry.get();
 
                                     view! {
                                         <tr>
                                             <td>
+                                                <select
+                                                    class="form__select form__select--sm"
+                                                    on:change=move |ev| {
+                                                        use wasm_bindgen::JsCast;
+                                                        let val = ev.target().unwrap()
+                                                            .unchecked_into::<web_sys::HtmlSelectElement>()
+                                                            .value();
+                                                        rows_id.update(|v| {
+                                                            if let Some(r) = v.get_mut(i) { r.filter_id = val; }
+                                                        });
+                                                        sync_id();
+                                                    }
+                                                >
+                                                    <option value="">"— выбрать filter_id —"</option>
+                                                    {registry_defs.into_iter().map(|def| {
+                                                        let is_selected = row.filter_id == def.id;
+                                                        view! {
+                                                            <option value=def.id.clone() selected=is_selected>
+                                                                {format!("{} — {}", def.id, def.label)}
+                                                            </option>
+                                                        }
+                                                    }).collect_view()}
+                                                </select>
+                                            </td>
+                                            <td>
                                                 <input
-                                                    type="text"
+                                                    type="checkbox"
+                                                    prop:checked=row.required
+                                                    on:change=move |ev| {
+                                                        use wasm_bindgen::JsCast;
+                                                        let checked = ev.target().unwrap()
+                                                            .unchecked_into::<web_sys::HtmlInputElement>()
+                                                            .checked();
+                                                        rows_required.update(|v| {
+                                                            if let Some(r) = v.get_mut(i) { r.required = checked; }
+                                                        });
+                                                        sync_required();
+                                                    }
+                                                />
+                                            </td>
+                                            <td>
+                                                <input
+                                                    type="number"
                                                     class="form__input form__input--sm"
-                                                    value=row.key.clone()
-                                                    placeholder="date_range"
+                                                    value=row.order.to_string()
+                                                    min="0"
                                                     on:input=move |ev| {
                                                         use wasm_bindgen::JsCast;
                                                         let val = ev.target().unwrap()
                                                             .unchecked_into::<web_sys::HtmlInputElement>()
                                                             .value();
-                                                        rows_key.update(|v| {
-                                                            if let Some(r) = v.get_mut(i) { r.key = val; }
+                                                        rows_order.update(|v| {
+                                                            if let Some(r) = v.get_mut(i) {
+                                                                r.order = val.parse::<u32>().unwrap_or(0);
+                                                            }
                                                         });
-                                                        sync_key();
+                                                        sync_order();
                                                     }
                                                 />
                                             </td>
@@ -113,17 +187,19 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
                                                 <input
                                                     type="text"
                                                     class="form__input form__input--sm"
-                                                    value=row.label.clone()
-                                                    placeholder="Период"
+                                                    value=row.default_value.clone().unwrap_or_default()
+                                                    placeholder="Напр. 2025-01-01,2025-01-31"
                                                     on:input=move |ev| {
                                                         use wasm_bindgen::JsCast;
                                                         let val = ev.target().unwrap()
                                                             .unchecked_into::<web_sys::HtmlInputElement>()
                                                             .value();
-                                                        rows_label.update(|v| {
-                                                            if let Some(r) = v.get_mut(i) { r.label = val; }
+                                                        rows_default.update(|v| {
+                                                            if let Some(r) = v.get_mut(i) {
+                                                                r.default_value = if val.trim().is_empty() { None } else { Some(val) };
+                                                            }
                                                         });
-                                                        sync_label();
+                                                        sync_default();
                                                     }
                                                 />
                                             </td>
@@ -131,17 +207,19 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
                                                 <input
                                                     type="text"
                                                     class="form__input form__input--sm"
-                                                    value=row.value.clone()
-                                                    placeholder="last_30_days"
+                                                    value=row.label_override.clone().unwrap_or_default()
+                                                    placeholder="Своя метка"
                                                     on:input=move |ev| {
                                                         use wasm_bindgen::JsCast;
                                                         let val = ev.target().unwrap()
                                                             .unchecked_into::<web_sys::HtmlInputElement>()
                                                             .value();
-                                                        rows_value.update(|v| {
-                                                            if let Some(r) = v.get_mut(i) { r.value = val; }
+                                                        rows_label_override.update(|v| {
+                                                            if let Some(r) = v.get_mut(i) {
+                                                                r.label_override = if val.trim().is_empty() { None } else { Some(val) };
+                                                            }
                                                         });
-                                                        sync_value();
+                                                        sync_label_override();
                                                     }
                                                 />
                                             </td>
@@ -171,7 +249,7 @@ pub fn FiltersTab(vm: BiDashboardDetailsVm) -> impl IntoView {
                             </div>
                         }.into_any()
                     } else {
-                        view! { <div></div> }.into_any()
+                        view! { <></> }.into_any()
                     }}
                 </div>
             </CardAnimated>

@@ -2,6 +2,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::shared::components::card_animated::CardAnimated;
 use contracts::domain::a021_production_output::aggregate::ProductionOutput;
 use gloo_net::http::Request;
 use leptos::prelude::*;
@@ -260,8 +261,9 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                         let tabs_store_nom = tabs_store.clone();
 
                         view! {
-                            <div style="padding:var(--spacing-lg);display:flex;flex-direction:column;gap:var(--spacing-lg);">
-                                <Card>
+                            <div class="detail-grid">
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=0 nav_id="a021_production_output_detail_document">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номер документа:"</span>
                                         <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
@@ -286,9 +288,11 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                             {d.cost_of_production.map(format_money).unwrap_or_else(|| "—".to_string())}
                                         </span>
                                     </div>
-                                </Card>
+                                    </CardAnimated>
+                                </div>
 
-                                <Card>
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=40 nav_id="a021_production_output_detail_nomenclature">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номенклатура 1С:"</span>
                                         <span style="display:flex;align-items:center;gap:var(--spacing-sm);flex-wrap:wrap;">
@@ -322,7 +326,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                                                 </span>
                                                             }.into_any()
                                                         } else {
-                                                            view! { <span></span> }.into_any()
+                                                            view! { <></> }.into_any()
                                                         }}
                                                     }.into_any()
                                                 } else if let Some(ref_id) = nom_ref {
@@ -332,7 +336,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                                         </span>
                                                     }.into_any()
                                                 } else {
-                                                    view! { <span></span> }.into_any()
+                                                    view! { <></> }.into_any()
                                                 }
                                             }}
                                         </span>
@@ -345,7 +349,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                         <span class="form__label">"Загружено:"</span>
                                         <span>{format_datetime(&d.fetched_at.to_rfc3339())}</span>
                                     </div>
-                                </Card>
+                                    </CardAnimated>
+                                </div>
                             </div>
                         }.into_any()
                     } else {

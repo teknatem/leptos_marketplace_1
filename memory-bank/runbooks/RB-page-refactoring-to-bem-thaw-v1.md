@@ -226,6 +226,28 @@ use thaw::*;
 - [ ] **Replaced inputs**
 - [ ] **Updated layout components**
 
+### Step 4A: Details Tab Layout Check
+
+For domain/projection pages in `ui/details/`, verify the tab matches the details-page layout standard.
+
+- [ ] **Choose one allowed pattern:**
+  - `TwoColumnOverview`
+  - `SingleCard`
+  - `DataTab`
+- [ ] **Choose one card content type for each card:**
+  - `EditCard`
+  - `ViewCard`
+  - `ActionCard`
+  - `ExceptionCard` only for special-review cases
+- [ ] **Replace raw `Card` with `CardAnimated`**
+- [ ] **Add `nav_id` to every `CardAnimated`**
+- [ ] **Remove empty placeholder `<div></div>` blocks**
+- [ ] **Normalize inner card structure** instead of keeping ad-hoc inline layout blocks
+- [ ] **Stop and exclude the page** if it belongs to generic/shared tooling, dashboard/view, LLM workflow, or system/admin details
+
+Reference:
+- `memory-bank/architecture/details-page-layout-standard.md`
+
 ### Step 5: Add/Fix Filter Panel (if needed)
 
 **Check:** Does page have filters?

@@ -1,12 +1,16 @@
 use crate::app::ThawThemeContext;
+use crate::data_view::api as dv_api;
+use crate::data_view::types::{FilterDef, FilterRef};
+use crate::data_view::ui::filter_bar::apply_defaults;
+use crate::data_view::ui::FilterBar;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::bi_card::{
     available_designs, default_design_name, get_style_css, render_card_html, IndicatorCardParams,
 };
-use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use contracts::shared::data_view::ViewContext;
 use gloo_net::http::Request;
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::window_event_listener;
@@ -17,6 +21,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[allow(dead_code)]
 struct DashboardItem {
     pub indicator_id: String,
     #[serde(default)]
@@ -63,6 +68,7 @@ struct IndicatorViewSpec {
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
+#[allow(dead_code)]
 struct IndicatorSchemaQuery {
     #[serde(default)]
     pub available_dimensions: Vec<serde_json::Value>,
@@ -71,6 +77,7 @@ struct IndicatorSchemaQuery {
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
+#[allow(dead_code)]
 struct IndicatorDataSpec {
     #[serde(default)]
     pub schema_id: String,
@@ -78,17 +85,8 @@ struct IndicatorDataSpec {
     pub schema_query: Option<IndicatorSchemaQuery>,
     #[serde(default)]
     pub view_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, serde::Deserialize)]
-struct IndicatorParam {
-    pub key: String,
     #[serde(default)]
-    pub param_type: String, // "date" | "ref" | "text" | …
-    #[serde(default)]
-    pub label: String,
-    #[serde(default)]
-    pub global_filter_key: Option<String>,
+    pub metric_id: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -102,8 +100,6 @@ struct IndicatorDef {
     pub view_spec: IndicatorViewSpec,
     #[serde(default)]
     pub data_spec: IndicatorDataSpec,
-    #[serde(default)]
-    pub params: Vec<IndicatorParam>,
 }
 
 /// Вычисленное значение от /api/indicators/compute
@@ -121,29 +117,6 @@ struct ComputedValue {
     pub spark_points: Vec<f64>,
 }
 
-/// Краткое представление кабинета МП для мульти-выбора
-#[derive(Clone, Debug, serde::Deserialize)]
-struct ConnectionItem {
-    pub id: String,
-    #[serde(default)]
-    pub code: String,
-    #[serde(default)]
-    pub description: String,
-}
-
-#[derive(Clone, Debug, serde::Deserialize)]
-struct GlobalFilter {
-    pub key: String,
-    pub label: String,
-    pub value: String,
-    #[serde(default = "default_filter_type")]
-    pub filter_type: String,
-}
-
-fn default_filter_type() -> String {
-    "text".to_string()
-}
-
 #[derive(Clone, Debug, serde::Deserialize)]
 struct BiDashboardData {
     #[allow(dead_code)]
@@ -151,7 +124,8 @@ struct BiDashboardData {
     pub code: String,
     pub description: String,
     pub layout: DashboardLayout,
-    pub global_filters: Vec<GlobalFilter>,
+    #[serde(default)]
+    pub filters: Vec<FilterRef>,
 }
 
 /// Minimal local mirror of DimensionMeta for DataView drilldown
@@ -294,50 +268,142 @@ async fn fetch_indicator_defs(ids: &[String]) -> Result<HashMap<String, Indicato
 }
 
 
-/// Загрузить список кабинетов МП для мульти-выбора
-async fn fetch_connections() -> Vec<ConnectionItem> {
-    use web_sys::{Request, RequestInit, RequestMode, Response};
+fn resolve_dashboard_filters(
+    filter_refs: &[FilterRef],
+    registry: &[FilterDef],
+) -> Vec<FilterDef> {
+    let registry_map: HashMap<&str, &FilterDef> =
+        registry.iter().map(|def| (def.id.as_str(), def)).collect();
 
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
+    let mut refs = filter_refs.to_vec();
+    refs.sort_by_key(|r| r.order);
 
-    let url = format!("{}/api/connection_mp", api_base());
-    let Ok(request) = Request::new_with_str_and_init(&url, &opts) else {
-        return vec![];
-    };
-    let _ = request.headers().set("Accept", "application/json");
+    refs.into_iter()
+        .filter_map(|filter_ref| {
+            let mut def = (*registry_map.get(filter_ref.filter_id.as_str())?).clone();
+            if let Some(label_override) = filter_ref.label_override {
+                if !label_override.trim().is_empty() {
+                    def.label = label_override;
+                }
+            }
+            Some(def)
+        })
+        .collect()
+}
 
-    let Some(window) = web_sys::window() else {
-        return vec![];
-    };
-    let Ok(resp_value) =
-        wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await
-    else {
-        return vec![];
-    };
-    let Ok(resp): Result<Response, _> = resp_value.dyn_into() else {
-        return vec![];
-    };
-    if !resp.ok() {
-        return vec![];
+async fn derive_dashboard_filters_from_indicators(
+    indicator_defs: &HashMap<String, IndicatorDef>,
+) -> Vec<FilterRef> {
+    let mut view_ids: Vec<String> = indicator_defs
+        .values()
+        .filter_map(|def| def.data_spec.view_id.clone())
+        .filter(|view_id| !view_id.trim().is_empty())
+        .collect();
+    view_ids.sort();
+    view_ids.dedup();
+
+    let mut merged: Vec<FilterRef> = Vec::new();
+
+    for view_id in view_ids {
+        match dv_api::fetch_by_id(&view_id).await {
+            Ok(meta) => {
+                let mut refs = meta.filters;
+                refs.sort_by_key(|filter_ref| filter_ref.order);
+                for filter_ref in refs {
+                    if let Some(existing) = merged
+                        .iter_mut()
+                        .find(|existing| existing.filter_id == filter_ref.filter_id)
+                    {
+                        existing.required |= filter_ref.required;
+                        if existing.default_value.as_deref().unwrap_or("").trim().is_empty() {
+                            existing.default_value = filter_ref.default_value.clone();
+                        }
+                        if existing
+                            .label_override
+                            .as_deref()
+                            .unwrap_or("")
+                            .trim()
+                            .is_empty()
+                        {
+                            existing.label_override = filter_ref.label_override.clone();
+                        }
+                        existing.order = existing.order.min(filter_ref.order);
+                    } else {
+                        merged.push(filter_ref);
+                    }
+                }
+            }
+            Err(err) => {
+                leptos::logging::warn!(
+                    "Failed to derive dashboard filters from DataView {}: {}",
+                    view_id,
+                    err
+                );
+            }
+        }
     }
-    let Ok(text_promise) = resp.text() else {
-        return vec![];
+
+    merged.sort_by(|a, b| {
+        a.order
+            .cmp(&b.order)
+            .then_with(|| a.filter_id.cmp(&b.filter_id))
+    });
+    for (idx, filter_ref) in merged.iter_mut().enumerate() {
+        filter_ref.order = idx as u32;
+    }
+    merged
+}
+
+fn default_dashboard_ctx() -> ViewContext {
+    use chrono::{Datelike, Duration, NaiveDate, Utc};
+
+    let now = Utc::now().date_naive();
+    let month_start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
+    let month_end = if now.month() == 12 {
+        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
+            .map(|d| d - Duration::days(1))
+            .unwrap_or(now)
+    } else {
+        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
+            .map(|d| d - Duration::days(1))
+            .unwrap_or(now)
     };
-    let Ok(text_val) = wasm_bindgen_futures::JsFuture::from(text_promise).await else {
-        return vec![];
-    };
-    let Some(text) = text_val.as_string() else {
-        return vec![];
-    };
-    serde_json::from_str::<Vec<ConnectionItem>>(&text).unwrap_or_default()
+
+    ViewContext {
+        date_from: month_start.format("%Y-%m-%d").to_string(),
+        date_to: month_end.format("%Y-%m-%d").to_string(),
+        period2_from: None,
+        period2_to: None,
+        connection_mp_refs: vec![],
+        params: HashMap::new(),
+    }
+}
+
+fn merge_view_ctx(default_ctx: ViewContext, prev_ctx: ViewContext) -> ViewContext {
+    let mut merged = default_ctx;
+    if !prev_ctx.date_from.trim().is_empty() {
+        merged.date_from = prev_ctx.date_from;
+    }
+    if !prev_ctx.date_to.trim().is_empty() {
+        merged.date_to = prev_ctx.date_to;
+    }
+    if prev_ctx.period2_from.is_some() {
+        merged.period2_from = prev_ctx.period2_from;
+    }
+    if prev_ctx.period2_to.is_some() {
+        merged.period2_to = prev_ctx.period2_to;
+    }
+    if !prev_ctx.connection_mp_refs.is_empty() {
+        merged.connection_mp_refs = prev_ctx.connection_mp_refs;
+    }
+    merged.params.extend(prev_ctx.params);
+    merged
 }
 
 /// Вычислить данные индикаторов через /api/indicators/compute
 async fn fetch_indicator_data(
     indicator_defs: &HashMap<String, IndicatorDef>,
-    session_filters: &HashMap<String, String>,
+    ctx: &ViewContext,
 ) -> HashMap<String, ComputedValue> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -359,32 +425,12 @@ async fn fetch_indicator_data(
     // IndicatorId — newtype над String, сериализуется как обычная строка
     let indicator_ids: Vec<&str> = schema_to_ids.keys().map(|k| k.as_str()).collect();
 
-    let date_from = session_filters
-        .get("date_from")
-        .cloned()
-        .unwrap_or_else(|| "2024-01-01".to_string());
-    let date_to = session_filters
-        .get("date_to")
-        .cloned()
-        .unwrap_or_else(|| "2025-12-31".to_string());
-
-    let connection_mp_refs: Vec<String> = session_filters
-        .get("connection_ids")
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-
     let body = serde_json::json!({
         "indicator_ids": indicator_ids,
         "context": {
-            "date_from": date_from,
-            "date_to": date_to,
-            "connection_mp_refs": connection_mp_refs,
+            "date_from": ctx.date_from,
+            "date_to": ctx.date_to,
+            "connection_mp_refs": ctx.connection_mp_refs,
         }
     });
 
@@ -459,30 +505,9 @@ async fn fetch_indicator_data(
 /// (те у которых задан data_spec.view_id)
 async fn fetch_indicator_data_view(
     indicator_defs: &HashMap<String, IndicatorDef>,
-    session_filters: &HashMap<String, String>,
+    ctx: &ViewContext,
 ) -> HashMap<String, ComputedValue> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let date_from = session_filters
-        .get("date_from")
-        .cloned()
-        .unwrap_or_else(|| "2024-01-01".to_string());
-    let date_to = session_filters
-        .get("date_to")
-        .cloned()
-        .unwrap_or_else(|| "2025-12-31".to_string());
-    let period2_from = session_filters.get("period2_from").cloned();
-    let period2_to = session_filters.get("period2_to").cloned();
-    let connection_mp_refs: Vec<String> = session_filters
-        .get("connection_ids")
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default();
 
     let mut result: HashMap<String, ComputedValue> = HashMap::new();
 
@@ -495,11 +520,13 @@ async fn fetch_indicator_data_view(
         }
 
         let body = serde_json::json!({
-            "date_from": date_from,
-            "date_to": date_to,
-            "period2_from": period2_from,
-            "period2_to": period2_to,
-            "connection_mp_refs": connection_mp_refs.join(","),
+            "date_from": ctx.date_from,
+            "date_to": ctx.date_to,
+            "period2_from": ctx.period2_from,
+            "period2_to": ctx.period2_to,
+            "connection_mp_refs": ctx.connection_mp_refs.join(","),
+            "params": ctx.params,
+            "metric": def.data_spec.metric_id,
         });
 
         let opts = RequestInit::new();
@@ -545,7 +572,8 @@ fn reload_dashboard_data(
     loading: RwSignal<bool>,
     error: RwSignal<Option<String>>,
     dashboard: RwSignal<Option<BiDashboardData>>,
-    session_filters: RwSignal<HashMap<String, String>>,
+    view_ctx: RwSignal<ViewContext>,
+    dashboard_filter_defs: RwSignal<Vec<FilterDef>>,
     indicator_defs: RwSignal<HashMap<String, IndicatorDef>>,
     indicator_values: RwSignal<HashMap<String, ComputedValue>>,
     preserve_session_filters: bool,
@@ -557,85 +585,35 @@ fn reload_dashboard_data(
         match fetch_dashboard(&id).await {
             Ok(raw) => match serde_json::from_value::<BiDashboardData>(raw) {
                 Ok(data) => {
-                    let prev_filters = session_filters.get_untracked();
-                    let defaults: HashMap<String, String> = {
-                        use chrono::{Datelike, Duration, NaiveDate, Utc};
-                        let now = Utc::now().date_naive();
-                        let month_start =
-                            NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
-                        let month_end = if now.month() == 12 {
-                            NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
-                                .map(|d| d - Duration::days(1))
-                                .unwrap_or(now)
-                        } else {
-                            NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
-                                .map(|d| d - Duration::days(1))
-                                .unwrap_or(now)
-                        };
-                        data.global_filters
-                            .iter()
-                            .map(|f| {
-                                let value = if f.filter_type == "date" && f.value.trim().is_empty()
-                                {
-                                    if f.key.ends_with("_from") {
-                                        month_start.format("%Y-%m-%d").to_string()
-                                    } else if f.key.ends_with("_to") {
-                                        month_end.format("%Y-%m-%d").to_string()
-                                    } else {
-                                        f.value.clone()
-                                    }
-                                } else {
-                                    f.value.clone()
-                                };
-                                (f.key.clone(), value)
-                            })
-                            .collect()
-                    };
-                    if preserve_session_filters {
-                        let mut merged = defaults.clone();
-                        for (key, value) in prev_filters {
-                            if merged.contains_key(&key) {
-                                merged.insert(key, value);
-                            }
-                        }
-                        session_filters.set(merged);
-                    } else {
-                        session_filters.set(defaults);
-                    }
-
                     let mut ids = Vec::new();
                     collect_indicator_ids(&data.layout.groups, &mut ids);
                     let defs = fetch_indicator_defs(&ids).await.unwrap_or_default();
 
-                    // Инициализируем в session_filters ключи, обнаруженные из params индикаторов
-                    let current = session_filters.get_untracked();
-                    let mut new_keys: Vec<(String, String)> = Vec::new();
-                    for def in defs.values() {
-                        for param in &def.params {
-                            if let Some(fk) = &param.global_filter_key {
-                                if !fk.is_empty() && !current.contains_key(fk) {
-                                    new_keys.push((fk.clone(), String::new()));
-                                }
-                            }
+                    let effective_filter_refs = if data.filters.is_empty() {
+                        derive_dashboard_filters_from_indicators(&defs).await
+                    } else {
+                        data.filters.clone()
+                    };
+
+                    let registry = dv_api::fetch_global_filters().await.unwrap_or_default();
+                    let resolved_filters =
+                        resolve_dashboard_filters(&effective_filter_refs, &registry);
+                    dashboard_filter_defs.set(resolved_filters.clone());
+
+                    let mut next_ctx = default_dashboard_ctx();
+                    for filter_ref in &effective_filter_refs {
+                        if let Some(default_value) = &filter_ref.default_value {
+                            apply_defaults(&mut next_ctx, &filter_ref.filter_id, default_value);
                         }
                     }
-                    if !new_keys.is_empty() {
-                        session_filters.update(|m| {
-                            for (k, v) in new_keys {
-                                m.entry(k).or_insert(v);
-                            }
-                        });
+                    if preserve_session_filters {
+                        next_ctx = merge_view_ctx(next_ctx, view_ctx.get_untracked());
                     }
+                    view_ctx.set(next_ctx);
 
-                    // Загружаем реальные значения индикаторов:
-                    // 1) legacy schema_id путь
-                    // 2) DataView путь (view_id)
-                    let current_filters = session_filters.get_untracked();
-                    let computed_schema = fetch_indicator_data(&defs, &current_filters).await;
-                    let computed_view = fetch_indicator_data_view(&defs, &current_filters).await;
-                    let mut computed = computed_schema;
-                    computed.extend(computed_view);
-                    indicator_values.set(computed);
+                    // Индикаторы пересчитываются отдельным reactive-effect,
+                    // чтобы все карточки обновлялись атомарно на один и тот же ctx.
+                    indicator_values.set(HashMap::new());
 
                     indicator_defs.set(defs);
                     dashboard.set(Some(data));
@@ -830,14 +808,13 @@ fn fmt_date_short(s: &str) -> Option<String> {
 
 /// Компактный хинт для meta_1: "Янв – Фев 2026 · 4 каб."
 fn compact_filter_hint(
-    filters: &HashMap<String, String>,
-    connections: &[ConnectionItem],
+    ctx: &ViewContext,
 ) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // Диапазон дат
-    let from = filters.get("date_from").map(|s| s.as_str()).unwrap_or("");
-    let to = filters.get("date_to").map(|s| s.as_str()).unwrap_or("");
+    let from = ctx.date_from.as_str();
+    let to = ctx.date_to.as_str();
     let date_part = match (fmt_date_short(from), fmt_date_short(to)) {
         (Some(f), Some(t)) if f == t => f,
         (Some(f), Some(t)) => format!("{f} – {t}"),
@@ -850,18 +827,9 @@ fn compact_filter_hint(
     }
 
     // Кол-во кабинетов
-    let conn_str = filters
-        .get("connection_ids")
-        .map(|s| s.as_str())
-        .unwrap_or("");
-    let selected_count = conn_str.split(',').filter(|s| !s.trim().is_empty()).count();
-    let total = connections.len();
+    let selected_count = ctx.connection_mp_refs.len();
     if selected_count > 0 {
-        if total > 0 && selected_count == total {
-            parts.push("все каб.".to_string());
-        } else {
-            parts.push(format!("{} каб.", selected_count));
-        }
+        parts.push(format!("{} каб.", selected_count));
     }
 
     parts.join(" · ")
@@ -880,10 +848,9 @@ fn has_custom_css_for_all(indicator_defs: &HashMap<String, IndicatorDef>) -> boo
 
 fn render_indicator_html(
     item: &DashboardItem,
-    session_filters: &HashMap<String, String>,
+    view_ctx: &ViewContext,
     indicator_defs: &HashMap<String, IndicatorDef>,
     indicator_values: &HashMap<String, ComputedValue>,
-    connections: &[ConnectionItem],
     theme: &str,
     design_key: &str,
 ) -> String {
@@ -1004,7 +971,7 @@ fn render_indicator_html(
     } else {
         let val = preview("meta_1");
         if val.trim().is_empty() {
-            compact_filter_hint(session_filters, connections)
+            compact_filter_hint(view_ctx)
         } else {
             val
         }
@@ -1081,10 +1048,9 @@ fn sort_groups_recursive(groups: &mut Vec<DashboardGroup>) {
 
 fn render_group_html(
     group: &DashboardGroup,
-    session_filters: &HashMap<String, String>,
+    view_ctx: &ViewContext,
     indicator_defs: &HashMap<String, IndicatorDef>,
     indicator_values: &HashMap<String, ComputedValue>,
-    connections: &[ConnectionItem],
     theme: &str,
     design_key: &str,
     depth: usize,
@@ -1110,10 +1076,9 @@ fn render_group_html(
             .map(|item| {
                 let card_html = render_indicator_html(
                     item,
-                    session_filters,
+                    view_ctx,
                     indicator_defs,
                     indicator_values,
-                    connections,
                     theme,
                     design_key,
                 );
@@ -1129,10 +1094,9 @@ fn render_group_html(
         .map(|sub| {
             render_group_html(
                 sub,
-                session_filters,
+                view_ctx,
                 indicator_defs,
                 indicator_values,
-                connections,
                 theme,
                 design_key,
                 depth + 1,
@@ -1156,12 +1120,11 @@ fn render_group_html(
 
 fn build_dashboard_srcdoc(
     groups: &[DashboardGroup],
-    session_filters: &HashMap<String, String>,
+    view_ctx: &ViewContext,
     theme: &str,
     design_key: &str,
     indicator_defs: &HashMap<String, IndicatorDef>,
     indicator_values: &HashMap<String, ComputedValue>,
-    connections: &[ConnectionItem],
     sidebar_scrollbar_thumb: &str,
     sidebar_scrollbar_thumb_hover: &str,
 ) -> String {
@@ -1174,10 +1137,9 @@ fn build_dashboard_srcdoc(
             .map(|g| {
                 render_group_html(
                     g,
-                    session_filters,
+                    view_ctx,
                     indicator_defs,
                     indicator_values,
-                    connections,
                     theme,
                     design_key,
                     0,
@@ -1334,10 +1296,13 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
     let loading: RwSignal<bool> = RwSignal::new(false);
     let error: RwSignal<Option<String>> = RwSignal::new(None);
     let dashboard: RwSignal<Option<BiDashboardData>> = RwSignal::new(None);
-    let session_filters: RwSignal<HashMap<String, String>> = RwSignal::new(HashMap::new());
+    let view_ctx: RwSignal<ViewContext> = RwSignal::new(ViewContext::default());
+    let rendered_ctx: RwSignal<ViewContext> = RwSignal::new(ViewContext::default());
+    let dashboard_filter_defs: RwSignal<Vec<FilterDef>> = RwSignal::new(vec![]);
     let indicator_defs: RwSignal<HashMap<String, IndicatorDef>> = RwSignal::new(HashMap::new());
     let indicator_values: RwSignal<HashMap<String, ComputedValue>> = RwSignal::new(HashMap::new());
-    let connections: RwSignal<Vec<ConnectionItem>> = RwSignal::new(vec![]);
+    let indicator_refreshing: RwSignal<bool> = RwSignal::new(false);
+    let indicator_refresh_seq: RwSignal<u64> = RwSignal::new(0);
     let dashboard_design: RwSignal<String> = RwSignal::new(default_design_name().to_string());
     let thaw_theme_ctx = leptos::context::use_context::<ThawThemeContext>();
     let selected_indicator: RwSignal<Option<IndicatorSelection>> = RwSignal::new(None);
@@ -1407,79 +1372,15 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
 
     let is_filter_expanded = RwSignal::new(true);
 
-    let active_filters_count = Signal::derive(move || {
-        let filters = session_filters.get();
-        let mut count = 0usize;
-        if filters.get("date_from").map(|s| !s.is_empty()).unwrap_or(false) {
-            count += 1;
-        }
-        if filters.get("date_to").map(|s| !s.is_empty()).unwrap_or(false) {
-            count += 1;
-        }
-        let conn_str = filters.get("connection_ids").cloned().unwrap_or_default();
-        if conn_str.split(',').any(|s| !s.trim().is_empty()) {
-            count += 1;
-        }
-        count
-    });
-
-    // Объединённый список фильтров: сначала из конфига дашборда, затем обнаруженные из params индикаторов
-    let effective_filters = Signal::derive(move || {
-        let defs = indicator_defs.get();
-        let dash_opt = dashboard.get();
-
-        // Базовые фильтры из конфига дашборда
-        let base: Vec<GlobalFilter> = dash_opt
-            .as_ref()
-            .map(|d| d.global_filters.clone())
-            .unwrap_or_default();
-
-        let mut seen: std::collections::HashSet<String> =
-            base.iter().map(|f| f.key.clone()).collect();
-        let mut result = base;
-
-        // Дополняем фильтрами, обнаруженными из params индикаторов
-        for def in defs.values() {
-            for param in &def.params {
-                let fk = match &param.global_filter_key {
-                    Some(k) if !k.is_empty() => k.clone(),
-                    _ => continue,
-                };
-                if seen.insert(fk.clone()) {
-                    let filter_type = match param.param_type.as_str() {
-                        "date" => "date".to_string(),
-                        "ref" => "connection_multiselect".to_string(),
-                        _ => "text".to_string(),
-                    };
-                    let label = if param.label.trim().is_empty() {
-                        fk.clone()
-                    } else {
-                        param.label.clone()
-                    };
-                    result.push(GlobalFilter {
-                        key: fk,
-                        label,
-                        value: String::new(),
-                        filter_type,
-                    });
-                }
-            }
-        }
-        result
-    });
-
-    // Загружаем кабинеты МП один раз при монтировании
-    leptos::task::spawn_local(async move {
-        let items = fetch_connections().await;
-        connections.set(items);
-    });
+    let active_filters_count = Signal::derive(move || dashboard_filter_defs.get().len());
 
     reload_dashboard_data(
         id.clone(),
         loading,
         error,
         dashboard,
-        session_filters,
+        view_ctx,
+        dashboard_filter_defs,
         indicator_defs,
         indicator_values,
         false,
@@ -1487,17 +1388,28 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
 
     // Реактивный эффект: пересчитываем данные индикаторов при смене фильтров
     Effect::new(move |_| {
-        let filters = session_filters.get();
+        let ctx = view_ctx.get();
         let defs = indicator_defs.get();
+        let request_id = indicator_refresh_seq.get_untracked().wrapping_add(1);
+        indicator_refresh_seq.set(request_id);
         if defs.is_empty() {
+            rendered_ctx.set(ctx);
+            indicator_values.set(HashMap::new());
+            indicator_refreshing.set(false);
             return;
         }
+        indicator_refreshing.set(true);
         leptos::task::spawn_local(async move {
-            let computed_schema = fetch_indicator_data(&defs, &filters).await;
-            let computed_view = fetch_indicator_data_view(&defs, &filters).await;
+            let computed_schema = fetch_indicator_data(&defs, &ctx).await;
+            let computed_view = fetch_indicator_data_view(&defs, &ctx).await;
             let mut computed = computed_schema;
             computed.extend(computed_view);
+            if indicator_refresh_seq.get_untracked() != request_id {
+                return;
+            }
+            rendered_ctx.set(ctx);
             indicator_values.set(computed);
+            indicator_refreshing.set(false);
         });
     });
 
@@ -1518,12 +1430,11 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                 let (thumb, hover) = get_sidebar_scrollbar_tokens();
                 build_dashboard_srcdoc(
                     &groups,
-                    &session_filters.get(),
+                    &rendered_ctx.get(),
                     &current_theme.get(),
                     &dashboard_design.get(),
                     &indicator_defs.get(),
                     &indicator_values.get(),
-                    &connections.get(),
                     &thumb,
                     &hover,
                 )
@@ -1545,7 +1456,7 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
             } else if let Some(data) = dashboard.get() {
                 let title = data.description.clone();
                 let code = data.code.clone();
-                let detail_tab_key = format!("a025_bi_dashboard_detail_{}", id.clone());
+                let detail_tab_key = format!("a025_bi_dashboard_details_{}", id.clone());
                 let detail_tab_title = format!("Дашборд · {}", code.clone());
                 let tabs_ctx_edit = tabs_ctx;
                 let refresh_id = id.clone();
@@ -1595,7 +1506,8 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                                         loading,
                                         error,
                                         dashboard,
-                                        session_filters,
+                                        view_ctx,
+                                        dashboard_filter_defs,
                                         indicator_defs,
                                         indicator_values,
                                         true,
@@ -1641,102 +1553,37 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
 
                         <Show when=move || is_filter_expanded.get()>
                             <div class="filter-panel-content">
-                                <Flex gap=FlexGap::Small align=FlexAlign::End>
-
-                                    <DateRangePicker
-                                        date_from=Signal::derive(move || {
-                                            session_filters.with(|m| m.get("date_from").cloned().unwrap_or_default())
-                                        })
-                                        date_to=Signal::derive(move || {
-                                            session_filters.with(|m| m.get("date_to").cloned().unwrap_or_default())
-                                        })
-                                        on_change=Callback::new(move |(from, to)| {
-                                            session_filters.update(|m| {
-                                                m.insert("date_from".to_string(), from);
-                                                m.insert("date_to".to_string(), to);
-                                            });
-                                        })
-                                        label="Период:".to_string()
-                                    />
-
-                                    <div class="dashboard-filter dashboard-filter--multiselect">
-                                        <label class="dashboard-filter__label">"Кабинеты МП:"</label>
-                                        <div class="dashboard-filter__checkboxes">
-                                            {move || {
-                                                let conns = connections.get();
-                                                let selected_str = session_filters.with(|m| {
-                                                    m.get("connection_ids").cloned().unwrap_or_default()
-                                                });
-                                                let selected_ids: Vec<String> = selected_str
-                                                    .split(',')
-                                                    .map(str::trim)
-                                                    .filter(|s| !s.is_empty())
-                                                    .map(|s| s.to_string())
-                                                    .collect();
-
-                                                if conns.is_empty() {
-                                                    return view! {
-                                                        <span class="text-muted" style="font-size:12px">"Нет кабинетов"</span>
-                                                    }.into_any();
-                                                }
-
-                                                conns.into_iter().map(|conn| {
-                                                    let conn_id_val = conn.id.clone();
-                                                    let conn_id_chk = conn.id.clone();
-                                                    let conn_label = if conn.description.trim().is_empty() {
-                                                        conn.code.clone()
-                                                    } else {
-                                                        conn.description.clone()
-                                                    };
-                                                    let is_checked = selected_ids.contains(&conn_id_val);
-
-                                                    view! {
-                                                        <label class="dashboard-filter__checkbox-row">
-                                                            <input
-                                                                type="checkbox"
-                                                                prop:checked=is_checked
-                                                                on:change=move |ev| {
-                                                                    let checked = ev.target().unwrap()
-                                                                        .unchecked_into::<web_sys::HtmlInputElement>()
-                                                                        .checked();
-                                                                    session_filters.update(|m| {
-                                                                        let current = m.get("connection_ids").cloned().unwrap_or_default();
-                                                                        let mut ids: Vec<String> = current
-                                                                            .split(',')
-                                                                            .map(str::trim)
-                                                                            .filter(|s| !s.is_empty())
-                                                                            .map(|s| s.to_string())
-                                                                            .collect();
-                                                                        if checked {
-                                                                            if !ids.contains(&conn_id_chk) {
-                                                                                ids.push(conn_id_chk.clone());
-                                                                            }
-                                                                        } else {
-                                                                            ids.retain(|x| x != &conn_id_chk);
-                                                                        }
-                                                                        m.insert("connection_ids".to_string(), ids.join(","));
-                                                                    });
-                                                                }
-                                                            />
-                                                            <span class="dashboard-filter__checkbox-label">{conn_label}</span>
-                                                        </label>
-                                                    }
-                                                }).collect::<Vec<_>>().into_any()
-                                            }}
-                                        </div>
-                                    </div>
-
-                                </Flex>
+                                {move || {
+                                    let filters = dashboard_filter_defs.get();
+                                    if filters.is_empty() {
+                                        view! {
+                                            <div class="placeholder placeholder--small">
+                                                "Для этого дашборда не настроены фильтры."
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! { <FilterBar filters=filters ctx=view_ctx /> }.into_any()
+                                    }
+                                }}
                             </div>
                         </Show>
                     </div>
 
-                    <div class="dashboard-content">
+                    <div class="dashboard-content" style="position: relative;">
                         <iframe
                             class="dashboard-viewer__iframe"
                             sandbox="allow-scripts"
                             srcdoc=move || srcdoc.get()
                         />
+                        <Show when=move || indicator_refreshing.get()>
+                            <div class="loading-overlay">
+                                <div class="loading-overlay__spinner">
+                                    <span class="spinner spinner--sm" />
+                                    <span>"Обновление индикаторов..."</span>
+                                </div>
+                            </div>
+                        </Show>
                     </div>
                 }.into_any()
             } else {
@@ -1748,26 +1595,13 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                     return view! { <></> }.into_any();
                 };
                 let on_close = Callback::new(move |_| selected_indicator.set(None));
-                let filters = session_filters.get_untracked();
-                let df = filters.get("date_from").cloned().unwrap_or_else(|| "2024-01-01".to_string());
-                let dt = filters.get("date_to").cloned().unwrap_or_else(|| "2025-12-31".to_string());
-                let p2_from = filters.get("period2_from").cloned();
-                let p2_to   = filters.get("period2_to").cloned();
-                let mp_refs: Vec<String> = filters
-                    .get("connection_ids")
-                    .map(|v| v.split(',').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect())
-                    .unwrap_or_default();
                 view! {
                     <IndicatorDetailModal
                         sel=sel
                         indicator_defs=indicator_defs
                         indicator_values=indicator_values
                         on_close=on_close
-                        date_from=df
-                        date_to=dt
-                        period2_from=p2_from
-                        period2_to=p2_to
-                        connection_mp_refs=mp_refs
+                        ctx=rendered_ctx.get_untracked()
                     />
                 }.into_any()
             }}
@@ -1802,11 +1636,7 @@ fn IndicatorDetailModal(
     indicator_defs: RwSignal<HashMap<String, IndicatorDef>>,
     indicator_values: RwSignal<HashMap<String, ComputedValue>>,
     on_close: Callback<()>,
-    date_from: String,
-    date_to: String,
-    period2_from: Option<String>,
-    period2_to: Option<String>,
-    connection_mp_refs: Vec<String>,
+    ctx: ViewContext,
 ) -> impl IntoView {
     let def = indicator_defs.get_untracked().get(&sel.id).cloned();
     let computed = indicator_values.get_untracked().get(&sel.id).cloned();
@@ -1825,6 +1655,7 @@ fn IndicatorDetailModal(
 
     // Drilldown: only available when indicator has a DataView (view_id)
     let view_id_opt = def.as_ref().and_then(|d| d.data_spec.view_id.clone());
+    let metric_id_opt = def.as_ref().and_then(|d| d.data_spec.metric_id.clone());
     let has_drilldown = view_id_opt.is_some();
 
     // Async-загружаемые измерения из DataViewMeta
@@ -1988,13 +1819,10 @@ fn IndicatorDetailModal(
                         let indicator_id_c = sel.id.clone();
                         let indicator_name_c = name.clone();
                         let view_id_c = view_id_opt.clone().unwrap_or_default();
-                        let date_from_c = date_from.clone();
-                        let date_to_c = date_to.clone();
-                        let p2_from_c = period2_from.clone();
-                        let p2_to_c   = period2_to.clone();
-                        let mp_refs_c = connection_mp_refs.clone();
+                        let metric_id_c = metric_id_opt.clone();
+                        let ctx_c = ctx.clone();
                         let tabs_store = leptos::context::use_context::<AppGlobalContext>();
-                        let date_range_label = format!("{} — {}", date_from, date_to);
+                        let date_range_label = format!("{} — {}", ctx.date_from, ctx.date_to);
 
                         view! {
                             <div class="drill-picker">
@@ -2017,11 +1845,8 @@ fn IndicatorDetailModal(
                                             // Clone per reactive call so inner `move` closures can capture
                                             let id    = indicator_id_c.clone();
                                             let vid   = view_id_c.clone();
-                                            let df    = date_from_c.clone();
-                                            let dt    = date_to_c.clone();
-                                            let p2f   = p2_from_c.clone();
-                                            let p2t   = p2_to_c.clone();
-                                            let mps   = mp_refs_c.clone();
+                                            let metric = metric_id_c.clone();
+                                            let drill_ctx = ctx_c.clone();
                                             let iname = indicator_name_c.clone();
                                             let ts    = tabs_store;
 
@@ -2071,24 +1896,18 @@ fn IndicatorDetailModal(
                                                         let vid2   = vid.clone();
                                                         let id2    = id.clone();
                                                         let iname2 = iname.clone();
-                                                        let df2    = df.clone();
-                                                        let dt2    = dt.clone();
-                                                        let p2f2   = p2f.clone();
-                                                        let p2t2   = p2t.clone();
-                                                        let mps2   = mps.clone();
+                                                        let metric2 = metric.clone();
+                                                        let ctx2   = drill_ctx.clone();
 
                                                         spawn_local(async move {
                                                             if let Some(session_id) = post_drilldown_session(
                                                                 vid2,
                                                                 id2,
                                                                 iname2,
+                                                                metric2,
                                                                 dim,
                                                                 dim_label,
-                                                                df2,
-                                                                dt2,
-                                                                p2f2,
-                                                                p2t2,
-                                                                mps2,
+                                                                ctx2,
                                                             ).await {
                                                                 let tab_key = format!("drilldown__{}", session_id);
                                                                 if let Some(ref store) = store_opt {
@@ -2118,30 +1937,28 @@ fn IndicatorDetailModal(
 
 // ── Drilldown session helper ──────────────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
 async fn post_drilldown_session(
     view_id: String,
     indicator_id: String,
     indicator_name: String,
+    metric_id: Option<String>,
     group_by: String,
     group_by_label: String,
-    date_from: String,
-    date_to: String,
-    period2_from: Option<String>,
-    period2_to: Option<String>,
-    connection_mp_refs: Vec<String>,
+    ctx: ViewContext,
 ) -> Option<String> {
     let body = serde_json::json!({
         "view_id": view_id,
         "indicator_id": indicator_id,
         "indicator_name": indicator_name,
+        "metric_id": metric_id,
         "group_by": group_by,
         "group_by_label": group_by_label,
-        "date_from": date_from,
-        "date_to": date_to,
-        "period2_from": period2_from,
-        "period2_to": period2_to,
-        "connection_mp_refs": connection_mp_refs,
+        "date_from": ctx.date_from,
+        "date_to": ctx.date_to,
+        "period2_from": ctx.period2_from,
+        "period2_to": ctx.period2_to,
+        "connection_mp_refs": ctx.connection_mp_refs,
+        "params": ctx.params,
     });
 
     let url = format!("{}/api/sys-drilldown", api_base());

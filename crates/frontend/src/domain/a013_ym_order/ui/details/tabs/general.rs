@@ -59,7 +59,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                 <div class="detail-grid">
                     // ── Левая колонка ────────────────────────────────────────
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=0>
+                        <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_general_document">
                             <h4 class="details-section__title">"Документ"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -97,7 +97,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
 
                     // ── Правая колонка ───────────────────────────────────────
                     <div class="detail-grid__col">
-                        <CardAnimated delay_ms=40>
+                        <CardAnimated delay_ms=40 nav_id="a013_ym_order_details_general_dates">
                             <h4 class="details-section__title">"Даты"</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
@@ -121,7 +121,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                             </div>
                         </CardAnimated>
 
-                        <CardAnimated delay_ms=120>
+                        <CardAnimated delay_ms=120 nav_id="a013_ym_order_details_general_links">
                             <h4 class="details-section__title">"Связи"</h4>
                             <div class="form__group">
                                 <label class="form__label">"Подключение"</label>

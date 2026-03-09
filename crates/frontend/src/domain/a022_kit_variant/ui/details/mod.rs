@@ -1,6 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::page_frame::PageFrame;
+use crate::shared::components::card_animated::CardAnimated;
 use contracts::domain::a022_kit_variant::aggregate::KitVariant;
 use gloo_net::http::Request;
 use leptos::prelude::*;
@@ -34,7 +35,6 @@ fn format_datetime(s: &str) -> String {
 #[derive(Debug, Clone, Deserialize)]
 struct NomInfo {
     pub id: String,
-    pub code: String,
     pub description: String,
     pub article: String,
 }
@@ -83,14 +83,12 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                         #[derive(Deserialize)]
                                         struct NomFull {
                                             pub id: String,
-                                            pub code: String,
                                             pub description: String,
                                             pub article: String,
                                         }
                                         if let Ok(n) = nom_resp.json::<NomFull>().await {
                                             set_owner_info.set(Some(NomInfo {
                                                 id: n.id,
-                                                code: n.code,
                                                 description: n.description,
                                                 article: n.article,
                                             }));
@@ -114,13 +112,11 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                             #[derive(Deserialize)]
                                             struct NomFull {
                                                 pub id: String,
-                                                pub code: String,
                                                 pub description: String,
                                                 pub article: String,
                                             }
                                             nom_resp.json::<NomFull>().await.ok().map(|n| NomInfo {
                                                 id: n.id,
-                                                code: n.code,
                                                 description: n.description,
                                                 article: n.article,
                                             })
@@ -195,9 +191,9 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                         let owner_ref_clone = d.owner_ref.clone();
 
                         view! {
-                            <div style="padding:var(--spacing-lg);display:flex;flex-direction:column;gap:var(--spacing-lg);">
-                                // Основные реквизиты
-                                <Card>
+                            <div class="detail-grid">
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=0 nav_id="a022_kit_variant_detail_main">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Код:"</span>
                                         <code style="font-family:monospace;">{d.base.code.clone()}</code>
@@ -252,10 +248,11 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                             {d.connection_id.clone()}
                                         </span>
                                     </div>
-                                </Card>
+                                    </CardAnimated>
+                                </div>
 
-                                // Таблица состава набора
-                                <Card>
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=40 nav_id="a022_kit_variant_detail_items">
                                     <div style="padding:var(--spacing-md);">
                                         <h3 style="margin:0 0 var(--spacing-md);font-size:var(--font-size-md);font-weight:600;">
                                             "Состав набора"
@@ -374,7 +371,8 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                             }.into_any()
                                         }}
                                     </div>
-                                </Card>
+                                    </CardAnimated>
+                                </div>
                             </div>
                         }.into_any()
                     } else {

@@ -11,7 +11,7 @@ use thaw::*;
 #[component]
 pub fn GeneralTab(vm: NomenclatureDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a004_nomenclature_details_general_main">
             <h4 class="details-section__title">"Основные поля"</h4>
             <div class="details-grid--3col">
                 <div class="form__group" style="grid-column: 1 / -1;">

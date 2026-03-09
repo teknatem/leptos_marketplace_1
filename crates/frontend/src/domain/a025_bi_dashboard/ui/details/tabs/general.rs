@@ -23,7 +23,7 @@ pub fn GeneralTab(vm: BiDashboardDetailsVm) -> impl IntoView {
 
     view! {
         <div class="details-tabs__content">
-            <CardAnimated delay_ms=0>
+            <CardAnimated delay_ms=0 nav_id="a025_bi_dashboard_details_general_main">
                 <div class="details-section">
                     <h4 class="details-section__title">"Основные поля"</h4>
                     <div class="form__grid form__grid--2col">

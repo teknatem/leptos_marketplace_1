@@ -8,7 +8,7 @@ use thaw::*;
 #[component]
 pub fn GeneralTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     view! {
-        <CardAnimated delay_ms=0>
+        <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_general_main">
             <h4 class="details-section__title">"Основные поля"</h4>
             <div class="details-grid--3col">
                 <div class="form__group">
@@ -16,12 +16,12 @@ pub fn GeneralTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                     <Input value=vm.code placeholder="Уникальный код индикатора" />
                 </div>
 
-                <div class="form__group" style="grid-column: 2 / -1;">
+                <div class="form__group bi-indicator-general__group--wide">
                     <label class="form__label">"Наименование *"</label>
                     <Input value=vm.description placeholder="Название индикатора" />
                 </div>
 
-                <div class="form__group" style="grid-column: 1 / -1;">
+                <div class="form__group bi-indicator-general__group--full">
                     <label class="form__label">"Комментарий"</label>
                     <Textarea value=vm.comment placeholder="Опционально" attr:rows=3 />
                 </div>
@@ -40,7 +40,7 @@ pub fn GeneralTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                     <Input value=vm.owner_user_id placeholder="ID пользователя" />
                 </div>
 
-                <div class="form__group" style="display: flex; align-items: center; padding-top: 24px;">
+                <div class="form__group bi-indicator-general__group--checkbox">
                     <Checkbox checked=vm.is_public label="Публичный (виден всем)" />
                 </div>
             </div>

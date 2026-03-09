@@ -25,6 +25,8 @@ pub struct DrilldownSessionCreate {
     pub view_id: String,
     pub indicator_id: Option<String>,
     pub indicator_name: Option<String>,
+    #[serde(default)]
+    pub metric_id: Option<String>,
     pub group_by: String,
     pub group_by_label: Option<String>,
     pub date_from: String,
@@ -33,6 +35,8 @@ pub struct DrilldownSessionCreate {
     pub period2_to: Option<String>,
     #[serde(default)]
     pub connection_mp_refs: Vec<String>,
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,6 +100,7 @@ pub async fn create(
 
     let params = json!({
         "view_id": body.view_id,
+        "metric_id": body.metric_id,
         "group_by": body.group_by,
         "group_by_label": body.group_by_label.unwrap_or_default(),
         "date_from": body.date_from,
@@ -103,6 +108,7 @@ pub async fn create(
         "period2_from": body.period2_from,
         "period2_to": body.period2_to,
         "connection_mp_refs": body.connection_mp_refs,
+        "params": body.params,
     });
     let params_str = serde_json::to_string(&params)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -157,10 +163,23 @@ pub async fn get_data(
     let date_to = params["date_to"].as_str().unwrap_or("").to_string();
     let period2_from = params["period2_from"].as_str().map(String::from);
     let period2_to = params["period2_to"].as_str().map(String::from);
+    let metric_id = params["metric_id"].as_str().map(String::from);
     let connection_mp_refs: Vec<String> = params["connection_mp_refs"]
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
+
+    let mut extra_params: std::collections::HashMap<String, String> = params["params"]
+        .as_object()
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_string())))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(metric_id) = metric_id.filter(|value| !value.trim().is_empty()) {
+        extra_params.insert("metric".to_string(), metric_id);
+    }
 
     let registry = DataViewRegistry::new();
     if !registry.has_view(&view_id) {
@@ -173,7 +192,7 @@ pub async fn get_data(
         period2_from,
         period2_to,
         connection_mp_refs,
-        params: Default::default(),
+        params: extra_params,
     };
 
     registry
