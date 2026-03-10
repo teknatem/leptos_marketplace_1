@@ -45,7 +45,7 @@ struct DrilldownSessionParams {
     pub params: HashMap<String, String>,
 }
 
-// ── Request payload (for re-fetch on "Сформировать") ─────────────────────────
+// ── Request payload (for re-fetch on "Обновить") ─────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
 struct DvDrilldownRequest {
@@ -92,7 +92,11 @@ fn sort_rows(rows: &[DrilldownRow], col: SortCol, asc: bool) -> Vec<DrilldownRow
                 .partial_cmp(&b.delta_pct.unwrap_or(f64::NEG_INFINITY))
                 .unwrap_or(std::cmp::Ordering::Equal),
         };
-        if asc { ord } else { ord.reverse() }
+        if asc {
+            ord
+        } else {
+            ord.reverse()
+        }
     });
     sorted
 }
@@ -111,7 +115,11 @@ fn fmt_value(v: f64) -> String {
         }
         result.push(ch);
     }
-    if v < 0.0 { format!("-{}", result) } else { result }
+    if v < 0.0 {
+        format!("-{}", result)
+    } else {
+        result
+    }
 }
 
 /// Shift a "YYYY-MM-DD" date by `months` (same logic as backend dv001).
@@ -128,7 +136,11 @@ fn shift_month(d: &str, months: i32) -> String {
     let nm = total % 12 + 1;
     let max_day = match nm {
         2 => {
-            if (ny % 4 == 0 && ny % 100 != 0) || ny % 400 == 0 { 29 } else { 28 }
+            if (ny % 4 == 0 && ny % 100 != 0) || ny % 400 == 0 {
+                29
+            } else {
+                28
+            }
         }
         4 | 6 | 9 | 11 => 30,
         _ => 31,
@@ -152,6 +164,21 @@ fn fmt_delta(delta: Option<f64>) -> String {
     }
 }
 
+fn plural_rows(count: usize) -> String {
+    let rem100 = count % 100;
+    let rem10 = count % 10;
+    let suffix = if (11..=14).contains(&rem100) {
+        "строк"
+    } else {
+        match rem10 {
+            1 => "строка",
+            2..=4 => "строки",
+            _ => "строк",
+        }
+    };
+    format!("{count} {suffix}")
+}
+
 fn sort_icon(current: SortCol, col: SortCol, asc: bool) -> &'static str {
     if current != col {
         "⇅"
@@ -165,14 +192,11 @@ fn sort_icon(current: SortCol, col: SortCol, asc: bool) -> &'static str {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 #[component]
-pub fn DrilldownReportPage(
-    session_id: String,
-    on_close: Option<Callback<()>>,
-) -> impl IntoView {
+pub fn DrilldownReportPage(session_id: String, on_close: Option<Callback<()>>) -> impl IntoView {
     // ── Session params (loaded from server once) ──────────────────────────────
     let session_loaded = RwSignal::new(false);
-    let title          = RwSignal::new(String::new());
-    let view_id_sig    = RwSignal::new(String::new());
+    let title = RwSignal::new(String::new());
+    let view_id_sig = RwSignal::new(String::new());
 
     // ── Editable form params ──────────────────────────────────────────────────
     let view_ctx = RwSignal::new(ViewContext::default());
@@ -186,21 +210,28 @@ pub fn DrilldownReportPage(
     let dv_dims: RwSignal<Vec<(String, String)>> = RwSignal::new(vec![]);
 
     // ── Report state ─────────────────────────────────────────────────────────
-    let loading   = RwSignal::new(false);
+    let loading = RwSignal::new(false);
     let error_msg = RwSignal::new(None::<String>);
-    let response  = RwSignal::new(None::<DrilldownResponse>);
+    let response = RwSignal::new(None::<DrilldownResponse>);
 
     // ── Fetch trigger ─────────────────────────────────────────────────────────
     let fetch_version = RwSignal::new(0u32);
+    let drawer_open = RwSignal::new(false);
 
     // ── Load session on mount ─────────────────────────────────────────────────
     {
         let sid = session_id.clone();
         spawn_local(async move {
             let url = format!("{}/api/sys-drilldown/{}", api_base(), sid);
-            let Ok(resp) = Request::get(&url).send().await else { return };
-            if !resp.ok() { return; }
-            let Ok(record) = resp.json::<DrilldownSessionRecord>().await else { return };
+            let Ok(resp) = Request::get(&url).send().await else {
+                return;
+            };
+            if !resp.ok() {
+                return;
+            }
+            let Ok(record) = resp.json::<DrilldownSessionRecord>().await else {
+                return;
+            };
 
             title.set(record.indicator_name.clone());
             view_id_sig.set(record.view_id.clone());
@@ -209,10 +240,14 @@ pub fn DrilldownReportPage(
             let dt = record.params.date_to.clone();
 
             // If P2 is not stored, compute it as P1 shifted -1 month (mirrors backend logic)
-            let p2f = record.params.period2_from
+            let p2f = record
+                .params
+                .period2_from
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| shift_month(&df, -1));
-            let p2t = record.params.period2_to
+            let p2t = record
+                .params
+                .period2_to
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| shift_month(&dt, -1));
 
@@ -254,11 +289,15 @@ pub fn DrilldownReportPage(
     // ── Execute report when fetch_version increments ──────────────────────────
     Effect::new(move |_| {
         let v = fetch_version.get();
-        if v == 0 { return; } // skip initial mount (session not loaded yet)
+        if v == 0 {
+            return;
+        } // skip initial mount (session not loaded yet)
 
         let view_id = view_id_sig.get_untracked();
         let group_by = p_group_by.get_untracked();
-        if view_id.is_empty() || group_by.is_empty() { return; }
+        if view_id.is_empty() || group_by.is_empty() {
+            return;
+        }
 
         let url = format!("{}/api/data-view/{}/drilldown", api_base(), view_id);
         let ctx = view_ctx.get_untracked();
@@ -321,15 +360,33 @@ pub fn DrilldownReportPage(
             // ── Page header ──────────────────────────────────────────────────
             <div class="page__header">
                 <div class="page__header-left">
-                    <h1 class="page__title">{move || title.get()}</h1>
+                    <h1 class="page__title">
+                        {move || {
+                            let base_title = title.get();
+                            response
+                                .get()
+                                .map(|resp| format!("{base_title} ({})", plural_rows(resp.rows.len())))
+                                .unwrap_or(base_title)
+                        }}
+                    </h1>
                 </div>
-                {on_close.map(|cb| view! {
-                    <div class="page__header-right">
-                        <button class="btn btn--ghost" on:click=move |_| cb.run(())>
+
+                <div class="page__header-right">
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| drawer_open.set(true)
+                    >
+                        "Настройки"
+                    </Button>
+                    {on_close.map(|cb| view! {
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            on_click=move |_| cb.run(())
+                        >
                             "Закрыть"
-                        </button>
-                    </div>
-                })}
+                        </Button>
+                    })}
+                </div>
             </div>
 
             // ── Loading skeleton until session params arrive ──────────────────
@@ -338,64 +395,6 @@ pub fn DrilldownReportPage(
                     <span class="spinner" />
                     " Загрузка параметров…"
                 </div>
-            </Show>
-
-            <Show when=move || session_loaded.get()>
-
-                // ── Filter panel ─────────────────────────────────────────────
-                <div class="drilldown-report__filters">
-                    <div class="drilldown-report__filters-main">
-                        {move || {
-                            if filters_loading.get() {
-                                view! {
-                                    <div class="drilldown-report__loading">
-                                        <span class="spinner" />
-                                        " Загрузка фильтров DataView..."
-                                    </div>
-                                }.into_any()
-                            } else if let Some(err) = filters_error.get() {
-                                view! { <div class="drilldown-report__error">{err}</div> }.into_any()
-                            } else if filter_defs.get().is_empty() {
-                                view! {
-                                    <div class="placeholder placeholder--small">
-                                        "Для этого drilldown нет фильтров DataView."
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! { <FilterBar filters=filter_defs.get() ctx=view_ctx /> }.into_any()
-                            }
-                        }}
-                    </div>
-
-                    <div class="drilldown-report__filters-actions">
-                        <div class="drilldown-report__filter-group">
-                            <label class="drilldown-report__filter-label">"Группировка"</label>
-                            <select
-                                class="drilldown-report__filter-select"
-                                on:change=move |ev| p_group_by.set(event_target_value(&ev))
-                            >
-                                {move || {
-                                    let current = p_group_by.get();
-                                    dv_dims.get().into_iter().map(|(id, label)| {
-                                        let sel = id == current;
-                                        view! {
-                                            <option value=id.clone() selected=sel>{label}</option>
-                                        }
-                                    }).collect_view()
-                                }}
-                            </select>
-                        </div>
-
-                        <button
-                            class="btn btn--primary drilldown-report__filter-submit"
-                            on:click=move |_| fetch_version.update(|n| *n += 1)
-                            disabled=move || loading.get()
-                        >
-                            {move || if loading.get() { "Загрузка…" } else { "Сформировать" }}
-                        </button>
-                    </div>
-                </div>
-
             </Show>
 
             // ── Report content ───────────────────────────────────────────────
@@ -420,7 +419,6 @@ pub fn DrilldownReportPage(
 
                         let p1_label       = resp.period1_label.clone();
                         let p2_label       = resp.period2_label.clone();
-                        let metric_label   = resp.metric_label.clone();
                         let group_by_label = resp.group_by_label.clone();
 
                         let rows_sorted = Signal::derive(move || {
@@ -438,25 +436,8 @@ pub fn DrilldownReportPage(
                         };
                         let total_delta_cls = delta_class(total_delta).to_string();
                         let total_delta_str = fmt_delta(total_delta);
-                        let row_count = resp.rows.len();
 
                         view! {
-                            // Info bar
-                            <div class="drilldown-report__meta">
-                                <span class="drilldown-report__period-badge drilldown-report__period-badge--1">
-                                    "П1: " {p1_label.clone()}
-                                </span>
-                                <span class="drilldown-report__period-badge drilldown-report__period-badge--2">
-                                    "П2: " {p2_label.clone()}
-                                </span>
-                                <span class="drilldown-report__metric-badge">
-                                    {metric_label.clone()}
-                                </span>
-                                <span class="drilldown-report__count-badge">
-                                    {format!("{} строк", row_count)}
-                                </span>
-                            </div>
-
                             // Sortable table
                             <div class="table-wrapper" style="overflow-x: auto;">
                             <Table attr:style="width: 100%;" attr:class="drilldown-report__table">
@@ -548,6 +529,79 @@ pub fn DrilldownReportPage(
                     }}
                 </Show>
             </div>
+
+            <Show when=move || session_loaded.get()>
+                <OverlayDrawer
+                    open=drawer_open
+                    position=DrawerPosition::Right
+                    size=DrawerSize::Medium
+                    close_on_esc=true
+                >
+                    <DrawerHeader>
+                        <DrawerHeaderTitle>"Настройки отчета"</DrawerHeaderTitle>
+                    </DrawerHeader>
+                    <DrawerBody native_scrollbar=true>
+                        <div style="display:flex;flex-direction:column;min-height:100%;">
+                            <div style="display:flex;flex-direction:column;gap:16px;flex:1 1 auto;padding:4px 0 16px;">
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label>"Группировка"</label>
+                                    <select
+                                        style="width:100%;"
+                                        on:change=move |ev| p_group_by.set(event_target_value(&ev))
+                                    >
+                                        {move || {
+                                            let current = p_group_by.get();
+                                            dv_dims.get().into_iter().map(|(id, label)| {
+                                                let sel = id == current;
+                                                view! {
+                                                    <option value=id.clone() selected=sel>{label}</option>
+                                                }
+                                            }).collect_view()
+                                        }}
+                                    </select>
+                                </div>
+
+                                {move || {
+                                    if filters_loading.get() {
+                                        view! {
+                                            <div class="drilldown-report__loading">
+                                                <span class="spinner" />
+                                                " Загрузка фильтров DataView..."
+                                            </div>
+                                        }.into_any()
+                                    } else if let Some(err) = filters_error.get() {
+                                        view! { <div class="drilldown-report__error">{err}</div> }.into_any()
+                                    } else if filter_defs.get().is_empty() {
+                                        view! {
+                                            <div class="placeholder placeholder--small">
+                                                "Для этого drilldown нет фильтров DataView."
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <div class="drilldown-drawer__filters">
+                                                <FilterBar filters=filter_defs.get() ctx=view_ctx />
+                                            </div>
+                                        }.into_any()
+                                    }
+                                }}
+                            </div>
+
+                            <div class="drilldown-drawer__footer">
+                                <Button
+                                    on_click=move |_| {
+                                        drawer_open.set(false);
+                                        fetch_version.update(|n| *n += 1);
+                                    }
+                                    disabled=Signal::derive(move || loading.get())
+                                >
+                                    {move || if loading.get() { "Загрузка…" } else { "Применить" }}
+                                </Button>
+                            </div>
+                        </div>
+                    </DrawerBody>
+                </OverlayDrawer>
+            </Show>
         </div>
     }
 }

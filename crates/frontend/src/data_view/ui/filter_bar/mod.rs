@@ -10,7 +10,7 @@ use thaw::*;
 use wasm_bindgen::JsCast;
 
 use crate::data_view::types::{FilterDef, FilterKind};
-use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::date_range_picker_smart::DateRangePickerSmart;
 use crate::shared::filters::ConnectionMpMultiSelect;
 use contracts::shared::data_view::ViewContext;
 
@@ -98,7 +98,7 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
 
             view! {
                 <div class="filter-bar__item filter-bar__item--date-range">
-                    <DateRangePicker
+                    <DateRangePickerSmart
                         date_from=date_from_sig
                         date_to=date_to_sig
                         on_change=on_change
