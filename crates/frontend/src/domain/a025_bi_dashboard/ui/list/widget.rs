@@ -447,10 +447,11 @@ pub fn BiDashboardList() -> impl IntoView {
                                 let tab_title = format!("Дашборд · {}", row.code);
                                 let tab_key2  = tab_key.clone();
                                 let tab_title2 = tab_title.clone();
-                                let ctx_open  = ctx.clone();
                                 let ctx_view  = ctx.clone();
                                 let view_tab_key = format!("a025_bi_dashboard_view_{}", row.id);
                                 let view_tab_title = format!("View · {}", row.code);
+                                let view_tab_key2 = format!("a025_bi_dashboard_view_{}", row.id);
+                                let view_tab_title2 = format!("View · {}", row.code);
                                 let ctx_desc  = ctx.clone();
 
                                 view! {
@@ -469,7 +470,7 @@ pub fn BiDashboardList() -> impl IntoView {
                                                     class="table__link"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        ctx_open.open_tab(&tab_key, &tab_title);
+                                                        ctx_desc.open_tab(&view_tab_key, &view_tab_title);
                                                     }
                                                 >
                                                     {row.code.clone()}
@@ -483,7 +484,7 @@ pub fn BiDashboardList() -> impl IntoView {
                                                     class="table__link"
                                                     on:click=move |e| {
                                                         e.prevent_default();
-                                                        ctx_desc.open_tab(&view_tab_key, &view_tab_title);
+                                                        ctx_desc.open_tab(&view_tab_key2, &view_tab_title2);
                                                     }
                                                 >
                                                     {row.description.clone()}

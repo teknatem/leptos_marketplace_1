@@ -91,8 +91,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "schema_browser" => "Схемы данных",
 
         // ── DataView semantic layer ────────────────────────────────────────
-        "data_view"        => "DataView — Семантический слой",
-        "filter_registry"  => "Реестр фильтров",
+        "data_view" => "DataView",
+        "filter_registry" => "Реестр фильтров",
 
         // ── Fallback ──────────────────────────────────────────────────────
         _ => "",
