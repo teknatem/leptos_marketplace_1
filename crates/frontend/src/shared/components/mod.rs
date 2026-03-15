@@ -2,6 +2,8 @@ pub mod card_animated;
 pub mod date_input;
 pub mod date_range_picker;
 pub mod date_range_picker_smart;
+pub mod field;
+pub mod field_select;
 pub mod filter_panel;
 pub mod indicator_set;
 pub mod month_selector;

@@ -7,21 +7,15 @@
 
 use leptos::prelude::*;
 use thaw::*;
-use wasm_bindgen::JsCast;
 
 use crate::data_view::types::{FilterDef, FilterKind};
 use crate::shared::components::date_range_picker_smart::DateRangePickerSmart;
+use crate::shared::components::field::{
+    Field, FieldContent, FieldDescription, FieldGroup, FieldLabel,
+};
+use crate::shared::components::field_select::FieldSelect;
 use crate::shared::filters::ConnectionMpMultiSelect;
 use contracts::shared::data_view::ViewContext;
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-fn read_select_value(ev: &leptos::ev::Event) -> String {
-    ev.target()
-        .and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok())
-        .map(|el| el.value())
-        .unwrap_or_default()
-}
 
 // ── FilterBar component ───────────────────────────────────────────────────────
 
@@ -45,9 +39,9 @@ pub fn FilterBar(
     ctx: RwSignal<ViewContext>,
 ) -> impl IntoView {
     view! {
-        <div class="filter-bar filter-bar--compact">
+        <FieldGroup class="filter-bar filter-bar--compact">
             {filters.into_iter().map(|def| render_filter(def, ctx)).collect_view()}
-        </div>
+        </FieldGroup>
     }
 }
 
@@ -97,14 +91,14 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
             });
 
             view! {
-                <div class="filter-bar__item filter-bar__item--date-range">
+                <Field class="filter-bar__item filter-bar__item--date-range field--stretch">
                     <DateRangePickerSmart
                         date_from=date_from_sig
                         date_to=date_to_sig
                         on_change=on_change
                         label=label
                     />
-                </div>
+                </Field>
             }.into_any()
         }
 
@@ -119,10 +113,12 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
                 ctx.update(|c| c.connection_mp_refs = ids);
             });
             view! {
-                <div class="filter-bar__item filter-bar__item--connection-mp">
-                    <label class="filter-bar__label">{label}</label>
-                    <ConnectionMpMultiSelect selected=local_sel />
-                </div>
+                <Field class="filter-bar__item filter-bar__item--connection-mp field--stretch">
+                    <FieldContent>
+                        <FieldLabel>{label}</FieldLabel>
+                        <ConnectionMpMultiSelect selected=local_sel />
+                    </FieldContent>
+                </Field>
             }.into_any()
         }
 
@@ -134,57 +130,69 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
             };
             let id_clone2 = id.clone();
             let text_signal = RwSignal::new(value_getter());
+            Effect::new(move |_| text_signal.set(value_getter()));
             let on_change = move |_| {
                 let val = text_signal.get();
                 ctx.update(|c| {
                     c.params.insert(id_clone2.clone(), val.clone());
                 });
             };
+            let control_id = format!("filter-{id}");
             view! {
-                <div class="filter-bar__item">
-                    <label class="filter-bar__label">{label}</label>
-                    <Textarea
-                        value=text_signal
-                        placeholder="Через запятую, пусто = все"
-                        attr:rows=2
-                        attr:class="form__input filter-bar__textarea filter-bar__control"
-                        on_blur=on_change
-                    />
-                </div>
+                <Field class="filter-bar__item field--stretch">
+                    <FieldContent>
+                        <FieldLabel r#for=control_id.clone()>{label}</FieldLabel>
+                        <FieldDescription>
+                            "Через запятую или с новой строки. Пусто = все значения."
+                        </FieldDescription>
+                        <Textarea
+                            value=text_signal
+                            placeholder="Через запятую, пусто = все"
+                            attr:id=control_id
+                            attr:rows=2
+                            attr:class="form__input filter-bar__textarea filter-bar__control"
+                            on_blur=on_change
+                        />
+                    </FieldContent>
+                </Field>
             }.into_any()
         }
 
         // ── Select ───────────────────────────────────────────────────────────
         FilterKind::Select { options } => {
             let id_clone = id.clone();
-            // Derive a signal so each option can read the current value reactively.
             let current = Signal::derive(move || {
                 ctx.get().params.get(&id_clone).cloned().unwrap_or_default()
             });
             let id_clone2 = id.clone();
-            let on_change = move |ev: leptos::ev::Event| {
-                let val = read_select_value(&ev);
+            let on_change = Callback::new(move |val: String| {
                 ctx.update(|c| { c.params.insert(id_clone2.clone(), val); });
-            };
+            });
             let opts = options.clone();
+            let select_options = Signal::derive(move || {
+                let mut items = vec![("".to_string(), "— не выбрано —".to_string())];
+                items.extend(
+                    opts.iter()
+                        .map(|opt| (opt.value.clone(), opt.label.clone()))
+                        .collect::<Vec<_>>(),
+                );
+                items
+            });
+            let control_id = format!("filter-{id}");
+
             view! {
-                <div class="filter-bar__item">
-                    <label class="filter-bar__label">{label}</label>
-                    <select
-                        class="form__input filter-bar__select filter-bar__control"
-                        on:change=on_change
-                    >
-                        <option value="">"— не выбрано —"</option>
-                        {opts.into_iter().map(|opt| {
-                            let val = opt.value.clone();
-                            let lbl = opt.label.clone();
-                            let val2 = val.clone();
-                            view! {
-                                <option value={val} selected=move || current.get() == val2>{lbl}</option>
-                            }
-                        }).collect_view()}
-                    </select>
-                </div>
+                <Field class="filter-bar__item field--stretch">
+                    <FieldContent>
+                        <FieldLabel r#for=control_id.clone()>{label}</FieldLabel>
+                        <FieldSelect
+                            id=control_id
+                            value=current
+                            options=select_options
+                            placeholder="— не выбрано —"
+                            on_change=on_change
+                        />
+                    </FieldContent>
+                </Field>
             }.into_any()
         }
 
@@ -195,21 +203,27 @@ fn render_filter(def: FilterDef, ctx: RwSignal<ViewContext>) -> AnyView {
                 ctx.get().params.get(&id_clone).cloned().unwrap_or_default()
             };
             let text_signal = RwSignal::new(value_getter());
+            Effect::new(move |_| text_signal.set(value_getter()));
             let id_clone2 = id.clone();
             let on_change = move |_| {
                 let val = text_signal.get();
                 ctx.update(|c| { c.params.insert(id_clone2.clone(), val.clone()); });
             };
+            let control_id = format!("filter-{id}");
+
             view! {
-                <div class="filter-bar__item">
-                    <label class="filter-bar__label">{label}</label>
-                    <Input
-                        value=text_signal
-                        placeholder="Поиск..."
-                        class="filter-bar__control"
-                        on_blur=on_change
-                    />
-                </div>
+                <Field class="filter-bar__item field--stretch">
+                    <FieldContent>
+                        <FieldLabel r#for=control_id.clone()>{label}</FieldLabel>
+                        <Input
+                            value=text_signal
+                            placeholder="Поиск..."
+                            attr:id=control_id
+                            class="filter-bar__control"
+                            on_blur=on_change
+                        />
+                    </FieldContent>
+                </Field>
             }.into_any()
         }
     }
