@@ -9,6 +9,8 @@ use crate::data_view::api as dv_api;
 use crate::data_view::types::FilterDef;
 use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::field::{Field, FieldContent, FieldGroup, FieldLabel};
+use crate::shared::components::field_select::FieldSelect;
 use contracts::shared::data_view::ViewContext;
 use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow};
 use gloo_net::http::Request;
@@ -344,6 +346,12 @@ pub fn DrilldownReportPage(session_id: String, on_close: Option<Callback<()>>) -
     // ── Sort ─────────────────────────────────────────────────────────────────
     let sort_col = RwSignal::new(SortCol::Value1);
     let sort_asc = RwSignal::new(false);
+    let group_by_options = Signal::derive(move || dv_dims.get());
+    let group_by_value = Signal::derive(move || p_group_by.get());
+    let apply_report = Callback::new(move |_: ()| {
+        drawer_open.set(false);
+        fetch_version.update(|n| *n += 1);
+    });
 
     let toggle_sort = move |col: SortCol| {
         if sort_col.get_untracked() == col {
@@ -538,28 +546,36 @@ pub fn DrilldownReportPage(session_id: String, on_close: Option<Callback<()>>) -
                     close_on_esc=true
                 >
                     <DrawerHeader>
-                        <DrawerHeaderTitle>"Настройки отчета"</DrawerHeaderTitle>
+                        <div class="drilldown-drawer__header">
+                            <DrawerHeaderTitle>
+                                <span class="drilldown-drawer__title">"Настройки отчета"</span>
+                            </DrawerHeaderTitle>
+                            <Button
+                                appearance=ButtonAppearance::Primary
+                                on_click=move |_| apply_report.run(())
+                                disabled=Signal::derive(move || loading.get())
+                            >
+                                {move || if loading.get() { "Загрузка…" } else { "Применить" }}
+                            </Button>
+                        </div>
                     </DrawerHeader>
                     <DrawerBody native_scrollbar=true>
-                        <div style="display:flex;flex-direction:column;min-height:100%;">
-                            <div style="display:flex;flex-direction:column;gap:16px;flex:1 1 auto;padding:4px 0 16px;">
-                                <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label>"Группировка"</label>
-                                    <select
-                                        style="width:100%;"
-                                        on:change=move |ev| p_group_by.set(event_target_value(&ev))
-                                    >
-                                        {move || {
-                                            let current = p_group_by.get();
-                                            dv_dims.get().into_iter().map(|(id, label)| {
-                                                let sel = id == current;
-                                                view! {
-                                                    <option value=id.clone() selected=sel>{label}</option>
-                                                }
-                                            }).collect_view()
-                                        }}
-                                    </select>
-                                </div>
+                        <div class="drilldown-drawer__body">
+                            <div class="drilldown-drawer__content">
+                                <FieldGroup class="drilldown-drawer__field-group">
+                                    <Field class="field--stretch field--compact">
+                                        <FieldContent>
+                                            <FieldLabel r#for="drilldown-group-by">"Группировка"</FieldLabel>
+                                            <FieldSelect
+                                                id="drilldown-group-by"
+                                                value=group_by_value
+                                                options=group_by_options
+                                                placeholder="Выберите группировку"
+                                                on_change=Callback::new(move |value: String| p_group_by.set(value))
+                                            />
+                                        </FieldContent>
+                                    </Field>
+                                </FieldGroup>
 
                                 {move || {
                                     if filters_loading.get() {
@@ -585,18 +601,6 @@ pub fn DrilldownReportPage(session_id: String, on_close: Option<Callback<()>>) -
                                         }.into_any()
                                     }
                                 }}
-                            </div>
-
-                            <div class="drilldown-drawer__footer">
-                                <Button
-                                    on_click=move |_| {
-                                        drawer_open.set(false);
-                                        fetch_version.update(|n| *n += 1);
-                                    }
-                                    disabled=Signal::derive(move || loading.get())
-                                >
-                                    {move || if loading.get() { "Загрузка…" } else { "Применить" }}
-                                </Button>
                             </div>
                         </div>
                     </DrawerBody>
