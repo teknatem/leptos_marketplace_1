@@ -337,5 +337,15 @@
         "required": true
       }
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a019_llm_artifact",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

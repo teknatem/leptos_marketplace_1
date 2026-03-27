@@ -1,0 +1,135 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbOrders",
+  "entity_index": "a015",
+  "collection_name": "wb_orders",
+  "table_name": "a015_wb_orders",
+
+  "ui": {
+    "element_name": "Документ WB Заказы",
+    "element_name_en": "WB Orders",
+    "list_name": "Документы WB Заказы",
+    "list_name_en": "WB Orders",
+    "icon": "shopping-cart"
+  },
+
+  "ai": {
+    "description": "Заказ Wildberries (один заказ = одна строка). Содержит артикул продавца, nmId, штрихкод, категорию, цены со скидками, статус, дату заказа и информацию о складе и географии. Используется для учёта продаж на WB.",
+    "questions": [
+      "Какова сумма заказов на WB?",
+      "Сколько заказов поступило за период?",
+      "Какие заказы были отменены?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a005_marketplace",
+      "a007_marketplace_product",
+      "a004_nomenclature"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbOrdersId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер заказа (srid)", "label_en": "Order No (srid)", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
+      "validation": { "required": true },
+      "ai_hint": "srid из WB API — уникальный ID строки заказа."
+    },
+    {
+      "name": "supplier_article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Артикул продавца", "label_en": "Supplier Article", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "nm_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "nmId (WB)", "label_en": "nmId (WB)", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
+      "validation": { "required": true },
+      "ai_hint": "nmId — числовой идентификатор номенклатуры Wildberries."
+    },
+    {
+      "name": "order_dt",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "datetime",
+      "source": "specific",
+      "ui": { "label": "Дата заказа", "label_en": "Order Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "is_cancel",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Отменён", "label_en": "Is Cancelled", "visible_in_list": true, "visible_in_form": false, "column_width": 90, "widget": "checkbox" },
+      "validation": { "required": false }
+    },
+    {
+      "name": "total_price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Цена без скидки", "label_en": "Total Price", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "finished_price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Итоговая цена", "label_en": "Finished Price", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "warehouse_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Склад", "label_en": "Warehouse", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "is_posted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Проведён", "label_en": "Is Posted", "visible_in_list": true, "visible_in_form": false, "column_width": 90, "widget": "checkbox" },
+      "validation": { "required": false }
+    }
+  ],
+
+  "access": {
+    "scope_id": "a015_wb_orders",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
+}

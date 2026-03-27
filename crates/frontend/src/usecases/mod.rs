@@ -5,3 +5,4 @@ pub mod u504_import_from_wildberries;
 pub mod u505_match_nomenclature;
 pub mod u506_import_from_lemanapro;
 pub mod u507_import_from_erp;
+pub mod u508_repost_documents;

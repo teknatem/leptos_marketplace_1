@@ -1,8 +1,11 @@
 use axum::{extract::Query, Json};
+use chrono::NaiveDate;
+use contracts::projections::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::{
     WbFinanceReportDetailResponse, WbFinanceReportDto, WbFinanceReportListRequest,
     WbFinanceReportListResponse,
 };
+use contracts::shared::analytics::TurnoverLayer;
 use serde::Deserialize;
 
 use crate::projections::p903_wb_finance_report::repository;
@@ -31,7 +34,29 @@ pub async fn list_reports(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let dtos: Vec<WbFinanceReportDto> = items.into_iter().map(model_to_dto).collect();
+    let gl_counts = crate::projections::general_ledger::repository::count_by_detail_ids(
+        "p903_wb_finance_report",
+        &items
+            .iter()
+            .map(|item| item.source_row_ref.clone())
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to count p903 general ledger rows: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let dtos: Vec<WbFinanceReportDto> = items
+        .into_iter()
+        .map(|item| {
+            let count = gl_counts
+                .get(&item.source_row_ref)
+                .copied()
+                .unwrap_or_default();
+            model_to_dto(item, count)
+        })
+        .collect();
 
     let has_more = total > (req.offset + dtos.len() as i32);
 
@@ -43,20 +68,74 @@ pub async fn list_reports(
 }
 
 /// Handler для получения детальной информации по композитному ключу
+#[derive(Debug, Deserialize)]
+pub struct OperationKindsQuery {
+    pub date_from: String,
+    pub date_to: String,
+    pub connection_mp_ref: Option<String>,
+    pub organization_ref: Option<String>,
+}
+
+pub async fn list_operation_kinds(
+    Query(query): Query<OperationKindsQuery>,
+) -> Result<Json<Vec<String>>, axum::http::StatusCode> {
+    let items = repository::list_distinct_supplier_oper_names(
+        &query.date_from,
+        &query.date_to,
+        query.connection_mp_ref,
+        query.organization_ref,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list finance report operation kinds: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(items))
+}
+
 pub async fn get_report_detail(
+    axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
+) -> Result<Json<WbFinanceReportDetailResponse>, axum::http::StatusCode> {
+    load_report_detail(&rr_dt, rrd_id).await.map(Json)
+}
+
+pub async fn post_report(
     axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
 ) -> Result<Json<WbFinanceReportDetailResponse>, axum::http::StatusCode> {
     let item = repository::get_by_id(&rr_dt, rrd_id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get finance report detail: {}", e);
+            tracing::error!("Failed to get finance report detail before post: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
-    Ok(Json(WbFinanceReportDetailResponse {
-        item: model_to_dto(item),
-    }))
+    let day = NaiveDate::parse_from_str(&item.rr_dt, "%Y-%m-%d").map_err(|e| {
+        tracing::error!(
+            "Failed to parse p903 rr_dt '{}' for post: {}",
+            item.rr_dt,
+            e
+        );
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    crate::projections::p903_wb_finance_report::service::rebuild_day_from_existing(
+        &item.connection_mp_ref,
+        day,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            "Failed to rebuild p903 general ledger for {} / {}: {}",
+            rr_dt,
+            rrd_id,
+            e
+        );
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    load_report_detail(&rr_dt, rrd_id).await.map(Json)
 }
 
 /// Handler для получения raw JSON по композитному ключу
@@ -88,18 +167,57 @@ pub async fn search_by_srid(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let dtos: Vec<WbFinanceReportDto> = items.into_iter().map(model_to_dto).collect();
+    let dtos: Vec<WbFinanceReportDto> = items
+        .into_iter()
+        .map(|item| model_to_dto(item, 0))
+        .collect();
 
     Ok(Json(dtos))
 }
 
 /// Преобразование Model в DTO для списка (без extra для экономии трафика)
-fn model_to_dto(model: repository::Model) -> WbFinanceReportDto {
+async fn load_report_detail(
+    rr_dt: &str,
+    rrd_id: i64,
+) -> Result<WbFinanceReportDetailResponse, axum::http::StatusCode> {
+    let item = repository::get_by_id(rr_dt, rrd_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get finance report detail: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    let general_ledger_entries =
+        crate::projections::general_ledger::repository::list_by_detail_kind_and_detail_id(
+            "p903_wb_finance_report",
+            &item.source_row_ref,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load p903 general ledger rows: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .into_iter()
+        .map(to_general_ledger_dto)
+        .collect::<Vec<_>>();
+
+    Ok(WbFinanceReportDetailResponse {
+        item: model_to_dto(item, general_ledger_entries.len()),
+        general_ledger_entries,
+    })
+}
+
+fn model_to_dto(
+    model: repository::Model,
+    general_ledger_entries_count: usize,
+) -> WbFinanceReportDto {
     // Убрано форматирование даты для оптимизации - отправляем как есть
     // Поле extra не включаем в список - оно может содержать большой JSON (~3KB на запись)
     WbFinanceReportDto {
         rr_dt: model.rr_dt,
         rrd_id: model.rrd_id,
+        source_row_ref: model.source_row_ref,
         connection_mp_ref: model.connection_mp_ref,
         organization_ref: model.organization_ref,
         acquiring_fee: model.acquiring_fee,
@@ -132,6 +250,36 @@ fn model_to_dto(model: repository::Model) -> WbFinanceReportDto {
         srid: model.srid,
         loaded_at_utc: model.loaded_at_utc,
         payload_version: model.payload_version,
+        general_ledger_entries_count,
         extra: None, // Исключаем из списка для экономии трафика (60MB -> ~5MB)
+    }
+}
+
+fn to_general_ledger_dto(
+    row: crate::projections::general_ledger::repository::Model,
+) -> GeneralLedgerEntryDto {
+    let comment =
+        crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
+            .map(|c| c.journal_comment.to_string())
+            .unwrap_or_default();
+
+    GeneralLedgerEntryDto {
+        id: row.id,
+        posting_id: row.posting_id,
+        entry_date: row.entry_date,
+        layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
+        registrator_type: row.registrator_type,
+        registrator_ref: row.registrator_ref,
+        debit_account: row.debit_account,
+        credit_account: row.credit_account,
+        amount: row.amount,
+        qty: row.qty,
+        turnover_code: row.turnover_code,
+        detail_kind: row.detail_kind,
+        detail_id: row.detail_id,
+        resource_name: row.resource_name,
+        resource_sign: row.resource_sign,
+        created_at: row.created_at,
+        comment,
     }
 }

@@ -1,0 +1,139 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "MarketplaceProduct",
+  "entity_index": "a007",
+  "collection_name": "marketplace_product",
+  "table_name": "a007_marketplace_product",
+
+  "ui": {
+    "element_name": "Товар маркетплейса",
+    "element_name_en": "Marketplace Product",
+    "list_name": "Товары маркетплейсов",
+    "list_name_en": "Marketplace Products",
+    "icon": "package"
+  },
+
+  "ai": {
+    "description": "Товар на маркетплейсе — карточка товара с SKU, артикулом и категорией. Связывает номенклатуру 1С с карточкой на маркетплейсе (WB, Ozon, ЯМ). Используется как опорный справочник при импорте продаж, заказов и отчётов.",
+    "questions": [
+      "Как найти товар по артикулу?",
+      "Как привязать товар маркетплейса к номенклатуре 1С?",
+      "Какие товары есть на Wildberries?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a005_marketplace",
+      "a006_connection_mp",
+      "a008_marketplace_sales"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "MarketplaceProductId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Код", "label_en": "Code", "visible_in_list": true, "visible_in_form": true, "column_width": 120 },
+      "validation": { "required": true, "max_length": 100 }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Наименование", "label_en": "Name", "visible_in_list": true, "visible_in_form": true, "column_width": 280 },
+      "validation": { "required": true, "max_length": 500 }
+    },
+    {
+      "name": "marketplace_ref",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Маркетплейс", "label_en": "Marketplace", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true },
+      "ref_aggregate": "a005_marketplace"
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "marketplace_sku",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "SKU маркетплейса", "label_en": "Marketplace SKU", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
+      "validation": { "required": true, "max_length": 100 },
+      "ai_hint": "Внутренний идентификатор товара на маркетплейсе (nmId для WB, product_id для Ozon)."
+    },
+    {
+      "name": "article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Артикул", "label_en": "Article", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true, "max_length": 200 },
+      "ai_hint": "Артикул продавца — используется для сопоставления с номенклатурой 1С."
+    },
+    {
+      "name": "barcode",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Штрихкод", "label_en": "Barcode", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "brand",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Бренд", "label_en": "Brand", "visible_in_list": true, "visible_in_form": true, "column_width": 120 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "category_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Категория", "label_en": "Category", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Номенклатура 1С", "label_en": "1C Nomenclature", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": false },
+      "ref_aggregate": "a004_nomenclature"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a007_marketplace_product",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

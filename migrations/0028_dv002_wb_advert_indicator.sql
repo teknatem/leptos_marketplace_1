@@ -1,0 +1,41 @@
+-- Ready-to-use BI indicator for WB advertising expenses based on dv002_wb_advert_by_items.
+
+INSERT OR IGNORE INTO a024_bi_indicator (
+    id,
+    code,
+    description,
+    comment,
+    data_spec_json,
+    params_json,
+    view_spec_json,
+    drill_spec_json,
+    status,
+    owner_user_id,
+    is_public,
+    created_by,
+    updated_by,
+    is_deleted,
+    is_posted,
+    created_at,
+    updated_at,
+    version
+) VALUES (
+    'a024a024-0008-4001-a001-000000000008',
+    'IND-WB-ADS-SPEND',
+    'Рекламные расходы WB',
+    'Готовый BI-индикатор на DataView dv002_wb_advert_by_items',
+    '{"view_id":"dv002_wb_advert_by_items","metric_id":"advertising_expenses"}',
+    '[]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    'system',
+    'system',
+    0,
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);

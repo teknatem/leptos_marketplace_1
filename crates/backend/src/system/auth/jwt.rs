@@ -12,6 +12,7 @@ pub async fn generate_access_token(
     user_id: &str,
     username: &str,
     is_admin: bool,
+    primary_role: &str,
 ) -> Result<String> {
     let now = Utc::now();
     let exp = (now + chrono::Duration::hours(ACCESS_TOKEN_LIFETIME_HOURS)).timestamp() as usize;
@@ -21,6 +22,7 @@ pub async fn generate_access_token(
         sub: user_id.to_string(),
         username: username.to_string(),
         is_admin,
+        primary_role: primary_role.to_string(),
         exp,
         iat,
     };

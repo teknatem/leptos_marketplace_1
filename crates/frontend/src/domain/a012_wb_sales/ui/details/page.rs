@@ -7,7 +7,9 @@
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
-use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, PlanFactTab, ProjectionsTab};
+use super::tabs::{
+    GeneralTab, JournalTab, JsonTab, LineTab, LinksTab, PlanFactTab, ProjectionsTab,
+};
 use super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -29,7 +31,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         let vm = vm.clone();
         move || {
             if let Some(sale_data) = vm.sale.get() {
-                let tab_key = format!("a012_wb_sales_detail_{}", stored_id.get_value());
+                let tab_key = format!("a012_wb_sales_details_{}", stored_id.get_value());
                 let sale_id = sale_data
                     .header
                     .sale_id
@@ -47,12 +49,16 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
             "projections" if !vm.projections_loaded.get() => vm.load_projections(),
             "links" | "line" if !vm.finance_reports_loaded.get() => vm.load_finance_reports(),
+            "journal" if !vm.general_ledger_entries_loaded.get() => {
+                vm.load_general_ledger_entries()
+            }
             _ => {}
         }
     });
 
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
+    let vm_warning = vm.clone();
     let vm_content = vm.clone();
 
     view! {
@@ -78,6 +84,7 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
                         }.into_any()
                     } else if vm.sale.get().is_some() {
                         view! {
+                            <ReturnWarning vm=vm_warning.clone() />
                             <TabContent vm=vm_content.clone() />
                         }.into_any()
                     } else {
@@ -179,6 +186,7 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let projections_count = vm.projections_count();
     let finance_reports_count = vm.finance_reports_count();
+    let general_ledger_entries_count = vm.general_ledger_entries_count();
 
     view! {
         <div class="page__tabs">
@@ -254,7 +262,10 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
             <button
                 class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "projections"
-                on:click=move |_| vm.set_tab("projections")
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("projections")
+                }
             >
                 {icon("layers")} "Проекции"
                 <Badge
@@ -272,7 +283,46 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                     {move || projections_count.get().to_string()}
                 </Badge>
             </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "journal"
+                on:click=move |_| vm.set_tab("journal")
+            >
+                {icon("book-open")} "Журнал"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "journal" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Success
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || general_ledger_entries_count.get().to_string()}
+                </Badge>
+            </button>
         </div>
+    }
+}
+
+// ── Return warning ────────────────────────────────────────────────────────────
+
+#[component]
+fn ReturnWarning(vm: WbSalesDetailsVm) -> impl IntoView {
+    let is_customer_return = vm.is_customer_return();
+
+    view! {
+        <Show when=move || is_customer_return.get()>
+            <div style="width: 100%; margin-bottom: var(--spacing-md);">
+                <MessageBar intent=MessageBarIntent::Warning>
+                    <span>"Это возврат покупателя."</span>
+                </MessageBar>
+            </div>
+        </Show>
     }
 }
 
@@ -287,15 +337,17 @@ fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
     let vm_json = vm.clone();
     let vm_links = vm.clone();
     let vm_projections = vm.clone();
+    let vm_journal = vm.clone();
 
     view! {
         {move || match active_tab.get() {
             "general"     => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
             "planfact"    => view! { <PlanFactTab    vm=vm_planfact.clone()    /> }.into_any(),
-            "line"        => view! { <LineTab       vm=vm_line.clone()        /> }.into_any(),
-            "json"        => view! { <JsonTab       vm=vm_json.clone()        /> }.into_any(),
-            "links"       => view! { <LinksTab      vm=vm_links.clone()       /> }.into_any(),
+            "line"        => view! { <LineTab        vm=vm_line.clone()        /> }.into_any(),
+            "json"        => view! { <JsonTab        vm=vm_json.clone()        /> }.into_any(),
+            "links"       => view! { <LinksTab       vm=vm_links.clone()       /> }.into_any(),
             "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
+            "journal"     => view! { <JournalTab     vm=vm_journal.clone()     /> }.into_any(),
             _             => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
         }}
     }

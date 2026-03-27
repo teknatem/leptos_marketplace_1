@@ -68,7 +68,7 @@ pub fn PurchaseOfGoodsList() -> impl IntoView {
 
     let open_detail = move |id: String, document_no: String| {
         tabs_store.open_tab(
-            &format!("a023_purchase_of_goods_detail_{}", id),
+            &format!("a023_purchase_of_goods_details_{}", id),
             &format!("Приобр. {}", document_no),
         );
     };

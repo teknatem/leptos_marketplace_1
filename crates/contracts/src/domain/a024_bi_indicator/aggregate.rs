@@ -1,8 +1,7 @@
 use crate::domain::common::{
     AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
 };
-use crate::shared::indicators::ValueFormat;
-use crate::shared::universal_dashboard::config::DashboardConfig;
+use crate::shared::analytics::ValueFormat;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -35,150 +34,9 @@ impl AggregateId for BiIndicatorId {
     }
 }
 
-// ============================================================================
-// P904 Schema Query — schema-based indicator config (первый случай: p904_sales_data)
-// ============================================================================
-
-/// Измерения (группировки) для детализации индикатора на основе p904
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum P904DrillDimension {
-    /// Группировка по дате (день)
-    Date,
-    /// Группировка по артикулу продавца
-    Article,
-    /// Группировка по кабинету МП (connection_mp)
-    ConnectionMp,
-    /// Группировка по маркетплейсу (WB / OZON / YM / ...)
-    Marketplace,
-    /// Группировка по типу регистратора
-    RegistratorType,
-    /// Группировка по номенклатуре
-    NomenclatureRef,
-}
-
-impl P904DrillDimension {
-    pub fn label(&self) -> &str {
-        match self {
-            P904DrillDimension::Date => "По дню",
-            P904DrillDimension::Article => "По артикулу",
-            P904DrillDimension::ConnectionMp => "По кабинету",
-            P904DrillDimension::Marketplace => "По маркетплейсу",
-            P904DrillDimension::RegistratorType => "По типу",
-            P904DrillDimension::NomenclatureRef => "По номенклатуре",
-        }
-    }
-
-    pub fn field_id(&self) -> &str {
-        match self {
-            P904DrillDimension::Date => "date",
-            P904DrillDimension::Article => "article",
-            P904DrillDimension::ConnectionMp => "connection_mp_ref",
-            P904DrillDimension::Marketplace => "marketplace",
-            P904DrillDimension::RegistratorType => "registrator_type",
-            P904DrillDimension::NomenclatureRef => "nomenclature_ref",
-        }
-    }
-}
-
-/// Колонка-метрика для агрегации p904
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum P904MetricColumn {
-    CustomerIn,
-    CustomerOut,
-    SellerOut,
-    OrderCount,
-}
-
-impl P904MetricColumn {
-    pub fn column_name(&self) -> &str {
-        match self {
-            P904MetricColumn::CustomerIn => "customer_in",
-            P904MetricColumn::CustomerOut => "customer_out",
-            P904MetricColumn::SellerOut => "seller_out",
-            P904MetricColumn::OrderCount => "order_count",
-        }
-    }
-
-    pub fn label(&self) -> &str {
-        match self {
-            P904MetricColumn::CustomerIn => "Сумма выручка",
-            P904MetricColumn::CustomerOut => "Сумма возвраты",
-            P904MetricColumn::SellerOut => "Сумма продавцу",
-            P904MetricColumn::OrderCount => "Кол-во заказов",
-        }
-    }
-}
-
-impl Default for P904MetricColumn {
-    fn default() -> Self {
-        P904MetricColumn::CustomerIn
-    }
-}
-
-/// Конфигурация schema-based запроса для индикаторов на основе p904_sales_data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct P904SchemaConfig {
-    /// Метрика агрегации
-    #[serde(default)]
-    pub metric: P904MetricColumn,
-    /// Доступные измерения для детализации (drilldown)
-    #[serde(default)]
-    pub available_dimensions: Vec<P904DrillDimension>,
-}
-
-impl Default for P904SchemaConfig {
-    fn default() -> Self {
-        Self {
-            metric: P904MetricColumn::CustomerIn,
-            available_dimensions: vec![
-                P904DrillDimension::Date,
-                P904DrillDimension::Article,
-                P904DrillDimension::ConnectionMp,
-                P904DrillDimension::Marketplace,
-            ],
-        }
-    }
-}
-
-// ============================================================================
-// IndicatorDataSourceConfig — универсальный конфиг источника данных
-// ============================================================================
-
-/// Универсальный конфиг источника данных для индикатора.
-///
-/// Явно связывает схему из SchemaRegistry с метрикой, измерениями для
-/// drilldown и фильтрами контекста. Заменяет P904SchemaConfig.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IndicatorDataSourceConfig {
-    /// ID схемы из SchemaRegistry (ds03_p904_sales, ds01_wb_finance_report, ...)
-    pub schema_id: String,
-    /// ID поля-метрики для агрегации (must: can_aggregate=true в FieldDef)
-    pub metric_field_id: String,
-    /// ID полей для drilldown-группировки (must: can_group=true в FieldDef)
-    #[serde(default)]
-    pub available_dimensions: Vec<String>,
-    /// ID полей контекстных фильтров (из schema_filters схемы).
-    /// Обычно: connection_mp_ref, marketplace — передаются из контекста дашборда.
-    #[serde(default)]
-    pub context_filter_fields: Vec<String>,
-}
-
-// ============================================================================
-// DataSpec — откуда и как получать данные
-// ============================================================================
-
 /// Спецификация источника данных для индикатора
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataSpec {
-    /// Идентификатор схемы данных (schema_id из SchemaRegistry)
-    pub schema_id: String,
-    /// Конфигурация запроса — совместима с Universal Dashboard QueryBuilder
-    #[serde(default)]
-    pub query_config: DashboardConfig,
-    /// Опциональная ссылка на SQL-артефакт (a019_llm_artifact)
-    pub sql_artifact_id: Option<String>,
     /// ID DataView из DataViewRegistry (например "dv001_revenue").
     /// Наивысший приоритет при вычислении индикатора и drilldown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -187,35 +45,13 @@ pub struct DataSpec {
     /// Прокидывается в `ViewContext.params["metric"]` при вычислении.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metric_id: Option<String>,
-    /// Универсальный конфиг источника данных (заменяет schema_query).
-    /// Приоритет над schema_query при вычислении индикатора.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_source_config: Option<IndicatorDataSourceConfig>,
-    /// Schema-based конфигурация для индикаторов на основе p904 (устарело).
-    /// Используйте data_source_config. Оставлено для обратной совместимости.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema_query: Option<P904SchemaConfig>,
 }
 
 impl Default for DataSpec {
     fn default() -> Self {
         Self {
-            schema_id: String::new(),
-            query_config: DashboardConfig {
-                data_source: String::new(),
-                selected_fields: vec![],
-                groupings: vec![],
-                display_fields: vec![],
-                #[allow(deprecated)]
-                filters: Default::default(),
-                sort: Default::default(),
-                enabled_fields: vec![],
-            },
-            sql_artifact_id: None,
             view_id: None,
             metric_id: None,
-            data_source_config: None,
-            schema_query: None,
         }
     }
 }
@@ -337,7 +173,7 @@ pub enum DrillTarget {
 pub struct DrillSpec {
     /// Куда переходить
     pub target_type: DrillTarget,
-    /// ID цели (saved_report ID, schema_id, etc.)
+    /// ID цели (saved_report ID, view_id, etc.)
     pub target_id: std::string::String,
     /// Маппинг фильтров: ключ_клика -> фильтр_цели
     pub filter_mapping: HashMap<std::string::String, std::string::String>,

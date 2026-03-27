@@ -45,7 +45,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                     Ok(response) if response.ok() => {
                         match response.json::<PurchaseOfGoods>().await {
                             Ok(data) => {
-                                let tab_key = format!("a023_purchase_of_goods_detail_{}", id_val);
+                                let tab_key = format!("a023_purchase_of_goods_details_{}", id_val);
                                 let tab_title = format!("Приобр. {}", data.document_no);
                                 tabs_store.update_tab_title(&tab_key, &tab_title);
                                 set_doc.set(Some(data));
@@ -114,7 +114,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                         view! {
                             <div class="detail-grid">
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=0 nav_id="a023_purchase_of_goods_detail_summary">
+                                    <CardAnimated delay_ms=0 nav_id="a023_purchase_of_goods_details_summary">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номер документа:"</span>
                                         <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
@@ -140,7 +140,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                 </div>
 
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=40 nav_id="a023_purchase_of_goods_detail_lines">
+                                    <CardAnimated delay_ms=40 nav_id="a023_purchase_of_goods_details_lines">
                                         {if !lines.is_empty() {
                                             view! {
                                             <div style="padding:var(--spacing-md);">

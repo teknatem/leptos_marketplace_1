@@ -387,7 +387,7 @@ pub fn YmReturnsList() -> impl IntoView {
         let return_id_str = return_id.to_string();
         let identifier = pick_identifier(Some(&return_id_str), None, None, &id);
         global_ctx.open_tab(
-            &format!("a016_ym_returns_detail_{}", id),
+            &format!("a016_ym_returns_details_{}", id),
             &detail_tab_label("YM Возврат", identifier),
         );
     };

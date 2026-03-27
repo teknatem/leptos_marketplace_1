@@ -7,3 +7,6 @@ pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
 pub mod p907_ym_payment_report;
 pub mod p908_wb_goods_prices;
+pub mod p909_mp_order_line_turnovers;
+pub mod p910_mp_unlinked_turnovers;
+pub mod p911_wb_advert_by_items;

@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,18 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a024_bi_indicator",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read },
+    ScopeOperation { id: "upsert", required_mode: AccessMode::All },
+    ScopeOperation { id: "delete", required_mode: AccessMode::All }
+    ],
 };
 
 /// Entity metadata for BiIndicator aggregate
@@ -30,6 +41,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Какие индикаторы доступны в системе?", "Как создать новый BI индикатор?", "Как настроить источник данных для индикатора?", "Как добавить пороговые значения к индикатору?", "Как настроить drill-down для индикатора?"],
         related: &["a019_llm_artifact"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array
@@ -246,7 +258,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             label: "Источник данных",
             label_en: Some("Data Spec"),
             placeholder: None,
-            hint: Some("Конфигурация источника данных (schema_id + query_config)"),
+            hint: Some("Конфигурация источника данных индикатора (view_id + metric_id)"),
             visible_in_list: false,
             visible_in_form: true,
             widget: Some("textarea"),
@@ -261,7 +273,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             pattern: None,
             custom_error: None,
         },
-        ai_hint: Some("Сериализованная спецификация источника данных: schema_id и конфигурация DashboardConfig"),
+        ai_hint: Some("Сериализованная спецификация источника данных: view_id и metric_id"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,

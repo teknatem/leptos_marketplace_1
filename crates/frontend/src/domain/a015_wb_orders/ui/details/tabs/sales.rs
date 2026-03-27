@@ -116,7 +116,7 @@ pub fn SalesTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                                     on:click={
                                                         let tabs_store = tabs_store;
                                                         move |_| {
-                                                            let tab_key = format!("a012_wb_sales_detail_{}", sale_id);
+                                                            let tab_key = format!("a012_wb_sales_details_{}", sale_id);
                                                             let tab_title = format!("WB Sale {}", sale_doc_no);
                                                             tabs_store.open_tab(&tab_key, &tab_title);
                                                         }

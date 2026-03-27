@@ -77,7 +77,7 @@ pub fn ProductionOutputList() -> impl IntoView {
 
     let open_detail = move |id: String, document_no: String| {
         tabs_store.open_tab(
-            &format!("a021_production_output_detail_{}", id),
+            &format!("a021_production_output_details_{}", id),
             &format!("Выпуск {}", document_no),
         );
     };

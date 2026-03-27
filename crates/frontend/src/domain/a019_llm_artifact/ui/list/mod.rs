@@ -90,7 +90,7 @@ pub fn LlmArtifactList() -> impl IntoView {
         move |id: String, description: String| {
             use crate::layout::tabs::{detail_tab_label, pick_identifier};
             use contracts::domain::a019_llm_artifact::ENTITY_METADATA as A019;
-            let key = format!("a019_llm_artifact_detail_{}", id);
+            let key = format!("a019_llm_artifact_details_{}", id);
             let identifier = pick_identifier(None, None, Some(&description), &id);
             let title = detail_tab_label(A019.ui.element_name, identifier);
             global_ctx.open_tab(&key, &title);

@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,16 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a012_wb_sales",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read }
+    ],
 };
 
 /// Entity metadata for WbSales aggregate
@@ -30,6 +39,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Какова выручка WB за период?", "Топ-10 товаров по продажам на WB", "Процент возвратов по артикулу", "Прибыль по магазинам WB", "Сколько продано штук товара X?"],
         related: &["a004_nomenclature", "a006_connection_mp", "a002_organization"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array

@@ -4,6 +4,7 @@
 
 use super::field_type::{FieldSource, FieldType};
 use super::validation::ValidationRules;
+use crate::shared::access::EntityAccessMeta;
 
 // ============================================================================
 // Entity-level metadata
@@ -21,6 +22,8 @@ pub struct EntityMetadataInfo {
     pub table_name: Option<&'static str>,
     pub ui: EntityUiMetadata,
     pub ai: EntityAiMetadata,
+    /// Access scope metadata. None for entities without access control (legacy or system).
+    pub access: Option<&'static EntityAccessMeta>,
 }
 
 /// Type of entity

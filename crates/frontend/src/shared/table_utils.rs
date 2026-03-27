@@ -25,10 +25,19 @@
 
 use leptos::task::spawn_local;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, MouseEvent as WebMouseEvent};
+
+// Global registry: tracks which table IDs already have column-resize listeners attached.
+// Prevents accumulation of document-level mousemove/mouseup closures when a component
+// is unmounted and remounted (each remount would otherwise add another set of listeners
+// that are never removed, since they are registered with `forget()`).
+thread_local! {
+    static RESIZE_INITIALIZED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
 
 /// Проверяет, было ли только что изменение ширины колонки.
 /// Используется для блокировки клика сортировки сразу после resize.
@@ -219,6 +228,16 @@ pub fn auto_fit_column(table_id: &str, col_index: u32, storage_key: &str) {
 /// });
 /// ```
 pub fn init_column_resize(table_id: &str, storage_key: &str) {
+    // Skip if this table's document-level listeners were already registered.
+    // The listeners use `forget()` and cannot be removed later, so we guard against
+    // adding duplicates every time the component remounts.
+    let already_registered = RESIZE_INITIALIZED.with(|set| set.borrow().contains(table_id));
+    if already_registered {
+        // Restore saved widths even on remounts so the table looks correct.
+        restore_column_widths(table_id, storage_key);
+        return;
+    }
+
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -385,4 +404,7 @@ pub fn init_column_resize(table_id: &str, storage_key: &str) {
 
         let _ = th.append_child(&handle);
     }
+
+    // Mark this table as having document-level resize listeners attached.
+    RESIZE_INITIALIZED.with(|set| set.borrow_mut().insert(table_id.to_string()));
 }

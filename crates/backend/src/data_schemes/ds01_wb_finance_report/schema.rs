@@ -301,7 +301,12 @@ pub static DS01_SCHEMA: DataSourceSchema = DataSourceSchema {
             join_on_column: None,
         },
     ],
-    schema_filters: &["rr_dt", "connection_mp_ref", "organization_ref", "supplier_oper_name"],
+    schema_filters: &[
+        "rr_dt",
+        "connection_mp_ref",
+        "organization_ref",
+        "supplier_oper_name",
+    ],
 };
 
 /// Table name for this schema

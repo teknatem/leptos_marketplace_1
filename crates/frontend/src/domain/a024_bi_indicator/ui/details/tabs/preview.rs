@@ -29,7 +29,7 @@ pub fn PreviewTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     let vm_fill = vm.clone();
     let fill_demo = move |_| {
         vm_fill.preview_title.set("Выручка за 30 дней".to_string());
-        vm_fill.preview_value.set("₽2.48M".to_string());
+        vm_fill.preview_value.set("2 480 000 ₽".to_string());
         vm_fill.preview_unit.set("RUB".to_string());
         vm_fill.preview_delta.set("+12.4%".to_string());
         vm_fill.preview_delta_dir.set("up".to_string());

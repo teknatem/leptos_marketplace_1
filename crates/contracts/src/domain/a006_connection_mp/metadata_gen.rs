@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,18 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a006_connection_mp",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read },
+    ScopeOperation { id: "upsert", required_mode: AccessMode::All },
+    ScopeOperation { id: "delete", required_mode: AccessMode::All }
+    ],
 };
 
 /// Entity metadata for ConnectionMP aggregate
@@ -30,6 +41,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Сколько магазинов подключено?", "Какие магазины WB есть в системе?", "Какой connection_id у магазина X?", "Какая выручка по каждому магазину?"],
         related: &["a002_organization", "a005_marketplace", "a012_wb_sales", "a013_ym_order"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array
@@ -122,7 +134,7 @@ pub const FIELDS: &[FieldMetadata] = &[
         enum_values: None,
     },
     FieldMetadata {
-        name: "marketplace_id",
+        name: "marketplace",
         rust_type: "String",
         field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
@@ -145,7 +157,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             pattern: None,
             custom_error: None,
         },
-        ai_hint: Some("UUID маркетплейса из a005_marketplace. JOIN: a006_connection_mp.marketplace_id = a005_marketplace.id."),
+        ai_hint: Some("UUID маркетплейса из a005_marketplace. Колонка называется marketplace (не marketplace_id). JOIN: a006_connection_mp.marketplace = a005_marketplace.id. Для WB: WHERE marketplace = (SELECT id FROM a005_marketplace WHERE code = 'mp-wb')"),
         nested_fields: None,
         ref_aggregate: Some("a005_marketplace"),
         enum_values: None,

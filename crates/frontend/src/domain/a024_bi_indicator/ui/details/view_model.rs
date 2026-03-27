@@ -5,6 +5,7 @@ use crate::shared::bi_card::{
     default_design_name, is_known_design, render_srcdoc, IndicatorCardParams,
 };
 use crate::shared::code_format;
+use crate::shared::indicator_format::format_money_with_format_spec;
 use contracts::shared::data_view::ViewContext;
 use leptos::prelude::*;
 
@@ -30,58 +31,19 @@ fn get_app_theme() -> String {
     }
 }
 
-fn default_query_config_value() -> serde_json::Value {
-    // filters and sort MUST be objects (structs on backend), NOT arrays.
-    // DashboardFilters = struct { date_from, date_to, dimensions, conditions, ... }
-    // DashboardSort   = struct { rules: [] }
+fn data_spec_json_value(view_id: &str, metric_id: &str) -> serde_json::Value {
     serde_json::json!({
-        "data_source": "",
-        "selected_fields": [],
-        "groupings": [],
-        "display_fields": [],
-        "filters": {},
-        "sort": { "rules": [] },
-        "enabled_fields": []
+        "view_id": if view_id.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(view_id.to_string())
+        },
+        "metric_id": if metric_id.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(metric_id.to_string())
+        },
     })
-}
-
-fn default_data_spec_value() -> serde_json::Value {
-    serde_json::json!({
-        "schema_id": "",
-        "query_config": default_query_config_value(),
-        "sql_artifact_id": serde_json::Value::Null,
-        "view_id": serde_json::Value::Null,
-        "metric_id": serde_json::Value::Null,
-        "data_source_config": serde_json::Value::Null,
-        "schema_query": serde_json::Value::Null,
-    })
-}
-
-fn merge_top_level_object(target: &mut serde_json::Value, source: &serde_json::Value) {
-    let Some(target_obj) = target.as_object_mut() else {
-        return;
-    };
-    let Some(source_obj) = source.as_object() else {
-        return;
-    };
-    for (key, value) in source_obj {
-        target_obj.insert(key.clone(), value.clone());
-    }
-}
-
-
-fn format_money(v: f64, symbol: &str) -> String {
-    let abs = v.abs();
-    let sign = if v < 0.0 { "-" } else { "" };
-    if abs >= 1_000_000_000.0 {
-        format!("{sign}{symbol}{:.2}B", abs / 1_000_000_000.0)
-    } else if abs >= 1_000_000.0 {
-        format!("{sign}{symbol}{:.1}M", abs / 1_000_000.0)
-    } else if abs >= 1_000.0 {
-        format!("{sign}{symbol}{:.1}K", abs / 1_000.0)
-    } else {
-        format!("{sign}{symbol}{:.2}", abs)
-    }
 }
 
 fn default_value_format_value() -> serde_json::Value {
@@ -89,6 +51,124 @@ fn default_value_format_value() -> serde_json::Value {
         "kind": "Number",
         "decimals": 2
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ValueFormatPreset {
+    pub key: &'static str,
+    pub label: &'static str,
+}
+
+const VALUE_FORMAT_PRESETS: [ValueFormatPreset; 9] = [
+    ValueFormatPreset {
+        key: "money_rub",
+        label: "Сумма, RUB",
+    },
+    ValueFormatPreset {
+        key: "money_thousand_rub",
+        label: "Сумма, т. руб",
+    },
+    ValueFormatPreset {
+        key: "money_million_rub",
+        label: "Сумма, м. руб",
+    },
+    ValueFormatPreset {
+        key: "money_usd",
+        label: "Сумма, USD",
+    },
+    ValueFormatPreset {
+        key: "integer",
+        label: "Целое число",
+    },
+    ValueFormatPreset {
+        key: "number_2",
+        label: "Число, 2 знака",
+    },
+    ValueFormatPreset {
+        key: "number_4",
+        label: "Число, 4 знака",
+    },
+    ValueFormatPreset {
+        key: "percent_1",
+        label: "Процент, 1 знак",
+    },
+    ValueFormatPreset {
+        key: "custom",
+        label: "Свой JSON",
+    },
+];
+
+pub fn value_format_presets() -> &'static [ValueFormatPreset] {
+    &VALUE_FORMAT_PRESETS
+}
+
+fn value_format_from_preset_key(key: &str) -> Option<serde_json::Value> {
+    match key {
+        "money_rub" => Some(serde_json::json!({
+            "kind": "Money",
+            "currency": "RUB"
+        })),
+        "money_thousand_rub" => Some(serde_json::json!({
+            "kind": "Money",
+            "currency": "RUB",
+            "scale": "thousand",
+            "decimals": 0
+        })),
+        "money_million_rub" => Some(serde_json::json!({
+            "kind": "Money",
+            "currency": "RUB",
+            "scale": "million",
+            "decimals": 2
+        })),
+        "money_usd" => Some(serde_json::json!({
+            "kind": "Money",
+            "currency": "USD"
+        })),
+        "integer" => Some(serde_json::json!({
+            "kind": "Integer"
+        })),
+        "number_2" => Some(serde_json::json!({
+            "kind": "Number",
+            "decimals": 2
+        })),
+        "number_4" => Some(serde_json::json!({
+            "kind": "Number",
+            "decimals": 4
+        })),
+        "percent_1" => Some(serde_json::json!({
+            "kind": "Percent",
+            "decimals": 1
+        })),
+        _ => None,
+    }
+}
+
+fn preset_key_from_value_format(value: serde_json::Value) -> &'static str {
+    let normalized = normalized_value_format(value);
+    let kind = normalized["kind"].as_str().unwrap_or("");
+    match kind {
+        "Money" => match (
+            normalized["currency"].as_str().unwrap_or("RUB"),
+            normalized["scale"].as_str().unwrap_or("unit"),
+        ) {
+            ("RUB", "thousand") => "money_thousand_rub",
+            ("RUB", "million") => "money_million_rub",
+            ("RUB", _) => "money_rub",
+            ("USD", _) => "money_usd",
+            _ => "custom",
+        },
+        "Integer" => "integer",
+        "Percent" => match normalized["decimals"].as_u64().unwrap_or(1) {
+            1 => "percent_1",
+            _ => "custom",
+        },
+        "Number" => match normalized["decimals"].as_u64().unwrap_or(2) {
+            2 => "number_2",
+            4 => "number_4",
+            _ => "custom",
+        },
+        _ => "custom",
+    }
 }
 
 fn default_test_ctx() -> ViewContext {
@@ -190,10 +270,31 @@ fn normalized_value_format(value: serde_json::Value) -> serde_json::Value {
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or("RUB");
-            serde_json::json!({
-                "kind": "Money",
-                "currency": currency
-            })
+            let scale = obj.get("scale").and_then(|v| v.as_str()).unwrap_or("unit");
+            match scale {
+                "thousand" => {
+                    let decimals = obj.get("decimals").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                    serde_json::json!({
+                        "kind": "Money",
+                        "currency": currency,
+                        "scale": "thousand",
+                        "decimals": decimals
+                    })
+                }
+                "million" => {
+                    let decimals = obj.get("decimals").and_then(|v| v.as_u64()).unwrap_or(2) as u8;
+                    serde_json::json!({
+                        "kind": "Money",
+                        "currency": currency,
+                        "scale": "million",
+                        "decimals": decimals
+                    })
+                }
+                _ => serde_json::json!({
+                    "kind": "Money",
+                    "currency": currency
+                }),
+            }
         }
         "Percent" => {
             let decimals = obj.get("decimals").and_then(|v| v.as_u64()).unwrap_or(2) as u8;
@@ -235,18 +336,19 @@ fn normalized_loaded_status(value: &serde_json::Value) -> String {
     }
 }
 
-fn read_i64_field(root: &serde_json::Value, top_level_key: &str, metadata_key: &str, default: i64) -> i64 {
+fn read_i64_field(
+    root: &serde_json::Value,
+    top_level_key: &str,
+    metadata_key: &str,
+    default: i64,
+) -> i64 {
     root[top_level_key]
         .as_i64()
         .or_else(|| root["metadata"][metadata_key].as_i64())
         .unwrap_or(default)
 }
 
-fn read_string_field(
-    root: &serde_json::Value,
-    top_level_key: &str,
-    metadata_key: &str,
-) -> String {
+fn read_string_field(root: &serde_json::Value, top_level_key: &str, metadata_key: &str) -> String {
     root[top_level_key]
         .as_str()
         .or_else(|| root["metadata"][metadata_key].as_str())
@@ -275,7 +377,6 @@ pub struct BiIndicatorDetailsVm {
     pub version: RwSignal<i64>,
 
     // DataView config
-    pub data_spec_json: RwSignal<String>,
     /// DataView ID (e.g. "dv001_revenue") — единственный путь вычисления индикатора.
     pub dsc_view_id: RwSignal<String>,
     /// Resource/metric ID from DataViewMeta.available_resources.
@@ -352,10 +453,6 @@ impl BiIndicatorDetailsVm {
             is_public: RwSignal::new(false),
             version: RwSignal::new(1),
 
-            data_spec_json: RwSignal::new(
-                serde_json::to_string_pretty(&default_data_spec_value())
-                    .unwrap_or_else(|_| "{}".to_string()),
-            ),
             dsc_view_id: RwSignal::new(String::new()),
             dsc_metric_id: RwSignal::new(String::new()),
 
@@ -384,7 +481,7 @@ impl BiIndicatorDetailsVm {
             success: RwSignal::new(None),
 
             preview_title: RwSignal::new("Выручка".to_string()),
-            preview_value: RwSignal::new("₽2.40M".to_string()),
+            preview_value: RwSignal::new("2 400 000 ₽".to_string()),
             preview_unit: RwSignal::new(String::new()),
             preview_delta: RwSignal::new("+12.5%".to_string()),
             preview_delta_dir: RwSignal::new("up".to_string()),
@@ -430,6 +527,24 @@ impl BiIndicatorDetailsVm {
         let saving = self.saving;
         let is_valid = self.is_valid();
         Signal::derive(move || saving.get() || !is_valid.get())
+    }
+
+    pub fn current_format_preset_key(&self) -> String {
+        let format_json = self.view_spec_format_json.get();
+        let parsed = serde_json::from_str::<serde_json::Value>(&format_json)
+            .unwrap_or_else(|_| default_value_format_value());
+        preset_key_from_value_format(parsed).to_string()
+    }
+
+    pub fn apply_format_preset(&self, preset_key: &str) {
+        let Some(format_value) = value_format_from_preset_key(preset_key) else {
+            return;
+        };
+        self.view_spec_format_json
+            .set(serde_json::to_string_pretty(&format_value).unwrap_or_else(|_| "{}".to_string()));
+        if self.test_result.get().is_some() {
+            self.apply_test_to_preview();
+        }
     }
 
     /// Build the iframe srcdoc from current ViewSpec + preview field values
@@ -661,7 +776,8 @@ impl BiIndicatorDetailsVm {
     /// Вычислить индикатор через DataView. Требует сохранённого UUID.
     pub fn run_test(&self) {
         let Some(uuid) = self.id.get() else {
-            self.test_error.set(Some("Сохраните индикатор перед тестированием".into()));
+            self.test_error
+                .set(Some("Сохраните индикатор перед тестированием".into()));
             return;
         };
 
@@ -741,11 +857,7 @@ impl BiIndicatorDetailsVm {
             serde_json::from_str(&format_json).unwrap_or_else(|_| default_value_format_value());
         let kind = fmt["kind"].as_str().unwrap_or("Number");
         match kind {
-            "Money" => {
-                let currency = fmt["currency"].as_str().unwrap_or("₽");
-                let symbol = if currency == "RUB" { "₽" } else { currency };
-                format_money(v, symbol)
-            }
+            "Money" => format_money_with_format_spec(v, &fmt),
             "Percent" => {
                 let decimals = fmt["decimals"].as_u64().unwrap_or(1) as usize;
                 format!("{:.prec$}%", v, prec = decimals)
@@ -784,26 +896,8 @@ impl BiIndicatorDetailsVm {
 
     fn to_dto(&self) -> BiIndicatorSaveDto {
         let view_id = self.dsc_view_id.get();
-        let view_id_value = if view_id.trim().is_empty() {
-            serde_json::Value::Null
-        } else {
-            serde_json::Value::String(view_id)
-        };
         let metric_id = self.dsc_metric_id.get();
-        let metric_id_value = if metric_id.trim().is_empty() {
-            serde_json::Value::Null
-        } else {
-            serde_json::Value::String(metric_id)
-        };
-
-        let loaded_data_spec = serde_json::from_str::<serde_json::Value>(&self.data_spec_json.get())
-            .unwrap_or_else(|_| serde_json::json!({}));
-        let mut data_spec = default_data_spec_value();
-        merge_top_level_object(&mut data_spec, &loaded_data_spec);
-        if let Some(data_spec_obj) = data_spec.as_object_mut() {
-            data_spec_obj.insert("view_id".to_string(), view_id_value);
-            data_spec_obj.insert("metric_id".to_string(), metric_id_value);
-        }
+        let data_spec = data_spec_json_value(&view_id, &metric_id);
 
         let params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
             .unwrap_or(serde_json::json!([]));
@@ -917,14 +1011,6 @@ impl BiIndicatorDetailsVm {
         self.version.set(read_i64_field(v, "version", "version", 1));
 
         // DataSpec
-        self.data_spec_json.set(
-            serde_json::to_string_pretty(
-                &v.get("data_spec")
-                    .cloned()
-                    .unwrap_or_else(default_data_spec_value),
-            )
-            .unwrap_or_else(|_| "{}".to_string()),
-        );
         self.dsc_view_id.set(String::new());
         self.dsc_metric_id.set(String::new());
         if let Some(ds) = v.get("data_spec") {

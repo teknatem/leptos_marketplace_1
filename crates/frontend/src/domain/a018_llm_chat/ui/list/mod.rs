@@ -37,7 +37,7 @@ pub fn LlmChatList() -> impl IntoView {
     let handle_open_chat = move |id: String, description: String| {
         use crate::layout::tabs::{detail_tab_label, pick_identifier};
         use contracts::domain::a018_llm_chat::ENTITY_METADATA as A018;
-        let tab_key = format!("a018_llm_chat_detail_{}", id);
+        let tab_key = format!("a018_llm_chat_details_{}", id);
         let identifier = pick_identifier(None, None, Some(&description), &id);
         let tab_label = detail_tab_label(A018.ui.element_name, identifier);
         tabs_store.open_tab(&tab_key, &tab_label);

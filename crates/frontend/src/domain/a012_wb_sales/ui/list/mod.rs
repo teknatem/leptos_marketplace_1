@@ -258,6 +258,7 @@ pub fn WbSalesList() -> impl IntoView {
             let page_size = state.with_untracked(|s| s.page_size);
             let sort_field = state.with_untracked(|s| s.sort_field.clone());
             let sort_ascending = state.with_untracked(|s| s.sort_ascending);
+            let search_document_no = state.with_untracked(|s| s.search_document_no.clone());
             let search_sale_id = state.with_untracked(|s| s.search_sale_id.clone());
             let search_supplier_article =
                 state.with_untracked(|s| s.search_supplier_article.clone());
@@ -275,6 +276,9 @@ pub fn WbSalesList() -> impl IntoView {
             }
 
             // Add search filters
+            if !search_document_no.is_empty() {
+                url.push_str(&format!("&search_srid={}", search_document_no));
+            }
             if !search_sale_id.is_empty() {
                 url.push_str(&format!("&search_sale_id={}", search_sale_id));
             }
@@ -426,6 +430,7 @@ pub fn WbSalesList() -> impl IntoView {
     });
 
     // Thaw inputs: keep local RwSignal, sync -> state (one-way)
+    let search_document_no = RwSignal::new(state.get_untracked().search_document_no.clone());
     let search_sale_id = RwSignal::new(state.get_untracked().search_sale_id.clone());
     let search_supplier_article =
         RwSignal::new(state.get_untracked().search_supplier_article.clone());
@@ -436,6 +441,16 @@ pub fn WbSalesList() -> impl IntoView {
             .clone()
             .unwrap_or_default(),
     );
+
+    Effect::new(move || {
+        let v = search_document_no.get();
+        untrack(move || {
+            state.update(|s| {
+                s.search_document_no = v;
+                s.page = 0;
+            });
+        });
+    });
 
     Effect::new(move || {
         let v = search_sale_id.get();
@@ -478,6 +493,9 @@ pub fn WbSalesList() -> impl IntoView {
             count += 1;
         }
         if s.selected_organization_id.is_some() {
+            count += 1;
+        }
+        if !s.search_document_no.is_empty() {
             count += 1;
         }
         if !s.search_sale_id.is_empty() {
@@ -801,7 +819,7 @@ pub fn WbSalesList() -> impl IntoView {
         use contracts::domain::a012_wb_sales::ENTITY_METADATA as A012;
         let identifier = pick_identifier(Some(&document_no), None, None, &id);
         tabs_store.open_tab(
-            &format!("a012_wb_sales_detail_{}", id),
+            &format!("a012_wb_sales_details_{}", id),
             &detail_tab_label(A012.ui.element_name, identifier),
         );
     };
@@ -971,6 +989,13 @@ pub fn WbSalesList() -> impl IntoView {
                                             }
                                         }).collect_view()}
                                     </Select>
+                                </Flex>
+                            </div>
+
+                            <div style="width: 150px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Document №:"</Label>
+                                    <Input value=search_document_no placeholder="1220952909994319" />
                                 </Flex>
                             </div>
 

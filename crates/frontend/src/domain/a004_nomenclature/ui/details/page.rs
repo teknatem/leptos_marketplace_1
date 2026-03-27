@@ -269,7 +269,7 @@ fn DerivativeWarning(vm: NomenclatureDetailsVm) -> impl IntoView {
                                             let title = title.clone();
                                             move |_| {
                                                 if !base_id.is_empty() {
-                                                    tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", base_id), &title);
+                                                    tabs_store.open_tab(&format!("a004_nomenclature_details_{}", base_id), &title);
                                                 }
                                             }
                                         }

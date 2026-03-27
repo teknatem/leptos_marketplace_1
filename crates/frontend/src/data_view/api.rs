@@ -1,7 +1,7 @@
 //! API calls for DataView semantic layer catalog.
 
-use crate::shared::api_utils::api_base;
 use crate::data_view::types::{DataViewMeta, FilterDef};
+use crate::shared::api_utils::api_base;
 use wasm_bindgen::JsCast;
 
 async fn fetch_json(url: &str) -> Result<serde_json::Value, String> {
@@ -133,8 +133,14 @@ pub async fn compute_view(
 
     let url = format!("{}/api/data-view/{}/compute", api_base(), view_id);
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Content-Type", "application/json").map_err(|e| format!("{e:?}"))?;
-    request.headers().set("Accept", "application/json").map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
 
     let window = web_sys::window().ok_or("no window")?;
     let resp: Response = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))

@@ -159,7 +159,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                                             move |e: web_sys::MouseEvent| {
                                                                                 e.prevent_default();
                                                                                 tabs_store.open_tab(
-                                                                                    &format!("a007_marketplace_product_detail_{}", id),
+                                                                                    &format!("a007_marketplace_product_details_{}", id),
                                                                                     "Товар МП",
                                                                                 );
                                                                             }
@@ -196,7 +196,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                                             move |e: web_sys::MouseEvent| {
                                                                                 e.prevent_default();
                                                                                 tabs_store.open_tab(
-                                                                                    &format!("a004_nomenclature_detail_{}", id),
+                                                                                    &format!("a004_nomenclature_details_{}", id),
                                                                                     "Номенклатура",
                                                                                 );
                                                                             }

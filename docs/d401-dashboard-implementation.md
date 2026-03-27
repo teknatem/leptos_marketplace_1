@@ -189,6 +189,7 @@ No changes needed to shared mechanisms!
 - **Type safety**: Full type safety across frontend/backend via shared contracts
 - **Performance**: Query builder generates optimized SQL with proper indexes
 - **Extensibility**: Schema-based approach allows easy addition of new data sources
+- **Date filters**: if a schema field is business date but SQLite stores ISO datetime text, period filters must compare by `YYYY-MM-DD` part (`substr(column, 1, 10)`) so the last day of the period stays inclusive. See `docs/date-period-filtering.md`.
 
 ## Future Enhancements
 

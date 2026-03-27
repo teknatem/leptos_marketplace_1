@@ -9,8 +9,8 @@ use crate::domain::a024_bi_indicator;
 use contracts::domain::a024_bi_indicator::aggregate::{
     BiIndicator, GenerateViewRequest, GenerateViewResponse,
 };
+use contracts::shared::analytics::IndicatorContext;
 use contracts::shared::drilldown::{DrilldownRequest, DrilldownResponse};
-use contracts::shared::indicators::IndicatorContext;
 
 #[derive(Deserialize)]
 pub struct BiIndicatorListParams {
@@ -159,7 +159,7 @@ pub async fn generate_view(
 }
 
 // ---------------------------------------------------------------------------
-// Compute (for DataView / DataSourceConfig path)
+// Compute (for DataView path)
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -177,17 +177,31 @@ pub struct ComputeParams {
     pub params: std::collections::HashMap<String, String>,
 }
 
-/// POST /api/a024-bi-indicator/:id/compute
-///
-/// Вычисляет значение индикатора через его собственный data_spec
-/// (DataView → DataSourceConfig → IndicatorRegistry).
-pub async fn compute(
-    Path(id): Path<String>,
-    Json(params): Json<ComputeParams>,
-) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let connection_mp_refs: Vec<String> = params
-        .connection_mp_refs
-        .as_deref()
+#[derive(Deserialize)]
+pub struct BatchComputeParams {
+    pub indicator_ids: Vec<String>,
+    pub date_from: String,
+    pub date_to: String,
+    #[serde(default)]
+    pub period2_from: Option<String>,
+    #[serde(default)]
+    pub period2_to: Option<String>,
+    /// Comma-separated list of connection_mp UUIDs
+    #[serde(default)]
+    pub connection_mp_refs: Option<String>,
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
+}
+
+fn build_indicator_context(
+    date_from: &str,
+    date_to: &str,
+    period2_from: &Option<String>,
+    period2_to: &Option<String>,
+    connection_mp_refs_raw: Option<&str>,
+    params: &std::collections::HashMap<String, String>,
+) -> IndicatorContext {
+    let connection_mp_refs: Vec<String> = connection_mp_refs_raw
         .unwrap_or("")
         .split(',')
         .filter(|s| !s.is_empty())
@@ -195,22 +209,40 @@ pub async fn compute(
         .collect();
 
     let mut extra = std::collections::HashMap::new();
-    if let Some(ref f) = params.period2_from {
+    if let Some(f) = period2_from {
         extra.insert("period2_from".to_string(), f.clone());
     }
-    if let Some(ref t) = params.period2_to {
+    if let Some(t) = period2_to {
         extra.insert("period2_to".to_string(), t.clone());
     }
-    extra.extend(params.params.clone());
+    extra.extend(params.clone());
 
-    let ctx = IndicatorContext {
-        date_from: params.date_from.clone(),
-        date_to: params.date_to.clone(),
+    IndicatorContext {
+        date_from: date_from.to_string(),
+        date_to: date_to.to_string(),
         organization_ref: None,
         marketplace: None,
         connection_mp_refs,
         extra,
-    };
+    }
+}
+
+/// POST /api/a024-bi-indicator/:id/compute
+///
+/// Вычисляет значение индикатора через его собственный data_spec
+/// (DataView).
+pub async fn compute(
+    Path(id): Path<String>,
+    Json(params): Json<ComputeParams>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    let ctx = build_indicator_context(
+        &params.date_from,
+        &params.date_to,
+        &params.period2_from,
+        &params.period2_to,
+        params.connection_mp_refs.as_deref(),
+        &params.params,
+    );
 
     match a024_bi_indicator::service::compute_indicator(&id, &ctx).await {
         Ok(val) => Ok(Json(serde_json::json!({
@@ -226,6 +258,61 @@ pub async fn compute(
             Err((axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
+}
+
+/// POST /api/a024-bi-indicator/compute-batch
+///
+/// Вычисляет набор BI индикаторов через их собственные data_spec (DataView).
+pub async fn compute_batch(
+    Json(params): Json<BatchComputeParams>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    let ctx = build_indicator_context(
+        &params.date_from,
+        &params.date_to,
+        &params.period2_from,
+        &params.period2_to,
+        params.connection_mp_refs.as_deref(),
+        &params.params,
+    );
+
+    let indicator_ids = params.indicator_ids;
+    let mut tasks = tokio::task::JoinSet::new();
+    for (index, id) in indicator_ids.iter().cloned().enumerate() {
+        let ctx_clone = ctx.clone();
+        tasks.spawn(async move {
+            let result = a024_bi_indicator::service::compute_indicator(&id, &ctx_clone).await;
+            (index, id, result)
+        });
+    }
+
+    let mut ordered_values: Vec<Option<serde_json::Value>> = vec![None; indicator_ids.len()];
+    while let Some(joined) = tasks.join_next().await {
+        let (index, id, result) = joined.map_err(|e| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Batch compute task join error: {}", e),
+            )
+        })?;
+        match result {
+            Ok(val) => {
+                ordered_values[index] = Some(serde_json::json!({
+                    "id": id,
+                    "value": val.value,
+                    "previous_value": val.previous_value,
+                    "change_percent": val.change_percent,
+                    "status": val.status,
+                    "subtitle": val.subtitle,
+                    "spark_points": val.spark_points,
+                }));
+            }
+            Err(err) => {
+                tracing::warn!("batch compute skipped indicator {}: {}", id, err);
+            }
+        }
+    }
+
+    let values: Vec<serde_json::Value> = ordered_values.into_iter().flatten().collect();
+    Ok(Json(serde_json::json!({ "values": values })))
 }
 
 // ---------------------------------------------------------------------------
@@ -294,11 +381,11 @@ pub async fn drilldown(
 
 /// POST /api/drilldown/execute
 ///
-/// Универсальный drilldown — принимает schema_id явно, без привязки к индикатору.
+/// Универсальный schema drilldown без привязки к BI indicator.
 pub async fn execute_drilldown(
     Json(req): Json<DrilldownRequest>,
 ) -> Result<Json<DrilldownResponse>, axum::http::StatusCode> {
-    match crate::shared::indicators::schema_executor::execute_drilldown(&req).await {
+    match crate::shared::drilldown::execute_schema_drilldown(&req).await {
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             tracing::error!("Universal drilldown error: {}", e);

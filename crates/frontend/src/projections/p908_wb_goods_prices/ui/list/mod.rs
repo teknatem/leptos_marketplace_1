@@ -279,7 +279,7 @@ pub fn WbGoodsPricesList() -> impl IntoView {
         } else {
             format!("Ном. {}", truncate(&name, 20))
         };
-        tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", id), &title);
+        tabs_store.open_tab(&format!("a004_nomenclature_details_{}", id), &title);
     };
 
     view! {

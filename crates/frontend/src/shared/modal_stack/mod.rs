@@ -1,11 +1,27 @@
 use crate::shared::modal_frame::ModalFrame;
 use gloo_timers::future::TimeoutFuture;
+use js_sys::Function;
 use leptos::prelude::*;
 use std::sync::Arc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::KeyboardEvent;
+
+/// RAII guard that removes the keydown listener from the window on drop.
+pub struct KeydownGuard {
+    pub window: web_sys::Window,
+    pub js_fn: Function,
+    pub _closure: Closure<dyn FnMut(web_sys::Event)>,
+}
+
+impl Drop for KeydownGuard {
+    fn drop(&mut self) {
+        let _ = self
+            .window
+            .remove_event_listener_with_callback("keydown", &self.js_fn);
+    }
+}
 
 #[derive(Clone)]
 struct ModalEntry {
@@ -196,9 +212,10 @@ pub fn ModalHost() -> impl IntoView {
         .expect("ModalStackService not provided in context (provide it in app root)");
 
     // Global Escape handler: closes only the topmost modal.
-    Effect::new(move |_| {
-        let svc = svc;
-
+    // Stored in StoredValue::new_local so that the RAII guard is dropped (and the listener
+    // removed) if ModalHost is ever unmounted, preventing both listener accumulation and
+    // potential use-after-free if signals become invalid.
+    let _escape_guard = StoredValue::new_local(web_sys::window().map(|window| {
         let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
             if let Some(keyboard_event) = event.dyn_ref::<KeyboardEvent>() {
                 if keyboard_event.key() == "Escape" && svc.is_open() {
@@ -216,13 +233,15 @@ pub fn ModalHost() -> impl IntoView {
             }
         }) as Box<dyn FnMut(_)>);
 
-        if let Some(window) = web_sys::window() {
-            let _ = window
-                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-            // ModalHost is mounted once for the whole app lifetime; keep closure alive.
-            closure.forget();
+        let js_fn = closure.as_ref().unchecked_ref::<Function>().clone();
+        let _ = window.add_event_listener_with_callback("keydown", &js_fn);
+
+        KeydownGuard {
+            window,
+            js_fn,
+            _closure: closure,
         }
-    });
+    }));
 
     view! {
         <Show when=move || svc.is_open()>

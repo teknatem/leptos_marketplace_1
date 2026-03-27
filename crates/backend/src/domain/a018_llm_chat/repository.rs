@@ -59,6 +59,7 @@ mod message {
         pub created_at: String,
         pub artifact_id: Option<String>,
         pub artifact_action: Option<String>,
+        pub tool_trace_json: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -146,6 +147,7 @@ impl From<message::Model> for LlmChatMessage {
             created_at,
             artifact_id,
             artifact_action,
+            tool_trace: m.tool_trace_json,
             attachments: Vec::new(), // Загружаются отдельно при необходимости
         }
     }
@@ -367,6 +369,7 @@ pub async fn insert_message(
             .artifact_action
             .as_ref()
             .map(|a| a.as_str().to_string())),
+        tool_trace_json: Set(message.tool_trace.clone()),
     };
 
     active_model.insert(db).await?;

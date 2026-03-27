@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,18 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a017_llm_agent",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read },
+    ScopeOperation { id: "upsert", required_mode: AccessMode::All },
+    ScopeOperation { id: "delete", required_mode: AccessMode::All }
+    ],
 };
 
 /// Entity metadata for LlmAgent aggregate
@@ -30,6 +41,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Какие LLM агенты настроены?", "Как добавить OpenAI агента?", "Какие параметры можно настроить для агента?", "Как изменить температуру модели?"],
         related: &["a018_llm_chat", "a019_llm_artifact"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array

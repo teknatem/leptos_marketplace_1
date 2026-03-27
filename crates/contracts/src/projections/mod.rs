@@ -1,3 +1,4 @@
+pub mod general_ledger;
 pub mod p900_mp_sales_register;
 pub mod p901_nomenclature_barcodes;
 pub mod p902_ozon_finance_realization;
@@ -7,3 +8,6 @@ pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
 pub mod p907_ym_payment_report;
 pub mod p908_wb_goods_prices;
+pub mod p909_mp_order_line_turnovers;
+pub mod p910_mp_unlinked_turnovers;
+pub mod p911_wb_advert_by_items;

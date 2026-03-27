@@ -1,13 +1,24 @@
 # Active Context
 
-_Последнее обновление: 2026-02-18_
+_Последнее обновление: 2026-03-12_
 
 ## 🎯 Текущий фокус
 
-Системная реализация завершена. Последний крупный этап — внедрение формальной системы миграций БД.
+DataView — новый семантический слой аналитики. Рефакторинг самодостаточности DataView,
+подключение к базе знаний LLM.
 
 ### Текущее состояние
 
+- ✅ **DataView семантический слой** — реализован и задокументирован (2026-03-12)
+  - `dv001_revenue` — продажи за 2 периода (выручка, себестоимость, комиссия, расходы, прибыль)
+  - `DimensionMeta` расширена SQL-полями → DataView самодостаточен (не зависит от SchemaRegistry)
+  - `dv001/mod.rs` рефакторинг: `compute_drilldown` и `compute_drilldown_multi` используют `meta().available_dimensions`
+  - Инструмент `list_data_views` добавлен в LLM tool_executor
+  - a024/a025 зарегистрированы в LLM MetadataRegistry (category: bi/dashboard)
+  - База знаний: `data/knowledge/data-view.md` + `data/knowledge/bi-indicators.md`
+  - System prompt обновлён: знает о DataView и `list_data_views`
+- ✅ **a024_bi_indicator** — BI Индикаторы — реализованы
+- ✅ **a025_bi_dashboard** — BI Дашборды — реализованы
 - ✅ **Формальная система миграций БД** — внедрена (2026-02-18)
   - `migrations/0001_baseline_schema.sql` — полная исходная схема (40 таблиц)
   - `crates/backend/src/shared/data/migration_runner.rs` — авто-запуск через sqlx
@@ -24,6 +35,22 @@ _Последнее обновление: 2026-02-18_
 - ✅ 17+ aggregates, 6 usecases, 7 projections реализованы
 
 ## 📝 Недавние изменения (последние сессии)
+
+### DataView рефакторинг + LLM интеграция (2026-03-12)
+
+- Расширена `DimensionMeta` (contracts): добавлены SQL execution поля (`db_column`, `ref_table`,
+  `ref_display_column`, `source_table`, `join_on_column`) — все `Option<String>`, backward compat
+- `dv001/metadata.json` обновлён: все 12 измерений получили SQL-поля
+- `dv001/mod.rs` рефакторинг: убрана зависимость от `SchemaRegistry`/`ds03_p904_sales`
+  (`compute_drilldown`, `compute_drilldown_multi` теперь используют `meta().available_dimensions`)
+- `tool_executor.rs`: добавлен инструмент `list_data_views` (синхронный, читает DataViewRegistry)
+- `metadata_registry.rs`: a024 и a025 зарегистрированы (category: bi/dashboard)
+- `tool_executor.rs`: обновлены категории `list_entities` (добавлены "bi", "dashboard")
+- `default_agent.md`: добавлен раздел DataView + инструмент `list_data_views` в список
+- `config.toml`: исправлен `knowledge_base_path` (добавлен `/2/` в путь)
+- `data/knowledge/data-view.md` — создан (описание dv001, метрики, измерения, API)
+- `data/knowledge/bi-indicators.md` — создан (a024, DataSpec, ViewSpec, примеры API)
+- `memory-bank/architecture/data-view-system.md` — создан (полная архитектурная документация)
 
 ### Формальная система миграций БД (2026-02-18)
 
@@ -59,11 +86,12 @@ _Последнее обновление: 2026-02-18_
 
 - Добавление метаданных для остальных агрегатов (a002-a016)
 - Интеграция метаданных с Frontend для автогенерации форм
+- Новые DataView (dv002+) по другим источникам данных
 
 ### Среднесрочные
 
 - Семантическое версионирование: `/api/version` endpoint, bump версии в `Cargo.toml`
-- Интеграция LLM чата с системой метаданных
+- Инструмент `create_bi_indicator` для LLM (async tool executor)
 - Добавление экспорта данных (Excel, CSV)
 
 ### Долгосрочные
@@ -106,6 +134,11 @@ _Последнее обновление: 2026-02-18_
 - **UI библиотека**: Thaw UI 0.5.0-beta с гибридным подходом к таблицам
 - **Metadata System**: JSON → build.rs → `metadata_gen.rs` с `'static` lifetimes
 
+### Паттерны (март 2026)
+
+- **DataView**: Новый dvNNN = папка `data_view/dvNNN/` с `mod.rs` + `metadata.json`. `DimensionMeta` содержит SQL-поля, DataView самодостаточен.
+- **Добавить DataView в LLM**: зарегистрировать в `DataViewRegistry::new()`. LLM использует `list_data_views` tool.
+
 ### Паттерны (февраль 2026)
 
 - **DB Migrations**: новая миграция = новый файл `migrations/NNNN_description.sql`
@@ -116,6 +149,7 @@ _Последнее обновление: 2026-02-18_
 
 ### Важные документы для справки
 
+- `memory-bank/architecture/data-view-system.md` - архитектура DataView (NEW)
 - `memory-bank/architecture/metadata-system.md` - система метаданных полей
 - `memory-bank/debriefs/` - детальные описания недавних сессий
 - `memory-bank/runbooks/` - пошаговые инструкции (Thaw migration, table sorting)

@@ -1,3 +1,4 @@
+use crate::projections::general_ledger::GeneralLedgerEntryDto;
 use serde::{Deserialize, Serialize};
 
 /// DTO для строки финансового отчета Wildberries
@@ -6,6 +7,7 @@ pub struct WbFinanceReportDto {
     // Composite Key
     pub rr_dt: String,
     pub rrd_id: i64,
+    pub source_row_ref: String,
 
     // Metadata
     pub connection_mp_ref: String,
@@ -44,6 +46,8 @@ pub struct WbFinanceReportDto {
     // Technical fields
     pub loaded_at_utc: String,
     pub payload_version: i32,
+    #[serde(default)]
+    pub general_ledger_entries_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<String>,
 }
@@ -99,4 +103,6 @@ pub struct WbFinanceReportListResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbFinanceReportDetailResponse {
     pub item: WbFinanceReportDto,
+    #[serde(default)]
+    pub general_ledger_entries: Vec<GeneralLedgerEntryDto>,
 }

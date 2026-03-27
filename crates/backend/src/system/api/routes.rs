@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 
@@ -46,6 +46,31 @@ pub fn configure_system_routes() -> Router {
             "/api/system/users/:id/change-password",
             post(handlers::users::change_password)
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        // ========================================
+        // SYSTEM ROLES MANAGEMENT (admin only)
+        // ========================================
+        .route(
+            "/api/system/roles",
+            get(handlers::roles::list_roles)
+                .post(handlers::roles::create_role)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/roles/:id",
+            put(handlers::roles::update_role)
+                .delete(handlers::roles::delete_role)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/roles/:id/permissions",
+            get(handlers::roles::get_role_permissions)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/scopes",
+            get(handlers::roles::list_scopes)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         // ========================================
         // SYSTEM SCHEDULED TASKS ROUTES

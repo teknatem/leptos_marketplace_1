@@ -76,13 +76,10 @@ fn anchor_date(date_from: &str, date_to: &str) -> NaiveDate {
 
 #[component]
 pub fn DateRangePickerSmart(
-    #[prop(into)]
-    date_from: Signal<String>,
-    #[prop(into)]
-    date_to: Signal<String>,
+    #[prop(into)] date_from: Signal<String>,
+    #[prop(into)] date_to: Signal<String>,
     on_change: Callback<(String, String)>,
-    #[prop(optional)]
-    label: Option<String>,
+    #[prop(optional)] label: Option<String>,
 ) -> impl IntoView {
     let show_month_picker = RwSignal::new(false);
     let show_date_picker = RwSignal::new(false);
@@ -197,7 +194,11 @@ pub fn DateRangePickerSmart(
         let year = selected_year.get().parse::<i32>().ok();
         let month = selected_month.get().parse::<u32>().ok();
         if let (Some(year), Some(month)) = (year, month) {
-            selected_date_to.set(last_day_of_month(year, month).format("%Y-%m-%d").to_string());
+            selected_date_to.set(
+                last_day_of_month(year, month)
+                    .format("%Y-%m-%d")
+                    .to_string(),
+            );
         }
         show_month_picker.set(false);
         show_date_picker.set(true);

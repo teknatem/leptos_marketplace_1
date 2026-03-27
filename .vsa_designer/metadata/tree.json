@@ -5830,25 +5830,25 @@
                   "origins": [],
                   "children": [
                     {
-                      "name": "element_name: Документ WB Продажи",
+                      "name": "element_name: WB Sales",
                       "kind": "kv",
                       "origins": [],
                       "children": []
                     },
                     {
-                      "name": "element_name_en: WB Sales Document",
+                      "name": "element_name_en: WB Sales",
                       "kind": "kv",
                       "origins": [],
                       "children": []
                     },
                     {
-                      "name": "list_name: Документы WB Продажи",
+                      "name": "list_name: WB Sales",
                       "kind": "kv",
                       "origins": [],
                       "children": []
                     },
                     {
-                      "name": "list_name_en: WB Sales Documents",
+                      "name": "list_name_en: WB Sales",
                       "kind": "kv",
                       "origins": [],
                       "children": []
@@ -7216,11 +7216,11 @@
                 "schema_version": "1.0",
                 "table_name": "a012_wb_sales",
                 "ui": {
-                  "element_name": "Документ WB Продажи",
-                  "element_name_en": "WB Sales Document",
+                  "element_name": "WB Sales",
+                  "element_name_en": "WB Sales",
                   "icon": "shopping-bag",
-                  "list_name": "Документы WB Продажи",
-                  "list_name_en": "WB Sales Documents"
+                  "list_name": "WB Sales",
+                  "list_name_en": "WB Sales"
                 }
               }
             },
@@ -15988,7 +15988,7 @@
                       ]
                     },
                     {
-                      "name": "global_filters: Vec<GlobalFilter>",
+                      "name": "filters: Vec<FilterRef>",
                       "kind": "field",
                       "origins": [],
                       "children": [
@@ -16005,13 +16005,13 @@
                           "children": []
                         },
                         {
-                          "name": "ui.label: Глобальные фильтры",
+                          "name": "ui.label: Фильтры",
                           "kind": "kv",
                           "origins": [],
                           "children": []
                         },
                         {
-                          "name": "ui.label_en: Global Filters",
+                          "name": "ui.label_en: Filters",
                           "kind": "kv",
                           "origins": [],
                           "children": []
@@ -16710,15 +16710,15 @@
                     }
                   },
                   {
-                    "ai_hint": "Список глобальных фильтров: key совпадает с ParamDef.global_filter_key из a024",
+                    "ai_hint": "Список FilterRef, связывающих дашборд с глобальным реестром фильтров",
                     "field_type": "nested_table",
-                    "name": "global_filters",
-                    "rust_type": "Vec<GlobalFilter>",
+                    "name": "filters",
+                    "rust_type": "Vec<FilterRef>",
                     "source": "specific",
                     "ui": {
                       "hint": "Фильтры, применяемые ко всем индикаторам дашборда",
-                      "label": "Глобальные фильтры",
-                      "label_en": "Global Filters",
+                      "label": "Фильтры",
+                      "label_en": "Filters",
                       "visible_in_form": true,
                       "visible_in_list": false,
                       "widget": "table"

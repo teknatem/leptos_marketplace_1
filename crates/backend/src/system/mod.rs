@@ -1,7 +1,9 @@
+pub mod access;
 pub mod api;
 pub mod auth;
 pub mod initialization;
 pub mod middleware;
+pub mod roles;
 pub mod tasks;
 pub mod tracing;
 pub mod users;

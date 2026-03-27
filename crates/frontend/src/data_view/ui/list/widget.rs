@@ -11,10 +11,10 @@ use thaw::*;
 fn category_badge(category: &str) -> AnyView {
     let (color, label) = match category {
         "revenue" => (BadgeColor::Success, "Выручка".to_string()),
-        "orders"  => (BadgeColor::Informative, "Заказы".to_string()),
-        "costs"   => (BadgeColor::Warning, "Затраты".to_string()),
+        "orders" => (BadgeColor::Informative, "Заказы".to_string()),
+        "costs" => (BadgeColor::Warning, "Затраты".to_string()),
         "returns" => (BadgeColor::Danger, "Возвраты".to_string()),
-        other     => (BadgeColor::Subtle, other.to_string()),
+        other => (BadgeColor::Subtle, other.to_string()),
     };
     view! { <Badge color=color>{label}</Badge> }.into_any()
 }
@@ -115,7 +115,7 @@ pub fn DataViewList() -> impl IntoView {
                             <div class="dv-card-grid">
                                 {filtered.get().into_iter().map(|meta| {
                                     let id = meta.id.clone();
-                                    let tab_key   = format!("data_view_detail_{}", id);
+                                    let tab_key   = format!("data_view_details_{}", id);
                                     let tab_title = format!("DataView · {}", id);
                                     let ctx_open  = ctx.clone();
 

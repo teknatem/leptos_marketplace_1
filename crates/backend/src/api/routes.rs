@@ -1,17 +1,58 @@
 use axum::{
+    body::Body,
+    extract::Request,
+    middleware::{self, Next},
     routing::{get, post},
     Router,
 };
 
 use super::handlers;
+use crate::system::auth::middleware::{check_scope, check_scope_read, require_auth};
 
-/// Конфигурация бизнес-роутов приложения
+/// Business routes configuration.
+/// Each aggregate group is wrapped with require_scope_auto for its scope.
+/// Projections, usecases, and dashboards require authentication but no scope.
 pub fn configure_business_routes() -> Router {
     Router::new()
-        // ========================================
-        // AGGREGATES (A001-A016)
-        // ========================================
-        // A001 Connection 1C handlers
+        .merge(a001_routes())
+        .merge(a002_routes())
+        .merge(a003_routes())
+        .merge(a004_routes())
+        .merge(a005_routes())
+        .merge(a006_routes())
+        .merge(a007_routes())
+        .merge(a008_routes())
+        .merge(a009_routes())
+        .merge(a010_routes())
+        .merge(a011_routes())
+        .merge(a012_routes())
+        .merge(a013_routes())
+        .merge(a014_routes())
+        .merge(a015_routes())
+        .merge(a016_routes())
+        .merge(a017_routes())
+        .merge(a018_routes())
+        .merge(a019_routes())
+        .merge(a020_routes())
+        .merge(a021_routes())
+        .merge(a022_routes())
+        .merge(a023_routes())
+        .merge(a024_routes())
+        .merge(a025_routes())
+        .merge(a026_routes())
+        .merge(usecase_routes())
+        .merge(projection_routes())
+        .merge(dashboard_routes())
+        .merge(data_view_routes())
+        .merge(misc_routes())
+}
+
+// ============================================================================
+// Aggregates A001–A025 (each wrapped with require_scope_auto)
+// ============================================================================
+
+fn a001_routes() -> Router {
+    Router::new()
         .route(
             "/api/connection_1c",
             get(handlers::a001_connection_1c::list_all).post(handlers::a001_connection_1c::upsert),
@@ -33,7 +74,15 @@ pub fn configure_business_routes() -> Router {
             "/api/connection_1c/testdata",
             post(handlers::a001_connection_1c::insert_test_data),
         )
-        // A002 Organization handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a001_connection_1c", req, next).await
+            },
+        ))
+}
+
+fn a002_routes() -> Router {
+    Router::new()
         .route(
             "/api/organization",
             get(handlers::a002_organization::list_all).post(handlers::a002_organization::upsert),
@@ -46,7 +95,15 @@ pub fn configure_business_routes() -> Router {
             "/api/organization/testdata",
             post(handlers::a002_organization::insert_test_data),
         )
-        // A003 Counterparty handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a002_organization", req, next).await
+            },
+        ))
+}
+
+fn a003_routes() -> Router {
+    Router::new()
         .route(
             "/api/counterparty",
             get(handlers::a003_counterparty::list_all).post(handlers::a003_counterparty::upsert),
@@ -55,7 +112,15 @@ pub fn configure_business_routes() -> Router {
             "/api/counterparty/:id",
             get(handlers::a003_counterparty::get_by_id).delete(handlers::a003_counterparty::delete),
         )
-        // A004 Nomenclature handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a003_counterparty", req, next).await
+            },
+        ))
+}
+
+fn a004_routes() -> Router {
+    Router::new()
         .route(
             "/api/nomenclature",
             get(handlers::a004_nomenclature::list_all).post(handlers::a004_nomenclature::upsert),
@@ -80,7 +145,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a004/nomenclature",
             get(handlers::a004_nomenclature::list_paginated),
         )
-        // A005 Marketplace handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a004_nomenclature", req, next).await
+            },
+        ))
+}
+
+fn a005_routes() -> Router {
+    Router::new()
         .route(
             "/api/marketplace",
             get(handlers::a005_marketplace::list_all).post(handlers::a005_marketplace::upsert),
@@ -93,7 +166,15 @@ pub fn configure_business_routes() -> Router {
             "/api/marketplace/testdata",
             post(handlers::a005_marketplace::insert_test_data),
         )
-        // A006 Connection MP handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a005_marketplace", req, next).await
+            },
+        ))
+}
+
+fn a006_routes() -> Router {
+    Router::new()
         .route(
             "/api/connection_mp",
             get(handlers::a006_connection_mp::list_all).post(handlers::a006_connection_mp::upsert),
@@ -107,7 +188,15 @@ pub fn configure_business_routes() -> Router {
             "/api/connection_mp/test",
             post(handlers::a006_connection_mp::test_connection),
         )
-        // A007 Marketplace product handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a006_connection_mp", req, next).await
+            },
+        ))
+}
+
+fn a007_routes() -> Router {
+    Router::new()
         .route(
             "/api/marketplace_product",
             get(handlers::a007_marketplace_product::list_all)
@@ -126,7 +215,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a007/marketplace-product",
             get(handlers::a007_marketplace_product::list_paginated),
         )
-        // A008 Marketplace sales handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a007_marketplace_product", req, next).await
+            },
+        ))
+}
+
+fn a008_routes() -> Router {
+    Router::new()
         .route(
             "/api/marketplace_sales",
             get(handlers::a008_marketplace_sales::list_all)
@@ -137,7 +234,15 @@ pub fn configure_business_routes() -> Router {
             get(handlers::a008_marketplace_sales::get_by_id)
                 .delete(handlers::a008_marketplace_sales::delete),
         )
-        // A009 OZON Returns handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a008_marketplace_sales", req, next).await
+            },
+        ))
+}
+
+fn a009_routes() -> Router {
+    Router::new()
         .route(
             "/api/ozon_returns",
             get(handlers::a009_ozon_returns::list_all).post(handlers::a009_ozon_returns::upsert),
@@ -154,7 +259,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a009/ozon-returns/:id/unpost",
             post(handlers::a009_ozon_returns::unpost_ozon_return),
         )
-        // A010 OZON FBS Posting handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a009_ozon_returns", req, next).await
+            },
+        ))
+}
+
+fn a010_routes() -> Router {
+    Router::new()
         .route(
             "/api/a010/ozon-fbs-posting",
             get(handlers::a010_ozon_fbs_posting::list_postings),
@@ -179,7 +292,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a010/ozon-fbs-posting/post-period",
             post(handlers::a010_ozon_fbs_posting::post_period),
         )
-        // A011 OZON FBO Posting handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a010_ozon_fbs_posting", req, next).await
+            },
+        ))
+}
+
+fn a011_routes() -> Router {
+    Router::new()
         .route(
             "/api/a011/ozon-fbo-posting",
             get(handlers::a011_ozon_fbo_posting::list_postings),
@@ -200,7 +321,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a011/ozon-fbo-posting/post-period",
             post(handlers::a011_ozon_fbo_posting::post_period),
         )
-        // A012 WB Sales handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a011_ozon_fbo_posting", req, next).await
+            },
+        ))
+}
+
+fn a012_routes() -> Router {
+    Router::new()
         .route(
             "/api/a012/wb-sales",
             get(handlers::a012_wb_sales::list_sales),
@@ -242,6 +371,10 @@ pub fn configure_business_routes() -> Router {
             get(handlers::a012_wb_sales::get_projections),
         )
         .route(
+            "/api/a012/wb-sales/:id/journal",
+            get(handlers::a012_wb_sales::get_general_ledger_entries),
+        )
+        .route(
             "/api/a012/wb-sales/:id/refresh-dealer-price",
             post(handlers::a012_wb_sales::refresh_dealer_price),
         )
@@ -249,7 +382,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a012/wb-sales/migrate-sale-id",
             post(handlers::a012_wb_sales::migrate_fill_sale_id),
         )
-        // A013 YM Order handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a012_wb_sales", req, next).await
+            },
+        ))
+}
+
+fn a013_routes() -> Router {
+    Router::new()
         .route(
             "/api/a013/ym-order",
             get(handlers::a013_ym_order::list_orders_fast),
@@ -290,7 +431,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a013/ym-order/batch-unpost",
             post(handlers::a013_ym_order::batch_unpost_documents),
         )
-        // A014 OZON Transactions handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a013_ym_order", req, next).await
+            },
+        ))
+}
+
+fn a014_routes() -> Router {
+    Router::new()
         .route(
             "/api/ozon_transactions",
             get(handlers::a014_ozon_transactions::list_all),
@@ -316,7 +465,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a014/ozon-transactions/:id/projections",
             get(handlers::a014_ozon_transactions::get_projections),
         )
-        // A015 WB Orders handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a014_ozon_transactions", req, next).await
+            },
+        ))
+}
+
+fn a015_routes() -> Router {
+    Router::new()
         .route(
             "/api/a015/wb-orders",
             get(handlers::a015_wb_orders::list_orders),
@@ -345,7 +502,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a015/wb-orders/:id/unpost",
             post(handlers::a015_wb_orders::unpost_order),
         )
-        // A016 YM Returns handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a015_wb_orders", req, next).await
+            },
+        ))
+}
+
+fn a016_routes() -> Router {
+    Router::new()
         .route(
             "/api/a016/ym-returns",
             get(handlers::a016_ym_returns::list_returns),
@@ -382,63 +547,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a016/ym-returns/batch-unpost",
             post(handlers::a016_ym_returns::batch_unpost_documents),
         )
-        // A020 WB Promotions handlers
-        .route(
-            "/api/a020/wb-promotions",
-            get(handlers::a020_wb_promotion::list_promotions),
-        )
-        .route(
-            "/api/a020/wb-promotions/:id",
-            get(handlers::a020_wb_promotion::get_promotion_detail),
-        )
-        .route(
-            "/api/a020/wb-promotions/:id/post",
-            post(handlers::a020_wb_promotion::post_promotion),
-        )
-        .route(
-            "/api/a020/wb-promotions/:id/unpost",
-            post(handlers::a020_wb_promotion::unpost_promotion),
-        )
-        .route(
-            "/api/a020/raw/:ref_id",
-            get(handlers::a020_wb_promotion::get_raw_json),
-        )
-        // A021 Production Output handlers
-        .route(
-            "/api/a021/production-output/list",
-            get(handlers::a021_production_output::list_paginated),
-        )
-        .route(
-            "/api/a021/production-output/:id",
-            get(handlers::a021_production_output::get_by_id),
-        )
-        .route(
-            "/api/a021/production-output/:id/post",
-            post(handlers::a021_production_output::post_production_output),
-        )
-        .route(
-            "/api/a021/production-output/:id/unpost",
-            post(handlers::a021_production_output::unpost_production_output),
-        )
-        // A022 Kit Variant handlers
-        .route(
-            "/api/a022/kit-variant/list",
-            get(handlers::a022_kit_variant::list_paginated),
-        )
-        .route(
-            "/api/a022/kit-variant/:id",
-            get(handlers::a022_kit_variant::get_by_id),
-        )
-        // A023 Purchase of Goods handlers
-        .route(
-            "/api/a023/purchase-of-goods/list",
-            get(handlers::a023_purchase_of_goods::list_paginated),
-        )
-        .route(
-            "/api/a023/purchase-of-goods/:id",
-            get(handlers::a023_purchase_of_goods::get_by_id),
-        )
-        // A017 LLM Agent handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a016_ym_returns", req, next).await
+            },
+        ))
+}
+
+fn a017_routes() -> Router {
+    Router::new()
         .route(
             "/api/a017-llm-agent",
             get(handlers::a017_llm_agent::list_all).post(handlers::a017_llm_agent::upsert),
@@ -463,7 +580,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a017-llm-agent/:id/fetch-models",
             post(handlers::a017_llm_agent::fetch_models),
         )
-        // A018 LLM Chat handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a017_llm_agent", req, next).await
+            },
+        ))
+}
+
+fn a018_routes() -> Router {
+    Router::new()
         .route(
             "/api/a018-llm-chat",
             get(handlers::a018_llm_chat::list_all).post(handlers::a018_llm_chat::upsert),
@@ -477,6 +602,10 @@ pub fn configure_business_routes() -> Router {
             get(handlers::a018_llm_chat::list_paginated),
         )
         .route(
+            "/api/a018-llm-chat/jobs/:job_id",
+            get(handlers::a018_llm_chat::poll_job),
+        )
+        .route(
             "/api/a018-llm-chat/:id",
             get(handlers::a018_llm_chat::get_by_id).delete(handlers::a018_llm_chat::delete),
         )
@@ -488,7 +617,15 @@ pub fn configure_business_routes() -> Router {
             "/api/a018-llm-chat/:id/upload",
             post(handlers::a018_llm_chat::upload_attachment),
         )
-        // A019 LLM Artifact handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a018_llm_chat", req, next).await
+            },
+        ))
+}
+
+fn a019_routes() -> Router {
+    Router::new()
         .route(
             "/api/a019-llm-artifact",
             get(handlers::a019_llm_artifact::list_all).post(handlers::a019_llm_artifact::upsert),
@@ -505,12 +642,141 @@ pub fn configure_business_routes() -> Router {
             "/api/a019-llm-artifact/:id",
             get(handlers::a019_llm_artifact::get_by_id).delete(handlers::a019_llm_artifact::delete),
         )
-        // A024 BI Indicator handlers
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a019_llm_artifact", req, next).await
+            },
+        ))
+}
+
+fn a020_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a020/wb-promotions",
+            get(handlers::a020_wb_promotion::list_promotions),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id",
+            get(handlers::a020_wb_promotion::get_promotion_detail),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id/post",
+            post(handlers::a020_wb_promotion::post_promotion),
+        )
+        .route(
+            "/api/a020/wb-promotions/:id/unpost",
+            post(handlers::a020_wb_promotion::unpost_promotion),
+        )
+        .route(
+            "/api/a020/raw/:ref_id",
+            get(handlers::a020_wb_promotion::get_raw_json),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a020_wb_promotion", req, next).await
+            },
+        ))
+}
+
+fn a021_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a021/production-output/list",
+            get(handlers::a021_production_output::list_paginated),
+        )
+        .route(
+            "/api/a021/production-output/:id",
+            get(handlers::a021_production_output::get_by_id),
+        )
+        .route(
+            "/api/a021/production-output/:id/post",
+            post(handlers::a021_production_output::post_production_output),
+        )
+        .route(
+            "/api/a021/production-output/:id/unpost",
+            post(handlers::a021_production_output::unpost_production_output),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a021_production_output", req, next).await
+            },
+        ))
+}
+
+fn a022_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a022/kit-variant/list",
+            get(handlers::a022_kit_variant::list_paginated),
+        )
+        .route(
+            "/api/a022/kit-variant/:id",
+            get(handlers::a022_kit_variant::get_by_id),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a022_kit_variant", req, next).await
+            },
+        ))
+}
+
+fn a026_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a026/wb-advert-daily/list",
+            get(handlers::a026_wb_advert_daily::list_paginated),
+        )
+        .route(
+            "/api/a026/wb-advert-daily/:id",
+            get(handlers::a026_wb_advert_daily::get_by_id),
+        )
+        .route(
+            "/api/a026/wb-advert-daily/:id/post",
+            post(handlers::a026_wb_advert_daily::post_document),
+        )
+        .route(
+            "/api/a026/wb-advert-daily/:id/unpost",
+            post(handlers::a026_wb_advert_daily::unpost_document),
+        )
+        .route(
+            "/api/a026/wb-advert-daily/:id/projections",
+            get(handlers::a026_wb_advert_daily::get_projections),
+        )
+        .route(
+            "/api/a026/wb-advert-daily/:id/journal",
+            get(handlers::a026_wb_advert_daily::get_general_ledger_entries),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a026_wb_advert_daily", req, next).await
+            },
+        ))
+}
+
+fn a023_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a023/purchase-of-goods/list",
+            get(handlers::a023_purchase_of_goods::list_paginated),
+        )
+        .route(
+            "/api/a023/purchase-of-goods/:id",
+            get(handlers::a023_purchase_of_goods::get_by_id),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a023_purchase_of_goods", req, next).await
+            },
+        ))
+}
+
+fn a024_routes() -> Router {
+    // Write routes: upsert, delete, testdata, generate-view — require "all" access.
+    let write_routes = Router::new()
         .route(
             "/api/a024-bi-indicator",
             get(handlers::a024_bi_indicator::list_all).post(handlers::a024_bi_indicator::upsert),
         )
-        // alias for frontend which calls /upsert explicitly
         .route(
             "/api/a024-bi-indicator/upsert",
             post(handlers::a024_bi_indicator::upsert),
@@ -539,9 +805,22 @@ pub fn configure_business_routes() -> Router {
             "/api/a024-bi-indicator/:id",
             get(handlers::a024_bi_indicator::get_by_id).delete(handlers::a024_bi_indicator::delete),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a024_bi_indicator", req, next).await
+            },
+        ));
+
+    // Read-only compute routes: these POST endpoints only compute/query data,
+    // they never mutate state — "read" access is sufficient.
+    let compute_routes = Router::new()
         .route(
             "/api/a024-bi-indicator/:id/compute",
             post(handlers::a024_bi_indicator::compute),
+        )
+        .route(
+            "/api/a024-bi-indicator/compute-batch",
+            post(handlers::a024_bi_indicator::compute_batch),
         )
         .route(
             "/api/a024-bi-indicator/:id/drilldown",
@@ -551,10 +830,58 @@ pub fn configure_business_routes() -> Router {
             "/api/drilldown/execute",
             post(handlers::a024_bi_indicator::execute_drilldown),
         )
-        // ========================================
-        // USECASES (U501-U506)
-        // ========================================
-        // UseCase u501: Import from UT
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("a024_bi_indicator", req, next).await
+            },
+        ));
+
+    write_routes.merge(compute_routes)
+}
+
+fn a025_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a025-bi-dashboard",
+            get(handlers::a025_bi_dashboard::list_all).post(handlers::a025_bi_dashboard::upsert),
+        )
+        .route(
+            "/api/a025-bi-dashboard/upsert",
+            post(handlers::a025_bi_dashboard::upsert),
+        )
+        .route(
+            "/api/a025-bi-dashboard/list",
+            get(handlers::a025_bi_dashboard::list_paginated),
+        )
+        .route(
+            "/api/a025-bi-dashboard/public",
+            get(handlers::a025_bi_dashboard::list_public),
+        )
+        .route(
+            "/api/a025-bi-dashboard/testdata",
+            post(handlers::a025_bi_dashboard::insert_test_data),
+        )
+        .route(
+            "/api/a025-bi-dashboard/owner/:user_id",
+            get(handlers::a025_bi_dashboard::list_by_owner),
+        )
+        .route(
+            "/api/a025-bi-dashboard/:id",
+            get(handlers::a025_bi_dashboard::get_by_id).delete(handlers::a025_bi_dashboard::delete),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a025_bi_dashboard", req, next).await
+            },
+        ))
+}
+
+// ============================================================================
+// Use Cases (U501–U508) — require auth, no scope check in Phase 1
+// ============================================================================
+
+fn usecase_routes() -> Router {
+    Router::new()
         .route(
             "/api/u501/import/start",
             post(handlers::usecases::u501_start_import),
@@ -563,7 +890,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u501/import/:session_id/progress",
             get(handlers::usecases::u501_get_progress),
         )
-        // UseCase u502: Import from OZON
         .route(
             "/api/u502/import/start",
             post(handlers::usecases::u502_start_import),
@@ -572,7 +898,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u502/import/:session_id/progress",
             get(handlers::usecases::u502_get_progress),
         )
-        // UseCase u503: Import from Yandex Market
         .route(
             "/api/u503/import/start",
             post(handlers::usecases::u503_start_import),
@@ -581,7 +906,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u503/import/:session_id/progress",
             get(handlers::usecases::u503_get_progress),
         )
-        // UseCase u504: Import from Wildberries
         .route(
             "/api/u504/import/start",
             post(handlers::usecases::u504_start_import),
@@ -590,7 +914,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u504/import/:session_id/progress",
             get(handlers::usecases::u504_get_progress),
         )
-        // UseCase u505: Match Nomenclature
         .route(
             "/api/u505/match/start",
             post(handlers::usecases::u505_start_matching),
@@ -599,7 +922,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u505/match/:session_id/progress",
             get(handlers::usecases::u505_get_progress),
         )
-        // UseCase u506: Import from LemanaPro
         .route(
             "/api/u506/import/start",
             post(handlers::usecases::u506_start_import),
@@ -608,7 +930,6 @@ pub fn configure_business_routes() -> Router {
             "/api/u506/import/:session_id/progress",
             get(handlers::usecases::u506_get_progress),
         )
-        // UseCase u507: Import from ERP (Production Output)
         .route(
             "/api/u507/import/start",
             post(handlers::usecases::u507_start_import),
@@ -617,10 +938,36 @@ pub fn configure_business_routes() -> Router {
             "/api/u507/import/:session_id/progress",
             get(handlers::usecases::u507_get_progress),
         )
-        // ========================================
-        // PROJECTIONS (P900-P906)
-        // ========================================
-        // P900 Sales Register handlers
+        .route(
+            "/api/u508/repost/projections",
+            get(handlers::usecases::u508_get_projections),
+        )
+        .route(
+            "/api/u508/repost/aggregates",
+            get(handlers::usecases::u508_get_aggregates),
+        )
+        .route(
+            "/api/u508/repost/start",
+            post(handlers::usecases::u508_start_repost),
+        )
+        .route(
+            "/api/u508/repost/aggregate/start",
+            post(handlers::usecases::u508_start_aggregate_repost),
+        )
+        .route(
+            "/api/u508/repost/:session_id/progress",
+            get(handlers::usecases::u508_get_progress),
+        )
+        .layer(middleware::from_fn(require_auth))
+}
+
+// ============================================================================
+// Projections (P900–P908) — require auth, no scope check in Phase 1
+// ============================================================================
+
+fn projection_routes() -> Router {
+    Router::new()
+        // P900 Sales Register
         .route(
             "/api/p900/sales-register",
             get(handlers::p900_mp_sales_register::list_sales),
@@ -645,7 +992,7 @@ pub fn configure_business_routes() -> Router {
             "/api/projections/p900/:registrator_ref",
             get(handlers::p900_mp_sales_register::get_by_registrator),
         )
-        // P901 Nomenclature Barcodes handlers
+        // P901 Nomenclature Barcodes
         .route(
             "/api/p901/barcode/:barcode",
             get(handlers::p901_nomenclature_barcodes::get_by_barcode),
@@ -658,7 +1005,7 @@ pub fn configure_business_routes() -> Router {
             "/api/p901/barcodes",
             get(handlers::p901_nomenclature_barcodes::list_barcodes),
         )
-        // P902 OZON Finance Realization handlers
+        // P902 OZON Finance Realization
         .route(
             "/api/p902/finance-realization",
             get(handlers::p902_ozon_finance_realization::list_finance_realization),
@@ -671,7 +1018,7 @@ pub fn configure_business_routes() -> Router {
             "/api/p902/stats",
             get(handlers::p902_ozon_finance_realization::get_stats),
         )
-        // P903 WB Finance Report handlers
+        // P903 WB Finance Report
         .route(
             "/api/p903/finance-report",
             get(handlers::p903_wb_finance_report::list_reports),
@@ -681,16 +1028,51 @@ pub fn configure_business_routes() -> Router {
             get(handlers::p903_wb_finance_report::search_by_srid),
         )
         .route(
+            "/api/p903/finance-report/operation-kinds",
+            get(handlers::p903_wb_finance_report::list_operation_kinds),
+        )
+        .route(
             "/api/p903/finance-report/:rr_dt/:rrd_id",
             get(handlers::p903_wb_finance_report::get_report_detail),
+        )
+        .route(
+            "/api/p903/finance-report/:rr_dt/:rrd_id/post",
+            post(handlers::p903_wb_finance_report::post_report),
         )
         .route(
             "/api/p903/finance-report/:rr_dt/:rrd_id/raw",
             get(handlers::p903_wb_finance_report::get_raw_json),
         )
-        // P904 Sales Data handlers
+        // P904 Sales Data
         .route("/api/p904/sales-data", get(handlers::p904_sales_data::list))
-        // P905 WB Commission History handlers
+        // P909 MP Order Line Turnovers
+        .route(
+            "/api/p909/order-line-turnovers",
+            get(handlers::p909_mp_order_line_turnovers::list),
+        )
+        .route(
+            "/api/p909/order-line-turnovers/:id",
+            get(handlers::p909_mp_order_line_turnovers::get_by_id),
+        )
+        // P910 MP Unlinked Turnovers
+        .route(
+            "/api/p910/unlinked-turnovers",
+            get(handlers::p910_mp_unlinked_turnovers::list),
+        )
+        .route(
+            "/api/p910/unlinked-turnovers/:id",
+            get(handlers::p910_mp_unlinked_turnovers::get_by_id),
+        )
+        // P911 WB Advert By Items Turnovers
+        .route(
+            "/api/p911/wb-advert-by-items",
+            get(handlers::p911_wb_advert_by_items::list),
+        )
+        .route(
+            "/api/p911/wb-advert-by-items/:general_ledger_ref",
+            get(handlers::p911_wb_advert_by_items::get_by_general_ledger_ref),
+        )
+        // P905 WB Commission History
         .route(
             "/api/p905-commission/list",
             get(handlers::p905_wb_commission_history::list_commissions),
@@ -709,7 +1091,7 @@ pub fn configure_business_routes() -> Router {
             "/api/p905-commission",
             post(handlers::p905_wb_commission_history::save_commission),
         )
-        // P906 Nomenclature Prices handlers
+        // P906 Nomenclature Prices
         .route(
             "/api/p906/nomenclature-prices",
             get(handlers::p906_nomenclature_prices::list),
@@ -722,7 +1104,7 @@ pub fn configure_business_routes() -> Router {
             "/api/p906/import-excel",
             post(handlers::p906_nomenclature_prices::import_excel),
         )
-        // P907 YM Payment Report handlers
+        // P907 YM Payment Report
         .route(
             "/api/p907/payment-report",
             get(handlers::p907_ym_payment_report::list_reports),
@@ -731,7 +1113,7 @@ pub fn configure_business_routes() -> Router {
             "/api/p907/payment-report/:record_key",
             get(handlers::p907_ym_payment_report::get_report),
         )
-        // P908 WB Goods Prices handlers
+        // P908 WB Goods Prices
         .route(
             "/api/p908/goods-prices",
             get(handlers::p908_wb_goods_prices::list_goods_prices),
@@ -740,21 +1122,19 @@ pub fn configure_business_routes() -> Router {
             "/api/p908/goods-prices/:nm_id",
             get(handlers::p908_wb_goods_prices::get_goods_price),
         )
-        // ========================================
-        // INDICATORS
-        // ========================================
-        .route(
-            "/api/indicators/compute",
-            post(handlers::indicators::compute_indicators),
-        )
-        .route(
-            "/api/indicators/meta",
-            get(handlers::indicators::get_indicator_catalog),
-        )
-        // ========================================
-        // DASHBOARDS (D400-D401)
-        // ========================================
-        // D400 Monthly Summary Dashboard
+        .layer(middleware::from_fn(require_auth))
+}
+
+// ============================================================================
+// Indicators
+// ============================================================================
+
+// ============================================================================
+// Dashboards (D400, DS01, DS02)
+// ============================================================================
+
+fn dashboard_routes() -> Router {
+    Router::new()
         .route(
             "/api/d400/monthly_summary",
             get(handlers::d400_monthly_summary::get_monthly_summary),
@@ -763,7 +1143,7 @@ pub fn configure_business_routes() -> Router {
             "/api/d400/periods",
             get(handlers::d400_monthly_summary::get_available_periods),
         )
-        // Universal Dashboard API (main routes)
+        // Universal Dashboard API
         .route(
             "/api/universal-dashboard/execute",
             post(handlers::ds01_wb_finance_report::execute_dashboard),
@@ -803,7 +1183,7 @@ pub fn configure_business_routes() -> Router {
                 .put(handlers::ds01_wb_finance_report::update_config)
                 .delete(handlers::ds01_wb_finance_report::delete_config),
         )
-        // DS01 WB Finance Report routes
+        // DS01 WB Finance Report
         .route(
             "/api/ds01/execute",
             post(handlers::ds01_wb_finance_report::execute_dashboard),
@@ -835,7 +1215,7 @@ pub fn configure_business_routes() -> Router {
                 .put(handlers::ds01_wb_finance_report::update_config)
                 .delete(handlers::ds01_wb_finance_report::delete_config),
         )
-        // Legacy D401 routes (for backward compatibility)
+        // Legacy D401 routes
         .route(
             "/api/d401/execute",
             post(handlers::ds01_wb_finance_report::execute_dashboard),
@@ -899,7 +1279,7 @@ pub fn configure_business_routes() -> Router {
                 .put(handlers::ds02_mp_sales_register::update_config)
                 .delete(handlers::ds02_mp_sales_register::delete_config),
         )
-        // Legacy D402 routes (for backward compatibility)
+        // Legacy D402 routes
         .route(
             "/api/dashboards/d402/execute",
             post(handlers::ds02_mp_sales_register::execute_dashboard),
@@ -931,53 +1311,21 @@ pub fn configure_business_routes() -> Router {
                 .put(handlers::ds02_mp_sales_register::update_config)
                 .delete(handlers::ds02_mp_sales_register::delete_config),
         )
-        // ========================================
-        // A025 BI Dashboard handlers
-        // ========================================
-        .route(
-            "/api/a025-bi-dashboard",
-            get(handlers::a025_bi_dashboard::list_all).post(handlers::a025_bi_dashboard::upsert),
-        )
-        .route(
-            "/api/a025-bi-dashboard/upsert",
-            post(handlers::a025_bi_dashboard::upsert),
-        )
-        .route(
-            "/api/a025-bi-dashboard/list",
-            get(handlers::a025_bi_dashboard::list_paginated),
-        )
-        .route(
-            "/api/a025-bi-dashboard/public",
-            get(handlers::a025_bi_dashboard::list_public),
-        )
-        .route(
-            "/api/a025-bi-dashboard/testdata",
-            post(handlers::a025_bi_dashboard::insert_test_data),
-        )
-        .route(
-            "/api/a025-bi-dashboard/owner/:user_id",
-            get(handlers::a025_bi_dashboard::list_by_owner),
-        )
-        .route(
-            "/api/a025-bi-dashboard/:id",
-            get(handlers::a025_bi_dashboard::get_by_id).delete(handlers::a025_bi_dashboard::delete),
-        )
-        // ========================================
-        // DataView semantic layer catalog
-        // ========================================
-        .route(
-            "/api/data-view",
-            get(handlers::data_view::list),
-        )
-        // Static routes must come before /:id to avoid shadowing
+        .layer(middleware::from_fn(require_auth))
+}
+
+// ============================================================================
+// DataView semantic layer + misc (sys-drilldown, debug)
+// ============================================================================
+
+fn data_view_routes() -> Router {
+    Router::new()
+        .route("/api/data-view", get(handlers::data_view::list))
         .route(
             "/api/data-view/filters",
             get(handlers::data_view::list_filters),
         )
-        .route(
-            "/api/data-view/:id",
-            get(handlers::data_view::get_by_id),
-        )
+        .route("/api/data-view/:id", get(handlers::data_view::get_by_id))
         .route(
             "/api/data-view/:id/filters",
             get(handlers::data_view::get_view_filters),
@@ -990,9 +1338,29 @@ pub fn configure_business_routes() -> Router {
             "/api/data-view/:id/drilldown",
             axum::routing::post(handlers::data_view::drilldown),
         )
-        // ========================================
+        .layer(middleware::from_fn(require_auth))
+}
+
+fn misc_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/llm-knowledge",
+            axum::routing::get(handlers::llm_knowledge::list),
+        )
+        .route(
+            "/api/llm-knowledge/:id",
+            axum::routing::get(handlers::llm_knowledge::get_by_id),
+        )
+        // Общий журнал операций
+        .route(
+            "/api/general-ledger",
+            axum::routing::get(handlers::general_ledger::list),
+        )
+        .route(
+            "/api/general-ledger/:id",
+            axum::routing::get(handlers::general_ledger::get_by_id),
+        )
         // Drilldown session store (sys_drilldown)
-        // ========================================
         .route(
             "/api/sys-drilldown",
             axum::routing::post(handlers::sys_drilldown::create),
@@ -1005,4 +1373,7 @@ pub fn configure_business_routes() -> Router {
             "/api/sys-drilldown/:id/data",
             axum::routing::get(handlers::sys_drilldown::get_data),
         )
+        .layer(middleware::from_fn(require_auth))
+        // Debug endpoints (open, dev only)
+        .route("/api/debug/tool-test", get(handlers::debug::tool_test))
 }

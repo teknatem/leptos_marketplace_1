@@ -299,6 +299,55 @@ pub async fn fill_dealer_price_for_lines(document: &mut YmOrder) -> Result<()> {
     Ok(())
 }
 
+pub async fn fill_dealer_price_for_lines_resolved(document: &mut YmOrder) -> Result<()> {
+    let order_date = document
+        .state
+        .creation_date
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    for line in document.lines.iter_mut() {
+        let Some(ref nom_ref) = line.nomenclature_ref.clone() else {
+            line.dealer_price_ut = None;
+            continue;
+        };
+
+        let resolved =
+            crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
+                nom_ref,
+                &order_date,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "fill_dealer_price_for_lines: failed to resolve price for {}: {}",
+                    nom_ref,
+                    e
+                );
+                None
+            });
+
+        if let Some(ref resolved_price) = resolved {
+            tracing::info!(
+                "fill_dealer_price_for_lines: line {} -> dealer_price_ut={:?} (from {})",
+                line.line_id,
+                resolved_price.price,
+                resolved_price.describe(&order_date)
+            );
+        } else {
+            tracing::warn!(
+                "fill_dealer_price_for_lines: could not find dealer_price_ut for line {} (nomenclature: {})",
+                line.line_id,
+                nom_ref
+            );
+        }
+
+        line.dealer_price_ut = resolved.map(|resolved_price| resolved_price.price);
+    }
+
+    Ok(())
+}
+
 /// Вычислить сумму субсидий документа.
 /// Используем ТОЛЬКО субсидии из заголовка: header.subsidies_json содержит
 /// агрегированный итог по всему заказу (равен сумме item-level субсидий).

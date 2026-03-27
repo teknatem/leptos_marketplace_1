@@ -259,6 +259,10 @@ pub struct LlmChatMessage {
     pub artifact_id: Option<LlmArtifactId>,
     pub artifact_action: Option<ArtifactAction>,
 
+    // Трассировка вызовов инструментов (JSON-массив [{tool, ok, ms, summary}])
+    #[serde(default)]
+    pub tool_trace: Option<String>,
+
     // Вложения (загружаются отдельно при необходимости)
     #[serde(default)]
     pub attachments: Vec<LlmChatAttachment>,
@@ -279,6 +283,7 @@ impl LlmChatMessage {
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            tool_trace: None,
             attachments: Vec::new(),
         }
     }
@@ -305,6 +310,7 @@ impl LlmChatMessage {
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            tool_trace: None,
             attachments: Vec::new(),
         }
     }
@@ -328,6 +334,7 @@ impl LlmChatMessage {
             created_at: Utc::now(),
             artifact_id: None,
             artifact_action: None,
+            tool_trace: None,
             attachments: Vec::new(),
         }
     }

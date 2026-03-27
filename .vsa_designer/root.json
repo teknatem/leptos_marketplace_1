@@ -1,6 +1,6 @@
 {
   "project_root": "E:\\dev\\rust\\2\\leptos_marketplace_1",
-  "generated_at_utc": "unix:1772537663",
+  "generated_at_utc": "unix:1773290708",
   "sources": [
     "crates/frontend/src",
     "crates/backend/src",
@@ -8,40 +8,40 @@
   ],
   "totals": {
     "backend": {
-      "files": 293,
-      "lines": 53361
+      "files": 303,
+      "lines": 56771
     },
     "contracts": {
-      "files": 169,
-      "lines": 19884
+      "files": 171,
+      "lines": 20262
     },
     "frontend": {
-      "files": 467,
-      "lines": 75617
+      "files": 482,
+      "lines": 84055
     },
     "total": {
-      "files": 929,
-      "lines": 148862
+      "files": 956,
+      "lines": 161088
     }
   },
   "aggregates": {
-    "count": 26,
+    "count": 27,
     "totals": {
       "backend": {
         "files": 87,
-        "lines": 13472
+        "lines": 13833
       },
       "contracts": {
         "files": 84,
-        "lines": 15144
+        "lines": 15271
       },
       "frontend": {
         "files": 231,
-        "lines": 41778
+        "lines": 46371
       },
       "total": {
         "files": 402,
-        "lines": 70394
+        "lines": 75475
       }
     },
     "items": [
@@ -53,7 +53,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 453
+            "lines": 455
           },
           "contracts": {
             "files": 4,
@@ -61,11 +61,11 @@
           },
           "frontend": {
             "files": 7,
-            "lines": 858
+            "lines": 860
           },
           "total": {
             "files": 14,
-            "lines": 1994
+            "lines": 1998
           }
         }
       },
@@ -81,15 +81,15 @@
           },
           "contracts": {
             "files": 4,
-            "lines": 575
+            "lines": 569
           },
           "frontend": {
             "files": 8,
-            "lines": 827
+            "lines": 829
           },
           "total": {
             "files": 15,
-            "lines": 1669
+            "lines": 1665
           }
         }
       },
@@ -125,7 +125,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 686
+            "lines": 703
           },
           "contracts": {
             "files": 5,
@@ -133,11 +133,11 @@
           },
           "frontend": {
             "files": 18,
-            "lines": 3563
+            "lines": 3560
           },
           "total": {
             "files": 27,
-            "lines": 5127
+            "lines": 5141
           }
         }
       },
@@ -173,19 +173,19 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 334
+            "lines": 336
           },
           "contracts": {
             "files": 4,
-            "lines": 726
+            "lines": 724
           },
           "frontend": {
             "files": 10,
-            "lines": 1679
+            "lines": 1686
           },
           "total": {
             "files": 17,
-            "lines": 2739
+            "lines": 2746
           }
         }
       },
@@ -197,19 +197,19 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 642
+            "lines": 643
           },
           "contracts": {
             "files": 2,
-            "lines": 322
+            "lines": 316
           },
           "frontend": {
             "files": 8,
-            "lines": 1479
+            "lines": 1482
           },
           "total": {
             "files": 13,
-            "lines": 2443
+            "lines": 2441
           }
         }
       },
@@ -221,7 +221,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 239
+            "lines": 238
           },
           "contracts": {
             "files": 2,
@@ -229,11 +229,11 @@
           },
           "frontend": {
             "files": 4,
-            "lines": 707
+            "lines": 805
           },
           "total": {
             "files": 9,
-            "lines": 1223
+            "lines": 1320
           }
         }
       },
@@ -245,7 +245,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 338
+            "lines": 337
           },
           "contracts": {
             "files": 2,
@@ -253,11 +253,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 1398
+            "lines": 1429
           },
           "total": {
             "files": 11,
-            "lines": 2236
+            "lines": 2266
           }
         }
       },
@@ -269,19 +269,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 368
+            "lines": 373
           },
           "contracts": {
             "files": 2,
-            "lines": 253
+            "lines": 251
           },
           "frontend": {
             "files": 5,
-            "lines": 1492
+            "lines": 1559
           },
           "total": {
             "files": 11,
-            "lines": 2113
+            "lines": 2183
           }
         }
       },
@@ -297,15 +297,15 @@
           },
           "contracts": {
             "files": 2,
-            "lines": 254
+            "lines": 253
           },
           "frontend": {
             "files": 5,
-            "lines": 1505
+            "lines": 1578
           },
           "total": {
             "files": 11,
-            "lines": 2089
+            "lines": 2161
           }
         }
       },
@@ -317,7 +317,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 1185
+            "lines": 1192
           },
           "contracts": {
             "files": 4,
@@ -325,11 +325,11 @@
           },
           "frontend": {
             "files": 15,
-            "lines": 3857
+            "lines": 3873
           },
           "total": {
             "files": 23,
-            "lines": 6146
+            "lines": 6169
           }
         }
       },
@@ -341,7 +341,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 1407
+            "lines": 1389
           },
           "contracts": {
             "files": 4,
@@ -349,11 +349,11 @@
           },
           "frontend": {
             "files": 16,
-            "lines": 4145
+            "lines": 4150
           },
           "total": {
             "files": 24,
-            "lines": 6433
+            "lines": 6420
           }
         }
       },
@@ -365,7 +365,7 @@
         "counts": {
           "backend": {
             "files": 5,
-            "lines": 894
+            "lines": 926
           },
           "contracts": {
             "files": 2,
@@ -373,11 +373,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 1778
+            "lines": 1926
           },
           "total": {
             "files": 12,
-            "lines": 3015
+            "lines": 3195
           }
         }
       },
@@ -389,19 +389,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 994
+            "lines": 993
           },
           "contracts": {
             "files": 2,
-            "lines": 328
+            "lines": 326
           },
           "frontend": {
             "files": 14,
-            "lines": 3298
+            "lines": 3299
           },
           "total": {
             "files": 20,
-            "lines": 4620
+            "lines": 4618
           }
         }
       },
@@ -413,19 +413,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 462
+            "lines": 458
           },
           "contracts": {
             "files": 2,
-            "lines": 323
+            "lines": 321
           },
           "frontend": {
             "files": 12,
-            "lines": 1826
+            "lines": 1910
           },
           "total": {
             "files": 18,
-            "lines": 2611
+            "lines": 2689
           }
         }
       },
@@ -437,7 +437,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 395
+            "lines": 400
           },
           "contracts": {
             "files": 4,
@@ -449,7 +449,7 @@
           },
           "total": {
             "files": 14,
-            "lines": 2320
+            "lines": 2325
           }
         }
       },
@@ -461,7 +461,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 916
+            "lines": 940
           },
           "contracts": {
             "files": 4,
@@ -469,11 +469,11 @@
           },
           "frontend": {
             "files": 8,
-            "lines": 1290
+            "lines": 1294
           },
           "total": {
             "files": 16,
-            "lines": 3127
+            "lines": 3155
           }
         }
       },
@@ -485,7 +485,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 393
+            "lines": 389
           },
           "contracts": {
             "files": 4,
@@ -497,7 +497,7 @@
           },
           "total": {
             "files": 14,
-            "lines": 2224
+            "lines": 2220
           }
         }
       },
@@ -509,7 +509,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 449
+            "lines": 446
           },
           "contracts": {
             "files": 4,
@@ -517,11 +517,11 @@
           },
           "frontend": {
             "files": 12,
-            "lines": 1427
+            "lines": 1443
           },
           "total": {
             "files": 19,
-            "lines": 2602
+            "lines": 2615
           }
         }
       },
@@ -533,19 +533,19 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 401
+            "lines": 400
           },
           "contracts": {
             "files": 2,
-            "lines": 172
+            "lines": 176
           },
           "frontend": {
             "files": 5,
-            "lines": 1163
+            "lines": 1203
           },
           "total": {
             "files": 10,
-            "lines": 1736
+            "lines": 1779
           }
         }
       },
@@ -565,11 +565,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 937
+            "lines": 938
           },
           "total": {
             "files": 10,
-            "lines": 1332
+            "lines": 1333
           }
         }
       },
@@ -589,11 +589,11 @@
           },
           "frontend": {
             "files": 5,
-            "lines": 814
+            "lines": 824
           },
           "total": {
             "files": 10,
-            "lines": 1260
+            "lines": 1270
           }
         }
       },
@@ -605,19 +605,19 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 714
+            "lines": 885
           },
           "contracts": {
             "files": 4,
-            "lines": 1270
+            "lines": 1425
           },
           "frontend": {
             "files": 18,
-            "lines": 2273
+            "lines": 3712
           },
           "total": {
             "files": 26,
-            "lines": 4257
+            "lines": 6022
           }
         }
       },
@@ -629,19 +629,41 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 582
+            "lines": 710
           },
           "contracts": {
             "files": 4,
-            "lines": 1130
+            "lines": 1119
           },
           "frontend": {
             "files": 16,
-            "lines": 1992
+            "lines": 4541
           },
           "total": {
             "files": 23,
-            "lines": 3704
+            "lines": 6370
+          }
+        }
+      },
+      {
+        "name": "a026_data_view",
+        "frontend_path": "crates/frontend/src\\domain\\a026_data_view",
+        "counts": {
+          "backend": {
+            "files": 0,
+            "lines": 0
+          },
+          "contracts": {
+            "files": 0,
+            "lines": 0
+          },
+          "frontend": {
+            "files": 0,
+            "lines": 0
+          },
+          "total": {
+            "files": 0,
+            "lines": 0
           }
         }
       },
@@ -674,19 +696,19 @@
     "totals": {
       "backend": {
         "files": 54,
-        "lines": 16539
+        "lines": 16567
       },
       "contracts": {
         "files": 37,
-        "lines": 1695
+        "lines": 1673
       },
       "frontend": {
         "files": 21,
-        "lines": 4161
+        "lines": 4153
       },
       "total": {
         "files": 112,
-        "lines": 22395
+        "lines": 22393
       }
     },
     "items": [
@@ -720,7 +742,7 @@
         "counts": {
           "backend": {
             "files": 11,
-            "lines": 3059
+            "lines": 3072
           },
           "contracts": {
             "files": 5,
@@ -732,7 +754,7 @@
           },
           "total": {
             "files": 19,
-            "lines": 4068
+            "lines": 4081
           }
         }
       },
@@ -744,19 +766,19 @@
         "counts": {
           "backend": {
             "files": 11,
-            "lines": 3365
+            "lines": 3368
           },
           "contracts": {
             "files": 5,
-            "lines": 256
+            "lines": 253
           },
           "frontend": {
             "files": 3,
-            "lines": 727
+            "lines": 725
           },
           "total": {
             "files": 19,
-            "lines": 4348
+            "lines": 4346
           }
         }
       },
@@ -768,19 +790,19 @@
         "counts": {
           "backend": {
             "files": 9,
-            "lines": 2964
+            "lines": 2943
           },
           "contracts": {
             "files": 5,
-            "lines": 259
+            "lines": 256
           },
           "frontend": {
             "files": 3,
-            "lines": 629
+            "lines": 627
           },
           "total": {
             "files": 17,
-            "lines": 3852
+            "lines": 3826
           }
         }
       },
@@ -792,11 +814,11 @@
         "counts": {
           "backend": {
             "files": 12,
-            "lines": 5377
+            "lines": 5380
           },
           "contracts": {
             "files": 5,
-            "lines": 234
+            "lines": 231
           },
           "frontend": {
             "files": 3,
@@ -816,7 +838,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 581
+            "lines": 602
           },
           "contracts": {
             "files": 5,
@@ -828,7 +850,7 @@
           },
           "total": {
             "files": 11,
-            "lines": 1114
+            "lines": 1135
           }
         }
       },
@@ -840,11 +862,11 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 782
+            "lines": 783
           },
           "contracts": {
             "files": 5,
-            "lines": 266
+            "lines": 253
           },
           "frontend": {
             "files": 3,
@@ -852,7 +874,7 @@
           },
           "total": {
             "files": 12,
-            "lines": 1692
+            "lines": 1680
           }
         }
       },
@@ -864,7 +886,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 411
+            "lines": 419
           },
           "contracts": {
             "files": 4,
@@ -872,11 +894,11 @@
           },
           "frontend": {
             "files": 3,
-            "lines": 452
+            "lines": 448
           },
           "total": {
             "files": 11,
-            "lines": 957
+            "lines": 961
           }
         }
       }
@@ -887,19 +909,19 @@
     "totals": {
       "backend": {
         "files": 29,
-        "lines": 5811
+        "lines": 5849
       },
       "contracts": {
         "files": 18,
-        "lines": 819
+        "lines": 816
       },
       "frontend": {
         "files": 38,
-        "lines": 8790
+        "lines": 8794
       },
       "total": {
         "files": 85,
-        "lines": 15420
+        "lines": 15459
       }
     },
     "items": [
@@ -911,19 +933,19 @@
         "counts": {
           "backend": {
             "files": 5,
-            "lines": 1197
+            "lines": 1200
           },
           "contracts": {
             "files": 2,
-            "lines": 142
+            "lines": 140
           },
           "frontend": {
             "files": 5,
-            "lines": 1268
+            "lines": 1270
           },
           "total": {
             "files": 12,
-            "lines": 2607
+            "lines": 2610
           }
         }
       },
@@ -935,7 +957,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 616
+            "lines": 625
           },
           "contracts": {
             "files": 2,
@@ -947,7 +969,7 @@
           },
           "total": {
             "files": 9,
-            "lines": 1254
+            "lines": 1263
           }
         }
       },
@@ -959,7 +981,7 @@
         "counts": {
           "backend": {
             "files": 3,
-            "lines": 563
+            "lines": 589
           },
           "contracts": {
             "files": 2,
@@ -971,7 +993,7 @@
           },
           "total": {
             "files": 8,
-            "lines": 1262
+            "lines": 1288
           }
         }
       },
@@ -983,15 +1005,15 @@
         "counts": {
           "backend": {
             "files": 2,
-            "lines": 490
+            "lines": 489
           },
           "contracts": {
             "files": 2,
-            "lines": 104
+            "lines": 103
           },
           "frontend": {
             "files": 5,
-            "lines": 1897
+            "lines": 1899
           },
           "total": {
             "files": 9,
@@ -1007,7 +1029,7 @@
         "counts": {
           "backend": {
             "files": 4,
-            "lines": 1346
+            "lines": 1341
           },
           "contracts": {
             "files": 2,
@@ -1019,7 +1041,7 @@
           },
           "total": {
             "files": 10,
-            "lines": 2548
+            "lines": 2543
           }
         }
       },
@@ -1055,7 +1077,7 @@
         "counts": {
           "backend": {
             "files": 5,
-            "lines": 721
+            "lines": 728
           },
           "contracts": {
             "files": 2,
@@ -1067,7 +1089,7 @@
           },
           "total": {
             "files": 11,
-            "lines": 1400
+            "lines": 1407
           }
         }
       },
@@ -1103,7 +1125,7 @@
         "counts": {
           "backend": {
             "files": 2,
-            "lines": 277
+            "lines": 276
           },
           "contracts": {
             "files": 2,
@@ -1115,7 +1137,7 @@
           },
           "total": {
             "files": 8,
-            "lines": 1100
+            "lines": 1099
           }
         }
       }

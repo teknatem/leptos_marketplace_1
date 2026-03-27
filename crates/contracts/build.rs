@@ -34,8 +34,11 @@ fn main() {
 
             let output_rs = path.join("metadata_gen.rs");
             match generate_metadata(&metadata_json, &output_rs) {
-                Ok(_) => {
+                Ok(true) => {
                     println!("cargo:warning=Generated: {}", output_rs.display());
+                }
+                Ok(false) => {
+                    // Content unchanged — skip silently
                 }
                 Err(e) => {
                     panic!("Failed to generate metadata for {}: {}", dir_name, e);
@@ -60,6 +63,8 @@ struct MetadataJson {
     ui: UiMetadataJson,
     ai: AiMetadataJson,
     fields: Vec<FieldJson>,
+    #[serde(default)]
+    access: Option<AccessJson>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,43 +133,82 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Deserialize)]
+struct AccessJson {
+    scope_id: String,
+    #[serde(default)]
+    operations: Vec<AccessOperationJson>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccessOperationJson {
+    id: String,
+    required_mode: String,
+}
+
 // ============================================================================
 // Code Generation
 // ============================================================================
 
+/// Returns true if the file was (re)written, false if content was unchanged.
 fn generate_metadata(
     json_path: &Path,
     output_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>> {
     let json_content = fs::read_to_string(json_path)?;
     let metadata: MetadataJson = serde_json::from_str(&json_content)?;
 
     let code = generate_rust_code(&metadata);
+
+    // Only write if content has changed (avoids touching file timestamp on no-op builds)
+    if output_path.exists() {
+        let existing = fs::read_to_string(output_path)?;
+        if existing == code {
+            return Ok(false);
+        }
+    }
+
     fs::write(output_path, code)?;
 
-    Ok(())
+    Ok(true)
 }
 
 fn generate_rust_code(meta: &MetadataJson) -> String {
     let mut code = String::new();
 
     // Header
-    code.push_str(&format!(
+    code.push_str(
         "// ============================================================================\n\
          // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY\n\
-         // Generated: {}\n\
          // ============================================================================\n\n",
-        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
-    ));
+    );
 
     // Imports
-    code.push_str(
-        "#![allow(dead_code)]\n\n\
-         use crate::shared::metadata::{\n\
-         \x20   EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,\n\
-         \x20   FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules\n\
-         };\n\n",
-    );
+    let has_access = meta.access.is_some();
+    if has_access {
+        code.push_str(
+            "#![allow(dead_code)]\n\n\
+             use crate::shared::metadata::{\n\
+             \x20   EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,\n\
+             \x20   FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules\n\
+             };\n\
+             use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};\n\n",
+        );
+    } else {
+        code.push_str(
+            "#![allow(dead_code)]\n\n\
+             use crate::shared::metadata::{\n\
+             \x20   EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,\n\
+             \x20   FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules\n\
+             };\n\n",
+        );
+    }
+
+    // Access metadata constant (if present)
+    if let Some(access) = &meta.access {
+        code.push_str(&generate_access_metadata(access));
+        code.push_str("\n\n");
+    }
 
     // Entity metadata constant
     code.push_str(&generate_entity_metadata(meta));
@@ -176,7 +220,40 @@ fn generate_rust_code(meta: &MetadataJson) -> String {
     code
 }
 
+fn generate_access_metadata(access: &AccessJson) -> String {
+    let ops: Vec<String> = access
+        .operations
+        .iter()
+        .map(|op| {
+            let mode = match op.required_mode.as_str() {
+                "all" => "AccessMode::All",
+                _ => "AccessMode::Read",
+            };
+            format!(
+                "    ScopeOperation {{ id: \"{}\", required_mode: {} }}",
+                op.id, mode
+            )
+        })
+        .collect();
+
+    format!(
+        "/// Access scope metadata for this entity\n\
+         pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {{\n\
+         \x20   scope_id: \"{}\",\n\
+         \x20   operations: &[\n{}\n\x20   ],\n\
+         }};",
+        access.scope_id,
+        ops.join(",\n")
+    )
+}
+
 fn generate_entity_metadata(meta: &MetadataJson) -> String {
+    let access_field = if meta.access.is_some() {
+        "    access: Some(&ACCESS_META),\n".to_string()
+    } else {
+        "    access: None,\n".to_string()
+    };
+
     format!(
         "/// Entity metadata for {} {}\n\
          pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {{\n\
@@ -198,7 +275,7 @@ fn generate_entity_metadata(meta: &MetadataJson) -> String {
          \x20       questions: &[{}],\n\
          \x20       related: &[{}],\n\
          \x20   }},\n\
-         }};",
+         {}}};",
         meta.entity_name,
         meta.entity_type,
         meta.schema_version,
@@ -215,6 +292,7 @@ fn generate_entity_metadata(meta: &MetadataJson) -> String {
         escape_string(&meta.ai.description),
         string_array(&meta.ai.questions),
         string_array(&meta.ai.related),
+        access_field,
     )
 }
 

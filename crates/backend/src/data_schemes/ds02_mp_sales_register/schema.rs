@@ -325,7 +325,13 @@ pub static DS02_SCHEMA: DataSourceSchema = DataSourceSchema {
             join_on_column: None,
         },
     ],
-    schema_filters: &["sale_date", "connection_mp_ref", "marketplace", "status_norm", "nomenclature_ref"],
+    schema_filters: &[
+        "sale_date",
+        "connection_mp_ref",
+        "marketplace",
+        "status_norm",
+        "nomenclature_ref",
+    ],
 };
 
 /// Table name for this schema

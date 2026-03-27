@@ -67,60 +67,51 @@ async fn sync_organization_from_connection(
     Ok(())
 }
 
-/// Провести документ (установить is_posted = true)
-/// Для Orders пока нет проекций, только устанавливаем флаг
 pub async fn post_document(id: Uuid) -> Result<()> {
-    // Загрузить документ
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
-    // Синхронизация организации из подключения (если отличается)
     sync_organization_from_connection(&mut document).await?;
-
-    // Автозаполнение ссылок на marketplace_product и nomenclature
     super::service::auto_fill_references(&mut document).await?;
-
-    // При каждом проведении принудительно пересчитываем base_nomenclature_ref
-    // по текущему nomenclature_ref.
     super::service::refill_base_nomenclature_ref(&mut document).await?;
-
-    // Заполнение dealer_price_ut из p906_nomenclature_prices (только при Post)
-    super::service::fill_dealer_price(&mut document).await?;
-
-    // Расчет margin_pro после dealer_price_ut
+    super::service::fill_dealer_price_resolved(&mut document).await?;
     super::service::calculate_margin_pro(&mut document).await?;
 
-    // Установить флаг is_posted
     document.is_posted = true;
     document.base.metadata.is_posted = document.is_posted;
     document.before_write();
 
-    // Сохранить документ
     repository::upsert_document(&document).await?;
 
-    // TODO: Если в будущем нужны проекции для Orders, добавить их здесь
+    let registrator_ref = format!("a015:{}", id);
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
+        .await?;
     tracing::info!("Posted WB Orders document: {}", id);
 
     Ok(())
 }
 
-/// Отменить проведение документа (установить is_posted = false)
 pub async fn unpost_document(id: Uuid) -> Result<()> {
-    // Загрузить документ
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
-    // Снять флаг is_posted
     document.is_posted = false;
     document.base.metadata.is_posted = document.is_posted;
     document.before_write();
 
-    // Сохранить документ
     repository::upsert_document(&document).await?;
 
-    // TODO: Если в будущем нужны проекции для Orders, удалить их здесь
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(&format!(
+        "a015:{}",
+        id
+    ))
+    .await?;
     tracing::info!("Unposted WB Orders document: {}", id);
 
     Ok(())

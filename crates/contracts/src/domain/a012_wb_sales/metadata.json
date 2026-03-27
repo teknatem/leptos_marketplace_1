@@ -274,5 +274,13 @@
       "validation": { "required": false },
       "ai_hint": "Уникальный ID продажи в системе WB (saleID). Используется для дедупликации."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a012_wb_sales",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
 }

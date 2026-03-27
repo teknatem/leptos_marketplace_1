@@ -80,7 +80,7 @@ pub static DS03_SCHEMA: DataSourceSchema = DataSourceSchema {
             can_group: true,
             can_aggregate: false,
             can_filter: true,
-            db_column: "marketplace_type",
+            db_column: "marketplace",
             ref_table: None,
             ref_display_column: None,
             source_table: Some("a006_connection_mp"),
@@ -257,7 +257,12 @@ pub static DS03_SCHEMA: DataSourceSchema = DataSourceSchema {
             join_on_column: None,
         },
     ],
-    schema_filters: &["date", "connection_mp_ref", "marketplace", "registrator_type"],
+    schema_filters: &[
+        "date",
+        "connection_mp_ref",
+        "marketplace",
+        "registrator_type",
+    ],
 };
 
 /// Main table name for DS03

@@ -278,5 +278,15 @@
       },
       "ai_hint": "Только один агент может быть основным. При установке флага автоматически снимается с других агентов."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a017_llm_agent",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

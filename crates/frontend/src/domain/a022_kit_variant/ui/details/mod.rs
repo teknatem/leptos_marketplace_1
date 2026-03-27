@@ -1,7 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
-use crate::shared::page_frame::PageFrame;
 use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::a022_kit_variant::aggregate::KitVariant;
 use gloo_net::http::Request;
 use leptos::prelude::*;
@@ -70,7 +70,7 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                 Ok(response) if response.ok() => {
                     match response.json::<KitVariant>().await {
                         Ok(data) => {
-                            let tab_key = format!("a022_kit_variant_detail_{}", id_val);
+                            let tab_key = format!("a022_kit_variant_details_{}", id_val);
                             let tab_title = format!("Комплект {}", data.base.description);
                             tabs_store.update_tab_title(&tab_key, &tab_title);
 
@@ -193,7 +193,7 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                         view! {
                             <div class="detail-grid">
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=0 nav_id="a022_kit_variant_detail_main">
+                                    <CardAnimated delay_ms=0 nav_id="a022_kit_variant_details_main">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Код:"</span>
                                         <code style="font-family:monospace;">{d.base.code.clone()}</code>
@@ -218,7 +218,7 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                                             on:click=move |e| {
                                                                 e.prevent_default();
                                                                 tabs_store.open_tab(
-                                                                    &format!("a004_nomenclature_detail_{}", nom_id),
+                                                                    &format!("a004_nomenclature_details_{}", nom_id),
                                                                     &nom_title_open,
                                                                 );
                                                             }
@@ -252,7 +252,7 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                 </div>
 
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=40 nav_id="a022_kit_variant_detail_items">
+                                    <CardAnimated delay_ms=40 nav_id="a022_kit_variant_details_items">
                                     <div style="padding:var(--spacing-md);">
                                         <h3 style="margin:0 0 var(--spacing-md);font-size:var(--font-size-md);font-weight:600;">
                                             "Состав набора"
@@ -339,7 +339,7 @@ pub fn KitVariantDetail(id: String, #[prop(into)] on_close: Callback<()>) -> imp
                                                                                     on:click=move |e| {
                                                                                         e.prevent_default();
                                                                                         tabs_store.open_tab(
-                                                                                            &format!("a004_nomenclature_detail_{}", n_id),
+                                                                                            &format!("a004_nomenclature_details_{}", n_id),
                                                                                             &title_open,
                                                                                         );
                                                                                     }

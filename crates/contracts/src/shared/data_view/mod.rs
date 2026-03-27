@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::indicators::IndicatorContext;
+use super::analytics::IndicatorContext;
 
 // ── Filter Registry types ─────────────────────────────────────────────────────
 
@@ -28,10 +28,7 @@ pub struct SelectOption {
 pub enum FilterKind {
     /// Парный выбор диапазона дат — рендерится как DateRangePicker.
     /// `from_id` / `to_id` — имена полей в ViewContext.
-    DateRange {
-        from_id: String,
-        to_id: String,
-    },
+    DateRange { from_id: String, to_id: String },
     /// Множественный выбор из справочника (source = "connection_mp" | ...)
     MultiSelect { source: String },
     /// Выбор из фиксированного списка вариантов
@@ -77,12 +74,36 @@ pub struct FilterRef {
 // ── Metadata structs ─────────────────────────────────────────────────────────
 
 /// Описание одного измерения (группировки) доступного для drilldown.
+///
+/// SQL-поля (db_column, ref_table и др.) — опциональны. Позволяют DataView
+/// быть самодостаточным: каждый dvNNN описывает свои измерения полностью
+/// и не зависит от глобального SchemaRegistry.
+///
+/// Если `db_column` отсутствует — при выполнении используется `id` как имя колонки.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DimensionMeta {
     pub id: String,
     pub label: String,
     #[serde(default)]
     pub description: String,
+    /// Реальное имя колонки в таблице. Если None — совпадает с id.
+    #[serde(default)]
+    pub db_column: Option<String>,
+    /// JOIN со справочной таблицей для отображения метки
+    /// (напр. "a006_connection_mp" для connection_mp_ref).
+    #[serde(default)]
+    pub ref_table: Option<String>,
+    /// Колонка в ref_table для отображаемого имени (напр. "description").
+    #[serde(default)]
+    pub ref_display_column: Option<String>,
+    /// Для косвенных JOIN: таблица-источник измерения
+    /// (напр. "a004_nomenclature" для dim1-dim6).
+    #[serde(default)]
+    pub source_table: Option<String>,
+    /// Колонка связи в основной таблице для косвенного JOIN
+    /// (напр. "nomenclature_ref").
+    #[serde(default)]
+    pub join_on_column: Option<String>,
 }
 
 /// Описание одного ресурса (метрики), которую умеет вычислять DataView.

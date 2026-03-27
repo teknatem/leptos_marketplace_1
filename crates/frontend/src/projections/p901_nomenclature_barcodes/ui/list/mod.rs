@@ -498,7 +498,7 @@ pub fn BarcodesList() -> impl IntoView {
                                                             style="color: var(--color-primary); text-decoration: none; cursor: pointer;"
                                                             on:click=move |ev| {
                                                                 ev.prevent_default();
-                                                                let tab_key = format!("a004_nomenclature_detail_{}", nom_ref_for_tab);
+                                                                let tab_key = format!("a004_nomenclature_details_{}", nom_ref_for_tab);
                                                                 let identifier = pick_identifier(
                                                                     None,
                                                                     article.as_deref(),

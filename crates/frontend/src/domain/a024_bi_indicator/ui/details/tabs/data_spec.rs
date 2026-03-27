@@ -1,6 +1,6 @@
 //! DataSpec tab — DataView source + metric selection + live test
 
-use super::super::view_model::BiIndicatorDetailsVm;
+use super::super::view_model::{value_format_presets, BiIndicatorDetailsVm};
 use crate::data_view::api as dv_api;
 use crate::data_view::types::{DataViewMeta, FilterDef};
 use crate::data_view::ui::FilterBar;
@@ -19,6 +19,10 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     let test_result = vm.test_result;
     let dsc_view_id = vm.dsc_view_id;
     let dsc_metric_id = vm.dsc_metric_id;
+    let metric_value = Signal::derive(move || dsc_metric_id.get());
+    let vm_format_value = vm.clone();
+    let vm_for_formats = vm.clone();
+    let format_preset_value = Signal::derive(move || vm_format_value.current_format_preset_key());
 
     let dv_list: RwSignal<Vec<DataViewMeta>> = RwSignal::new(vec![]);
     let dv_loading: RwSignal<bool> = RwSignal::new(true);
@@ -182,6 +186,8 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                         let resources = meta.available_resources.clone();
                         let dimensions = meta.available_dimensions.clone();
                         let data_sources = meta.data_sources.clone();
+                        let vm_format_change = vm_for_formats.clone();
+                        let format_preset_signal = format_preset_value;
                         view! {
                             <div class="bi-indicator-dataspec__summary">
                                 <div class="bi-indicator-dataspec__summary-main">
@@ -219,20 +225,50 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                                         .into_any()
                                 } else {
                                     view! {
-                                        <div class="form__group">
-                                            <label class="form__label">"Метрика / ресурс"</label>
-                                            <Select value=dsc_metric_id>
-                                                {resources.into_iter().map(|resource| {
-                                                    let description = if resource.description.trim().is_empty() {
-                                                        resource.label.clone()
-                                                    } else {
-                                                        format!("{} — {}", resource.id, resource.label)
-                                                    };
-                                                    view! {
-                                                        <option value=resource.id>{description}</option>
+                                        <div class="bi-indicator-dataspec__field-grid">
+                                            <div class="form__group bi-indicator-dataspec__field">
+                                                <label class="form__label">"Метрика / ресурс"</label>
+                                                <select
+                                                    class="form__select"
+                                                    prop:value=move || metric_value.get()
+                                                    on:change=move |ev| {
+                                                        dsc_metric_id.set(event_target_value(&ev));
                                                     }
-                                                }).collect_view()}
-                                            </Select>
+                                                >
+                                                    {resources.into_iter().map(|resource| {
+                                                        let description = if resource.description.trim().is_empty() {
+                                                            resource.label.clone()
+                                                        } else {
+                                                            format!("{} — {}", resource.id, resource.label)
+                                                        };
+                                                        view! {
+                                                            <option value=resource.id>{description}</option>
+                                                        }
+                                                    }).collect_view()}
+                                                </select>
+                                            </div>
+                                            <div class="form__group bi-indicator-dataspec__field">
+                                                <label class="form__label">"Формат значения"</label>
+                                                <select
+                                                    class="form__select"
+                                                    prop:value=move || format_preset_signal.get()
+                                                    on:change=move |ev| {
+                                                        vm_format_change
+                                                            .apply_format_preset(&event_target_value(&ev));
+                                                    }
+                                                >
+                                                    {value_format_presets().iter().map(|preset| {
+                                                        view! {
+                                                            <option value=preset.key>{preset.label}</option>
+                                                        }
+                                                    }).collect_view()}
+                                                </select>
+                                                <p class="form__hint bi-indicator-dataspec__field-hint">
+                                                    "Быстрый выбор для "
+                                                    <code>"view_spec.format"</code>
+                                                    ". Для нестандартного JSON используйте вкладку ViewSpec."
+                                                </p>
+                                            </div>
                                         </div>
                                     }
                                         .into_any()

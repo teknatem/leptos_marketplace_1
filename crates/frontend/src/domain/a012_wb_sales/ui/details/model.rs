@@ -3,6 +3,7 @@
 //! Contains DTOs and async API functions for fetching and mutating WB Sales data.
 
 use crate::shared::api_utils::api_base;
+use contracts::projections::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ pub struct WbSalesDetailDto {
     pub metadata: MetadataDto,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
+    #[serde(default)]
+    pub is_customer_return: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -415,6 +418,35 @@ pub async fn fetch_marketplace(id: &str) -> Result<MarketplaceInfo, String> {
             .unwrap_or("")
             .to_string(),
     })
+}
+
+/// Fetch journal entries for a WB Sales document
+pub async fn fetch_general_ledger_entries(id: &str) -> Result<Vec<GeneralLedgerEntryDto>, String> {
+    let url = format!("{}/api/a012/wb-sales/{}/journal", api_base(), id);
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch journal entries: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+
+    let entries = json
+        .get("entries")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    Ok(entries)
 }
 
 /// Refresh dealer price

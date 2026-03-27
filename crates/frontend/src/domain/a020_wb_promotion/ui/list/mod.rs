@@ -96,7 +96,7 @@ pub fn WbPromotionList() -> impl IntoView {
 
     let open_detail = move |id: String, name: String| {
         tabs_store.open_tab(
-            &format!("a020_wb_promotion_detail_{}", id),
+            &format!("a020_wb_promotion_details_{}", id),
             &format!("WB Акция: {}", name),
         );
     };

@@ -51,7 +51,7 @@ pub async fn get_revenue_by_marketplace_and_org(
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
         LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
-        WHERE p904.date >= ? AND p904.date <= ?
+        WHERE substr(p904.date, 1, 10) >= ? AND substr(p904.date, 1, 10) <= ?
         GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
@@ -90,7 +90,7 @@ pub async fn get_returns_by_marketplace_and_org(
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
         LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
-        WHERE p904.date >= ? AND p904.date <= ?
+        WHERE substr(p904.date, 1, 10) >= ? AND substr(p904.date, 1, 10) <= ?
         GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
@@ -129,7 +129,7 @@ pub async fn get_cost_by_marketplace_and_org(
         LEFT JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
         LEFT JOIN a002_organization org ON conn.organization_ref = org.id
         LEFT JOIN a005_marketplace mp ON conn.marketplace = mp.id
-        WHERE p904.date >= ? AND p904.date <= ?
+        WHERE substr(p904.date, 1, 10) >= ? AND substr(p904.date, 1, 10) <= ?
         GROUP BY mp.marketplace_type, conn.organization_ref, org.description
         ORDER BY marketplace_code, organization_name
     "#;
@@ -205,7 +205,7 @@ pub async fn get_organizations_with_sales(date_from: &str, date_to: &str) -> Res
         FROM p904_sales_data p904
         JOIN a006_connection_mp conn ON p904.connection_mp_ref = conn.id
         JOIN a002_organization org ON conn.organization_ref = org.id
-        WHERE p904.date >= ? AND p904.date <= ?
+        WHERE substr(p904.date, 1, 10) >= ? AND substr(p904.date, 1, 10) <= ?
             AND conn.organization_ref IS NOT NULL
             AND conn.organization_ref != ''
         ORDER BY org.description

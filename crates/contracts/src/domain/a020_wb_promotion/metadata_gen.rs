@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,18 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a020_wb_promotion",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read },
+    ScopeOperation { id: "upsert", required_mode: AccessMode::All },
+    ScopeOperation { id: "delete", required_mode: AccessMode::All }
+    ],
 };
 
 /// Entity metadata for WbPromotion aggregate
@@ -30,6 +41,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Какие акции WB проходят в текущем месяце?", "В каких акциях участвует товар с nmId X?", "Сколько товаров участвует в акции Y?", "Список активных акций WB с датами", "Акции WB с наибольшим числом товаров"],
         related: &["a006_connection_mp", "a002_organization", "a007_marketplace_product"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array

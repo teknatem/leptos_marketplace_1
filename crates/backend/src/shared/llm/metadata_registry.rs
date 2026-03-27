@@ -21,6 +21,14 @@ use contracts::domain::a017_llm_agent::{ENTITY_METADATA as A017_META, FIELDS as 
 use contracts::domain::a018_llm_chat::{ENTITY_METADATA as A018_META, FIELDS as A018_FIELDS};
 use contracts::domain::a019_llm_artifact::{ENTITY_METADATA as A019_META, FIELDS as A019_FIELDS};
 use contracts::domain::a020_wb_promotion::{ENTITY_METADATA as A020_META, FIELDS as A020_FIELDS};
+use contracts::domain::a024_bi_indicator::{ENTITY_METADATA as A024_META, FIELDS as A024_FIELDS};
+use contracts::domain::a025_bi_dashboard::{ENTITY_METADATA as A025_META, FIELDS as A025_FIELDS};
+use contracts::projections::p909_mp_order_line_turnovers::{
+    ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
+};
+use contracts::projections::p910_mp_unlinked_turnovers::{
+    ENTITY_METADATA as P910_META, FIELDS as P910_FIELDS,
+};
 
 // ─── Структуры ──────────────────────────────────────────────────────────────
 
@@ -100,6 +108,26 @@ impl MetadataRegistry {
                     fields: A019_FIELDS,
                     tags: &["llm"],
                 },
+                RegistryEntry {
+                    meta: &A024_META,
+                    fields: A024_FIELDS,
+                    tags: &["bi", "dashboard"],
+                },
+                RegistryEntry {
+                    meta: &A025_META,
+                    fields: A025_FIELDS,
+                    tags: &["bi", "dashboard"],
+                },
+                RegistryEntry {
+                    meta: &P909_META,
+                    fields: P909_FIELDS,
+                    tags: &["wb", "ym", "bi", "projection"],
+                },
+                RegistryEntry {
+                    meta: &P910_META,
+                    fields: P910_FIELDS,
+                    tags: &["wb", "ym", "bi", "projection"],
+                },
             ],
         }
     }
@@ -140,8 +168,32 @@ impl MetadataRegistry {
     /// `entity_index` — индекс сущности, например "a012" или "a004".
     pub fn get_entity_schema(&self, entity_index: &str) -> Value {
         let Some(entry) = self.find_by_index(entity_index) else {
+            let available: Vec<(&str, Option<&str>)> = self
+                .entries
+                .iter()
+                .map(|e| (e.meta.entity_index, e.meta.table_name))
+                .collect();
+            let hint_list: Vec<String> = available
+                .iter()
+                .map(|(idx, tbl)| {
+                    if let Some(t) = tbl {
+                        format!("'{}' (table: {})", idx, t)
+                    } else {
+                        format!("'{}'", idx)
+                    }
+                })
+                .collect();
+            tracing::warn!(
+                "[get_entity_schema] '{}' not found. Available: {:?}",
+                entity_index,
+                available
+            );
             return json!({
-                "error": format!("Entity '{}' not found. Use list_entities() to see available entities.", entity_index)
+                "error": format!(
+                    "Entity '{}' not found. Use the short index, not the table name. Available: {}",
+                    entity_index,
+                    hint_list.join(", ")
+                )
             });
         };
 
@@ -177,15 +229,32 @@ impl MetadataRegistry {
             })
             .collect();
 
+        // Список колонок для быстрого копирования в SQL (без фильтрации)
+        let columns_for_sql: Vec<&str> = entry
+            .fields
+            .iter()
+            .filter(|f| !Self::is_internal_field(f))
+            .map(|f| f.name)
+            .collect();
+
+        tracing::info!(
+            "[get_entity_schema] index='{}' table='{}' fields={}",
+            entity_index,
+            table,
+            columns_for_sql.len()
+        );
+
         json!({
-            "index":       entity_index,
-            "table":       table,
-            "name":        entry.meta.ui.element_name,
-            "description": entry.meta.ai.description,
-            "fields":      fields,
-            "related":     entry.meta.ai.related,
-            "sql_hint":    format!(
-                "SELECT ... FROM {} WHERE is_deleted = 0 LIMIT 100",
+            "index":           entity_index,
+            "table":           table,
+            "name":            entry.meta.ui.element_name,
+            "description":     entry.meta.ai.description,
+            "fields":          fields,
+            "columns_for_sql": columns_for_sql,
+            "related":         entry.meta.ai.related,
+            "sql_hint":        format!(
+                "SELECT {} FROM {} WHERE is_deleted = 0 LIMIT 100",
+                columns_for_sql[..columns_for_sql.len().min(5)].join(", "),
                 table
             ),
         })
@@ -212,11 +281,32 @@ impl MetadataRegistry {
             .table_name
             .unwrap_or(to_entry.meta.collection_name);
 
-        // Ищем FK-поля в from_entry, ссылающиеся на to_index
+        // ref_aggregate может хранить как краткий индекс ("a005"),
+        // так и полное имя таблицы ("a005_marketplace") или collection_name.
+        // Сравниваем со всеми формами идентификаторов to_entry.
+        let matches_to = |ref_agg: Option<&str>| -> bool {
+            let Some(ra) = ref_agg else {
+                return false;
+            };
+            ra == to_entry.meta.entity_index
+                || Some(ra) == to_entry.meta.table_name
+                || ra == to_entry.meta.collection_name
+        };
+
+        let matches_from = |ref_agg: Option<&str>| -> bool {
+            let Some(ra) = ref_agg else {
+                return false;
+            };
+            ra == from_entry.meta.entity_index
+                || Some(ra) == from_entry.meta.table_name
+                || ra == from_entry.meta.collection_name
+        };
+
+        // Ищем FK-поля в from_entry, ссылающиеся на to_entry
         let fk_fields: Vec<_> = from_entry
             .fields
             .iter()
-            .filter(|f| f.ref_aggregate == Some(to_index))
+            .filter(|f| matches_to(f.ref_aggregate))
             .collect();
 
         if let Some(fk) = fk_fields.first() {
@@ -238,7 +328,7 @@ impl MetadataRegistry {
         let reverse_fk: Vec<_> = to_entry
             .fields
             .iter()
-            .filter(|f| f.ref_aggregate == Some(from_index))
+            .filter(|f| matches_from(f.ref_aggregate))
             .collect();
 
         if let Some(fk) = reverse_fk.first() {
@@ -271,8 +361,14 @@ impl MetadataRegistry {
 
     // ─── Вспомогательные ──────────────────────────────────────────────────
 
+    /// Найти сущность по entity_index ("a006"), table_name ("a006_connection_mp")
+    /// или collection_name ("connection_mp"). Нечувствительность к формату.
     fn find_by_index(&self, index: &str) -> Option<&RegistryEntry> {
-        self.entries.iter().find(|e| e.meta.entity_index == index)
+        self.entries.iter().find(|e| {
+            e.meta.entity_index == index
+                || e.meta.table_name == Some(index)
+                || e.meta.collection_name == index
+        })
     }
 
     /// Служебные поля, не нужные LLM

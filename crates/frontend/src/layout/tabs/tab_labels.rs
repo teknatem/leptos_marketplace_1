@@ -48,6 +48,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a011_ozon_fbo_posting" => "OZON FBO Posting",
         "a014_ozon_transactions" => "Транзакции OZON",
         "a015_wb_orders" => "WB Orders",
+        "a026_wb_advert_daily" => "Статистика рекламы WB",
         "a016_ym_returns" => "Возвраты Yandex",
 
         // ── Use Cases (u5xx) ──────────────────────────────────────────────
@@ -58,6 +59,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "u505_match_nomenclature" => "Сопоставление",
         "u506_import_from_lemanapro" => "Импорт из ЛеманаПро",
         "u507_import_from_erp" => "Импорт из ERP",
+        "u508_repost_documents" => "Перепроведение по проекции",
+        "general_ledger" => "Главная книга",
+        k if k.starts_with("general_ledger_details_") => "Главная книга",
         "a021_production_output" => "Выпуск продукции",
         "a022_kit_variant" => "Варианты комплектации",
         "a023_purchase_of_goods" => "Приобретение товаров",
@@ -68,6 +72,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "p902_ozon_finance_realization" => "OZON Finance Realization",
         "p903_wb_finance_report" => "WB Finance Report",
         "p904_sales_data" => "Sales Data",
+        "p909_mp_order_line_turnovers" => "MP Order Line Turnovers",
+        "p910_mp_unlinked_turnovers" => "MP Unlinked Turnovers",
+        "p911_wb_advert_by_items" => "WB Advert By Items",
         "p905_commission_history" => "WB Commission History",
         "p906_nomenclature_prices" => "Дилерские цены (УТ)",
         "p907_ym_payment_report" => "YM Отчёт по платежам",
@@ -77,10 +84,12 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "d400_monthly_summary" => "Сводка за месяц",
         "d401_metadata_dashboard" => "Метаданные",
         "d401_wb_finance" => "WB Finance",
-        "d403_indicators" => "Показатели",
 
         // ── System (sys_*, dom_*) ─────────────────────────────────────────
         "sys_users" => "Пользователи",
+        k if k.starts_with("sys_user_details_") => "Пользователь",
+        "sys_roles" => "Роли",
+        "sys_roles_matrix" => "Матрица ролей",
         "sys_scheduled_tasks" => "Регламентные задания",
         "sys_thaw_test" => "Тест Thaw UI",
         "dom_inspector" => "DOM Inspector",
@@ -93,6 +102,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         // ── DataView semantic layer ────────────────────────────────────────
         "data_view" => "DataView",
         "filter_registry" => "Реестр фильтров",
+
+        // ── Drilldown (manual mode) ───────────────────────────────────────
+        "drilldown__new" => "Детализация",
 
         // ── Fallback ──────────────────────────────────────────────────────
         _ => "",

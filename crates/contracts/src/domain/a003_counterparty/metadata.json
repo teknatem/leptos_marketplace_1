@@ -1,0 +1,148 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "Counterparty",
+  "entity_index": "a003",
+  "collection_name": "counterparty",
+  "table_name": "a003_counterparty",
+
+  "ui": {
+    "element_name": "Контрагент",
+    "element_name_en": "Counterparty",
+    "list_name": "Контрагенты",
+    "list_name_en": "Counterparties",
+    "icon": "users"
+  },
+
+  "ai": {
+    "description": "Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Содержит ИНН и КПП для идентификации юридических лиц.",
+    "questions": [
+      "Как найти контрагента по ИНН?",
+      "Какие контрагенты являются поставщиками?",
+      "Как обновить данные контрагентов из 1С?"
+    ],
+    "related": [
+      "a001_connection_1c",
+      "u501_import_from_ut",
+      "a023_purchase_of_goods"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "CounterpartyId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 120
+      },
+      "validation": { "required": true, "max_length": 50 }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "label_en": "Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 300
+      },
+      "validation": { "required": true, "max_length": 255 }
+    },
+    {
+      "name": "inn",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ИНН",
+        "label_en": "TIN",
+        "placeholder": "7700000000",
+        "hint": "Индивидуальный номер налогоплательщика",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": { "required": false, "max_length": 12 },
+      "ai_hint": "ИНН — уникальный идентификатор организации в налоговых органах. 10 цифр для юр. лиц, 12 для ИП."
+    },
+    {
+      "name": "kpp",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "КПП",
+        "label_en": "KPP",
+        "placeholder": "770001001",
+        "hint": "Код причины постановки на учёт",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 110
+      },
+      "validation": { "required": false, "max_length": 9 }
+    },
+    {
+      "name": "is_folder",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Папка",
+        "label_en": "Is Folder",
+        "hint": "Признак группы (папки) в иерархии контрагентов",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "checkbox"
+      },
+      "validation": { "required": false }
+    },
+    {
+      "name": "parent_id",
+      "rust_type": "Option<String>",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": {
+        "label": "Родительская группа",
+        "label_en": "Parent Group",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": false },
+      "ref_aggregate": "a003_counterparty"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a003_counterparty",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

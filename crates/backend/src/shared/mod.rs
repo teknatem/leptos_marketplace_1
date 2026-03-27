@@ -1,7 +1,8 @@
+pub mod analytics;
 pub mod config;
 pub mod data;
+pub mod drilldown;
 pub mod format;
-pub mod indicators;
 pub mod llm;
 pub mod logger;
 pub mod marketplaces;

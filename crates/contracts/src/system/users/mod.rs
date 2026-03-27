@@ -8,6 +8,7 @@ pub struct User {
     pub full_name: Option<String>,
     pub is_active: bool,
     pub is_admin: bool,
+    pub primary_role_code: String,
     pub created_at: String,
     pub updated_at: String,
     pub last_login_at: Option<String>,
@@ -21,6 +22,7 @@ pub struct CreateUserDto {
     pub email: Option<String>,
     pub full_name: Option<String>,
     pub is_admin: bool,
+    pub primary_role_code: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +32,7 @@ pub struct UpdateUserDto {
     pub full_name: Option<String>,
     pub is_active: bool,
     pub is_admin: bool,
+    pub primary_role_code: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

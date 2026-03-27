@@ -16,6 +16,8 @@ pub struct LlmArtifactDto {
     pub comment: Option<String>,
     pub chat_id: String,
     pub agent_id: String,
+    /// Тип артефакта: "sql_query" (по умолчанию) или "drilldown_report".
+    pub artifact_type: Option<String>,
     pub sql_query: String,
     pub query_params: Option<String>,
     pub visualization_config: Option<String>,
@@ -55,6 +57,14 @@ pub async fn create(dto: LlmArtifactDto) -> anyhow::Result<Uuid> {
     aggregate.base.comment = dto.comment;
     aggregate.query_params = dto.query_params;
     aggregate.visualization_config = dto.visualization_config;
+
+    if let Some(ref type_str) = dto.artifact_type {
+        if let Ok(at) =
+            contracts::domain::a019_llm_artifact::aggregate::ArtifactType::from_str(type_str)
+        {
+            aggregate.artifact_type = at;
+        }
+    }
 
     // Валидация
     aggregate

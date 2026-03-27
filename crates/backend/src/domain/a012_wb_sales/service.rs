@@ -334,6 +334,46 @@ pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
     Ok(())
 }
 
+pub async fn fill_dealer_price_resolved(document: &mut WbSales) -> Result<()> {
+    let Some(ref nom_ref) = document.nomenclature_ref else {
+        document.line.dealer_price_ut = None;
+        document.line.cost_of_production = None;
+        return Ok(());
+    };
+
+    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+    let resolved =
+        crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
+            nom_ref, &sale_date,
+        )
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to resolve dealer price for {}: {}", nom_ref, e);
+            None
+        });
+
+    if let Some(ref resolved_price) = resolved {
+        tracing::info!(
+            "Filled dealer_price_ut = {:?} for document {} (from {})",
+            resolved_price.price,
+            document.base.id.as_string(),
+            resolved_price.describe(&sale_date)
+        );
+    } else {
+        tracing::warn!(
+            "Could not find dealer_price_ut for document {} (nomenclature: {})",
+            document.base.id.as_string(),
+            nom_ref
+        );
+    }
+
+    let price = resolved.map(|resolved_price| resolved_price.price);
+    document.line.dealer_price_ut = price;
+    document.line.cost_of_production = price;
+
+    Ok(())
+}
+
 pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> Result<Uuid> {
     let raw_ref = crate::shared::data::raw_storage::save_raw_json(
         "WB",
@@ -350,7 +390,7 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
     auto_fill_references(&mut document).await?;
 
     // Заполнение dealer_price_ut
-    fill_dealer_price(&mut document).await?;
+    fill_dealer_price_resolved(&mut document).await?;
 
     document
         .validate()
@@ -374,6 +414,26 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
         {
             tracing::error!("Failed to delete projections for WB Sales document: {}", e);
         }
+        if let Err(e) =
+            crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string())
+                .await
+        {
+            tracing::error!(
+                "Failed to delete P904 projections for WB Sales document: {}",
+                e
+            );
+        }
+        if let Err(e) =
+            crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+                &format!("a012:{}", id),
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to delete P909 projections for WB Sales document: {}",
+                e
+            );
+        }
     }
 
     Ok(id)
@@ -396,6 +456,13 @@ pub async fn list_all() -> Result<Vec<WbSales>> {
     repository::list_all().await
 }
 
+pub async fn list_by_sale_date_range(
+    date_from: Option<chrono::NaiveDate>,
+    date_to: Option<chrono::NaiveDate>,
+) -> Result<Vec<WbSales>> {
+    repository::list_by_sale_date_range(date_from, date_to).await
+}
+
 pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
@@ -408,7 +475,7 @@ pub async fn refresh_dealer_price(id: Uuid) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
     // Обновляем dealer_price_ut
-    fill_dealer_price(&mut document).await?;
+    fill_dealer_price_resolved(&mut document).await?;
 
     // Сохраняем обратно в базу
     repository::upsert_document(&document).await?;

@@ -21,7 +21,7 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
         let vm = vm.clone();
         move || {
             if let Some(order_data) = vm.order.get() {
-                let tab_key = format!("a013_ym_order_detail_{}", stored_id.get_value());
+                let tab_key = format!("a013_ym_order_details_{}", stored_id.get_value());
                 let tab_title = format!("YM Order {}", order_data.header.document_no);
                 tabs_store.update_tab_title(&tab_key, &tab_title);
             }

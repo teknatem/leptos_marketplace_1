@@ -1,6 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::shared::icons;
+use crate::system::auth::context::is_admin;
 use leptos::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -138,6 +139,11 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "file-text",
         },
         MegaMenuItem {
+            key: "a026_wb_advert_daily",
+            title: tab_label_for_key("a026_wb_advert_daily"),
+            icon_name: "activity",
+        },
+        MegaMenuItem {
             key: "a021_production_output",
             title: tab_label_for_key("a021_production_output"),
             icon_name: "package",
@@ -224,11 +230,18 @@ pub fn MegaMenuBar() -> impl IntoView {
     ];
 
     // Операции
-    let operations = vec![MegaMenuItem {
-        key: "u505_match_nomenclature",
-        title: tab_label_for_key("u505_match_nomenclature"),
-        icon_name: "layers",
-    }];
+    let operations = vec![
+        MegaMenuItem {
+            key: "u505_match_nomenclature",
+            title: tab_label_for_key("u505_match_nomenclature"),
+            icon_name: "layers",
+        },
+        MegaMenuItem {
+            key: "u508_repost_documents",
+            title: tab_label_for_key("u508_repost_documents"),
+            icon_name: "refresh-cw",
+        },
+    ];
 
     // Регистры
     let registers = vec![
@@ -258,18 +271,37 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "dollar-sign",
         },
         MegaMenuItem {
+            key: "p909_mp_order_line_turnovers",
+            title: tab_label_for_key("p909_mp_order_line_turnovers"),
+            icon_name: "list-ordered",
+        },
+        MegaMenuItem {
+            key: "p910_mp_unlinked_turnovers",
+            title: tab_label_for_key("p910_mp_unlinked_turnovers"),
+            icon_name: "file-stack",
+        },
+        MegaMenuItem {
+            key: "p911_wb_advert_by_items",
+            title: tab_label_for_key("p911_wb_advert_by_items"),
+            icon_name: "list-ordered",
+        },
+        MegaMenuItem {
             key: "p905_commission_history",
             title: tab_label_for_key("p905_commission_history"),
             icon_name: "percent",
         },
     ];
 
+    let user_is_admin = is_admin();
+
     view! {
         <nav class="mega-menu-bar">
             <MegaMenuCategory label="Справочники" items=directories columns=2 />
             <MegaMenuCategory label="Документы" items=documents columns=2 />
             <MegaMenuCategory label="Интеграции" items=integrations columns=2 />
-            <MegaMenuCategory label="Операции" items=operations columns=1 />
+            {user_is_admin.then(|| view! {
+                <MegaMenuCategory label="Операции" items=operations columns=1 />
+            })}
             <MegaMenuCategory label="Регистры" items=registers columns=2 />
         </nav>
     }

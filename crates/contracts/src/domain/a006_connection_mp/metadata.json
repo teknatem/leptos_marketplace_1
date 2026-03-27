@@ -75,7 +75,7 @@
       "ai_hint": "Понятное название магазина (например: 'WB - Основной магазин', 'Ozon - ИП Иванов'). Для отображения в отчётах: JOIN с a006_connection_mp по connection_id = id."
     },
     {
-      "name": "marketplace_id",
+      "name": "marketplace",
       "rust_type": "String",
       "field_type": "aggregate_ref",
       "source": "specific",
@@ -88,7 +88,7 @@
         "column_width": 150
       },
       "validation": { "required": true },
-      "ai_hint": "UUID маркетплейса из a005_marketplace. JOIN: a006_connection_mp.marketplace_id = a005_marketplace.id."
+      "ai_hint": "UUID маркетплейса из a005_marketplace. Колонка называется marketplace (не marketplace_id). JOIN: a006_connection_mp.marketplace = a005_marketplace.id. Для WB: WHERE marketplace = (SELECT id FROM a005_marketplace WHERE code = 'mp-wb')"
     },
     {
       "name": "organization_ref",
@@ -137,5 +137,15 @@
       "validation": { "required": false },
       "ai_hint": "Плановый процент комиссии маркетплейса для этого магазина. Используется в расчёте плановой прибыли."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a006_connection_mp",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

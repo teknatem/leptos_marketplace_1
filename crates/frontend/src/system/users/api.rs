@@ -14,6 +14,7 @@ pub async fn fetch_users() -> Result<Vec<User>, String> {
 
     let response = Request::get(&format!("{}/api/system/users", api_base()))
         .header("Authorization", &auth_header)
+        .header("Cache-Control", "no-cache")
         .send()
         .await
         .map_err(|e| format!("Failed to send request: {}", e))?;
@@ -24,6 +25,27 @@ pub async fn fetch_users() -> Result<Vec<User>, String> {
 
     response
         .json::<Vec<User>>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get user by ID
+pub async fn get_user(id: &str) -> Result<User, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::get(&format!("{}/api/system/users/{}", api_base(), id))
+        .header("Authorization", &auth_header)
+        .header("Cache-Control", "no-cache")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Failed to fetch user: {}", response.status()));
+    }
+
+    response
+        .json::<User>()
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))
 }

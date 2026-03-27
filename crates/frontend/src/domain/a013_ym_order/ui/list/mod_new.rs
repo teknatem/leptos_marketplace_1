@@ -554,7 +554,7 @@ pub fn YmOrderList() -> impl IntoView {
     // Открыть детальный просмотр
     let open_detail = move |id: String, document_no: String| {
         tabs_store.open_tab(
-            &format!("a013_ym_order_detail_{}", id),
+            &format!("a013_ym_order_details_{}", id),
             &format!("YM Order {}", document_no),
         );
     };

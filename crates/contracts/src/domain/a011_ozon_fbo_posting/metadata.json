@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "OzonFboPosting",
+  "entity_index": "a011",
+  "collection_name": "ozon_fbo_posting",
+  "table_name": "a011_ozon_fbo_posting",
+
+  "ui": {
+    "element_name": "Документ OZON FBO",
+    "element_name_en": "OZON FBO Posting",
+    "list_name": "Документы OZON FBO",
+    "list_name_en": "OZON FBO Postings",
+    "icon": "file-text"
+  },
+
+  "ai": {
+    "description": "Отправление OZON по схеме FBO (Fulfillment by OZON — OZON хранит и доставляет). Содержит номер отправления, строки товаров, статус и временные метки. Используется для учёта продаж со склада OZON.",
+    "questions": [
+      "Какие FBO-отправления были на OZON?",
+      "Что такое FBO-схема?",
+      "Как сверить FBO-постинги с транзакциями?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a005_marketplace",
+      "a014_ozon_transactions"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "OzonFboPostingId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер отправления", "label_en": "Posting Number", "visible_in_list": true, "visible_in_form": true, "column_width": 200 },
+      "validation": { "required": true },
+      "ai_hint": "posting_number из OZON API — уникальный идентификатор отправления."
+    },
+    {
+      "name": "scheme",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Схема", "label_en": "Scheme", "visible_in_list": true, "visible_in_form": true, "column_width": 80 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "status_norm",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Статус", "label_en": "Status", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "delivered_at",
+      "rust_type": "Option<DateTime<Utc>>",
+      "field_type": "datetime",
+      "source": "specific",
+      "ui": { "label": "Дата доставки", "label_en": "Delivered At", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "is_posted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Проведён", "label_en": "Is Posted", "visible_in_list": true, "visible_in_form": false, "column_width": 90, "widget": "checkbox" },
+      "validation": { "required": false }
+    }
+  ],
+
+  "access": {
+    "scope_id": "a011_ozon_fbo_posting",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
+}

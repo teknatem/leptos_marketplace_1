@@ -2,6 +2,7 @@ use axum::{extract::Query, Json};
 use chrono::NaiveDate;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
+use contracts::shared::analytics::TurnoverLayer;
 use serde::{Deserialize, Serialize};
 use tokio::join;
 use uuid::Uuid;
@@ -691,7 +692,7 @@ pub async fn migrate_fill_sale_id() -> Result<Json<serde_json::Value>, axum::htt
 pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    // Получаем данные из проекций p900 и p904 (WB Sales используется только эти)
+    // Получаем данные из проекций p900, p904 и p909 для документа a012_wb_sales
     let p900_items = crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
         .await
         .map_err(|e| {
@@ -706,13 +707,85 @@ pub async fn get_projections(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    let p909_items = crate::projections::p909_mp_order_line_turnovers::repository::list_by_registrator_ref_and_layer(
+        &format!("a012:{}", id),
+        TurnoverLayer::Oper.as_str(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get p909 projections: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     // Объединяем результаты
     let result = serde_json::json!({
         "p900_sales_register": p900_items,
         "p904_sales_data": p904_items,
+        "p909_order_line_turnovers": p909_items,
     });
 
     Ok(Json(result))
+}
+
+/// Handler для получения записей журнала операций по registrator_ref
+pub async fn get_general_ledger_entries(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    use crate::shared::analytics::turnover_registry::get_turnover_class;
+    use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+
+    let registrator_ref = format!("a012:{}", id);
+
+    let rows = crate::projections::general_ledger::repository::list_with_filters(
+        None,
+        None,
+        Some(registrator_ref),
+        None, // registrator_type
+        None, // layer
+        None,
+        None,
+        None,
+        None,
+        false,
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get journal entries: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Обогащаем каждую запись комментарием из реестра оборотов.
+    let entries: Vec<GeneralLedgerEntryDto> = rows
+        .into_iter()
+        .map(|r| {
+            let comment = get_turnover_class(&r.turnover_code)
+                .map(|c| c.journal_comment.to_string())
+                .unwrap_or_default();
+            GeneralLedgerEntryDto {
+                id: r.id,
+                posting_id: r.posting_id,
+                entry_date: r.entry_date,
+                layer: TurnoverLayer::from_str(&r.layer).unwrap_or(TurnoverLayer::Oper),
+                registrator_type: r.registrator_type,
+                registrator_ref: r.registrator_ref,
+                debit_account: r.debit_account,
+                credit_account: r.credit_account,
+                amount: r.amount,
+                qty: r.qty,
+                turnover_code: r.turnover_code,
+                detail_kind: r.detail_kind,
+                detail_id: r.detail_id,
+                resource_name: r.resource_name,
+                resource_sign: r.resource_sign,
+                created_at: r.created_at,
+                comment,
+            }
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "entries": entries })))
 }
 
 /// Handler для обновления dealer_price_ut

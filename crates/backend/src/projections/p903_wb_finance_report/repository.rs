@@ -3,6 +3,7 @@ use chrono::{NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use crate::shared::data::db::get_connection;
 
@@ -15,6 +16,7 @@ pub struct Model {
     pub rr_dt: String,
     #[sea_orm(primary_key, auto_increment = false)]
     pub rrd_id: i64,
+    pub source_row_ref: String,
 
     // Metadata
     pub connection_mp_ref: String,
@@ -90,12 +92,17 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
+pub fn make_source_row_ref(rr_dt: &str, rrd_id: i64) -> String {
+    format!("p903:{rr_dt}:{rrd_id}")
+}
+
 /// Структура для передачи данных в upsert
 #[derive(Debug, Clone)]
 pub struct WbFinanceReportEntry {
     // Composite Key
     pub rr_dt: NaiveDate,
     pub rrd_id: i64,
+    pub source_row_ref: String,
 
     // Metadata
     pub connection_mp_ref: String,
@@ -167,6 +174,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
         // Обновить существующую запись
         let mut active_model: ActiveModel = existing_model.into();
 
+        active_model.source_row_ref = Set(entry.source_row_ref.clone());
         active_model.connection_mp_ref = Set(entry.connection_mp_ref.clone());
         active_model.organization_ref = Set(entry.organization_ref.clone());
         active_model.acquiring_fee = Set(entry.acquiring_fee);
@@ -207,6 +215,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
         let new_model = ActiveModel {
             rr_dt: Set(rr_dt_str),
             rrd_id: Set(entry.rrd_id),
+            source_row_ref: Set(entry.source_row_ref.clone()),
             connection_mp_ref: Set(entry.connection_mp_ref.clone()),
             organization_ref: Set(entry.organization_ref.clone()),
             acquiring_fee: Set(entry.acquiring_fee),
@@ -483,6 +492,55 @@ pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
     let db = get_connection();
 
     let items = Entity::find().filter(Column::Srid.eq(srid)).all(db).await?;
+
+    Ok(items)
+}
+
+pub async fn list_distinct_supplier_oper_names(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_ref: Option<String>,
+    organization_ref: Option<String>,
+) -> Result<Vec<String>> {
+    let db = get_connection();
+
+    let mut query = Entity::find()
+        .select_only()
+        .column(Column::SupplierOperName)
+        .filter(Column::RrDt.gte(date_from))
+        .filter(Column::RrDt.lte(date_to))
+        .order_by_asc(Column::SupplierOperName);
+
+    if let Some(ref conn) = connection_mp_ref {
+        query = query.filter(Column::ConnectionMpRef.eq(conn));
+    }
+
+    if let Some(ref org) = organization_ref {
+        query = query.filter(Column::OrganizationRef.eq(org));
+    }
+
+    let values = query.into_tuple::<Option<String>>().all(db).await?;
+    let mut kinds = BTreeSet::new();
+
+    for value in values.into_iter().flatten() {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            kinds.insert(trimmed.to_string());
+        }
+    }
+
+    Ok(kinds.into_iter().collect())
+}
+
+pub async fn list_by_date_range(date_from: &str, date_to: &str) -> Result<Vec<Model>> {
+    let db = get_connection();
+
+    let items = Entity::find()
+        .filter(Column::RrDt.gte(date_from))
+        .filter(Column::RrDt.lte(date_to))
+        .order_by_asc(Column::RrDt)
+        .all(db)
+        .await?;
 
     Ok(items)
 }

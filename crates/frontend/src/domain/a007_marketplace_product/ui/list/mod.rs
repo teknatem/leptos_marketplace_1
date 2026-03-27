@@ -259,7 +259,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
         use crate::layout::tabs::{detail_tab_label, pick_identifier};
         let identifier = pick_identifier(None, Some(&article), Some(&description), &id);
         global_ctx.open_tab(
-            &format!("a007_marketplace_product_detail_{}", id),
+            &format!("a007_marketplace_product_details_{}", id),
             &detail_tab_label("Товар МП", identifier),
         );
     };

@@ -59,7 +59,11 @@ impl From<&DataSourceSchema> for DataSourceSchemaOwned {
             id: schema.id.to_string(),
             name: schema.name.to_string(),
             fields: schema.fields.iter().map(|f| f.into()).collect(),
-            schema_filters: schema.schema_filters.iter().map(|s| s.to_string()).collect(),
+            schema_filters: schema
+                .schema_filters
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 }

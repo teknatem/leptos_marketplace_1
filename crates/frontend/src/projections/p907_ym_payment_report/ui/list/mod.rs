@@ -308,7 +308,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
 
     let open_detail = move |record_key: String, date_str: String| {
         let tab_key = format!(
-            "p907_ym_payment_report_detail_{}",
+            "p907_ym_payment_report_details_{}",
             js_sys::encode_uri_component(&record_key)
                 .as_string()
                 .unwrap_or_else(|| record_key.clone())

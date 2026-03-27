@@ -178,6 +178,10 @@ pub struct WbSales {
     /// Флаг проведения документа (для формирования проекций)
     pub is_posted: bool,
 
+    /// Признак возврата покупателя (устанавливается при проведении)
+    #[serde(default)]
+    pub is_customer_return: bool,
+
     /// Ссылка на товар маркетплейса (a007_marketplace_product)
     pub marketplace_product_ref: Option<String>,
 
@@ -206,6 +210,7 @@ impl WbSales {
             warehouse,
             source_meta,
             is_posted,
+            is_customer_return: false,
             marketplace_product_ref: None,
             nomenclature_ref: None,
         }
@@ -232,6 +237,7 @@ impl WbSales {
             warehouse,
             source_meta,
             is_posted,
+            is_customer_return: false,
             marketplace_product_ref: None,
             nomenclature_ref: None,
         }

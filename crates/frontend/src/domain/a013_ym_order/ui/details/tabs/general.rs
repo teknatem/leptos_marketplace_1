@@ -130,7 +130,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let conn_id = conn_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_detail_{}", conn_id), "Подключение МП")
+                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_details_{}", conn_id), "Подключение МП")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -144,7 +144,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let org_id = org_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a002_organization_detail_{}", org_id), "Организация")
+                                        move |_| tabs_store.open_tab(&format!("a002_organization_details_{}", org_id), "Организация")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -158,7 +158,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let mp_id = mp_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_detail_{}", mp_id), "Маркетплейс")
+                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_details_{}", mp_id), "Маркетплейс")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >

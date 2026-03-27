@@ -1,0 +1,121 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "ProductionOutput",
+  "entity_index": "a021",
+  "collection_name": "production_output",
+  "table_name": "a021_production_output",
+
+  "ui": {
+    "element_name": "Выпуск продукции",
+    "element_name_en": "Production Output",
+    "list_name": "Выпуск продукции",
+    "list_name_en": "Production Output",
+    "icon": "box"
+  },
+
+  "ai": {
+    "description": "Документ Выпуск продукции из 1С:Управление торговлей. Содержит номер и дату документа, артикул и количество произведённой продукции, сумму себестоимости. Используется для расчёта себестоимости товаров при аналитике прибыли.",
+    "questions": [
+      "Какова себестоимость произведённой продукции?",
+      "Сколько единиц было произведено?",
+      "Как рассчитать себестоимость на штуку?"
+    ],
+    "related": [
+      "a001_connection_1c",
+      "a004_nomenclature",
+      "u501_import_from_ut"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "ProductionOutputId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер документа", "label_en": "Document No", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "date",
+      "source": "specific",
+      "ui": { "label": "Дата документа", "label_en": "Document Date", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Артикул", "label_en": "Article", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true },
+      "ai_hint": "Артикул номенклатуры — используется для сопоставления с a004_nomenclature."
+    },
+    {
+      "name": "count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Количество", "label_en": "Count", "visible_in_list": true, "visible_in_form": true, "column_width": 100 },
+      "validation": { "required": true, "min": 0.0 }
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Сумма себестоимости", "label_en": "Cost Amount", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "cost_of_production",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Себестоимость / шт", "label_en": "Unit Cost", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
+      "validation": { "required": false },
+      "ai_hint": "Рассчитывается автоматически: amount / count."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Номенклатура 1С", "label_en": "1C Nomenclature", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": false },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение 1С", "label_en": "1C Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a001_connection_1c"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a021_production_output",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

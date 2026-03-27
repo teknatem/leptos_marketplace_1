@@ -1,7 +1,9 @@
+pub mod access;
+pub mod accounting;
+pub mod analytics;
 pub mod data_view;
 pub mod drilldown;
 pub mod form_settings;
-pub mod indicators;
 pub mod logger;
 pub mod metadata;
 pub mod universal_dashboard;
