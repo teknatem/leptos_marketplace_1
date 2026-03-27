@@ -1,8 +1,8 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
-use crate::shared::components::card_animated::CardAnimated;
 use contracts::domain::a021_production_output::aggregate::ProductionOutput;
 use gloo_net::http::Request;
 use leptos::prelude::*;
@@ -72,7 +72,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                     Ok(response) if response.ok() => {
                         match response.json::<ProductionOutput>().await {
                             Ok(data) => {
-                                let tab_key = format!("a021_production_output_detail_{}", id_val);
+                                let tab_key = format!("a021_production_output_details_{}", id_val);
                                 let tab_title = format!("Выпуск {}", data.document_no);
                                 tabs_store.update_tab_title(&tab_key, &tab_title);
 
@@ -263,7 +263,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                         view! {
                             <div class="detail-grid">
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=0 nav_id="a021_production_output_detail_document">
+                                    <CardAnimated delay_ms=0 nav_id="a021_production_output_details_document">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номер документа:"</span>
                                         <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
@@ -292,7 +292,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                 </div>
 
                                 <div class="detail-grid__col">
-                                    <CardAnimated delay_ms=40 nav_id="a021_production_output_detail_nomenclature">
+                                    <CardAnimated delay_ms=40 nav_id="a021_production_output_details_nomenclature">
                                     <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
                                         <span class="form__label">"Номенклатура 1С:"</span>
                                         <span style="display:flex;align-items:center;gap:var(--spacing-sm);flex-wrap:wrap;">
@@ -312,7 +312,7 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                                             on:click=move |e| {
                                                                 e.prevent_default();
                                                                 tabs_store.open_tab(
-                                                                    &format!("a004_nomenclature_detail_{}", nom_id),
+                                                                    &format!("a004_nomenclature_details_{}", nom_id),
                                                                     &nom_title_open,
                                                                 );
                                                             }

@@ -128,6 +128,14 @@ pub struct ModelWithCabinet {
     pub connection_mp_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectionRegistrator {
+    pub registrator_ref: String,
+    pub registrator_type: String,
+    pub date: String,
+    pub rows_count: i64,
+}
+
 /// List with filters: date range and connection_mp_ref
 pub async fn list_with_filters(
     date_from: Option<String>,
@@ -176,11 +184,11 @@ pub async fn list_with_filters(
 
     // Add date filters
     if let Some(from) = &date_from {
-        sql.push_str(&format!(" AND p904.date >= ?"));
+        sql.push_str(" AND substr(p904.date, 1, 10) >= ?");
         params.push(from.clone().into());
     }
     if let Some(to) = &date_to {
-        sql.push_str(&format!(" AND p904.date <= ?"));
+        sql.push_str(" AND substr(p904.date, 1, 10) <= ?");
         params.push(to.clone().into());
     }
 
@@ -269,4 +277,50 @@ pub async fn list_with_filters(
         .collect();
 
     Ok(items)
+}
+
+pub async fn list_registrators_by_period(
+    date_from: &str,
+    date_to: &str,
+) -> Result<Vec<ProjectionRegistrator>> {
+    use sea_orm::{FromQueryResult, Statement};
+
+    #[derive(Debug, FromQueryResult)]
+    struct QueryResult {
+        registrator_ref: String,
+        registrator_type: String,
+        date: String,
+        rows_count: i64,
+    }
+
+    let stmt = Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        r#"
+            SELECT
+                registrator_ref,
+                registrator_type,
+                MAX(date) AS date,
+                COUNT(*) AS rows_count
+            FROM p904_sales_data
+            WHERE substr(date, 1, 10) >= ?
+              AND substr(date, 1, 10) <= ?
+              AND registrator_ref <> ''
+              AND registrator_type <> ''
+            GROUP BY registrator_ref, registrator_type
+            ORDER BY MAX(date) DESC, registrator_type, registrator_ref
+        "#,
+        vec![date_from.into(), date_to.into()],
+    );
+
+    let rows = QueryResult::find_by_statement(stmt).all(conn()).await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ProjectionRegistrator {
+            registrator_ref: row.registrator_ref,
+            registrator_type: row.registrator_type,
+            date: row.date,
+            rows_count: row.rows_count,
+        })
+        .collect())
 }

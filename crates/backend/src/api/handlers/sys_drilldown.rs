@@ -4,11 +4,7 @@
 //! GET  /api/sys-drilldown/:id       → get session params (increments use_count)
 //! GET  /api/sys-drilldown/:id/data  → get params AND execute drilldown query
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::Path, http::StatusCode, response::Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -27,6 +23,9 @@ pub struct DrilldownSessionCreate {
     pub indicator_name: Option<String>,
     #[serde(default)]
     pub metric_id: Option<String>,
+    /// Multi-resource режим: список выбранных resource id.
+    #[serde(default)]
+    pub metric_ids: Vec<String>,
     pub group_by: String,
     pub group_by_label: Option<String>,
     pub date_from: String,
@@ -56,9 +55,15 @@ async fn fetch_session(id: &str) -> Result<Value, (StatusCode, String)> {
         .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Drilldown session not found: {}", id)))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Drilldown session not found: {}", id),
+            )
+        })?;
 
-    let params_json_str: String = row.try_get("", "params_json")
+    let params_json_str: String = row
+        .try_get("", "params_json")
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let params: Value = serde_json::from_str(&params_json_str)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -101,6 +106,7 @@ pub async fn create(
     let params = json!({
         "view_id": body.view_id,
         "metric_id": body.metric_id,
+        "metric_ids": body.metric_ids,
         "group_by": body.group_by,
         "group_by_label": body.group_by_label.unwrap_or_default(),
         "date_from": body.date_from,
@@ -137,9 +143,7 @@ pub async fn create(
 // ── GET /api/sys-drilldown/:id ───────────────────────────────────────────────
 
 /// Return stored session params and increment use_count.
-pub async fn get_by_id(
-    Path(id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, String)> {
+pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
     let result = fetch_session(&id).await?;
     touch_session(&id).await;
     Ok(Json(result))
@@ -164,16 +168,30 @@ pub async fn get_data(
     let period2_from = params["period2_from"].as_str().map(String::from);
     let period2_to = params["period2_to"].as_str().map(String::from);
     let metric_id = params["metric_id"].as_str().map(String::from);
+    let metric_ids: Vec<String> = params["metric_ids"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
     let connection_mp_refs: Vec<String> = params["connection_mp_refs"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     let mut extra_params: std::collections::HashMap<String, String> = params["params"]
         .as_object()
         .map(|obj| {
             obj.iter()
-                .filter_map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_string())))
+                .filter_map(|(key, value)| {
+                    value.as_str().map(|value| (key.clone(), value.to_string()))
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -183,7 +201,10 @@ pub async fn get_data(
 
     let registry = DataViewRegistry::new();
     if !registry.has_view(&view_id) {
-        return Err((StatusCode::NOT_FOUND, format!("DataView not found: {}", view_id)));
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("DataView not found: {}", view_id),
+        ));
     }
 
     let ctx = ViewContext {
@@ -196,7 +217,7 @@ pub async fn get_data(
     };
 
     registry
-        .compute_drilldown(&view_id, &ctx, &group_by)
+        .compute_drilldown(&view_id, &ctx, &group_by, &metric_ids)
         .await
         .map(Json)
         .map_err(|e| {

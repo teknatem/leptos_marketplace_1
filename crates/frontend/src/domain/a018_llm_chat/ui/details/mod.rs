@@ -8,9 +8,11 @@
 
 mod artifact_card;
 mod model;
+mod tool_calls_trace;
 mod view;
 mod view_model;
 
 pub use artifact_card::ArtifactCard;
+pub use tool_calls_trace::ToolCallsTrace;
 pub use view::LlmChatDetails;
 pub use view_model::LlmChatDetailsVm;

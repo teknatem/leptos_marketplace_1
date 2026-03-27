@@ -285,7 +285,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
 
     let open_detail = move |id: String, operation_id: i64| {
         tabs_store.open_tab(
-            &format!("a014_ozon_transactions_detail_{}", id),
+            &format!("a014_ozon_transactions_details_{}", id),
             &format!("Транзакция OZON #{}", operation_id),
         );
     };

@@ -51,9 +51,16 @@ pub struct SelectOption {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FilterKind {
     /// Парный выбор диапазона дат — рендерится как DateRangePicker.
-    DateRange { from_id: String, to_id: String },
-    MultiSelect { source: String },
-    Select { options: Vec<SelectOption> },
+    DateRange {
+        from_id: String,
+        to_id: String,
+    },
+    MultiSelect {
+        source: String,
+    },
+    Select {
+        options: Vec<SelectOption>,
+    },
     Text,
 }
 

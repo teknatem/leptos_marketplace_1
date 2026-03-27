@@ -1,11 +1,12 @@
 mod state;
 
-use contracts::system::users::{UpdateUserDto, User};
+use contracts::system::users::User;
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;
 
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{
     TableCellCheckbox, TableCrosshairHighlight, TableHeaderCheckbox,
@@ -23,6 +24,25 @@ use std::collections::HashSet;
 
 const TABLE_ID: &str = "sys-users-table";
 const COLUMN_WIDTHS_KEY: &str = "sys_users_column_widths";
+
+fn primary_role_label(code: &str) -> &'static str {
+    match code {
+        "admin" => "admin",
+        "manager" => "manager",
+        "operator" => "operator",
+        "viewer" => "viewer",
+        _ => "viewer",
+    }
+}
+
+fn primary_role_badge_class(code: &str) -> &'static str {
+    match code {
+        "admin" => "badge badge--warning",
+        "manager" => "badge badge--primary",
+        "operator" => "badge badge--info",
+        _ => "badge badge--neutral",
+    }
+}
 
 impl Sortable for User {
     fn compare_by_field(&self, other: &Self, field: &str) -> std::cmp::Ordering {
@@ -45,6 +65,7 @@ impl Sortable for User {
                 .cmp(&other.email.as_deref().unwrap_or("").to_lowercase()),
             "is_admin" => self.is_admin.cmp(&other.is_admin),
             "is_active" => self.is_active.cmp(&other.is_active),
+            "primary_role_code" => self.primary_role_code.cmp(&other.primary_role_code),
             "created_at" => self.created_at.cmp(&other.created_at),
             "last_login_at" => self
                 .last_login_at
@@ -83,9 +104,22 @@ fn UsersList() -> impl IntoView {
     let all_users: RwSignal<Vec<User>> = RwSignal::new(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(false);
-    let (show_create_form, set_show_create_form) = signal(false);
-    let editing_user: RwSignal<Option<User>> = RwSignal::new(None);
     let selected: RwSignal<HashSet<String>> = RwSignal::new(HashSet::new());
+
+    let global_ctx = use_context::<AppGlobalContext>();
+
+    let open_user_details = move |user_id: String, username: String| {
+        let tab_key = format!("sys_user_details_{}", user_id);
+        if let Some(ctx) = global_ctx {
+            ctx.open_tab(&tab_key, &username);
+        }
+    };
+
+    let open_new_user = move || {
+        if let Some(ctx) = global_ctx {
+            ctx.open_tab("sys_user_new", "Новый пользователь");
+        }
+    };
 
     let refresh_view = move || {
         let query = state.with_untracked(|s| s.search_query.to_lowercase());
@@ -236,7 +270,7 @@ fn UsersList() -> impl IntoView {
                 <div class="page__header-right">
                     <Button
                         appearance=ButtonAppearance::Primary
-                        on_click=move |_| set_show_create_form.set(true)
+                        on_click=move |_| open_new_user()
                     >
                         {icon("plus")}
                         " Новый"
@@ -341,9 +375,17 @@ fn UsersList() -> impl IntoView {
                                         </span>
                                     </div>
                                 </TableHeaderCell>
+                                <TableHeaderCell resizable=false class="resizable" min_width=100.0>
+                                    <div class="table__sortable-header" style="cursor:pointer;" on:click=toggle_sort("primary_role_code")>
+                                        "Основная роль"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "primary_role_code"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "primary_role_code", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
                                 <TableHeaderCell resizable=false class="resizable" min_width=80.0>
                                     <div class="table__sortable-header" style="cursor:pointer;" on:click=toggle_sort("is_admin")>
-                                        "Роль"
+                                        "is_admin"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "is_admin"))>
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "is_admin", state.with(|s| s.sort_ascending))}
                                         </span>
@@ -373,18 +415,17 @@ fn UsersList() -> impl IntoView {
                                         </span>
                                     </div>
                                 </TableHeaderCell>
-                                <TableHeaderCell resizable=false min_width=60.0>
-                                </TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
                         <TableBody>
                             <For
                                 each=move || state.get().items
-                                key=|u| u.id.clone()
+                                key=|u| format!("{}:{}", u.id, u.updated_at)
                                 children=move |user| {
                                     let user_id = user.id.clone();
-                                    let user_for_edit = user.clone();
+                                    let user_id_for_click = user.id.clone();
+                                    let username_for_click = user.username.clone();
                                     let created = format_ts(&user.created_at);
                                     let last_login = format_ts_opt(&user.last_login_at);
                                     view! {
@@ -396,7 +437,12 @@ fn UsersList() -> impl IntoView {
                                             />
                                             <TableCell>
                                                 <TableCellLayout truncate=true>
-                                                    <span style="font-weight: 500;">{user.username.clone()}</span>
+                                                    <span
+                                                        class="table__link"
+                                                        on:click=move |_| open_user_details(user_id_for_click.clone(), username_for_click.clone())
+                                                    >
+                                                        {user.username.clone()}
+                                                    </span>
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell>
@@ -411,10 +457,17 @@ fn UsersList() -> impl IntoView {
                                             </TableCell>
                                             <TableCell>
                                                 <TableCellLayout>
+                                                    <span class=primary_role_badge_class(&user.primary_role_code)>
+                                                        {primary_role_label(&user.primary_role_code)}
+                                                    </span>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
                                                     {if user.is_admin {
-                                                        view! { <span class="badge badge--warning">"Админ"</span> }.into_any()
+                                                        view! { <span class="badge badge--error">"superadmin"</span> }.into_any()
                                                     } else {
-                                                        view! { <span class="badge badge--neutral">"Пользователь"</span> }.into_any()
+                                                        view! { <span class="badge badge--neutral">"-"</span> }.into_any()
                                                     }}
                                                 </TableCellLayout>
                                             </TableCell>
@@ -433,15 +486,6 @@ fn UsersList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout>{last_login}</TableCellLayout>
                                             </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    appearance=ButtonAppearance::Subtle
-                                    on_click=move |_| editing_user.set(Some(user_for_edit.clone()))
-                                    attr:title="Редактировать"
-                                                >
-                                                    {icon("edit")}
-                                                </Button>
-                                            </TableCell>
                                         </TableRow>
                                     }
                                 }
@@ -450,137 +494,7 @@ fn UsersList() -> impl IntoView {
                     </Table>
                 </div>
 
-                {move || if show_create_form.get() {
-                    view! {
-                        <super::details::CreateUserForm
-                            on_close=move || set_show_create_form.set(false)
-                            on_created=move || {
-                                set_show_create_form.set(false);
-                                load_data();
-                            }
-                        />
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                }}
-
-                {move || editing_user.get().map(|user| view! {
-                    <EditUserForm
-                        user=user
-                        on_close=move || editing_user.set(None)
-                        on_saved=move || { editing_user.set(None); load_data(); }
-                    />
-                })}
             </div>
         </PageFrame>
-    }
-}
-
-#[component]
-fn EditUserForm<F1, F2>(user: User, on_close: F1, on_saved: F2) -> impl IntoView
-where
-    F1: Fn() + 'static + Copy + Send + Sync,
-    F2: Fn() + 'static + Copy + Send + Sync,
-{
-    let email = RwSignal::new(user.email.clone().unwrap_or_default());
-    let full_name = RwSignal::new(user.full_name.clone().unwrap_or_default());
-    let is_admin = RwSignal::new(user.is_admin);
-    let is_active = RwSignal::new(user.is_active);
-    let (error, set_error) = signal::<Option<String>>(None);
-    let (saving, set_saving) = signal(false);
-
-    let username_display = user.username.clone();
-
-    let on_save = move |_| {
-        set_saving.set(true);
-        set_error.set(None);
-
-        let dto = UpdateUserDto {
-            id: user.id.clone(),
-            email: if email.get().trim().is_empty() {
-                None
-            } else {
-                Some(email.get())
-            },
-            full_name: if full_name.get().trim().is_empty() {
-                None
-            } else {
-                Some(full_name.get())
-            },
-            is_active: is_active.get(),
-            is_admin: is_admin.get(),
-        };
-
-        spawn_local(async move {
-            match api::update_user(dto).await {
-                Ok(_) => on_saved(),
-                Err(e) => {
-                    set_error.set(Some(format!("Ошибка сохранения: {}", e)));
-                    set_saving.set(false);
-                }
-            }
-        });
-    };
-
-    view! {
-        <div class="modal-overlay" on:click=move |_| on_close()>
-            <div class="modal" on:click=move |ev| ev.stop_propagation()>
-                <div class="modal-header">
-                    <h2 class="modal-title">{format!("Редактирование: {}", username_display)}</h2>
-                    <Button
-                        appearance=ButtonAppearance::Subtle
-                        on_click=move |_| on_close()
-                    >
-                        {icon("x")}
-                    </Button>
-                </div>
-
-                <div class="modal-body">
-                    {move || error.get().map(|e| view! { <div class="alert alert--error">{e}</div> })}
-
-                    <div class="form__group">
-                        <Label>"Email"</Label>
-                        <Input
-                            value=email
-                            input_type=InputType::Email
-                            disabled=Signal::derive(move || saving.get())
-                        />
-                    </div>
-
-                    <div class="form__group">
-                        <Label>"ФИО"</Label>
-                        <Input
-                            value=full_name
-                            disabled=Signal::derive(move || saving.get())
-                        />
-                    </div>
-
-                    <div class="form__group">
-                        <Checkbox checked=is_admin label="Администратор" />
-                    </div>
-
-                    <div class="form__group">
-                        <Checkbox checked=is_active label="Активен" />
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <Button
-                        appearance=ButtonAppearance::Secondary
-                        on_click=move |_| on_close()
-                        disabled=Signal::derive(move || saving.get())
-                    >
-                        "Отмена"
-                    </Button>
-                    <Button
-                        appearance=ButtonAppearance::Primary
-                        on_click=on_save
-                        disabled=Signal::derive(move || saving.get())
-                    >
-                        {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}
-                    </Button>
-                </div>
-            </div>
-        </div>
     }
 }

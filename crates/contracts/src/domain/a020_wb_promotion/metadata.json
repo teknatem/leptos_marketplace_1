@@ -169,5 +169,15 @@
       "validation": { "required": true },
       "ai_hint": "UUID организации из a002_organization."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a020_wb_promotion",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

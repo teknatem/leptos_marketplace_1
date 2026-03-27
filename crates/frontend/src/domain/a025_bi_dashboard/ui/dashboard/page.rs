@@ -9,6 +9,7 @@ use crate::shared::bi_card::{
     available_designs, default_design_name, get_style_css, render_card_html, IndicatorCardParams,
 };
 use crate::shared::icons::icon;
+use crate::shared::indicator_format::{format_int_with_triads, format_money_with_format_spec};
 use crate::shared::page_frame::PageFrame;
 use chrono::NaiveDate;
 use contracts::shared::data_view::ViewContext;
@@ -69,21 +70,7 @@ struct IndicatorViewSpec {
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
-#[allow(dead_code)]
-struct IndicatorSchemaQuery {
-    #[serde(default)]
-    pub available_dimensions: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub metric: serde_json::Value,
-}
-
-#[derive(Clone, Debug, Default, serde::Deserialize)]
-#[allow(dead_code)]
 struct IndicatorDataSpec {
-    #[serde(default)]
-    pub schema_id: String,
-    #[serde(default)]
-    pub schema_query: Option<IndicatorSchemaQuery>,
     #[serde(default)]
     pub view_id: Option<String>,
     #[serde(default)]
@@ -103,7 +90,7 @@ struct IndicatorDef {
     pub data_spec: IndicatorDataSpec,
 }
 
-/// Вычисленное значение от /api/indicators/compute
+/// Computed value from /api/a024-bi-indicator/compute-batch
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 struct ComputedValue {
     /// id сериализуется как строка (IndicatorId — newtype over String)
@@ -141,6 +128,36 @@ struct DataViewDim {
 struct DataViewMetaLocal {
     #[serde(default)]
     pub available_dimensions: Vec<DataViewDim>,
+}
+
+/// Reads a non-OK HTTP response and returns a human-readable error string.
+/// For 403 responses that carry the backend's `access_denied` JSON body,
+/// formats the scope name and required access level in Russian.
+async fn read_http_error(resp: web_sys::Response) -> String {
+    let status = resp.status();
+    if status == 403 {
+        if let Ok(promise) = resp.text() {
+            if let Ok(val) = wasm_bindgen_futures::JsFuture::from(promise).await {
+                if let Some(text) = val.as_string() {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if json["error"].as_str() == Some("access_denied") {
+                            let scope = json["scope_id"].as_str().unwrap_or("неизвестен");
+                            let access = match json["required_access"].as_str().unwrap_or("all") {
+                                "read" => "чтение",
+                                _ => "полный доступ",
+                            };
+                            return format!(
+                                "Доступ запрещён: недостаточно прав для «{}» (требуется: {})",
+                                scope, access
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        return "Доступ запрещён (403 Forbidden)".to_string();
+    }
+    format!("Ошибка HTTP {}", status)
 }
 
 async fn fetch_dataview_meta(view_id: &str) -> Result<DataViewMetaLocal, String> {
@@ -195,7 +212,7 @@ async fn fetch_dashboard(id: &str) -> Result<serde_json::Value, String> {
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
     if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
+        return Err(read_http_error(resp).await);
     }
 
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
@@ -244,7 +261,7 @@ async fn fetch_indicator_defs(ids: &[String]) -> Result<HashMap<String, Indicato
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
     if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
+        return Err(read_http_error(resp).await);
     }
 
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
@@ -361,8 +378,8 @@ fn default_dashboard_ctx() -> ViewContext {
     use chrono::{Datelike, Duration, NaiveDate, Utc};
 
     let now = Utc::now().date_naive();
-    let month_start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
-    let month_end = if now.month() == 12 {
+    let current_month_start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
+    let current_month_end = if now.month() == 12 {
         NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
             .map(|d| d - Duration::days(1))
             .unwrap_or(now)
@@ -371,12 +388,20 @@ fn default_dashboard_ctx() -> ViewContext {
             .map(|d| d - Duration::days(1))
             .unwrap_or(now)
     };
+    let (prev_year, prev_month) = if now.month() == 1 {
+        (now.year() - 1, 12)
+    } else {
+        (now.year(), now.month() - 1)
+    };
+    let previous_month_start =
+        NaiveDate::from_ymd_opt(prev_year, prev_month, 1).unwrap_or(current_month_start);
+    let previous_month_end = current_month_start - Duration::days(1);
 
     ViewContext {
-        date_from: month_start.format("%Y-%m-%d").to_string(),
-        date_to: month_end.format("%Y-%m-%d").to_string(),
-        period2_from: None,
-        period2_to: None,
+        date_from: current_month_start.format("%Y-%m-%d").to_string(),
+        date_to: current_month_end.format("%Y-%m-%d").to_string(),
+        period2_from: Some(previous_month_start.format("%Y-%m-%d").to_string()),
+        period2_to: Some(previous_month_end.format("%Y-%m-%d").to_string()),
         connection_mp_refs: vec![],
         params: HashMap::new(),
     }
@@ -403,38 +428,27 @@ fn merge_view_ctx(default_ctx: ViewContext, prev_ctx: ViewContext) -> ViewContex
     merged
 }
 
-/// Вычислить данные индикаторов через /api/indicators/compute
+/// Compute dashboard indicator values through /api/a024-bi-indicator/compute-batch.
+/// Returns `Err` with a human-readable message on HTTP errors (including 403 access denied).
 async fn fetch_indicator_data(
     indicator_defs: &HashMap<String, IndicatorDef>,
     ctx: &ViewContext,
-) -> HashMap<String, ComputedValue> {
+) -> Result<HashMap<String, ComputedValue>, String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
-    // Собираем пары schema_id -> Vec<indicator_id> для тех, у кого schema_id задан
-    let mut schema_to_ids: HashMap<String, Vec<String>> = HashMap::new();
-    for (ind_id, def) in indicator_defs {
-        if !def.data_spec.schema_id.is_empty() {
-            schema_to_ids
-                .entry(def.data_spec.schema_id.clone())
-                .or_default()
-                .push(ind_id.clone());
-        }
+    let indicator_ids: Vec<String> = indicator_defs.keys().cloned().collect();
+    if indicator_ids.is_empty() {
+        return Ok(HashMap::new());
     }
-
-    if schema_to_ids.is_empty() {
-        return HashMap::new();
-    }
-
-    // IndicatorId — newtype над String, сериализуется как обычная строка
-    let indicator_ids: Vec<&str> = schema_to_ids.keys().map(|k| k.as_str()).collect();
 
     let body = serde_json::json!({
         "indicator_ids": indicator_ids,
-        "context": {
-            "date_from": ctx.date_from,
-            "date_to": ctx.date_to,
-            "connection_mp_refs": ctx.connection_mp_refs,
-        }
+        "date_from": ctx.date_from,
+        "date_to": ctx.date_to,
+        "period2_from": ctx.period2_from,
+        "period2_to": ctx.period2_to,
+        "connection_mp_refs": ctx.connection_mp_refs.join(","),
+        "params": ctx.params,
     });
 
     let opts = RequestInit::new();
@@ -443,157 +457,46 @@ async fn fetch_indicator_data(
     let body_str = body.to_string();
     opts.set_body(&wasm_bindgen::JsValue::from_str(&body_str));
 
-    let Some(window) = web_sys::window() else {
-        return HashMap::new();
-    };
-    let Ok(request) =
-        Request::new_with_str_and_init(&format!("{}/api/indicators/compute", api_base()), &opts)
-    else {
-        return HashMap::new();
-    };
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let request = Request::new_with_str_and_init(
+        &format!("{}/api/a024-bi-indicator/compute-batch", api_base()),
+        &opts,
+    )
+    .map_err(|e| format!("{e:?}"))?;
     let _ = request.headers().set("Accept", "application/json");
     let _ = request.headers().set("Content-Type", "application/json");
 
-    let Ok(resp_val) =
-        wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await
-    else {
-        return HashMap::new();
-    };
-    let Ok(resp): Result<Response, _> = resp_val.dyn_into() else {
-        return HashMap::new();
-    };
-    if !resp.ok() {
-        return HashMap::new();
-    }
-    let Ok(text_promise) = resp.text() else {
-        return HashMap::new();
-    };
-    let Ok(text_val) = wasm_bindgen_futures::JsFuture::from(text_promise).await else {
-        return HashMap::new();
-    };
-    let Some(text) = text_val.as_string() else {
-        return HashMap::new();
-    };
+    let resp_val = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_val.dyn_into().map_err(|e| format!("{e:?}"))?;
 
-    let parsed: serde_json::Value = match serde_json::from_str(&text) {
-        Ok(v) => v,
-        Err(_) => return HashMap::new(),
-    };
+    if !resp.ok() {
+        return Err(read_http_error(resp).await);
+    }
+
+    let text_promise = resp.text().map_err(|e| format!("{e:?}"))?;
+    let text_val = wasm_bindgen_futures::JsFuture::from(text_promise)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text = text_val.as_string().ok_or_else(|| "bad text".to_string())?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
 
     let values = parsed["values"].as_array().cloned().unwrap_or_default();
-
-    // Разворачиваем результаты: schema_id → ComputedValue, затем маппируем на indicator_ids
-    let mut schema_values: HashMap<String, ComputedValue> = HashMap::new();
+    let mut result: HashMap<String, ComputedValue> = HashMap::new();
     for val in values {
         if let Ok(cv) = serde_json::from_value::<ComputedValue>(val) {
             if !cv.id.is_empty() {
-                schema_values.insert(cv.id.clone(), cv);
+                result.insert(cv.id.clone(), cv);
             }
         }
     }
-
-    let mut result: HashMap<String, ComputedValue> = HashMap::new();
-    for (schema_id, ind_ids) in &schema_to_ids {
-        if let Some(cv) = schema_values.get(schema_id) {
-            for ind_id in ind_ids {
-                result.insert(ind_id.clone(), cv.clone());
-            }
-        }
-    }
-
-    result
+    Ok(result)
 }
 
 /// Вычислить DataView-индикаторы через /api/a024-bi-indicator/:id/compute
 /// (те у которых задан data_spec.view_id)
-async fn fetch_indicator_data_view(
-    indicator_defs: &HashMap<String, IndicatorDef>,
-    ctx: &ViewContext,
-) -> HashMap<String, ComputedValue> {
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let mut result: HashMap<String, ComputedValue> = HashMap::new();
-
-    for (ind_id, def) in indicator_defs {
-        let Some(ref _view_id) = def.data_spec.view_id else {
-            continue;
-        };
-        if _view_id.trim().is_empty() {
-            continue;
-        }
-
-        let body = serde_json::json!({
-            "date_from": ctx.date_from,
-            "date_to": ctx.date_to,
-            "period2_from": ctx.period2_from,
-            "period2_to": ctx.period2_to,
-            "connection_mp_refs": ctx.connection_mp_refs.join(","),
-            "params": ctx.params,
-            "metric": def.data_spec.metric_id,
-        });
-
-        let opts = RequestInit::new();
-        opts.set_method("POST");
-        opts.set_mode(RequestMode::Cors);
-        let body_str = body.to_string();
-        opts.set_body(&wasm_bindgen::JsValue::from_str(&body_str));
-
-        let Some(window) = web_sys::window() else {
-            continue;
-        };
-        let url = format!(
-            "{}/api/a024-bi-indicator/{}/compute",
-            crate::shared::api_utils::api_base(),
-            ind_id
-        );
-        let Ok(request) = Request::new_with_str_and_init(&url, &opts) else {
-            continue;
-        };
-        let _ = request.headers().set("Accept", "application/json");
-        let _ = request.headers().set("Content-Type", "application/json");
-
-        let Ok(resp_val) =
-            wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request)).await
-        else {
-            continue;
-        };
-        let Ok(resp): Result<Response, _> = resp_val.dyn_into() else {
-            continue;
-        };
-        if !resp.ok() {
-            continue;
-        }
-        let Ok(text_promise) = resp.text() else {
-            continue;
-        };
-        let Ok(text_val) = wasm_bindgen_futures::JsFuture::from(text_promise).await else {
-            continue;
-        };
-        let Some(text) = text_val.as_string() else {
-            continue;
-        };
-
-        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) else {
-            continue;
-        };
-
-        let cv = ComputedValue {
-            id: ind_id.clone(),
-            value: parsed["value"].as_f64(),
-            previous_value: parsed["previous_value"].as_f64(),
-            change_percent: parsed["change_percent"].as_f64(),
-            status: parsed["status"].as_str().map(|s| s.to_string()),
-            spark_points: parsed["spark_points"]
-                .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_f64()).collect())
-                .unwrap_or_default(),
-        };
-        result.insert(ind_id.clone(), cv);
-    }
-
-    result
-}
-
 fn reload_dashboard_data(
     id: String,
     loading: RwSignal<bool>,
@@ -614,7 +517,14 @@ fn reload_dashboard_data(
                 Ok(data) => {
                     let mut ids = Vec::new();
                     collect_indicator_ids(&data.layout.groups, &mut ids);
-                    let defs = fetch_indicator_defs(&ids).await.unwrap_or_default();
+                    let defs = match fetch_indicator_defs(&ids).await {
+                        Ok(d) => d,
+                        Err(e) => {
+                            error.set(Some(e));
+                            loading.set(false);
+                            return;
+                        }
+                    };
 
                     let effective_filter_refs = if data.filters.is_empty() {
                         derive_dashboard_filters_from_indicators(&defs).await
@@ -760,20 +670,7 @@ fn format_value(value: f64, format_spec: &serde_json::Value) -> String {
     let kind = format_spec["kind"].as_str().unwrap_or("Number");
     let abs = value.abs();
     match kind {
-        "Money" => {
-            let currency = format_spec["currency"].as_str().unwrap_or("RUB");
-            let symbol = if currency == "RUB" { "₽" } else { currency };
-            let sign = if value < 0.0 { "-" } else { "" };
-            if abs >= 1_000_000_000.0 {
-                format!("{sign}{symbol}{:.2}B", abs / 1_000_000_000.0)
-            } else if abs >= 1_000_000.0 {
-                format!("{sign}{symbol}{:.1}M", abs / 1_000_000.0)
-            } else if abs >= 1_000.0 {
-                format!("{sign}{symbol}{:.1}K", abs / 1_000.0)
-            } else {
-                format!("{sign}{symbol}{:.2}", abs)
-            }
-        }
+        "Money" => format_money_with_format_spec(value, format_spec),
         "Percent" => {
             let decimals = format_spec["decimals"].as_u64().unwrap_or(1) as usize;
             format!("{:.prec$}%", value, prec = decimals)
@@ -800,39 +697,11 @@ fn format_value(value: f64, format_spec: &serde_json::Value) -> String {
     }
 }
 
-fn format_int_with_thousands(value: i64) -> String {
-    let negative = value < 0;
-    let digits = value.abs().to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-
-    for (idx, ch) in digits.chars().rev().enumerate() {
-        if idx > 0 && idx % 3 == 0 {
-            grouped.push(' ');
-        }
-        grouped.push(ch);
-    }
-
-    let grouped: String = grouped.chars().rev().collect();
-    if negative {
-        format!("-{grouped}")
-    } else {
-        grouped
-    }
-}
-
 fn format_full_value(value: f64, format_spec: &serde_json::Value) -> String {
     let kind = format_spec["kind"].as_str().unwrap_or("Number");
     match kind {
-        "Money" => {
-            let currency = format_spec["currency"].as_str().unwrap_or("RUB");
-            let amount = format_int_with_thousands(value.round() as i64);
-            if currency == "RUB" {
-                format!("{amount} ₽")
-            } else {
-                format!("{amount} {currency}")
-            }
-        }
-        "Integer" => format_int_with_thousands(value.round() as i64),
+        "Money" => format_money_with_format_spec(value, format_spec),
+        "Integer" => format_int_with_triads(value.round() as i64),
         "Percent" => {
             let decimals = format_spec["decimals"].as_u64().unwrap_or(1) as usize;
             format!("{:.prec$}%", value, prec = decimals)
@@ -844,7 +713,7 @@ fn format_full_value(value: f64, format_spec: &serde_json::Value) -> String {
             let whole = parts
                 .next()
                 .and_then(|s| s.parse::<i64>().ok())
-                .map(format_int_with_thousands)
+                .map(format_int_with_triads)
                 .unwrap_or_else(|| formatted.clone());
             match parts.next() {
                 Some(frac) => format!("{whole}.{frac}"),
@@ -1429,52 +1298,57 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
     let selected_indicator: RwSignal<Option<IndicatorSelection>> = RwSignal::new(None);
 
     // Listen for postMessage events from the indicator cards iframe.
-    let _ = window_event_listener(leptos::ev::message, move |ev: web_sys::MessageEvent| {
-        let data = ev.data();
-        let get_str = |key: &str| -> Option<String> {
-            js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str(key))
-                .ok()
-                .and_then(|v| v.as_string())
-        };
-        let get_f64 = |key: &str| -> Option<f64> {
-            js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str(key))
-                .ok()
-                .and_then(|v| v.as_f64())
-        };
-        if get_str("type").as_deref() != Some("indicator_click") {
-            return;
-        }
-        let Some(indicator_id) = get_str("id") else {
-            return;
-        };
-        let cx_in_iframe = get_f64("cx").unwrap_or(0.0);
-        let cy_in_iframe = get_f64("cy").unwrap_or(0.0);
-
-        let (from_x, from_y) = {
-            let win = web_sys::window().unwrap();
-            let doc = win.document().unwrap();
-            let iframe_el = doc
-                .query_selector(".dashboard-viewer__iframe")
-                .ok()
-                .flatten();
-            if let Some(el) = iframe_el {
-                let rect = el.get_bounding_client_rect();
-                let vw = win.inner_width().unwrap().as_f64().unwrap_or(1280.0);
-                let vh = win.inner_height().unwrap().as_f64().unwrap_or(800.0);
-                let cx_vp = rect.left() + cx_in_iframe;
-                let cy_vp = rect.top() + cy_in_iframe;
-                (cx_vp - vw / 2.0, cy_vp - vh / 2.0)
-            } else {
-                (0.0, 0.0)
+    // The handle must be stored until cleanup — WindowListenerHandle has no Drop impl,
+    // so `let _ = ...` would drop it without removing the listener, leaking the closure
+    // (which captures `selected_indicator`) past this component's lifetime.
+    let msg_handle =
+        window_event_listener(leptos::ev::message, move |ev: web_sys::MessageEvent| {
+            let data = ev.data();
+            let get_str = |key: &str| -> Option<String> {
+                js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_string())
+            };
+            let get_f64 = |key: &str| -> Option<f64> {
+                js_sys::Reflect::get(&data, &wasm_bindgen::JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+            };
+            if get_str("type").as_deref() != Some("indicator_click") {
+                return;
             }
-        };
+            let Some(indicator_id) = get_str("id") else {
+                return;
+            };
+            let cx_in_iframe = get_f64("cx").unwrap_or(0.0);
+            let cy_in_iframe = get_f64("cy").unwrap_or(0.0);
 
-        selected_indicator.set(Some(IndicatorSelection {
-            id: indicator_id,
-            from_x,
-            from_y,
-        }));
-    });
+            let (from_x, from_y) = {
+                let win = web_sys::window().unwrap();
+                let doc = win.document().unwrap();
+                let iframe_el = doc
+                    .query_selector(".dashboard-viewer__iframe")
+                    .ok()
+                    .flatten();
+                if let Some(el) = iframe_el {
+                    let rect = el.get_bounding_client_rect();
+                    let vw = win.inner_width().unwrap().as_f64().unwrap_or(1280.0);
+                    let vh = win.inner_height().unwrap().as_f64().unwrap_or(800.0);
+                    let cx_vp = rect.left() + cx_in_iframe;
+                    let cy_vp = rect.top() + cy_in_iframe;
+                    (cx_vp - vw / 2.0, cy_vp - vh / 2.0)
+                } else {
+                    (0.0, 0.0)
+                }
+            };
+
+            selected_indicator.set(Some(IndicatorSelection {
+                id: indicator_id,
+                from_x,
+                from_y,
+            }));
+        });
+    on_cleanup(move || msg_handle.remove());
 
     let current_theme = Signal::derive(move || {
         if let Some(ctx) = thaw_theme_ctx {
@@ -1524,10 +1398,14 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
         }
         indicator_refreshing.set(true);
         leptos::task::spawn_local(async move {
-            let computed_schema = fetch_indicator_data(&defs, &ctx).await;
-            let computed_view = fetch_indicator_data_view(&defs, &ctx).await;
-            let mut computed = computed_schema;
-            computed.extend(computed_view);
+            let computed = match fetch_indicator_data(&defs, &ctx).await {
+                Ok(c) => c,
+                Err(e) => {
+                    indicator_refreshing.set(false);
+                    error.set(Some(e));
+                    return;
+                }
+            };
             if indicator_refresh_seq.get_untracked() != request_id {
                 return;
             }
@@ -1777,9 +1655,13 @@ fn IndicatorDetailModal(
         .unwrap_or_else(|| sel.id.clone());
 
     let code = def.as_ref().map(|d| d.code.clone()).unwrap_or_default();
-    let schema_id = def
+    let view_id = def
         .as_ref()
-        .map(|d| d.data_spec.schema_id.clone())
+        .and_then(|d| d.data_spec.view_id.clone())
+        .unwrap_or_default();
+    let metric_id = def
+        .as_ref()
+        .and_then(|d| d.data_spec.metric_id.clone())
         .unwrap_or_default();
     let format_spec = def
         .as_ref()
@@ -1947,6 +1829,26 @@ fn IndicatorDetailModal(
                         } else {
                             view! { <></> }.into_any()
                         }}
+                        {if !metric_id.is_empty() {
+                            view! {
+                                <div class="indicator-detail__meta-row">
+                                    <span class="indicator-detail__meta-label">"Metric"</span>
+                                    <span class="indicator-detail__meta-value">{metric_id.clone()}</span>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
+                        {if !metric_id.is_empty() {
+                            view! {
+                                <div class="indicator-detail__meta-row">
+                                    <span class="indicator-detail__meta-label">"Metric"</span>
+                                    <span class="indicator-detail__meta-value">{metric_id.clone()}</span>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
                     </div>
                     <button
                         class="modal__close"
@@ -1974,11 +1876,11 @@ fn IndicatorDetailModal(
                             <span class="indicator-detail__meta-label">"Изменение"</span>
                             <span class=format!("indicator-detail__delta {delta_class}")>{delta_str}</span>
                         </div>
-                        {if !schema_id.is_empty() {
+                        {if !view_id.is_empty() {
                             view! {
                                 <div class="indicator-detail__meta-row">
                                     <span class="indicator-detail__meta-label">"Источник данных"</span>
-                                    <span class="indicator-detail__meta-value">{schema_id.clone()}</span>
+                                    <span class="indicator-detail__meta-value">{view_id.clone()}</span>
                                 </div>
                             }.into_any()
                         } else {

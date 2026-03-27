@@ -3,6 +3,7 @@ use contracts::system::auth::{
     LoginRequest, LoginResponse, RefreshRequest, RefreshResponse, UserInfo,
 };
 
+use crate::system::access::resolver;
 use crate::system::auth::extractor::CurrentUser;
 use crate::system::{auth::jwt, users::service as user_service};
 
@@ -14,10 +15,20 @@ pub async fn login(Json(request): Json<LoginRequest>) -> Result<Json<LoginRespon
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Generate tokens
-    let access_token = jwt::generate_access_token(&user.id, &user.username, user.is_admin)
+    // Resolve primary role and scopes
+    let primary_role = resolver::get_primary_role_code(&user.id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .unwrap_or_else(|_| "viewer".to_string());
+
+    let scopes = resolver::resolve_user_scopes(&user.id)
+        .await
+        .unwrap_or_default();
+
+    // Generate tokens
+    let access_token =
+        jwt::generate_access_token(&user.id, &user.username, user.is_admin, &primary_role)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let refresh_token = jwt::generate_refresh_token();
 
@@ -35,6 +46,8 @@ pub async fn login(Json(request): Json<LoginRequest>) -> Result<Json<LoginRespon
             full_name: user.full_name,
             email: user.email,
             is_admin: user.is_admin,
+            primary_role,
+            scopes,
         },
     };
 
@@ -56,10 +69,15 @@ pub async fn refresh(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Generate new access token
-    let access_token = jwt::generate_access_token(&user.id, &user.username, user.is_admin)
+    let primary_role = resolver::get_primary_role_code(&user.id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .unwrap_or_else(|_| "viewer".to_string());
+
+    // Generate new access token
+    let access_token =
+        jwt::generate_access_token(&user.id, &user.username, user.is_admin, &primary_role)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let response = RefreshResponse { access_token };
 
@@ -84,12 +102,22 @@ pub async fn current_user(CurrentUser(claims): CurrentUser) -> Result<Json<UserI
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
+    let primary_role = resolver::get_primary_role_code(&user.id)
+        .await
+        .unwrap_or_else(|_| "viewer".to_string());
+
+    let scopes = resolver::resolve_user_scopes(&user.id)
+        .await
+        .unwrap_or_default();
+
     let user_info = UserInfo {
         id: user.id,
         username: user.username,
         full_name: user.full_name,
         email: user.email,
         is_admin: user.is_admin,
+        primary_role,
+        scopes,
     };
 
     Ok(Json(user_info))

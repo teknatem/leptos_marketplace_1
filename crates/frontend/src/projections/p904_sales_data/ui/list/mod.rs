@@ -496,13 +496,13 @@ pub fn SalesDataList() -> impl IntoView {
             match registrator_type.as_str() {
                 "WB_Sales" => {
                     tabs_store.open_tab(
-                        &format!("a012_wb_sales_detail_{}", registrator_ref),
+                        &format!("a012_wb_sales_details_{}", registrator_ref),
                         &format!("WB Sales {}", document_no),
                     );
                 }
                 "OZON_Transactions" => {
                     tabs_store.open_tab(
-                        &format!("a014_ozon_transactions_detail_{}", registrator_ref),
+                        &format!("a014_ozon_transactions_details_{}", registrator_ref),
                         &format!("OZON Txn {}", document_no),
                     );
                 }

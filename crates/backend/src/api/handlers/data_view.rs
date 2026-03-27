@@ -7,11 +7,7 @@
 //! POST /api/data-view/:id/compute  → compute scalar value directly via DataView
 //! POST /api/data-view/:id/drilldown → compute drilldown report via DataView
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::Path, http::StatusCode, response::Json};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -57,10 +53,7 @@ pub async fn get_by_id(
     let registry = DataViewRegistry::new();
     match registry.get_meta(&id) {
         Some(meta) => Ok(Json(json!(meta))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            format!("DataView not found: {}", id),
-        )),
+        None => Err((StatusCode::NOT_FOUND, format!("DataView not found: {}", id))),
     }
 }
 
@@ -75,7 +68,7 @@ pub struct ComputeParams {
     /// Comma-separated list of connection_mp UUIDs
     #[serde(default)]
     pub connection_mp_refs: Option<String>,
-    /// Metric to compute: revenue | cost | commission | expenses | profit
+    /// Metric to compute: revenue | cost | commission | expenses | profit | profit_d
     #[serde(default)]
     pub metric: Option<String>,
 }
@@ -89,10 +82,7 @@ pub async fn compute(
     let registry = DataViewRegistry::new();
 
     if !registry.has_view(&id) {
-        return Err((
-            StatusCode::NOT_FOUND,
-            format!("DataView not found: {}", id),
-        ));
+        return Err((StatusCode::NOT_FOUND, format!("DataView not found: {}", id)));
     }
 
     let connection_mp_refs = params
@@ -148,6 +138,10 @@ pub struct DvDrilldownBody {
     pub metric_id: Option<String>,
     #[serde(default)]
     pub params: std::collections::HashMap<String, String>,
+    /// Multi-resource режим: список resource/metric id.
+    /// Если непуст — возвращается multi-column ответ; metric_id игнорируется.
+    #[serde(default)]
+    pub metric_ids: Vec<String>,
 }
 
 /// POST /api/data-view/:id/drilldown
@@ -176,7 +170,10 @@ pub async fn drilldown(
         params: extra_params,
     };
 
-    match registry.compute_drilldown(&id, &ctx, &body.group_by).await {
+    match registry
+        .compute_drilldown(&id, &ctx, &body.group_by, &body.metric_ids)
+        .await
+    {
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             tracing::error!("DataView drilldown error for {}: {}", id, e);

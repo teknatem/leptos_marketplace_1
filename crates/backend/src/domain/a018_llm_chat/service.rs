@@ -8,10 +8,23 @@ use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
     ChatRole, LlmChat, LlmChatAttachment, LlmChatDetail, LlmChatId, LlmChatListItem, LlmChatMessage,
 };
+use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+
+/// Обрезать строку до `max_bytes` байт, не разрывая UTF-8 символы.
+fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut boundary = max_bytes;
+    while boundary > 0 && !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    &s[..boundary]
+}
 
 /// Максимальное число итераций tool calling в одном запросе.
 /// Увеличено до 6: knowledge-flow требует до 3 шагов
@@ -337,12 +350,30 @@ pub async fn send_message(
     let tool_defs = metadata_tool_definitions();
     let start = std::time::Instant::now();
     let mut final_response = None;
+    let mut artifact_to_attach: Option<LlmArtifactId> = None;
+    let mut tool_trace: Vec<serde_json::Value> = Vec::new();
+
+    tracing::info!(
+        "[llm_loop] chat_id='{}' model='{}' history_msgs={} tools={}",
+        chat_id,
+        model_to_use,
+        llm_messages.len(),
+        tool_defs.len()
+    );
 
     for iteration in 0..MAX_TOOL_ITERATIONS {
         let response = provider
             .chat_completion_with_tools(llm_messages.clone(), tool_defs.clone())
             .await
             .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+
+        tracing::info!(
+            "[llm_iter] iter={} has_tool_calls={} finish_reason={:?} tokens={:?}",
+            iteration + 1,
+            response.has_tool_calls(),
+            response.finish_reason,
+            response.tokens_used
+        );
 
         if !response.has_tool_calls() {
             // Финальный ответ — LLM завершил работу
@@ -363,12 +394,84 @@ pub async fn send_message(
 
         // Выполнить каждый tool call и добавить результаты
         for tool_call in &response.tool_calls {
-            let result = execute_tool_call(tool_call);
-            tracing::debug!(
-                "Tool '{}' result: {}",
+            let call_start = std::time::Instant::now();
+            tracing::info!(
+                "[tool_call] iter={} tool='{}' args={}",
+                iteration + 1,
                 tool_call.name,
-                &result[..result.len().min(200)]
+                utf8_truncate(&tool_call.arguments, 200)
             );
+            let result = execute_tool_call(tool_call, chat_id, &chat.agent_id.as_string()).await;
+            let call_ms = call_start.elapsed().as_millis() as u64;
+
+            tracing::info!(
+                "[tool_result] tool='{}' ms={} ok={} preview={}",
+                tool_call.name,
+                call_ms,
+                !result.contains("\"error\""),
+                utf8_truncate(&result, 300)
+            );
+
+            // Разобрать результат для трассировки
+            let parsed = serde_json::from_str::<serde_json::Value>(&result).ok();
+            let is_ok = parsed
+                .as_ref()
+                .map(|v| v.get("_ok").and_then(|b| b.as_bool()).unwrap_or(true))
+                .unwrap_or(true);
+
+            // Если tool call создал артефакт — запомнить его ID
+            if let Some(ref v) = parsed {
+                if let Some(id_str) = v.get("artifact_id").and_then(|v| v.as_str()) {
+                    if let Ok(uid) = Uuid::parse_str(id_str) {
+                        artifact_to_attach = Some(LlmArtifactId::new(uid));
+                        tracing::info!("Tool call produced artifact: {}", id_str);
+                    }
+                }
+            }
+
+            // Краткое описание результата для трассировки
+            let summary = if !is_ok {
+                parsed
+                    .as_ref()
+                    .and_then(|v| v.get("error").and_then(|e| e.as_str()))
+                    .unwrap_or("error")
+                    .chars()
+                    .take(120)
+                    .collect::<String>()
+            } else {
+                parsed
+                    .as_ref()
+                    .and_then(|v| {
+                        // Подбираем лучшее краткое описание в зависимости от инструмента
+                        v.get("row_count")
+                            .and_then(|n| n.as_u64())
+                            .map(|n| format!("{} rows", n))
+                            .or_else(|| {
+                                v.get("total")
+                                    .and_then(|n| n.as_u64())
+                                    .map(|n| format!("{} items", n))
+                            })
+                            .or_else(|| {
+                                v.get("session_id")
+                                    .and_then(|s| s.as_str())
+                                    .map(|_| "artifact created".to_string())
+                            })
+                            .or_else(|| {
+                                v.get("artifact_id")
+                                    .and_then(|s| s.as_str())
+                                    .map(|_| "artifact created".to_string())
+                            })
+                    })
+                    .unwrap_or_else(|| "ok".to_string())
+            };
+
+            tool_trace.push(serde_json::json!({
+                "tool":    tool_call.name,
+                "ok":      is_ok,
+                "ms":      call_ms,
+                "summary": summary,
+            }));
+
             llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
         }
     }
@@ -383,7 +486,7 @@ pub async fn send_message(
     })?;
 
     // 10. Сохранить ответ ассистента с метаданными
-    let assistant_msg = LlmChatMessage::new_with_metadata(
+    let mut assistant_msg = LlmChatMessage::new_with_metadata(
         chat_id_obj,
         ChatRole::Assistant,
         llm_response.content,
@@ -392,6 +495,16 @@ pub async fn send_message(
         llm_response.confidence,
         Some(duration_ms),
     );
+
+    if let Some(artifact_id) = artifact_to_attach {
+        assistant_msg.artifact_id = Some(artifact_id);
+        assistant_msg.artifact_action =
+            Some(contracts::domain::a018_llm_chat::aggregate::ArtifactAction::Created);
+    }
+
+    if !tool_trace.is_empty() {
+        assistant_msg.tool_trace = serde_json::to_string(&tool_trace).ok();
+    }
 
     repository::insert_message(&db, &assistant_msg).await?;
 

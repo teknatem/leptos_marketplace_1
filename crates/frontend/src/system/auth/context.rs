@@ -92,6 +92,23 @@ pub fn is_admin() -> bool {
         .unwrap_or(false)
 }
 
+/// Helper: Check if the current user has at least read access to a scope.
+/// Admin users always return true.
+/// Call only inside a reactive context (uses `use_auth` hook).
+pub fn has_read_access(auth_state: ReadSignal<AuthState>, scope_id: &str) -> bool {
+    auth_state.with_untracked(|s| {
+        let Some(user) = &s.user_info else {
+            return false;
+        };
+        if user.is_admin {
+            return true;
+        }
+        user.scopes
+            .iter()
+            .any(|s| s.scope_id == scope_id && (s.mode == "read" || s.mode == "all"))
+    })
+}
+
 /// Helper: Perform login
 pub async fn do_login(username: String, password: String) -> Result<(), String> {
     let response = api::login(username, password).await?;

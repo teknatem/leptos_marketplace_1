@@ -1,0 +1,98 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "PurchaseOfGoods",
+  "entity_index": "a023",
+  "collection_name": "purchase_of_goods",
+  "table_name": "a023_purchase_of_goods",
+
+  "ui": {
+    "element_name": "Приобретение товаров",
+    "element_name_en": "Purchase of Goods",
+    "list_name": "Приобретение товаров",
+    "list_name_en": "Purchases of Goods",
+    "icon": "shopping-bag"
+  },
+
+  "ai": {
+    "description": "Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарами (номенклатура, количество, цена, сумма с НДС). Используется для учёта закупочных цен.",
+    "questions": [
+      "Сколько потратили на закупки?",
+      "Какова закупочная цена товара?",
+      "Какие поставщики поставляли товар?"
+    ],
+    "related": [
+      "a001_connection_1c",
+      "a003_counterparty",
+      "a004_nomenclature",
+      "u501_import_from_ut"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "PurchaseOfGoodsId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер документа", "label_en": "Document No", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "date",
+      "source": "specific",
+      "ui": { "label": "Дата документа", "label_en": "Document Date", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "counterparty_key",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Контрагент", "label_en": "Counterparty", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
+      "validation": { "required": true },
+      "ref_aggregate": "a003_counterparty",
+      "ai_hint": "UUID контрагента из 1С — поставщик товаров по данному документу."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Строки (JSON)", "label_en": "Lines (JSON)", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": false },
+      "ai_hint": "JSON-массив строк товаров: [{nomenclature_key, quantity, price, amount_with_vat, vat_amount}]."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение 1С", "label_en": "1C Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a001_connection_1c"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a023_purchase_of_goods",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

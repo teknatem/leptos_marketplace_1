@@ -118,5 +118,15 @@
       "validation": { "required": false, "max_length": 9 },
       "ai_hint": "КПП: 9 цифр, только для юридических лиц. Пустой для ИП."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a002_organization",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

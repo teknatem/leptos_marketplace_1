@@ -2,6 +2,10 @@ use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
+use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::projections::p903_wb_finance_report::dto::{
+    WbFinanceReportDetailResponse, WbFinanceReportDto,
+};
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -9,50 +13,6 @@ use serde::{Deserialize, Serialize};
 use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbFinanceReportDto {
-    pub rr_dt: String,
-    pub rrd_id: i64,
-    pub connection_mp_ref: String,
-    pub organization_ref: String,
-    pub acquiring_fee: Option<f64>,
-    pub acquiring_percent: Option<f64>,
-    pub additional_payment: Option<f64>,
-    pub bonus_type_name: Option<String>,
-    pub commission_percent: Option<f64>,
-    pub delivery_amount: Option<f64>,
-    pub delivery_rub: Option<f64>,
-    pub nm_id: Option<i64>,
-    pub penalty: Option<f64>,
-    pub ppvz_vw: Option<f64>,
-    pub ppvz_vw_nds: Option<f64>,
-    pub ppvz_sales_commission: Option<f64>,
-    pub quantity: Option<i32>,
-    pub rebill_logistic_cost: Option<f64>,
-    pub retail_amount: Option<f64>,
-    pub retail_price: Option<f64>,
-    pub retail_price_withdisc_rub: Option<f64>,
-    pub return_amount: Option<f64>,
-    pub sa_name: Option<String>,
-    pub storage_fee: Option<f64>,
-    pub subject_name: Option<String>,
-    pub supplier_oper_name: Option<String>,
-    pub cashback_amount: Option<f64>,
-    pub ppvz_for_pay: Option<f64>,
-    pub ppvz_kvw_prc: Option<f64>,
-    pub ppvz_kvw_prc_base: Option<f64>,
-    pub srv_dbs: Option<i32>,
-    pub srid: Option<String>,
-    pub loaded_at_utc: String,
-    pub payload_version: i32,
-    pub extra: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbFinanceReportDetailResponse {
-    pub item: WbFinanceReportDto,
-}
 
 #[derive(Debug, Clone)]
 struct FieldRow {
@@ -100,8 +60,12 @@ pub fn WbFinanceReportDetail(
     #[prop(into)] on_close: Callback<()>,
 ) -> impl IntoView {
     let (data, set_data) = signal::<Option<WbFinanceReportDto>>(None);
+    let (general_ledger_entries, set_general_ledger_entries) =
+        signal::<Vec<GeneralLedgerEntryDto>>(Vec::new());
     let (loading, set_loading) = signal(true);
+    let (posting, set_posting) = signal(false);
     let (error, set_error) = signal(None::<String>);
+    let (action_message, set_action_message) = signal(None::<String>);
     let (active_tab, set_active_tab) = signal("fields");
     let (sort_by, set_sort_by) = signal("description".to_string());
     let (sort_desc, set_sort_desc) = signal(false);
@@ -121,6 +85,8 @@ pub fn WbFinanceReportDetail(
         spawn_local(async move {
             match fetch_detail(&rr_dt, rrd_id_val).await {
                 Ok(response) => {
+                    set_action_message.set(None);
+                    set_general_ledger_entries.set(response.general_ledger_entries);
                     set_data.set(Some(response.item));
                     set_loading.set(false);
                 }
@@ -399,6 +365,16 @@ pub fn WbFinanceReportDetail(
                 field_id: "srid".to_string(),
                 value: item.srid.clone().unwrap_or_else(|| "-".to_string()),
             },
+            FieldRow {
+                description: "Source row reference".to_string(),
+                field_id: "source_row_ref".to_string(),
+                value: item.source_row_ref.clone(),
+            },
+            FieldRow {
+                description: "General ledger entries count".to_string(),
+                field_id: "general_ledger_entries_count".to_string(),
+                value: item.general_ledger_entries_count.to_string(),
+            },
         ];
 
         // Сортировка
@@ -485,10 +461,40 @@ pub fn WbFinanceReportDetail(
         }
     };
 
+    let post_click = move |_| {
+        let rr_dt = rr_dt.clone();
+        set_posting.set(true);
+        set_action_message.set(None);
+
+        spawn_local(async move {
+            match post_detail(&rr_dt, rrd_id).await {
+                Ok(response) => {
+                    set_general_ledger_entries.set(response.general_ledger_entries);
+                    set_data.set(Some(response.item));
+                    set_active_tab.set("general_ledger");
+                    set_action_message.set(Some("General Ledger rebuilt.".to_string()));
+                }
+                Err(e) => {
+                    log!("Failed to rebuild p903 general ledger: {:?}", e);
+                    set_action_message.set(Some(format!("Post failed: {e}")));
+                }
+            }
+            set_posting.set(false);
+        });
+    };
+
     view! {
         <PageFrame page_id="p903_wb_finance_report--detail" category="detail">
             <div class="modal-header">
                 <h3 class="modal-title">"WB Finance Report Details"</h3>
+                <Button
+                    appearance=ButtonAppearance::Primary
+                    on_click=post_click
+                    disabled=Signal::derive(move || loading.get() || posting.get())
+                >
+                    <span>{vec![icon("refresh").into_view()]}</span>
+                    <span>{move || if posting.get() { " Проведение..." } else { " Post" }}</span>
+                </Button>
                 <Button
                     appearance=ButtonAppearance::Secondary
                     on_click=move |_| on_close.run(())
@@ -499,6 +505,15 @@ pub fn WbFinanceReportDetail(
             </div>
 
             <div class="page__content">
+            {move || {
+                action_message.get().map(|message| {
+                    view! {
+                        <div class="warning-box" style="margin-bottom: var(--spacing-md);">
+                            <span class="warning-box__text">{message}</span>
+                        </div>
+                    }
+                })
+            }}
             {move || {
                 if loading.get() {
                     view! { <p class="text-muted">"Загрузка..."</p> }.into_any()
@@ -545,6 +560,16 @@ pub fn WbFinanceReportDetail(
                                         on:click=move |_| set_active_tab.set("links")
                                     >
                                         "Links"
+                                    </button>
+                                    <button
+                                        class=move || if active_tab.get() == "general_ledger" {
+                                            "detail-tabs__item detail-tabs__item--active"
+                                        } else {
+                                            "detail-tabs__item"
+                                        }
+                                        on:click=move |_| set_active_tab.set("general_ledger")
+                                    >
+                                        "General Ledger"
                                     </button>
                                 </div>
                                 {
@@ -637,6 +662,56 @@ pub fn WbFinanceReportDetail(
                                         </div>
                                     }
                                         .into_any()
+                                } else if active_tab.get() == "general_ledger" {
+                                    let entries = general_ledger_entries.get();
+                                    if entries.is_empty() {
+                                        view! { <p class="text-muted">"Нет связанных записей general ledger."</p> }.into_any()
+                                    } else {
+                                        view! {
+                                            <div>
+                                                <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); font-weight: 600;">
+                                                    <span>"Entries: " {entries.len()}</span>
+                                                    <span>"Source: " {data.get().map(|item| item.source_row_ref).unwrap_or_default()}</span>
+                                                </div>
+
+                                                <div style="width: 100%; overflow-x: auto;">
+                                                    <Table attr:style="width: 100%;">
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                <TableHeaderCell resizable=true min_width=120.0>"Entry Date"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=140.0>"Turnover"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=90.0>"Amount"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=120.0>"Resource"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=80.0>"Sign"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=120.0>"Debit"</TableHeaderCell>
+                                                                <TableHeaderCell resizable=true min_width=120.0>"Credit"</TableHeaderCell>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {entries
+                                                                .into_iter()
+                                                                .map(|entry| {
+                                                                    view! {
+                                                                        <TableRow>
+                                                                            <TableCell><TableCellLayout>{entry.entry_date}</TableCellLayout></TableCell>
+                                                                            <TableCell><TableCellLayout truncate=true>{entry.turnover_code}</TableCellLayout></TableCell>
+                                                                            <TableCell class="table__cell--right"><TableCellLayout>{format_number(entry.amount)}</TableCellLayout></TableCell>
+                                                                            <TableCell><TableCellLayout truncate=true>{entry.resource_name}</TableCellLayout></TableCell>
+                                                                            <TableCell class="table__cell--right"><TableCellLayout>{entry.resource_sign}</TableCellLayout></TableCell>
+                                                                            <TableCell><TableCellLayout>{entry.debit_account}</TableCellLayout></TableCell>
+                                                                            <TableCell><TableCellLayout>{entry.credit_account}</TableCellLayout></TableCell>
+                                                                        </TableRow>
+                                                                    }
+                                                                    .into_view()
+                                                                })
+                                                                .collect_view()}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                            </div>
+                                        }
+                                        .into_any()
+                                    }
                                 } else if active_tab.get() == "links" {
                                     if links_loading.get() {
                                         view! { <p class="text-muted">"Загрузка связанных документов..."</p> }.into_any()
@@ -757,6 +832,38 @@ async fn fetch_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailR
     let url = format!("/api/p903/finance-report/{}/{}", rr_dt, rrd_id);
 
     let resp_value = JsFuture::from(window.fetch_with_str(&url))
+        .await
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+    let resp: web_sys::Response = resp_value
+        .dyn_into()
+        .map_err(|_| "Failed to cast to Response")?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let json = JsFuture::from(resp.json().map_err(|_| "Failed to get JSON")?)
+        .await
+        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
+}
+
+async fn post_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailResponse, String> {
+    use web_sys::{Request, RequestInit, RequestMode};
+
+    let window = web_sys::window().ok_or("No window object")?;
+    let url = format!("/api/p903/finance-report/{}/{}/post", rr_dt, rrd_id);
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let request = Request::new_with_str_and_init(&url, &opts)
+        .map_err(|e| format!("Request init failed: {:?}", e))?;
+
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
         .await
         .map_err(|e| format!("Fetch failed: {:?}", e))?;
 

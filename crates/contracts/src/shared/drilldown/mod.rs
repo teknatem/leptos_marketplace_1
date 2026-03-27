@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// ── Multi-metric types ────────────────────────────────────────────────────────
+
+/// Описание одной метрики-колонки в multi-resource drilldown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricColumnDef {
+    pub id: String,
+    pub label: String,
+}
+
+/// Значения одной метрики для одной строки (П1 + П2 + Δ%).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MetricValues {
+    pub value1: f64,
+    pub value2: f64,
+    pub delta_pct: Option<f64>,
+}
+
 /// Универсальный запрос детализации (drilldown) по схеме данных
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DrilldownRequest {
@@ -41,12 +58,16 @@ pub struct DrilldownRow {
     pub group_key: String,
     /// Человекочитаемое название группы
     pub label: String,
-    /// Значение за период 1
+    /// Значение за период 1 (single-metric режим)
     pub value1: f64,
-    /// Значение за период 2
+    /// Значение за период 2 (single-metric режим)
     pub value2: f64,
     /// Изменение в процентах (None если period2 = 0)
     pub delta_pct: Option<f64>,
+    /// Значения по каждой метрике (multi-resource режим).
+    /// Ключ = resource id, пуст в single-metric режиме.
+    #[serde(default)]
+    pub metric_values: HashMap<String, MetricValues>,
 }
 
 /// Ответ на запрос детализации
@@ -59,6 +80,10 @@ pub struct DrilldownResponse {
     pub period1_label: String,
     /// Метка периода 2 (например, "дек 2025")
     pub period2_label: String,
-    /// Метка метрики (например, "Выручка")
+    /// Метка метрики (single-metric режим)
     pub metric_label: String,
+    /// Упорядоченный список метрик-колонок (multi-resource режим).
+    /// Пуст в single-metric режиме.
+    #[serde(default)]
+    pub metric_columns: Vec<MetricColumnDef>,
 }

@@ -161,9 +161,8 @@ impl BiDashboardDetailsVm {
     pub fn to_dto(&self) -> BiDashboardSaveDto {
         let layout: serde_json::Value = serde_json::from_str(&self.layout_json.get_untracked())
             .unwrap_or_else(|_| serde_json::json!({"groups": []}));
-        let filters: serde_json::Value =
-            serde_json::from_str(&self.filters_json.get_untracked())
-                .unwrap_or_else(|_| serde_json::json!([]));
+        let filters: serde_json::Value = serde_json::from_str(&self.filters_json.get_untracked())
+            .unwrap_or_else(|_| serde_json::json!([]));
 
         let comment = {
             let c = self.comment.get_untracked();

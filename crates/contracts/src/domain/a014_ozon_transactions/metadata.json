@@ -1,0 +1,143 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "OzonTransactions",
+  "entity_index": "a014",
+  "collection_name": "ozon_transactions",
+  "table_name": "a014_ozon_transactions",
+
+  "ui": {
+    "element_name": "Транзакция OZON",
+    "element_name_en": "OZON Transaction",
+    "list_name": "Транзакции OZON",
+    "list_name_en": "OZON Transactions",
+    "icon": "credit-card"
+  },
+
+  "ai": {
+    "description": "Финансовая транзакция OZON из раздела финансов. Содержит тип операции, суммы начислений, комиссий и доставки. Является основным источником для сверки финансовых данных с OZON. Связывается с постингами (a010 FBS, a011 FBO).",
+    "questions": [
+      "Какова итоговая сумма транзакций OZON?",
+      "Сколько взяла комиссия OZON?",
+      "Как найти транзакцию по номеру отправления?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a005_marketplace",
+      "a010_ozon_fbs_posting",
+      "a011_ozon_fbo_posting"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "OzonTransactionsId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "operation_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "ID операции", "label_en": "Operation ID", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true },
+      "ai_hint": "operation_id из OZON API — уникальный идентификатор операции."
+    },
+    {
+      "name": "operation_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Тип операции", "label_en": "Operation Type", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "operation_type_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Название операции", "label_en": "Operation Name", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "operation_date",
+      "rust_type": "String",
+      "field_type": "datetime",
+      "source": "specific",
+      "ui": { "label": "Дата операции", "label_en": "Operation Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "posting_number",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер отправления", "label_en": "Posting Number", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "transaction_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Тип транзакции", "label_en": "Transaction Type", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true },
+      "ai_hint": "orders, services и т.д."
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Итого", "label_en": "Amount", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "accruals_for_sale",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Начисления за продажу", "label_en": "Accruals for Sale", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "sale_commission",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Комиссия за продажу", "label_en": "Sale Commission", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "delivery_charge",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Стоимость доставки", "label_en": "Delivery Charge", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a014_ozon_transactions",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
+}

@@ -25,7 +25,7 @@ pub fn ConnectionMPDetail(
             move || {
                 let form = vm.form.get();
                 if !form.description.is_empty() {
-                    let tab_key = format!("a006_connection_mp_detail_{}", stored_id.get_value());
+                    let tab_key = format!("a006_connection_mp_details_{}", stored_id.get_value());
                     let tab_title = format!("Подключение: {}", form.description);
                     tabs_store.update_tab_title(&tab_key, &tab_title);
                 }

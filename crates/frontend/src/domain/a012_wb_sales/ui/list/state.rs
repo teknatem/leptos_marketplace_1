@@ -20,6 +20,7 @@ pub struct WbSalesState {
     pub total_count: usize,
     pub total_pages: usize,
     // Search fields
+    pub search_document_no: String,
     pub search_sale_id: String,
     pub search_supplier_article: String,
     // Серверные итоги
@@ -72,6 +73,7 @@ impl Default for WbSalesState {
             total_count: 0,
             total_pages: 0,
             // Search defaults
+            search_document_no: String::new(),
             search_sale_id: String::new(),
             search_supplier_article: String::new(),
             // Итоги

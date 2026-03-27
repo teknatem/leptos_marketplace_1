@@ -38,12 +38,15 @@ impl AggregateId for LlmArtifactId {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ArtifactType {
     SqlQuery,
+    /// Drilldown-отчёт, созданный LLM. session_id хранится в query_params JSON.
+    DrilldownReport,
 }
 
 impl ArtifactType {
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "sql_query" => Ok(ArtifactType::SqlQuery),
+            "drilldown_report" => Ok(ArtifactType::DrilldownReport),
             _ => Err(format!("Unknown artifact type: {}", s)),
         }
     }
@@ -51,6 +54,7 @@ impl ArtifactType {
     pub fn as_str(&self) -> &str {
         match self {
             ArtifactType::SqlQuery => "sql_query",
+            ArtifactType::DrilldownReport => "drilldown_report",
         }
     }
 }
@@ -174,7 +178,7 @@ impl LlmArtifact {
         if self.base.code.trim().is_empty() {
             return Err("Код не может быть пустым".into());
         }
-        if self.sql_query.trim().is_empty() {
+        if self.artifact_type == ArtifactType::SqlQuery && self.sql_query.trim().is_empty() {
             return Err("SQL запрос не может быть пустым".into());
         }
         Ok(())

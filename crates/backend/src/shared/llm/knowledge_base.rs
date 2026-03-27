@@ -9,7 +9,7 @@
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ─── Структуры ───────────────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ pub struct KnowledgeDoc {
     pub related: Vec<String>,
     /// Тело MD без frontmatter-блока
     pub content: String,
+    pub source_path: Option<String>,
 }
 
 /// In-memory база знаний со встроенным тег-индексом.
@@ -52,6 +53,45 @@ pub static KNOWLEDGE_BASE: Lazy<KnowledgeBase> = Lazy::new(|| {
     KnowledgeBase::load(&path)
 });
 
+struct EmbeddedKnowledgeSource {
+    id: &'static str,
+    source_path: &'static str,
+    raw: &'static str,
+}
+
+const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
+    EmbeddedKnowledgeSource {
+        id: "domain-a012_wb_sales",
+        source_path: "crates/backend/src/domain/a012_wb_sales/llm.md",
+        raw: include_str!("../../domain/a012_wb_sales/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "usecase-u504_import_from_wildberries",
+        source_path: "crates/backend/src/usecases/u504_import_from_wildberries/llm.md",
+        raw: include_str!("../../usecases/u504_import_from_wildberries/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "projection-p904_sales_data",
+        source_path: "crates/backend/src/projections/p904_sales_data/llm.md",
+        raw: include_str!("../../projections/p904_sales_data/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "data-view-dv001",
+        source_path: "crates/backend/src/data_view/dv001/llm.md",
+        raw: include_str!("../../data_view/dv001/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "domain-a024_bi_indicator",
+        source_path: "crates/backend/src/domain/a024_bi_indicator/llm.md",
+        raw: include_str!("../../domain/a024_bi_indicator/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "domain-a025_bi_dashboard",
+        source_path: "crates/backend/src/domain/a025_bi_dashboard/llm.md",
+        raw: include_str!("../../domain/a025_bi_dashboard/llm.md"),
+    },
+];
+
 // ─── Реализация ──────────────────────────────────────────────────────────────
 
 impl KnowledgeBase {
@@ -65,46 +105,23 @@ impl KnowledgeBase {
                 "KnowledgeBase: directory '{}' does not exist; knowledge tools will return empty results",
                 dir.display()
             );
-            return Self { index, docs };
+            let mut kb = Self { index, docs };
+            kb.load_embedded_sources();
+            return kb;
         }
 
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::error!(
-                    "KnowledgeBase: cannot read directory '{}': {}",
-                    dir.display(),
-                    e
-                );
-                return Self { index, docs };
-            }
-        };
-
         let mut loaded = 0usize;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let id = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_string();
+        for path in walk_markdown_files(dir) {
+            let id = build_doc_id(dir, &path);
             if id.is_empty() {
                 continue;
             }
 
             match std::fs::read_to_string(&path) {
                 Ok(raw) => {
-                    let doc = parse_doc(id.clone(), &raw);
-                    for tag in &doc.tags {
-                        index
-                            .entry(tag.to_lowercase())
-                            .or_default()
-                            .push(id.clone());
-                    }
-                    docs.insert(id, doc);
+                    let mut doc = parse_doc(id, &raw);
+                    doc.source_path = Some(path.display().to_string());
+                    insert_doc(&mut docs, &mut index, doc);
                     loaded += 1;
                 }
                 Err(e) => {
@@ -113,12 +130,15 @@ impl KnowledgeBase {
             }
         }
 
+        let mut kb = Self { index, docs };
+        kb.load_embedded_sources();
+
         tracing::info!(
             "KnowledgeBase: loaded {} documents from '{}'",
             loaded,
             dir.display()
         );
-        Self { index, docs }
+        kb
     }
 
     /// Поиск по тегам (OR-семантика: совпадение хотя бы по одному тегу).
@@ -153,6 +173,66 @@ impl KnowledgeBase {
     pub fn all_docs(&self) -> Vec<&KnowledgeDoc> {
         self.docs.values().collect()
     }
+
+    fn load_embedded_sources(&mut self) {
+        for source in EMBEDDED_LLM_DOCS {
+            let mut doc = parse_doc(source.id.to_string(), source.raw);
+            doc.source_path = Some(source.source_path.to_string());
+            insert_doc(&mut self.docs, &mut self.index, doc);
+        }
+    }
+}
+
+fn walk_markdown_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+
+    while let Some(current_dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&current_dir) {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(
+                    "KnowledgeBase: cannot read directory '{}': {}",
+                    current_dir.display(),
+                    error
+                );
+                continue;
+            }
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    files
+}
+
+fn build_doc_id(base_dir: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(base_dir).unwrap_or(path);
+    let segments = relative
+        .iter()
+        .filter_map(|part| part.to_str())
+        .map(|part| part.trim_end_matches(".md"))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    if segments.is_empty() {
+        String::new()
+    } else if segments.len() == 1 {
+        segments[0].to_string()
+    } else {
+        segments.join("__")
+    }
 }
 
 // ─── Парсинг frontmatter ─────────────────────────────────────────────────────
@@ -182,7 +262,23 @@ fn parse_doc(id: String, raw: &str) -> KnowledgeDoc {
         tags,
         related,
         content: content.trim_start().to_string(),
+        source_path: None,
     }
+}
+
+fn insert_doc(
+    docs: &mut HashMap<String, KnowledgeDoc>,
+    index: &mut HashMap<String, Vec<String>>,
+    doc: KnowledgeDoc,
+) {
+    let id = doc.id.clone();
+    for tag in &doc.tags {
+        let bucket = index.entry(tag.to_lowercase()).or_default();
+        if !bucket.iter().any(|existing| existing == &id) {
+            bucket.push(id.clone());
+        }
+    }
+    docs.insert(id, doc);
 }
 
 /// Разделить файл на frontmatter (между первыми `---`) и тело.
@@ -338,5 +434,15 @@ updated: 2026-02-25
         let fm = "title: Test\ntags:\n  - a020\n  - wildberries\n";
         let tags = parse_list(fm, "tags").unwrap();
         assert_eq!(tags, vec!["a020", "wildberries"]);
+    }
+
+    #[test]
+    fn test_build_doc_id_for_nested_path() {
+        let base = Path::new("data/knowledge");
+        let nested = Path::new("data/knowledge/marketplaces/wildberries/p909-p910-projections.md");
+        assert_eq!(
+            build_doc_id(base, nested),
+            "marketplaces__wildberries__p909-p910-projections"
+        );
     }
 }

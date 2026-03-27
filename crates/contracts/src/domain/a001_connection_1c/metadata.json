@@ -186,6 +186,16 @@
       },
       "ai_hint": "Только одно подключение может быть основным. Импорт данных (u501_import_from_ut) выполняется из основного подключения. При установке флага, он автоматически снимается с других подключений."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a001_connection_1c",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }
 

@@ -1,0 +1,27 @@
+use anyhow::Result;
+use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDaily;
+use uuid::Uuid;
+
+use super::repository;
+pub use repository::{WbAdvertDailyListQuery, WbAdvertDailyListResult, WbAdvertDailyListRow};
+
+pub async fn replace_for_period(
+    connection_id: &str,
+    date_from: &str,
+    date_to: &str,
+    documents: &[WbAdvertDaily],
+) -> Result<usize> {
+    repository::replace_for_period(connection_id, date_from, date_to, documents).await
+}
+
+pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
+    repository::upsert_document(document).await
+}
+
+pub async fn get_by_id(id: Uuid) -> Result<Option<WbAdvertDaily>> {
+    repository::get_by_id(id).await
+}
+
+pub async fn list_paginated(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyListResult> {
+    repository::list_sql(query).await
+}

@@ -90,6 +90,7 @@ pub struct Model {
     pub nomenclature_ref: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
+    pub is_customer_return: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub version: i32,
@@ -159,6 +160,7 @@ impl From<Model> for WbSales {
             warehouse,
             source_meta,
             is_posted: m.is_posted,
+            is_customer_return: m.is_customer_return,
             marketplace_product_ref: m.marketplace_product_ref,
             nomenclature_ref: m.nomenclature_ref,
         }
@@ -178,6 +180,45 @@ pub async fn list_all() -> Result<Vec<WbSales>> {
         .map(Into::into)
         .collect();
     Ok(items)
+}
+
+pub async fn list_by_sale_date_range(
+    date_from: Option<chrono::NaiveDate>,
+    date_to: Option<chrono::NaiveDate>,
+) -> Result<Vec<WbSales>> {
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::SaleDate.is_not_null());
+
+    if let Some(from) = date_from {
+        query = query.filter(Column::SaleDate.gte(from.format("%Y-%m-%d").to_string()));
+    }
+
+    if let Some(to) = date_to {
+        query = query.filter(Column::SaleDate.lte(format!("{}T23:59:59", to.format("%Y-%m-%d"))));
+    }
+
+    let items = query.all(conn()).await?;
+    Ok(items.into_iter().map(Into::into).collect())
+}
+
+pub async fn list_ids_by_sale_date_range(
+    date_from: &str,
+    date_to: &str,
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::SaleDate.is_not_null())
+        .filter(Column::SaleDate.gte(date_from))
+        .filter(Column::SaleDate.lte(format!("{}T23:59:59", date_to)));
+
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+
+    let items = query.all(conn()).await?;
+    Ok(items.into_iter().map(|item| item.id).collect())
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbSales>> {
@@ -325,6 +366,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             nomenclature_ref: Set(aggregate.nomenclature_ref.clone()),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
             is_posted: Set(aggregate.is_posted),
+            is_customer_return: Set(aggregate.is_customer_return),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version + 1),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -384,6 +426,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             nomenclature_ref: Set(aggregate.nomenclature_ref.clone()),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
             is_posted: Set(aggregate.is_posted),
+            is_customer_return: Set(aggregate.is_customer_return),
             created_at: Set(Some(aggregate.base.metadata.created_at)),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),

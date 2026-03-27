@@ -1,0 +1,130 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "MarketplaceSales",
+  "entity_index": "a008",
+  "collection_name": "marketplace_sales",
+  "table_name": "a008_marketplace_sales",
+
+  "ui": {
+    "element_name": "Продажа маркетплейса",
+    "element_name_en": "Marketplace Sale",
+    "list_name": "Продажи маркетплейсов",
+    "list_name_en": "Marketplace Sales",
+    "icon": "trending-up"
+  },
+
+  "ai": {
+    "description": "Запись о продаже товара на маркетплейсе: дата начисления, количество, выручка и тип операции (продажа, возврат, комиссия). Основной источник данных для аналитики продаж.",
+    "questions": [
+      "Какова выручка за период?",
+      "Сколько продано по каждому товару?",
+      "Какие операции есть на маркетплейсе?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a007_marketplace_product",
+      "a005_marketplace",
+      "a002_organization"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "MarketplaceSalesId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Код", "label_en": "Code", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "accrual_date",
+      "rust_type": "chrono::NaiveDate",
+      "field_type": "date",
+      "source": "specific",
+      "ui": { "label": "Дата начисления", "label_en": "Accrual Date", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Организация", "label_en": "Organization", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Маркетплейс", "label_en": "Marketplace", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true },
+      "ref_aggregate": "a005_marketplace"
+    },
+    {
+      "name": "product_id",
+      "rust_type": "String",
+      "field_type": "reference",
+      "source": "specific",
+      "ui": { "label": "Товар", "label_en": "Product", "visible_in_list": true, "visible_in_form": true, "column_width": 200 },
+      "validation": { "required": true },
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "quantity",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Количество", "label_en": "Quantity", "visible_in_list": true, "visible_in_form": true, "column_width": 100 },
+      "validation": { "required": true, "min": 0.0 }
+    },
+    {
+      "name": "revenue",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Выручка", "label_en": "Revenue", "visible_in_list": true, "visible_in_form": true, "column_width": 120 },
+      "validation": { "required": true },
+      "ai_hint": "Выручка может быть отрицательной при возвратах."
+    },
+    {
+      "name": "operation_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Тип операции", "label_en": "Operation Type", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
+      "validation": { "required": true },
+      "ai_hint": "Например: sale, return, commission."
+    }
+  ],
+
+  "access": {
+    "scope_id": "a008_marketplace_sales",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
+}

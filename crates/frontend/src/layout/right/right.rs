@@ -26,31 +26,33 @@ pub fn Right(children: Children) -> impl IntoView {
     };
 
     // Глобальный обработчик mousemove на window
-    let _ = window_event_listener(leptos::ev::mousemove, move |ev: leptos::ev::MouseEvent| {
-        if !is_resizing.get_untracked() {
-            return;
-        }
+    let mousemove_handle =
+        window_event_listener(leptos::ev::mousemove, move |ev: leptos::ev::MouseEvent| {
+            if !is_resizing.get_untracked() {
+                return;
+            }
 
-        // Получаем размер окна
-        let window = web_sys::window().expect("window");
-        let window_width = window.inner_width().unwrap().as_f64().unwrap();
+            let window = web_sys::window().expect("window");
+            let window_width = window.inner_width().unwrap().as_f64().unwrap();
 
-        // Расчет доступной ширины
-        let max_available = window_width - 400.0 - 260.0;
-        let max_width = max_available.min(window_width * 0.5);
+            let max_available = window_width - 400.0 - 260.0;
+            let max_width = max_available.min(window_width * 0.5);
 
-        let dx = start_x.get_untracked() - ev.client_x() as f64;
-        let new_width = (start_width.get_untracked() + dx).max(30.0).min(max_width);
+            let dx = start_x.get_untracked() - ev.client_x() as f64;
+            let new_width = (start_width.get_untracked() + dx).max(30.0).min(max_width);
 
-        width.set(new_width);
-    });
+            width.set(new_width);
+        });
+    on_cleanup(move || mousemove_handle.remove());
 
     // Глобальный обработчик mouseup на window
-    let _ = window_event_listener(leptos::ev::mouseup, move |_ev: leptos::ev::MouseEvent| {
-        if is_resizing.get_untracked() {
-            is_resizing.set(false);
-        }
-    });
+    let mouseup_handle =
+        window_event_listener(leptos::ev::mouseup, move |_ev: leptos::ev::MouseEvent| {
+            if is_resizing.get_untracked() {
+                is_resizing.set(false);
+            }
+        });
+    on_cleanup(move || mouseup_handle.remove());
 
     // Effect для управления cursor и user-select
     Effect::new(move |_| {

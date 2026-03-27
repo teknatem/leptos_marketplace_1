@@ -4,25 +4,24 @@ use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 
-pub async fn process_finance_report_row(
+pub fn map_finance_report_row(
     connection: &ConnectionMP,
     organization_id: &str,
     row: &WbFinanceReportRow,
-) -> Result<bool> {
+) -> Result<WbFinanceReportEntry> {
     if row.rrd_id.is_none() || row.rr_dt.is_none() {
         anyhow::bail!("Missing rrd_id or rr_dt");
     }
 
     let rrd_id = row.rrd_id.unwrap();
     let rr_dt_str = row.rr_dt.clone().unwrap();
-
     let rr_dt = chrono::NaiveDate::parse_from_str(&rr_dt_str, "%Y-%m-%d")?;
-
     let extra_json = serde_json::to_string(row).ok();
 
-    let entry = WbFinanceReportEntry {
+    Ok(WbFinanceReportEntry {
         rr_dt,
         rrd_id,
+        source_row_ref: repository::make_source_row_ref(&rr_dt_str, rrd_id),
         connection_mp_ref: connection.base.id.as_string(),
         organization_ref: organization_id.to_string(),
         acquiring_fee: row.acquiring_fee,
@@ -55,8 +54,15 @@ pub async fn process_finance_report_row(
         srid: row.srid.clone(),
         payload_version: 1,
         extra: extra_json,
-    };
+    })
+}
 
+pub async fn process_finance_report_row(
+    connection: &ConnectionMP,
+    organization_id: &str,
+    row: &WbFinanceReportRow,
+) -> Result<bool> {
+    let entry = map_finance_report_row(connection, organization_id, row)?;
     repository::upsert_entry(&entry).await?;
 
     Ok(true)

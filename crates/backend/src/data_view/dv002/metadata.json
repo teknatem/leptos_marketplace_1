@@ -1,0 +1,132 @@
+{
+  "id": "dv002_wb_advert_by_items",
+  "name": "Рекламные расходы WB (2 периода)",
+  "category": "expenses",
+  "version": 1,
+  "description": "Метрика рекламных расходов WB по номенклатуре за период. Поддерживает сравнение с предыдущим периодом, sparkline и drilldown по измерениям.",
+  "ai_description": "DataView для расчёта рекламных расходов из таблицы p911_wb_advert_by_items. Использует одну метрику advertising_expenses = SUM(amount). Возвращает scalar за период 1, значение периода 2, change_percent, status и sparkline по дням entry_date. Поддерживает drilldown по date, connection_mp_ref, marketplace, nomenclature_ref, dim1..dim6, layer, turnover_code, registrator_type, registrator_ref и general_ledger_ref. Если period2 не задан, автоматически используется предыдущий месяц.",
+  "data_sources": ["p911_wb_advert_by_items"],
+  "available_resources": [
+    {
+      "id": "advertising_expenses",
+      "label": "Рекламные расходы",
+      "description": "SUM(amount) по проводкам advertising_allocated из p911_wb_advert_by_items",
+      "unit": "currency"
+    }
+  ],
+  "available_dimensions": [
+    {
+      "id": "date",
+      "label": "По дням",
+      "description": "Группировка по дате entry_date (YYYY-MM-DD)",
+      "db_column": "entry_date"
+    },
+    {
+      "id": "connection_mp_ref",
+      "label": "По кабинету МП",
+      "description": "Группировка по кабинету маркетплейса",
+      "db_column": "connection_mp_ref",
+      "ref_table": "a006_connection_mp",
+      "ref_display_column": "description"
+    },
+    {
+      "id": "marketplace",
+      "label": "По маркетплейсу",
+      "description": "WB / OZON / Yandex Market",
+      "db_column": "marketplace",
+      "source_table": "a006_connection_mp",
+      "join_on_column": "connection_mp_ref"
+    },
+    {
+      "id": "nomenclature_ref",
+      "label": "По номенклатуре",
+      "description": "Группировка по номенклатуре",
+      "db_column": "nomenclature_ref",
+      "ref_table": "a004_nomenclature",
+      "ref_display_column": "description"
+    },
+    {
+      "id": "dim1",
+      "label": "Измерение 1 (категория)",
+      "description": "dim1_category из номенклатуры",
+      "db_column": "dim1_category",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "dim2",
+      "label": "Измерение 2 (линейка)",
+      "description": "dim2_line из номенклатуры",
+      "db_column": "dim2_line",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "dim3",
+      "label": "Измерение 3 (модель)",
+      "description": "dim3_model из номенклатуры",
+      "db_column": "dim3_model",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "dim4",
+      "label": "Измерение 4 (формат)",
+      "description": "dim4_format из номенклатуры",
+      "db_column": "dim4_format",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "dim5",
+      "label": "Измерение 5 (назначение)",
+      "description": "dim5_sink из номенклатуры",
+      "db_column": "dim5_sink",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "dim6",
+      "label": "Измерение 6 (размер)",
+      "description": "dim6_size из номенклатуры",
+      "db_column": "dim6_size",
+      "source_table": "a004_nomenclature",
+      "join_on_column": "nomenclature_ref"
+    },
+    {
+      "id": "layer",
+      "label": "По слою",
+      "description": "oper / accrual / ...",
+      "db_column": "layer"
+    },
+    {
+      "id": "turnover_code",
+      "label": "По виду оборота",
+      "description": "Код оборота аналитики",
+      "db_column": "turnover_code"
+    },
+    {
+      "id": "registrator_type",
+      "label": "По типу регистратора",
+      "description": "Тип документа-регистратора",
+      "db_column": "registrator_type"
+    },
+    {
+      "id": "registrator_ref",
+      "label": "По регистратору",
+      "description": "Ссылка на документ-регистратор",
+      "db_column": "registrator_ref"
+    },
+    {
+      "id": "general_ledger_ref",
+      "label": "По записи general ledger",
+      "description": "Ссылка на запись general ledger",
+      "db_column": "general_ledger_ref"
+    }
+  ],
+  "filters": [
+    { "filter_id": "date_range_1", "required": true, "order": 1 },
+    { "filter_id": "date_range_2", "required": false, "order": 2 },
+    { "filter_id": "connection_mp_refs", "required": false, "order": 3 }
+  ]
+}

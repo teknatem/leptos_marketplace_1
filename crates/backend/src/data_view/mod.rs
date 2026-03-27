@@ -8,6 +8,8 @@
 //! повторных запросов к БД.
 
 pub mod dv001;
+pub mod dv002;
+pub mod dv003;
 pub mod filters;
 
 use std::collections::HashMap;
@@ -17,9 +19,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use contracts::shared::analytics::IndicatorValue;
 use contracts::shared::data_view::{DataViewMeta, FilterDef, ViewContext};
 use contracts::shared::drilldown::DrilldownResponse;
-use contracts::shared::indicators::IndicatorValue;
 
 // ---------------------------------------------------------------------------
 // Global scalar result cache
@@ -69,7 +71,13 @@ fn cache_put(key: String, value: IndicatorValue) {
     if map.len() > 256 {
         map.retain(|_, e| e.created_at.elapsed() < CACHE_TTL);
     }
-    map.insert(key, CacheEntry { value, created_at: Instant::now() });
+    map.insert(
+        key,
+        CacheEntry {
+            value,
+            created_at: Instant::now(),
+        },
+    );
 }
 
 type ScalarFn =
@@ -78,6 +86,7 @@ type ScalarFn =
 type DrillFn = for<'a> fn(
     &'a ViewContext,
     &'a str,
+    &'a [String],
 ) -> Pin<Box<dyn Future<Output = Result<DrilldownResponse>> + Send + 'a>>;
 
 struct ViewEntry {
@@ -100,7 +109,17 @@ impl DataViewRegistry {
         registry.register(
             dv001::meta(),
             |ctx| Box::pin(dv001::compute_scalar(ctx)),
-            |ctx, g| Box::pin(dv001::compute_drilldown(ctx, g)),
+            |ctx, g, ids| Box::pin(dv001::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv002::meta(),
+            |ctx| Box::pin(dv002::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv002::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv003::meta(),
+            |ctx| Box::pin(dv003::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv003::compute_drilldown_multi(ctx, g, ids)),
         );
 
         registry
@@ -108,8 +127,14 @@ impl DataViewRegistry {
 
     fn register(&mut self, meta: DataViewMeta, scalar: ScalarFn, drilldown: DrillFn) {
         let id = meta.id.clone();
-        self.views
-            .insert(id, ViewEntry { scalar, drilldown, meta });
+        self.views.insert(
+            id,
+            ViewEntry {
+                scalar,
+                drilldown,
+                meta,
+            },
+        );
     }
 
     /// Вычислить скалярное значение индикатора через DataView.
@@ -117,11 +142,7 @@ impl DataViewRegistry {
     /// Результат кешируется на [`CACHE_TTL`] по ключу `(view_id, context)`.
     /// Повторные вызовы с теми же параметрами (например, из нескольких индикаторов
     /// одного дашборда) не делают дополнительных запросов к БД.
-    pub async fn compute_scalar(
-        &self,
-        view_id: &str,
-        ctx: &ViewContext,
-    ) -> Result<IndicatorValue> {
+    pub async fn compute_scalar(&self, view_id: &str, ctx: &ViewContext) -> Result<IndicatorValue> {
         let key = cache_key(view_id, ctx);
 
         if let Some(cached) = cache_get(&key) {
@@ -139,17 +160,21 @@ impl DataViewRegistry {
     }
 
     /// Вычислить drilldown через DataView.
+    ///
+    /// `metric_ids` — список запрошенных метрик. Пустой список = single-metric
+    /// режим (backward compat, метрика берётся из ctx.params["metric"]).
     pub async fn compute_drilldown(
         &self,
         view_id: &str,
         ctx: &ViewContext,
         group_by: &str,
+        metric_ids: &[String],
     ) -> Result<DrilldownResponse> {
         let entry = self
             .views
             .get(view_id)
             .ok_or_else(|| anyhow::anyhow!("DataView not found: {}", view_id))?;
-        (entry.drilldown)(ctx, group_by).await
+        (entry.drilldown)(ctx, group_by, metric_ids).await
     }
 
     /// Список метаданных всех зарегистрированных DataView.

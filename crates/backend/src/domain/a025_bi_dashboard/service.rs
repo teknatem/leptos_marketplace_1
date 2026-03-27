@@ -1,10 +1,10 @@
 use super::repository;
 use crate::domain::a024_bi_indicator;
-use contracts::shared::data_view::FilterRef;
 use contracts::domain::a024_bi_indicator::aggregate::BiIndicatorId;
 use contracts::domain::a025_bi_dashboard::aggregate::{
     BiDashboard, BiDashboardId, BiDashboardStatus, DashboardLayout,
 };
+use contracts::shared::data_view::FilterRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;

@@ -181,5 +181,13 @@
       "validation": { "required": false },
       "ai_hint": "ID кампании (магазина) в Яндекс.Маркет API."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a013_ym_order",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
 }

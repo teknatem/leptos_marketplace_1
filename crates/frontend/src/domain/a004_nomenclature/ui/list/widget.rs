@@ -372,7 +372,7 @@ pub fn NomenclatureList() -> impl IntoView {
             use contracts::domain::a004_nomenclature::ENTITY_METADATA as A004;
             let identifier = pick_identifier(None, Some(&article), Some(&description), &id);
             let title = detail_tab_label(A004.ui.element_name, identifier);
-            tabs_store.open_tab(&format!("a004_nomenclature_detail_{}", id), &title);
+            tabs_store.open_tab(&format!("a004_nomenclature_details_{}", id), &title);
         }
     };
 

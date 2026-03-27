@@ -4,7 +4,8 @@
 //! Агент отображается по имени (agent_name из API), а не по UUID.
 
 use super::artifact_card::ArtifactCard;
-use super::model::{fetch_chat, fetch_messages, send_message};
+use super::model::{fetch_chat, fetch_messages, poll_until_done, send_message};
+use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
@@ -98,31 +99,43 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 .map(|f| f.id.clone())
                 .collect();
             wasm_bindgen_futures::spawn_local(async move {
-                match send_message(&chat_id, &content, attachment_ids).await {
-                    Ok(_) => {
-                        // Clear uploaded files
-                        vm.uploaded_files.set(Vec::new());
-
-                        // Reload messages to get both user and assistant messages
-                        match fetch_messages(&chat_id).await {
-                            Ok(msgs) => {
-                                vm.messages.set(msgs);
-                                vm.error.set(None);
-                                scroll_to_bottom();
-                            }
-                            Err(e) => vm.error.set(Some(e)),
-                        }
-                        vm.is_sending.set(false);
-                    }
+                // 1. POST → immediately get job_id (server returns 202)
+                let job_id = match send_message(&chat_id, &content, attachment_ids).await {
+                    Ok(id) => id,
                     Err(e) => {
-                        // Remove optimistic message on error
+                        vm.error.set(Some(format!("Ошибка отправки: {}", e)));
+                        vm.is_sending.set(false);
+                        return;
+                    }
+                };
+
+                // 2. Poll every 2s until done or error (max 90 attempts = 3 min)
+                let poll_result = poll_until_done(&job_id, 90, 2000).await;
+
+                // 3. Always reload messages from DB after completion
+                match fetch_messages(&chat_id).await {
+                    Ok(msgs) => {
+                        vm.messages.set(msgs);
+                        scroll_to_bottom();
+                    }
+                    Err(_) => {
                         let mut current_msgs = vm.messages.get();
                         current_msgs.retain(|msg| msg.id != optimistic_id);
                         vm.messages.set(current_msgs);
-                        vm.error.set(Some(e));
-                        vm.is_sending.set(false);
                     }
                 }
+
+                match poll_result {
+                    Ok(_) => {
+                        vm.uploaded_files.set(Vec::new());
+                        vm.error.set(None);
+                    }
+                    Err(e) => {
+                        vm.error.set(Some(format!("Ошибка LLM: {}", e)));
+                    }
+                }
+
+                vm.is_sending.set(false);
             });
         }
     });
@@ -204,6 +217,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         let conf = msg.confidence;
                         let duration = msg.duration_ms;
                         let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
+                        let tool_trace = msg.tool_trace.clone();
                         view! {
                             <div
                                 style=if is_user {
@@ -249,6 +263,13 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                 </div>
 
                                 {move || {
+                                    if !is_user {
+                                        Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() /> })
+                                    } else {
+                                        None
+                                    }
+                                }}
+                                {move || {
                                     artifact_id
                                         .clone()
                                         .map(|id| view! { <ArtifactCard artifact_id=id /> })
@@ -257,6 +278,24 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         }
                     }}
                 </For>
+
+                // Loading indicator — показывается пока LLM обрабатывает запрос
+                {move || {
+                    if vm.is_sending.get() {
+                        Some(view! {
+                            <div class="chat-typing" style="align-self: flex-start; max-width: 70%;">
+                                <div class="chat-typing__bubble">
+                                    <span class="chat-typing__dot"></span>
+                                    <span class="chat-typing__dot"></span>
+                                    <span class="chat-typing__dot"></span>
+                                    <span class="chat-typing__label">" LLM обрабатывает запрос..."</span>
+                                </div>
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
                 </div>
 
                 // Input area

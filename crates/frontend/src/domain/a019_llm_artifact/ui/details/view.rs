@@ -3,8 +3,8 @@
 use super::model::{fetch_artifact, update_artifact, LlmArtifactDto};
 use super::view_model::LlmArtifactDetailsVm;
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
 use contracts::domain::common::AggregateId;
-use leptos::logging::log;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -13,9 +13,8 @@ use thaw::*;
 pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let vm = LlmArtifactDetailsVm::new();
     let artifact_id = id.clone();
-    let active_tab = RwSignal::new("general".to_string());
+    let active_tab = RwSignal::new("general");
 
-    // Load artifact
     Effect::new({
         let artifact_id = artifact_id.clone();
         move |_| {
@@ -23,12 +22,10 @@ pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             wasm_bindgen_futures::spawn_local(async move {
                 match fetch_artifact(&artifact_id).await {
                     Ok(artifact) => {
-                        log!("✅ Artifact loaded: {}", artifact.base.description);
                         vm.artifact.set(Some(artifact));
                         vm.error.set(None);
                     }
                     Err(e) => {
-                        log!("❌ Failed to load artifact: {}", e);
                         vm.error.set(Some(e));
                     }
                 }
@@ -36,76 +33,67 @@ pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         }
     });
 
-    // Save handler
     let handle_save = move |_| {
-        if let Some(artifact) = vm.artifact.get() {
-            vm.is_saving.set(true);
-
-            let dto = LlmArtifactDto {
-                id: Some(artifact.base.id.as_string()),
-                code: Some(artifact.base.code.clone()),
-                description: artifact.base.description.clone(),
-                comment: artifact.base.comment.clone(),
-                chat_id: artifact.chat_id.as_string(),
-                agent_id: artifact.agent_id.as_string(),
-                sql_query: artifact.sql_query.clone(),
-                query_params: artifact.query_params.clone(),
-                visualization_config: artifact.visualization_config.clone(),
-            };
-
-            wasm_bindgen_futures::spawn_local(async move {
-                match update_artifact(dto).await {
-                    Ok(_) => {
-                        log!("✅ Artifact saved");
-                        vm.is_saving.set(false);
-                        vm.is_editing.set(false);
-                        vm.error.set(None);
-                    }
-                    Err(e) => {
-                        log!("❌ Failed to save artifact: {}", e);
-                        vm.is_saving.set(false);
-                        vm.error.set(Some(format!("Ошибка сохранения: {}", e)));
-                    }
+        let Some(artifact) = vm.artifact.get() else {
+            return;
+        };
+        vm.is_saving.set(true);
+        let dto = LlmArtifactDto {
+            id: Some(artifact.base.id.as_string()),
+            code: Some(artifact.base.code.clone()),
+            description: artifact.base.description.clone(),
+            comment: artifact.base.comment.clone(),
+            chat_id: artifact.chat_id.as_string(),
+            agent_id: artifact.agent_id.as_string(),
+            sql_query: artifact.sql_query.clone(),
+            query_params: artifact.query_params.clone(),
+            visualization_config: artifact.visualization_config.clone(),
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            match update_artifact(dto).await {
+                Ok(_) => {
+                    vm.is_saving.set(false);
+                    vm.is_editing.set(false);
+                    vm.error.set(None);
                 }
-            });
-        }
+                Err(e) => {
+                    vm.is_saving.set(false);
+                    vm.error.set(Some(format!("Ошибка сохранения: {}", e)));
+                }
+            }
+        });
     };
 
     view! {
-        <div id="a019_llm_artifact--detail" data-page-category="legacy" style="height: 100%; display: flex; flex-direction: column; padding: 20px;">
+        <PageFrame page_id="a019_llm_artifact_details" category="detail">
             // Header
-            <Flex
-                justify=FlexJustify::SpaceBetween
-                align=FlexAlign::Center
-                style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--colorNeutralStroke2);"
-            >
-                <Flex align=FlexAlign::Center style="gap: 16px;">
-                    <h2 style="font-size: 18px; font-weight: bold;">
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">
                         {move || {
                             vm.artifact
                                 .get()
                                 .map(|a| a.base.description.clone())
                                 .unwrap_or_else(|| "Загрузка...".to_string())
                         }}
-                    </h2>
-                    <span style="color: var(--colorNeutralForeground3); font-size: 14px;">
-                        {move || {
-                            vm.artifact
-                                .get()
-                                .map(|a| {
-                                    match a.status.as_str() {
-                                        "draft" => "Черновик",
-                                        "active" => "Активен",
-                                        "deprecated" => "Устарел",
-                                        "failed" => "Ошибка",
-                                        _ => "Unknown",
-                                    }.to_string()
-                                })
-                                .unwrap_or_default()
-                        }}
-                    </span>
-                </Flex>
-                <Space>
+                    </h1>
+                    {move || {
+                        vm.artifact.get().map(|a| {
+                            let (label, color) = match a.status.as_str() {
+                                "active"     => ("Активен",  BadgeColor::Success),
+                                "deprecated" => ("Устарел",  BadgeColor::Warning),
+                                "failed"     => ("Ошибка",   BadgeColor::Danger),
+                                _            => ("Черновик", BadgeColor::Informative),
+                            };
+                            view! {
+                                <Badge appearance=BadgeAppearance::Filled color=color>
+                                    {label}
+                                </Badge>
+                            }
+                        })
+                    }}
+                </div>
+                <div class="page__header-right">
                     <Button
                         appearance=ButtonAppearance::Primary
                         disabled=Signal::derive(move || vm.is_saving.get() || !vm.is_editing.get())
@@ -115,89 +103,63 @@ pub fn LlmArtifactDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         {move || if vm.is_saving.get() { " Сохранение..." } else { " Сохранить" }}
                     </Button>
                     <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_close.run(())>
-                        {icon("close")}
-                        " Закрыть"
+                        "Закрыть"
                     </Button>
-                </Space>
-            </Flex>
-
-            // Error display
-            {move || vm.error.get().map(|e| view! {
-                <div style="padding: 12px; margin-bottom: 16px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px;">
-                    <span style="color: var(--color-error);">{e}</span>
                 </div>
-            })}
+            </div>
 
             // Tabs
-            <div class="page__tabs" style="border-bottom: 2px solid #ddd; margin-bottom: 20px; flex-shrink: 0; background: white;">
+            <div class="page__tabs">
                 <button
-                    on:click=move |_| active_tab.set("general".to_string())
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                        if active_tab.get() == "general" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "general"
+                    on:click=move |_| active_tab.set("general")
                 >
-                    "Общее"
+                    {icon("file-text")} " Общее"
                 </button>
                 <button
-                    on:click=move |_| active_tab.set("sql".to_string())
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                        if active_tab.get() == "sql" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "sql"
+                    on:click=move |_| active_tab.set("sql")
                 >
-                    "SQL Запрос"
+                    {icon("code")} " SQL"
                 </button>
                 <button
-                    on:click=move |_| active_tab.set("viz".to_string())
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                        if active_tab.get() == "viz" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "viz"
+                    on:click=move |_| active_tab.set("viz")
                 >
-                    "Визуализация"
+                    {icon("bar-chart")} " Визуализация"
                 </button>
                 <button
-                    on:click=move |_| active_tab.set("meta".to_string())
-                    style=move || format!(
-                        "padding: 10px 20px; border: none; border-radius: 4px 4px 0 0; cursor: pointer; margin-right: 5px; font-weight: 500; {}",
-                        if active_tab.get() == "meta" {
-                            "background: #2196F3; color: white; border-bottom: 2px solid #2196F3;"
-                        } else {
-                            "background: #f5f5f5; color: #666;"
-                        }
-                    )
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "meta"
+                    on:click=move |_| active_tab.set("meta")
                 >
-                    "Метаданные"
+                    {icon("info")} " Метаданные"
                 </button>
             </div>
 
-            // Tab content
-            <div style="flex: 1; overflow-y: auto; padding: 20px; background: #fafafa;">
+            // Content
+            <div class="page__content">
                 {move || {
-                    let tab = active_tab.get();
-                    match tab.as_str() {
+                    if let Some(err) = vm.error.get() {
+                        return view! {
+                            <div style="padding: var(--spacing-lg); background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: var(--radius-sm); color: var(--color-error);">
+                                <strong>"Ошибка: "</strong>{err}
+                            </div>
+                        }.into_any();
+                    }
+                    match active_tab.get() {
                         "general" => render_general_tab(vm).into_any(),
-                        "sql" => render_sql_tab(vm).into_any(),
-                        "viz" => render_viz_tab(vm).into_any(),
-                        "meta" => render_meta_tab(vm).into_any(),
-                        _ => view! { <div></div> }.into_any(),
+                        "sql"     => render_sql_tab(vm).into_any(),
+                        "viz"     => render_viz_tab(vm).into_any(),
+                        "meta"    => render_meta_tab(vm).into_any(),
+                        _         => render_general_tab(vm).into_any(),
                     }
                 }}
             </div>
-        </div>
+        </PageFrame>
     }
 }
 

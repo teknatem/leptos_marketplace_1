@@ -713,15 +713,15 @@ pub fn SalesRegisterList() -> impl IntoView {
                                                                             // Формируем ключ таба в зависимости от типа документа
                                                                             let (tab_key, tab_title) = match doc_type_for_click.as_str() {
                                                                                 "WB_Sales" => (
-                                                                                    format!("a012_wb_sales_detail_{}", registrator_ref_for_click),
+                                                                                    format!("a012_wb_sales_details_{}", registrator_ref_for_click),
                                                                                     format!("WB Sale {}", document_no_for_title.clone())
                                                                                 ),
                                                                                 "YM_Order" => (
-                                                                                    format!("a013_ym_order_detail_{}", registrator_ref_for_click),
+                                                                                    format!("a013_ym_order_details_{}", registrator_ref_for_click),
                                                                                     format!("YM Order {}", &registrator_ref_for_click[..8])
                                                                                 ),
                                                                                 "OZON_Returns" => (
-                                                                                    format!("a009_ozon_returns_detail_{}", registrator_ref_for_click),
+                                                                                    format!("a009_ozon_returns_details_{}", registrator_ref_for_click),
                                                                                     format!("OZON Return {}", &registrator_ref_for_click[..8])
                                                                                 ),
                                                                                 _ => return,

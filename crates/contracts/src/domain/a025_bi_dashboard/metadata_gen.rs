@@ -1,6 +1,5 @@
 // ============================================================================
 // AUTO-GENERATED FROM metadata.json - DO NOT EDIT MANUALLY
-// Generated: 2026-03-10T20:07:10Z
 // ============================================================================
 
 #![allow(dead_code)]
@@ -8,6 +7,18 @@
 use crate::shared::metadata::{
     EntityMetadataInfo, EntityType, EntityUiMetadata, EntityAiMetadata,
     FieldMetadata, FieldType, FieldSource, FieldUiMetadata, ValidationRules
+};
+use crate::shared::access::{EntityAccessMeta, ScopeOperation, AccessMode};
+
+/// Access scope metadata for this entity
+pub const ACCESS_META: EntityAccessMeta = EntityAccessMeta {
+    scope_id: "a025_bi_dashboard",
+    operations: &[
+    ScopeOperation { id: "list", required_mode: AccessMode::Read },
+    ScopeOperation { id: "get", required_mode: AccessMode::Read },
+    ScopeOperation { id: "upsert", required_mode: AccessMode::All },
+    ScopeOperation { id: "delete", required_mode: AccessMode::All }
+    ],
 };
 
 /// Entity metadata for BiDashboard aggregate
@@ -30,6 +41,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         questions: &["Какие дашборды доступны в системе?", "Как создать новый BI дашборд?", "Как добавить индикатор в дашборд?", "Как организовать индикаторы по категориям?", "Как настроить глобальные фильтры для дашборда?"],
         related: &["a024_bi_indicator"],
     },
+    access: Some(&ACCESS_META),
 };
 
 /// Field metadata array

@@ -1,11 +1,14 @@
 use axum::{
     extract::{Multipart, Path, Query},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use uuid::Uuid;
 
 use crate::domain::a018_llm_chat;
+use crate::domain::a018_llm_chat::job_store::{self, LlmJobStatus};
 use contracts::domain::a018_llm_chat::aggregate::{
     LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage,
 };
@@ -121,17 +124,69 @@ pub async fn get_messages(
     }
 }
 
+#[derive(Serialize)]
+pub struct SendJobResponse {
+    pub job_id: String,
+}
+
+#[derive(Serialize)]
+pub struct JobStatusResponse {
+    pub status: String, // "pending" | "done" | "error"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<LlmChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// POST /api/a018-llm-chat/:id/messages
+/// Immediately returns 202 Accepted with a job_id.
+/// The LLM call runs in background; poll GET /jobs/:job_id for the result.
 pub async fn send_message(
     Path(id): Path<String>,
     Json(payload): Json<a018_llm_chat::service::SendMessageRequest>,
-) -> Result<Json<LlmChatMessage>, axum::http::StatusCode> {
-    match a018_llm_chat::service::send_message(&id, payload).await {
-        Ok(msg) => Ok(Json(msg)),
-        Err(e) => {
-            tracing::error!("Failed to send LLM message: {}", e);
-            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+) -> Result<(StatusCode, Json<SendJobResponse>), StatusCode> {
+    let job_id = Uuid::new_v4().to_string();
+
+    job_store::register(&job_id).await;
+
+    let job_id_clone = job_id.clone();
+    tokio::spawn(async move {
+        tracing::info!("[llm_job] started job_id={} chat_id={}", job_id_clone, id);
+        match a018_llm_chat::service::send_message(&id, payload).await {
+            Ok(msg) => {
+                tracing::info!("[llm_job] done job_id={}", job_id_clone);
+                job_store::complete(&job_id_clone, msg).await;
+            }
+            Err(e) => {
+                tracing::error!("[llm_job] error job_id={} err={}", job_id_clone, e);
+                job_store::fail(&job_id_clone, e.to_string()).await;
+            }
         }
+    });
+
+    Ok((StatusCode::ACCEPTED, Json(SendJobResponse { job_id })))
+}
+
+/// GET /api/a018-llm-chat/jobs/:job_id
+/// Returns current status of a background LLM job.
+pub async fn poll_job(Path(job_id): Path<String>) -> Result<Json<JobStatusResponse>, StatusCode> {
+    match job_store::take(&job_id).await {
+        None => Err(StatusCode::NOT_FOUND),
+        Some(LlmJobStatus::Pending) => Ok(Json(JobStatusResponse {
+            status: "pending".to_string(),
+            message: None,
+            error: None,
+        })),
+        Some(LlmJobStatus::Done(msg)) => Ok(Json(JobStatusResponse {
+            status: "done".to_string(),
+            message: Some(msg),
+            error: None,
+        })),
+        Some(LlmJobStatus::Error(e)) => Ok(Json(JobStatusResponse {
+            status: "error".to_string(),
+            message: None,
+            error: Some(e),
+        })),
     }
 }
 

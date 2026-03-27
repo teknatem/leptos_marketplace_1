@@ -37,6 +37,12 @@ pub async fn create(dto: CreateUserDto, created_by: Option<String>) -> Result<St
     let user_id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
+    let primary_role_code = if dto.primary_role_code.trim().is_empty() {
+        "viewer".to_string()
+    } else {
+        dto.primary_role_code.clone()
+    };
+
     let user = User {
         id: user_id.clone(),
         username: dto.username,
@@ -44,6 +50,7 @@ pub async fn create(dto: CreateUserDto, created_by: Option<String>) -> Result<St
         full_name: dto.full_name,
         is_active: true,
         is_admin: dto.is_admin,
+        primary_role_code,
         created_at: now.clone(),
         updated_at: now,
         last_login_at: None,
@@ -74,6 +81,11 @@ pub async fn update(dto: UpdateUserDto) -> Result<()> {
     _user.full_name = dto.full_name;
     _user.is_active = dto.is_active;
     _user.is_admin = dto.is_admin;
+    _user.primary_role_code = if dto.primary_role_code.trim().is_empty() {
+        "viewer".to_string()
+    } else {
+        dto.primary_role_code
+    };
     _user.updated_at = Utc::now().to_rfc3339();
 
     repository::update(&_user).await?;

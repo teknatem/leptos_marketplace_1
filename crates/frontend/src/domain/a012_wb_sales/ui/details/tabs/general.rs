@@ -113,7 +113,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                     })
                                                     .unwrap_or_else(|| "Товар МП".to_string());
                                                 tabs_store.open_tab(
-                                                    &format!("a007_marketplace_product_detail_{}", id),
+                                                    &format!("a007_marketplace_product_details_{}", id),
                                                     &title,
                                                 );
                                             }
@@ -165,7 +165,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                     })
                                                     .unwrap_or_else(|| "Номенклатура".to_string());
                                                 tabs_store.open_tab(
-                                                    &format!("a004_nomenclature_detail_{}", id),
+                                                    &format!("a004_nomenclature_details_{}", id),
                                                     &title,
                                                 );
                                             }
@@ -215,7 +215,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     <div class="detail-grid__col">
                         <CardAnimated delay_ms=40 nav_id="a012_wb_sales_details_general_status">
                             <h4 class="details-section__title">"Статус"</h4>
-                            <div style="margin-bottom: var(--spacing-md); display: flex; flex-wrap: wrap; gap: var(--spacing-sm);">
+                            <div style="margin: var(--spacing-sm); display: flex; flex-wrap: wrap; gap: var(--spacing-sm);">
                                 <Badge
                                     appearance=BadgeAppearance::Filled
                                     color=if is_fact { BadgeColor::Success } else { BadgeColor::Informative }
@@ -270,7 +270,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let conn_id = conn_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_detail_{}", conn_id), "Подключение МП")
+                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_details_{}", conn_id), "Подключение МП")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -289,7 +289,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let org_id = org_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a002_organization_detail_{}", org_id), "Организация")
+                                        move |_| tabs_store.open_tab(&format!("a002_organization_details_{}", org_id), "Организация")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -308,7 +308,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let mp_id = mp_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_detail_{}", mp_id), "Маркетплейс")
+                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_details_{}", mp_id), "Маркетплейс")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >

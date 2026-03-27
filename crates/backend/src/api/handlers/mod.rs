@@ -24,6 +24,7 @@ pub mod a022_kit_variant;
 pub mod a023_purchase_of_goods;
 pub mod a024_bi_indicator;
 pub mod a025_bi_dashboard;
+pub mod a026_wb_advert_daily;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -35,15 +36,18 @@ pub mod p905_wb_commission_history;
 pub mod p906_nomenclature_prices;
 pub mod p907_ym_payment_report;
 pub mod p908_wb_goods_prices;
-
-// Indicator handlers
-pub mod indicators;
+pub mod p909_mp_order_line_turnovers;
+pub mod p910_mp_unlinked_turnovers;
+pub mod p911_wb_advert_by_items;
 
 // DataView semantic layer handlers
 pub mod data_view;
 
 // Drilldown session store
 pub mod sys_drilldown;
+
+// System journal (общий журнал операций)
+pub mod general_ledger;
 
 // Dashboard handlers (d400)
 pub mod d400_monthly_summary;
@@ -54,3 +58,7 @@ pub mod ds02_mp_sales_register;
 
 // UseCase handlers
 pub mod usecases;
+
+// Debug endpoints (dev only)
+pub mod debug;
+pub mod llm_knowledge;

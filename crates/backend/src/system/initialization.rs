@@ -17,6 +17,7 @@ pub async fn ensure_admin_user_exists() -> Result<()> {
             email: None,
             full_name: Some("Administrator".to_string()),
             is_admin: true,
+            primary_role_code: "admin".to_string(),
         };
 
         let admin_id = service::create(admin_dto, None).await?;

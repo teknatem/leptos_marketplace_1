@@ -11,10 +11,10 @@ use thaw::*;
 
 fn kind_badge(kind: &FilterKind) -> AnyView {
     let (color, label) = match kind {
-        FilterKind::DateRange { .. }         => (BadgeColor::Informative, "DateRange"),
-        FilterKind::MultiSelect { .. }       => (BadgeColor::Success,     "MultiSelect"),
-        FilterKind::Select { .. }            => (BadgeColor::Warning,     "Select"),
-        FilterKind::Text                     => (BadgeColor::Subtle,      "Text"),
+        FilterKind::DateRange { .. } => (BadgeColor::Informative, "DateRange"),
+        FilterKind::MultiSelect { .. } => (BadgeColor::Success, "MultiSelect"),
+        FilterKind::Select { .. } => (BadgeColor::Warning, "Select"),
+        FilterKind::Text => (BadgeColor::Subtle, "Text"),
     };
     view! { <Badge color=color>{label}</Badge> }.into_any()
 }
@@ -31,7 +31,8 @@ fn kind_detail(kind: &FilterKind) -> AnyView {
                     " / to: "
                     <code class="filter-reg__code">{t}</code>
                 </span>
-            }.into_any()
+            }
+            .into_any()
         }
         FilterKind::MultiSelect { source } => {
             let src = source.clone();
@@ -40,7 +41,8 @@ fn kind_detail(kind: &FilterKind) -> AnyView {
                     "source: "
                     <code class="filter-reg__code">{src}</code>
                 </span>
-            }.into_any()
+            }
+            .into_any()
         }
         FilterKind::Select { options } => {
             let opts = options.clone();
@@ -53,7 +55,8 @@ fn kind_detail(kind: &FilterKind) -> AnyView {
                         </span>
                     }).collect_view()}
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }
         FilterKind::Text => view! { <span /> }.into_any(),
     }

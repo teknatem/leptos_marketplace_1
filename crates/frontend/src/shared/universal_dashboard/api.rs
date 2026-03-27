@@ -105,7 +105,11 @@ pub async fn execute_dashboard(
                 return Err(msg.to_string());
             }
         }
-        return Err(format!("HTTP {}: {}", status, body.chars().take(200).collect::<String>()));
+        return Err(format!(
+            "HTTP {}: {}",
+            status,
+            body.chars().take(200).collect::<String>()
+        ));
     }
 
     resp.json().await.map_err(|e| e.to_string())
@@ -130,7 +134,11 @@ pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse
                 return Err(msg.to_string());
             }
         }
-        return Err(format!("HTTP {}: {}", status, body.chars().take(200).collect::<String>()));
+        return Err(format!(
+            "HTTP {}: {}",
+            status,
+            body.chars().take(200).collect::<String>()
+        ));
     }
 
     resp.json().await.map_err(|e| e.to_string())

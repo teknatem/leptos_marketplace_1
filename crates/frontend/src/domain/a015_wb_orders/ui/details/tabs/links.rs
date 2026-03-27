@@ -107,7 +107,7 @@ pub fn LinksTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                                         move |_| {
                                                             let rr_dt_encoded = urlencoding::encode(&rr_dt_for_click).into_owned();
                                                             let tab_key = format!(
-                                                                "p903_wb_finance_report_detail_{}__{}",
+                                                                "p903_wb_finance_report_details_{}__{}",
                                                                 rr_dt_encoded, rrd_id
                                                             );
                                                             let tab_title = format!("WB FR {} #{}", rr_dt_for_click, rrd_id);

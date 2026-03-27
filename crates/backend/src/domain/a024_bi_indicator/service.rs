@@ -1,10 +1,12 @@
 use super::repository;
 use contracts::domain::a024_bi_indicator::aggregate::{
-    BiIndicator, BiIndicatorId, BiIndicatorStatus, DataSpec, DrillSpec, ParamDef, ViewSpec,
+    BiIndicator, BiIndicatorId, BiIndicatorStatus, DataSpec, DrillSpec, ParamDef, ParamType,
+    Threshold, ViewSpec,
 };
-use contracts::shared::drilldown::{DrilldownRequest, DrilldownResponse};
-use contracts::shared::indicators::{IndicatorContext, IndicatorId, IndicatorValue};
+use contracts::shared::analytics::{IndicatorContext, IndicatorValue, ValueFormat};
+use contracts::shared::drilldown::DrilldownResponse;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// DTO для создания/обновления BI индикатора через API
@@ -225,23 +227,98 @@ pub async fn list_public() -> anyhow::Result<Vec<BiIndicator>> {
     Ok(indicators)
 }
 
-/// Вставить тестовые данные (5 предварительно разработанных индикаторов)
+fn serialize_json<T: Serialize>(value: &T) -> anyhow::Result<String> {
+    serde_json::to_string(value).map_err(|e| anyhow::anyhow!("JSON serialize error: {}", e))
+}
+
+fn default_date_params(include_connections: bool) -> Vec<ParamDef> {
+    let mut params = vec![
+        ParamDef {
+            key: "date_from".to_string(),
+            param_type: ParamType::Date,
+            label: "Начало периода".to_string(),
+            default_value: None,
+            required: false,
+            global_filter_key: Some("date_from".to_string()),
+        },
+        ParamDef {
+            key: "date_to".to_string(),
+            param_type: ParamType::Date,
+            label: "Конец периода".to_string(),
+            default_value: None,
+            required: false,
+            global_filter_key: Some("date_to".to_string()),
+        },
+    ];
+
+    if include_connections {
+        params.push(ParamDef {
+            key: "connection_ids".to_string(),
+            param_type: ParamType::Ref,
+            label: "Кабинеты МП".to_string(),
+            default_value: None,
+            required: false,
+            global_filter_key: Some("connection_ids".to_string()),
+        });
+    }
+
+    params
+}
+
+fn custom_view_spec(
+    html: &str,
+    css: &str,
+    format: ValueFormat,
+    thresholds: Vec<Threshold>,
+) -> ViewSpec {
+    ViewSpec {
+        style_name: "custom".to_string(),
+        custom_html: Some(html.to_string()),
+        custom_css: Some(css.to_string()),
+        format,
+        thresholds,
+        preview_values: HashMap::new(),
+    }
+}
+
+/// Вставить тестовые данные (6 предварительно разработанных индикаторов)
 pub async fn insert_test_data() -> anyhow::Result<()> {
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
     let db = crate::shared::data::db::get_connection();
 
     const TEST_OWNER: &str = "f2fc6986-855d-492b-acff-70c7cd8cdd34";
 
-    // (id, code, description, comment, data_spec_json, params_json, view_spec_json, status)
-    let records: &[(&str, &str, &str, &str, &str, &str, &str, &str)] = &[
+    // (id, code, description, comment, data_spec, params, view_spec, status)
+    let records: Vec<(
+        &str,
+        &str,
+        &str,
+        &str,
+        DataSpec,
+        Vec<ParamDef>,
+        ViewSpec,
+        &str,
+    )> = vec![
         (
             "a024a024-0001-4001-a001-000000000001",
             "IND-REVENUE-WB",
             "Выручка WB",
-            "Сквозной пример: суммарная выручка по выбранным кабинетам WB за период. schema_id=sales_revenue.",
-            r#"{"schema_id":"sales_revenue","view_id":"dv001_revenue","query_config":{"data_source":"p904_sales_data","selected_fields":["revenue"],"groupings":[],"filters":{},"display_fields":[],"sort":{"field":"","ascending":true},"enabled_fields":[]},"sql_artifact_id":null}"#,
-            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"},{"key":"connection_ids","param_type":"ref","label":"Кабинеты МП","default_value":null,"required":false,"global_filter_key":"connection_ids"}]"#,
-            r#"{"style_name":"custom","custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            "Сквозной пример: суммарная выручка по выбранным кабинетам WB за период. DataView=dv001_revenue.",
+            DataSpec {
+                view_id: Some("dv001_revenue".to_string()),
+                metric_id: Some("revenue".to_string()),
+            },
+            default_date_params(true),
+            custom_view_spec(
+                "<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>",
+                ".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}",
+                ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                vec![],
+            ),
             "active",
         ),
         (
@@ -249,19 +326,43 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "IND-MARGIN",
             "Маржинальность",
             "Тестовый индикатор: процент маржи. Кольцеобразный дизайн, пороги зелёный/красный.",
-            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
-            "[]",
-            r#"{"style_name":"custom","custom_html":"<div class=\"ring-kpi\"><div class=\"ring-kpi__ring\"><span class=\"ring-kpi__num\">{{value}}</span></div><div class=\"ring-kpi__info\"><div class=\"ring-kpi__title\">{{title}}</div><div class=\"ring-kpi__delta\">{{delta}}</div></div></div>","custom_css":".ring-kpi{display:flex;align-items:center;gap:16px;height:100%}.ring-kpi__ring{width:76px;height:76px;border-radius:50%;border:6px solid var(--bi-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}.ring-kpi__num{font-size:1rem;font-weight:800;color:var(--bi-primary)}.ring-kpi__info{display:flex;flex-direction:column;gap:6px}.ring-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.ring-kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Percent","decimals":1},"thresholds":[{"condition":"> 25","color":"rgb(34,197,94)","label":"Высокая"},{"condition":"< 10","color":"rgb(239,68,68)","label":"Низкая"}]}"#,
+            DataSpec::default(),
+            vec![],
+            custom_view_spec(
+                "<div class=\"ring-kpi\"><div class=\"ring-kpi__ring\"><span class=\"ring-kpi__num\">{{value}}</span></div><div class=\"ring-kpi__info\"><div class=\"ring-kpi__title\">{{title}}</div><div class=\"ring-kpi__delta\">{{delta}}</div></div></div>",
+                ".ring-kpi{display:flex;align-items:center;gap:16px;height:100%}.ring-kpi__ring{width:76px;height:76px;border-radius:50%;border:6px solid var(--bi-primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}.ring-kpi__num{font-size:1rem;font-weight:800;color:var(--bi-primary)}.ring-kpi__info{display:flex;flex-direction:column;gap:6px}.ring-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.ring-kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success)}",
+                ValueFormat::Percent { decimals: 1 },
+                vec![
+                    Threshold {
+                        condition: "> 25".to_string(),
+                        color: "rgb(34,197,94)".to_string(),
+                        label: Some("Высокая".to_string()),
+                    },
+                    Threshold {
+                        condition: "< 10".to_string(),
+                        color: "rgb(239,68,68)".to_string(),
+                        label: Some("Низкая".to_string()),
+                    },
+                ],
+            ),
             "active",
         ),
         (
             "a024a024-0003-4001-a001-000000000003",
             "IND-ORDERS",
             "Количество заказов",
-            "Тестовый индикатор: количество заказов за период. schema_id=sales_order_count.",
-            r#"{"schema_id":"sales_order_count","query_config":{"data_source":"p904_sales_data","selected_fields":["order_count"],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
-            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"},{"key":"connection_ids","param_type":"ref","label":"Кабинеты МП","default_value":null,"required":false,"global_filter_key":"connection_ids"}]"#,
-            r#"{"style_name":"custom","custom_html":"<div class=\"cnt-kpi\"><span class=\"cnt-kpi__dot\"></span><div class=\"cnt-kpi__body\"><div class=\"cnt-kpi__title\">{{title}}</div><div class=\"cnt-kpi__value\">{{value}}</div><div class=\"cnt-kpi__delta\">{{delta}}</div></div></div>","custom_css":".cnt-kpi{display:flex;align-items:flex-start;gap:12px;height:100%;padding:4px}.cnt-kpi__dot{width:10px;height:10px;border-radius:50%;background:var(--bi-primary);flex-shrink:0;margin-top:4px}.cnt-kpi__body{display:flex;flex-direction:column;gap:4px}.cnt-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.cnt-kpi__value{font-size:2.2rem;font-weight:800;color:var(--bi-text);line-height:1}.cnt-kpi__delta{font-size:13px;font-weight:600;color:var(--bi-success)}","format":{"kind":"Integer"},"thresholds":[]}"#,
+            "Тестовый индикатор: количество заказов за период. DataView=dv001_revenue, metric=order_count.",
+            DataSpec {
+                view_id: Some("dv001_revenue".to_string()),
+                metric_id: Some("order_count".to_string()),
+            },
+            default_date_params(true),
+            custom_view_spec(
+                "<div class=\"cnt-kpi\"><span class=\"cnt-kpi__dot\"></span><div class=\"cnt-kpi__body\"><div class=\"cnt-kpi__title\">{{title}}</div><div class=\"cnt-kpi__value\">{{value}}</div><div class=\"cnt-kpi__delta\">{{delta}}</div></div></div>",
+                ".cnt-kpi{display:flex;align-items:flex-start;gap:12px;height:100%;padding:4px}.cnt-kpi__dot{width:10px;height:10px;border-radius:50%;background:var(--bi-primary);flex-shrink:0;margin-top:4px}.cnt-kpi__body{display:flex;flex-direction:column;gap:4px}.cnt-kpi__title{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.5px}.cnt-kpi__value{font-size:2.2rem;font-weight:800;color:var(--bi-text);line-height:1}.cnt-kpi__delta{font-size:13px;font-weight:600;color:var(--bi-success)}",
+                ValueFormat::Integer,
+                vec![],
+            ),
             "active",
         ),
         (
@@ -269,26 +370,87 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "IND-REVENUE-OZON",
             "Выручка Ozon",
             "Тестовый индикатор (draft): выручка Ozon.",
-            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
-            r#"[{"key":"date_from","param_type":"date","label":"Начало периода","default_value":null,"required":false,"global_filter_key":"date_from"},{"key":"date_to","param_type":"date","label":"Конец периода","default_value":null,"required":false,"global_filter_key":"date_to"}]"#,
-            r#"{"style_name":"custom","custom_html":"<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>","custom_css":".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}","format":{"kind":"Money","currency":"RUB"},"thresholds":[]}"#,
+            DataSpec::default(),
+            default_date_params(false),
+            custom_view_spec(
+                "<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>",
+                ".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}",
+                ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                vec![],
+            ),
             "draft",
+        ),
+        (
+            "a024a024-0006-4001-a001-000000000006",
+            "IND-PROFIT-D",
+            "Прибыль (дилер)",
+            "Тестовый индикатор: dealer profit за период. DataView=dv001_revenue, metric=profit_d.",
+            DataSpec {
+                view_id: Some("dv001_revenue".to_string()),
+                metric_id: Some("profit_d".to_string()),
+            },
+            default_date_params(true),
+            custom_view_spec(
+                "<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>",
+                ".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}",
+                ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                vec![],
+            ),
+            "active",
+        ),
+        (
+            "a024a024-0007-4001-a001-000000000007",
+            "IND-AVG-CHECK",
+            "Средний чек",
+            "Тестовый индикатор: средний чек за период. Формула согласована с revenue / order_count. DataView=dv001_revenue, metric=avg_check.",
+            DataSpec {
+                view_id: Some("dv001_revenue".to_string()),
+                metric_id: Some("avg_check".to_string()),
+            },
+            default_date_params(true),
+            custom_view_spec(
+                "<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>",
+                ".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}",
+                ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: Some(2),
+                },
+                vec![],
+            ),
+            "active",
         ),
         (
             "a024a024-0005-4001-a001-000000000005",
             "IND-EMPTY",
             "Новый индикатор (без шаблона)",
             "Тестовый индикатор без HTML/CSS — для проверки empty-state на вкладке Превью.",
-            r#"{"schema_id":"","query_config":{"data_source":"","selected_fields":[],"groupings":[],"filters":{}},"sql_artifact_id":null}"#,
-            "[]",
-            r#"{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Integer"},"thresholds":[]}"#,
+            DataSpec::default(),
+            vec![],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Integer,
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
             "draft",
         ),
     ];
 
-    for (id, code, description, comment, data_spec_json, params_json, view_spec_json, status) in
-        records
-    {
+    for (id, code, description, comment, data_spec, params, view_spec, status) in records {
+        let data_spec_json = serialize_json(&data_spec)?;
+        let params_json = serialize_json(&params)?;
+        let view_spec_json = serialize_json(&view_spec)?;
         let sql = format!(
             "INSERT OR REPLACE INTO a024_bi_indicator \
             (id, code, description, comment, data_spec_json, params_json, view_spec_json, \
@@ -311,14 +473,9 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
 
 /// Вычислить значение индикатора по его ID.
 ///
-/// Приоритет диспетчера:
-/// 1. `data_spec.data_source_config` — новый универсальный путь (IndicatorDataSourceConfig)
-/// 2. `data_spec.schema_query` — устаревший p904-специфичный путь (backward compat)
-/// 3. IndicatorRegistry — legacy-путь по schema_id строке
-pub async fn compute_indicator(
-    id: &str,
-    ctx: &IndicatorContext,
-) -> anyhow::Result<IndicatorValue> {
+/// Источник вычисления индикатора.
+/// Поддерживается только путь через `data_spec.view_id`.
+pub async fn compute_indicator(id: &str, ctx: &IndicatorContext) -> anyhow::Result<IndicatorValue> {
     let indicator_uuid =
         Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
     let indicator_id = BiIndicatorId::new(indicator_uuid);
@@ -350,41 +507,13 @@ pub async fn compute_indicator(
             .map_err(|e| anyhow::anyhow!("DataView '{}' compute error: {}", view_id, e));
     }
 
-    if let Some(dsc) = &indicator.data_spec.data_source_config {
-        // New universal path
-        crate::shared::indicators::schema_executor::compute_from_data_source(
-            dsc,
-            ctx,
-            IndicatorId::new(id),
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("DataSourceConfig compute error: {}", e))
-    } else if let Some(schema_config) = &indicator.data_spec.schema_query {
-        // Legacy p904 schema path (backward compat)
-        crate::shared::indicators::schema_executor::compute_p904(
-            schema_config,
-            ctx,
-            IndicatorId::new(id),
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("Schema compute error: {}", e))
-    } else {
-        // Legacy registry path
-        use crate::shared::indicators::registry::IndicatorRegistry;
-        let schema_id = &indicator.data_spec.schema_id;
-        let ind_id = IndicatorId::new(schema_id);
-        let registry = IndicatorRegistry::new();
-        let results = registry.compute(&[ind_id.clone()], ctx).await;
-        results
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No result from registry for schema_id={}", schema_id))
-    }
+    Err(anyhow::anyhow!(
+        "BI indicator {} has no supported compute source. Expected view_id.",
+        id
+    ))
 }
 
 /// Выполнить drilldown для индикатора.
-///
-/// Schema_id берётся из `data_spec.schema_id` (или "ds03_p904_sales" если задан schema_query).
 pub async fn get_indicator_drilldown(
     id: &str,
     group_by: String,
@@ -416,41 +545,15 @@ pub async fn get_indicator_drilldown(
                 .insert("metric".to_string(), metric_id.clone());
         }
         return registry
-            .compute_drilldown(view_id, &view_ctx, &group_by)
+            .compute_drilldown(view_id, &view_ctx, &group_by, &[])
             .await
             .map_err(|e| anyhow::anyhow!("DataView '{}' drilldown error: {}", view_id, e));
     }
 
-    // Determine schema_id and metric_column — prefer new data_source_config
-    let (schema_id, metric_column) = if let Some(dsc) = &indicator.data_spec.data_source_config {
-        (dsc.schema_id.clone(), dsc.metric_field_id.clone())
-    } else if indicator.data_spec.schema_query.is_some() {
-        let metric = indicator
-            .data_spec
-            .schema_query
-            .as_ref()
-            .map(|sq| sq.metric.column_name().to_string())
-            .unwrap_or_else(|| "customer_in".to_string());
-        ("ds03_p904_sales".to_string(), metric)
-    } else {
-        (indicator.data_spec.schema_id.clone(), "customer_in".to_string())
-    };
-
-    let req = DrilldownRequest {
-        schema_id,
-        group_by,
-        date_from: ctx.date_from.clone(),
-        date_to: ctx.date_to.clone(),
-        period2_from: ctx.extra.get("period2_from").cloned(),
-        period2_to: ctx.extra.get("period2_to").cloned(),
-        connection_mp_refs: ctx.connection_mp_refs.clone(),
-        extra_filters: std::collections::HashMap::new(),
-        metric_column,
-    };
-
-    crate::shared::indicators::schema_executor::execute_drilldown(&req)
-        .await
-        .map_err(|e| anyhow::anyhow!("Drilldown error: {}", e))
+    Err(anyhow::anyhow!(
+        "BI indicator {} has no supported drilldown source. Expected view_id.",
+        id
+    ))
 }
 
 // ============================================================================

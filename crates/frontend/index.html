@@ -53,6 +53,48 @@
 
     <!-- Particle animation for login page -->
     <script src="assets/particle-animation.js" defer></script>
+
+    <!-- Auth fetch interceptor: automatically injects Authorization header for all /api/ requests.
+         Handles both fetch(url, init) and fetch(Request) call forms. -->
+    <script>
+        (function() {
+            const _origFetch = window.fetch;
+            window.fetch = function(input, init) {
+                const token = localStorage.getItem('auth_access_token');
+                if (!token) {
+                    return _origFetch.call(this, input, init);
+                }
+
+                if (input instanceof Request) {
+                    // fetch(Request) — use Request(request, init) constructor to preserve body
+                    const url = input.url;
+                    if (!url.includes('/api/')) {
+                        return _origFetch.call(this, input, init);
+                    }
+                    const headers = new Headers(input.headers);
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', 'Bearer ' + token);
+                    }
+                    // Passing a Request as first arg preserves body/mode/cache automatically
+                    const newRequest = new Request(input, { headers });
+                    return _origFetch.call(this, newRequest);
+                } else {
+                    // fetch(url, init) — string or URL object
+                    const url = (typeof input === 'string') ? input : input.href;
+                    if (!url.includes('/api/')) {
+                        return _origFetch.call(this, input, init);
+                    }
+                    init = init ? Object.assign({}, init) : {};
+                    const headers = new Headers(init.headers || {});
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', 'Bearer ' + token);
+                    }
+                    init.headers = headers;
+                    return _origFetch.call(this, input, init);
+                }
+            };
+        })();
+    </script>
 </head>
 <body>
     <!-- Load saved theme immediately to prevent flash -->

@@ -164,12 +164,12 @@
       "ui": {
         "label": "Источник данных",
         "label_en": "Data Spec",
-        "hint": "Конфигурация источника данных (schema_id + query_config)",
+        "hint": "Конфигурация источника данных индикатора (view_id + metric_id)",
         "visible_in_list": false,
         "visible_in_form": true,
         "widget": "textarea"
       },
-      "ai_hint": "Сериализованная спецификация источника данных: schema_id и конфигурация DashboardConfig"
+      "ai_hint": "Сериализованная спецификация источника данных: view_id и metric_id"
     },
     {
       "name": "params",
@@ -309,5 +309,15 @@
         "required": true
       }
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a024_bi_indicator",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

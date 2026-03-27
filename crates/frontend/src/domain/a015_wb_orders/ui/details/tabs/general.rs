@@ -122,7 +122,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                             ev.prevent_default();
                                             if let Some(ref id) = mp_ref {
                                                 tabs_store.open_tab(
-                                                    &format!("a007_marketplace_product_detail_{}", id),
+                                                    &format!("a007_marketplace_product_details_{}", id),
                                                     "Товар МП",
                                                 );
                                             }
@@ -157,7 +157,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                             ev.prevent_default();
                                             if let Some(ref id) = nom_ref {
                                                 tabs_store.open_tab(
-                                                    &format!("a004_nomenclature_detail_{}", id),
+                                                    &format!("a004_nomenclature_details_{}", id),
                                                     "Номенклатура",
                                                 );
                                             }
@@ -192,7 +192,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                             ev.prevent_default();
                                             if let Some(ref id) = base_nom_ref {
                                                 tabs_store.open_tab(
-                                                    &format!("a004_nomenclature_detail_{}", id),
+                                                    &format!("a004_nomenclature_details_{}", id),
                                                     "Базовая номенклатура",
                                                 );
                                             }
@@ -315,7 +315,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let conn_id = conn_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_detail_{}", conn_id), "Подключение МП")
+                                        move |_| tabs_store.open_tab(&format!("a006_connection_mp_details_{}", conn_id), "Подключение МП")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -334,7 +334,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let org_id = org_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a002_organization_detail_{}", org_id), "Организация")
+                                        move |_| tabs_store.open_tab(&format!("a002_organization_details_{}", org_id), "Организация")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
@@ -353,7 +353,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     size=ButtonSize::Small
                                     on_click={
                                         let mp_id = mp_id.clone();
-                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_detail_{}", mp_id), "Маркетплейс")
+                                        move |_| tabs_store.open_tab(&format!("a005_marketplace_details_{}", mp_id), "Маркетплейс")
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >

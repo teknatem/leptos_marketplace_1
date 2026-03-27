@@ -100,5 +100,15 @@
       "validation": { "required": false },
       "ai_hint": "Плановый процент комиссии за эквайринг (платёжную систему). Используется в расчёте плановой прибыли."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a005_marketplace",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

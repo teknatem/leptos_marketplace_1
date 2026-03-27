@@ -10,6 +10,23 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::HtmlIFrameElement;
 
+/// RAII guard that removes a window "message" event listener when dropped.
+/// Stored in a `StoredValue::new_local` so it is tied to the component's
+/// reactive scope and cleaned up automatically on unmount.
+struct MessageListenerGuard {
+    window: web_sys::Window,
+    js_fn: Function,
+    _handler: Closure<dyn FnMut(web_sys::MessageEvent)>,
+}
+
+impl Drop for MessageListenerGuard {
+    fn drop(&mut self) {
+        let _ = self
+            .window
+            .remove_event_listener_with_callback("message", &self.js_fn);
+    }
+}
+
 /// Monthly Summary Dashboard component
 #[component]
 pub fn MonthlySummaryDashboard() -> impl IntoView {
@@ -71,13 +88,10 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
         });
     });
 
-    // Handle period change requests from iframe
-    Effect::new(move |_| {
-        let window = match web_sys::window() {
-            Some(window) => window,
-            None => return,
-        };
-
+    // Handle period change requests from iframe.
+    // The guard is stored in the reactive scope and auto-drops when the component unmounts,
+    // removing the listener before the captured signals are freed.
+    let _msg_listener = StoredValue::new_local(web_sys::window().map(|window| {
         let handler = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
             let data = event.data();
             let Ok(msg_type) = Reflect::get(&data, &JsValue::from_str("type")) else {
@@ -101,10 +115,14 @@ pub fn MonthlySummaryDashboard() -> impl IntoView {
             }
         }) as Box<dyn FnMut(_)>);
 
-        let _ =
-            window.add_event_listener_with_callback("message", handler.as_ref().unchecked_ref());
-        handler.forget();
-    });
+        let js_fn = handler.as_ref().unchecked_ref::<Function>().clone();
+        let _ = window.add_event_listener_with_callback("message", &js_fn);
+        MessageListenerGuard {
+            window,
+            js_fn,
+            _handler: handler,
+        }
+    }));
 
     // Render dashboard into iframe when data or iframe changes
     Effect::new(move |_| {

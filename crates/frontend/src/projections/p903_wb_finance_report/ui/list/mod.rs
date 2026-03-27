@@ -63,6 +63,52 @@ async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
     Ok(result)
 }
 
+async fn fetch_operation_kinds(
+    date_from: &str,
+    date_to: &str,
+    connection: &str,
+) -> Result<Vec<String>, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let mut url = format!(
+        "/api/p903/finance-report/operation-kinds?date_from={}&date_to={}",
+        encode_q(date_from),
+        encode_q(date_to),
+    );
+
+    if !connection.trim().is_empty() {
+        url.push_str(&format!(
+            "&connection_mp_ref={}",
+            encode_q(connection.trim())
+        ));
+    }
+
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let data: Vec<String> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(data)
+}
+
 #[component]
 pub fn WbFinanceReportList() -> impl IntoView {
     let state = create_state();
@@ -75,6 +121,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
         .expect("AppGlobalContext context not found");
 
     let (connections, set_connections) = signal(Vec::<(String, String)>::new());
+    let (operation_kinds, set_operation_kinds) = signal(Vec::<String>::new());
 
     // Filter panel expansion state
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
@@ -121,6 +168,35 @@ pub fn WbFinanceReportList() -> impl IntoView {
         leptos::task::spawn_local(async move {
             if let Ok(conns) = fetch_connections().await {
                 set_connections.set(conns);
+            }
+        });
+    });
+
+    Effect::new(move |_| {
+        let from = date_from.get();
+        let to = date_to.get();
+        let connection = connection_filter.get();
+
+        if from.trim().is_empty() || to.trim().is_empty() {
+            set_operation_kinds.set(Vec::new());
+            return;
+        }
+
+        leptos::task::spawn_local(async move {
+            match fetch_operation_kinds(&from, &to, &connection).await {
+                Ok(kinds) => {
+                    let selected = operation_filter.get_untracked();
+                    let selected_exists =
+                        selected.is_empty() || kinds.iter().any(|kind| kind == &selected);
+                    set_operation_kinds.set(kinds);
+                    if !selected_exists {
+                        operation_filter.set(String::new());
+                    }
+                }
+                Err(e) => {
+                    log!("Failed to fetch operation kinds: {}", e);
+                    set_operation_kinds.set(Vec::new());
+                }
             }
         });
     });
@@ -259,7 +335,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
 
     let open_detail = move |rr_dt: String, rrd_id: i64| {
         let tab_key = format!(
-            "p903_wb_finance_report_detail_{}__{rrd_id}",
+            "p903_wb_finance_report_details_{}__{rrd_id}",
             encode_q(&rr_dt)
         );
         let tab_title = format!("WB Finance #{rrd_id}");
@@ -604,13 +680,17 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                                 }
                                             />
                                         </Select>
+                                        <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                            "Фильтр применяет точное совпадение со значением в колонке Operation."
+                                        </div>
                                     </Flex>
                                 </div>
 
                                 <div style="min-width: 180px;">
                                     <Flex vertical=true gap=FlexGap::Small>
                                         <Label>"Операция:"</Label>
-                                        <Select
+                                        <div style="display: none;">
+                                            <Select
                                             value=operation_filter
                                         >
                                             <option value="">"Все"</option>
@@ -622,7 +702,24 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             <option value="Корректировка продаж">"Корректировка продаж"</option>
                                             <option value="Корректировка возвратов">"Корректировка возвратов"</option>
                                             <option value="Прочее">"Прочее"</option>
+                                            </Select>
+                                        </div>
+                                        <Select value=operation_filter>
+                                            <option value="">"Все"</option>
+                                            <For
+                                                each=move || operation_kinds.get()
+                                                key=|kind| kind.clone()
+                                                children=move |kind: String| {
+                                                    let label = kind.clone();
+                                                    view! {
+                                                        <option value={kind}>{label}</option>
+                                                    }
+                                                }
+                                            />
                                         </Select>
+                                        <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                            "Список подгружается из БД по текущему периоду и кабинету. Фильтр применяет точное совпадение."
+                                        </div>
                                     </Flex>
                                 </div>
 
@@ -703,6 +800,9 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                                     >
                                                         {move || get_sort_indicator("rrd_id", &state.get().sort_by, state.get().sort_ascending)}
                                                     </span>
+                                                </TableHeaderCell>
+                                                <TableHeaderCell resizable=true min_width=90.0>
+                                                    "GL Rows"
                                                 </TableHeaderCell>
                                                 <TableHeaderCell resizable=true min_width=80.0>
                                                     "NM ID"
@@ -857,6 +957,9 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                                                         {rrd_id_clone}
                                                                     </a>
                                                                 </TableCellLayout>
+                                                            </TableCell>
+                                                            <TableCell class="text-right">
+                                                                <TableCellLayout>{item.general_ledger_entries_count}</TableCellLayout>
                                                             </TableCell>
                                                             <TableCell><TableCellLayout>{item.nm_id.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.sa_name.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>

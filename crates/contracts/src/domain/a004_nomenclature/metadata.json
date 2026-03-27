@@ -183,5 +183,15 @@
       "validation": { "required": false },
       "ai_hint": "Признак того, что товар является комплектом (сборкой из нескольких позиций)."
     }
-  ]
+  ],
+
+  "access": {
+    "scope_id": "a004_nomenclature",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
 }

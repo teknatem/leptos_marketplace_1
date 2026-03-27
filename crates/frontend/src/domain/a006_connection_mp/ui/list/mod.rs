@@ -138,12 +138,12 @@ pub fn ConnectionMPList() -> impl IntoView {
     });
 
     let handle_create_new = move || {
-        tabs_store.open_tab("a006_connection_mp_detail_new", "Новое подключение");
+        tabs_store.open_tab("a006_connection_mp_details", "Новое подключение");
     };
 
     let open_detail = move |id: String, description: String| {
         tabs_store.open_tab(
-            &format!("a006_connection_mp_detail_{}", id),
+            &format!("a006_connection_mp_details_{}", id),
             &format!("Подключение: {}", description),
         );
     };

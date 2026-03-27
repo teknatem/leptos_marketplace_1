@@ -2665,6 +2665,151 @@ impl WildberriesApiClient {
 
         Ok(all_nm_ids)
     }
+
+    /// GET /adv/v1/promotion/count — получить все advertId рекламных кампаний (статусы 7, 9, 11)
+    pub async fn fetch_advert_campaign_ids(&self, connection: &ConnectionMP) -> Result<Vec<i64>> {
+        let url = "https://advert-api.wildberries.ru/adv/v1/promotion/count";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Advert API");
+        }
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
+
+        let response = match self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("WB Advert campaign list connection error: {}", e);
+                anyhow::bail!("Connection error for advert campaign list: {}", e);
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::error!("WB Advert campaign list failed: {} - {}", status, body);
+            anyhow::bail!(
+                "WB Advert campaign list failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        let body_preview: String = body.chars().take(1000).collect();
+        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
+
+        let parsed: WbAdvertCampaignListResponse = match serde_json::from_str(&body) {
+            Ok(p) => p,
+            Err(e) => {
+                let snippet: String = body.chars().take(400).collect();
+                tracing::error!(
+                    "WB Advert campaign list parse error: {} | body: {}",
+                    e,
+                    snippet
+                );
+                anyhow::bail!("Failed to parse WB advert campaign list: {}", e);
+            }
+        };
+
+        let ids: Vec<i64> = parsed
+            .adverts
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|g| g.advert_list.into_iter().map(|e| e.advert_id))
+            .collect();
+
+        tracing::info!("WB Advert: found {} campaign IDs", ids.len());
+        self.log_to_file(&format!("✓ Found {} advertIds", ids.len()));
+
+        Ok(ids)
+    }
+
+    /// GET /adv/v3/fullstats — статистика рекламных кампаний (макс 50 ID за запрос)
+    pub async fn fetch_advert_fullstats(
+        &self,
+        connection: &ConnectionMP,
+        ids: &[i64],
+        begin_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<WbAdvertFullStat>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids_str = ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let url = format!(
+            "https://advert-api.wildberries.ru/adv/v3/fullstats?ids={}&beginDate={}&endDate={}",
+            ids_str, begin_date, end_date
+        );
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nGET {}\nAuthorization: ****",
+            url
+        ));
+
+        let response = match self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("WB Advert fullstats connection error: {}", e);
+                anyhow::bail!("Connection error for advert fullstats: {}", e);
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", body));
+            tracing::warn!("WB Advert fullstats failed: {} - {}", status, body);
+            return Ok(vec![]);
+        }
+
+        let body = response.text().await?;
+        let body_preview: String = body.chars().take(2000).collect();
+        self.log_to_file(&format!("=== FULLSTATS RESPONSE ===\n{}\n", body_preview));
+
+        let parsed: Vec<WbAdvertFullStat> = match serde_json::from_str(&body) {
+            Ok(p) => p,
+            Err(e) => {
+                let snippet: String = body.chars().take(400).collect();
+                tracing::error!("WB Advert fullstats parse error: {} | body: {}", e, snippet);
+                return Ok(vec![]);
+            }
+        };
+
+        tracing::info!(
+            "WB Advert fullstats: {} campaigns for ids=[{}]",
+            parsed.len(),
+            ids_str
+        );
+
+        Ok(parsed)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -3442,4 +3587,160 @@ pub struct WbPromotionNmItem {
     pub discount: Option<f64>,
     #[serde(rename = "planDiscount", default)]
     pub plan_discount: Option<f64>,
+}
+
+// ============================================================================
+// WB Advertising Campaigns API structures (/adv/v3/fullstats)
+// ============================================================================
+
+/// Ответ GET /adv/v1/promotion/count — список рекламных кампаний по типу/статусу
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaignListResponse {
+    #[serde(default)]
+    pub adverts: Option<Vec<WbAdvertCampaignGroup>>,
+    #[serde(default)]
+    pub all: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaignGroup {
+    #[serde(rename = "type", default)]
+    pub campaign_type: Option<i32>,
+    #[serde(default)]
+    pub status: Option<i32>,
+    #[serde(default)]
+    pub count: Option<i32>,
+    #[serde(rename = "advert_list", default)]
+    pub advert_list: Vec<WbAdvertCampaignEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaignEntry {
+    #[serde(rename = "advertId")]
+    pub advert_id: i64,
+    #[serde(rename = "changeTime", default)]
+    pub change_time: Option<String>,
+}
+
+/// Статистика на уровне одного товара (nmId) внутри дня и типа приложения
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertFullStatNm {
+    #[serde(rename = "nmId")]
+    pub nm_id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub views: i64,
+    #[serde(default)]
+    pub clicks: i64,
+    #[serde(default)]
+    pub ctr: f64,
+    #[serde(default)]
+    pub cpc: f64,
+    #[serde(default)]
+    pub atbs: i64,
+    #[serde(default)]
+    pub orders: i64,
+    #[serde(default)]
+    pub shks: i64,
+    #[serde(default)]
+    pub sum: f64,
+    #[serde(rename = "sum_price", default)]
+    pub sum_price: f64,
+    #[serde(default)]
+    pub cr: f64,
+    #[serde(default)]
+    pub canceled: i64,
+}
+
+/// Статистика по типу приложения (appType: 1=iOS, 32=Android, 64=Web)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertFullStatApp {
+    #[serde(rename = "appType")]
+    pub app_type: i32,
+    #[serde(default)]
+    pub nms: Vec<WbAdvertFullStatNm>,
+    #[serde(default)]
+    pub views: i64,
+    #[serde(default)]
+    pub clicks: i64,
+    #[serde(default)]
+    pub ctr: f64,
+    #[serde(default)]
+    pub cpc: f64,
+    #[serde(default)]
+    pub atbs: i64,
+    #[serde(default)]
+    pub orders: i64,
+    #[serde(default)]
+    pub shks: i64,
+    #[serde(default)]
+    pub sum: f64,
+    #[serde(rename = "sum_price", default)]
+    pub sum_price: f64,
+    #[serde(default)]
+    pub cr: f64,
+    #[serde(default)]
+    pub canceled: i64,
+}
+
+/// Статистика за один день по кампании
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertFullStatDay {
+    pub date: String,
+    #[serde(default)]
+    pub apps: Vec<WbAdvertFullStatApp>,
+    #[serde(default)]
+    pub views: i64,
+    #[serde(default)]
+    pub clicks: i64,
+    #[serde(default)]
+    pub ctr: f64,
+    #[serde(default)]
+    pub cpc: f64,
+    #[serde(default)]
+    pub atbs: i64,
+    #[serde(default)]
+    pub orders: i64,
+    #[serde(default)]
+    pub shks: i64,
+    #[serde(default)]
+    pub sum: f64,
+    #[serde(rename = "sum_price", default)]
+    pub sum_price: f64,
+    #[serde(default)]
+    pub cr: f64,
+    #[serde(default)]
+    pub canceled: i64,
+}
+
+/// Сводная статистика по одной рекламной кампании за период
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertFullStat {
+    #[serde(rename = "advertId")]
+    pub advert_id: i64,
+    #[serde(default)]
+    pub days: Vec<WbAdvertFullStatDay>,
+    #[serde(default)]
+    pub views: i64,
+    #[serde(default)]
+    pub clicks: i64,
+    #[serde(default)]
+    pub ctr: f64,
+    #[serde(default)]
+    pub cpc: f64,
+    #[serde(default)]
+    pub atbs: i64,
+    #[serde(default)]
+    pub orders: i64,
+    #[serde(default)]
+    pub shks: i64,
+    #[serde(default)]
+    pub sum: f64,
+    #[serde(rename = "sum_price", default)]
+    pub sum_price: f64,
+    #[serde(default)]
+    pub cr: f64,
+    #[serde(default)]
+    pub canceled: i64,
 }

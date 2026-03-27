@@ -73,13 +73,23 @@ _Последнее обновление: 2026-02-25_
   - UI список и детали
 - ✅ **a018_llm_chat** - LLM-чаты
   - Чат с LLM через встроенный интерфейс
-  - Tool calls: list_entities, get_entity_schema, get_join_hint, search_knowledge, get_knowledge
+  - Tool calls: list_entities, get_entity_schema, get_join_hint, search_knowledge, get_knowledge, list_data_views
   - История сообщений, артефакты
 - ✅ **a019_llm_artifact** - LLM-артефакты
   - Хранение артефактов чата (SQL-запросы и пр.)
 - ✅ **a020_wb_promotion** - WB-продвижение
   - Акции Wildberries
   - Интеграция с WB Promotion API
+- ✅ **a024_bi_indicator** - BI Индикаторы
+  - CRUD операции, пагинация
+  - DataSpec с приоритетной цепочкой: view_id → data_source_config → schema_query → schema_id
+  - ViewSpec: custom_html шаблоны с {{value}}/{{delta}}/{{title}}, форматы (Money/Integer/Percent), пороги
+  - Вычисление через DataView (`compute_indicator`) и drilldown (`get_indicator_drilldown`)
+  - 5 тестовых индикаторов (IND-REVENUE-WB, IND-MARGIN, IND-ORDERS и др.)
+  - Метаданные в LLM MetadataRegistry (category: bi/dashboard)
+- ✅ **a025_bi_dashboard** - BI Дашборды
+  - CRUD операции
+  - Метаданные в LLM MetadataRegistry (category: bi/dashboard)
 - ✅ **sys_scheduled_task** - Регламентные задания
   - Хранение расписаний (Cron) и параметров (JSON)
   - Статус последнего запуска и ссылка на сессию

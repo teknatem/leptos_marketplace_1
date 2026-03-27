@@ -1,17 +1,109 @@
 use super::{
     processors::{commission, finance_report, goods_prices, order, product, promotion, sales},
     progress_tracker::ProgressTracker,
-    wildberries_api_client::WildberriesApiClient,
+    wildberries_api_client::{
+        WbAdvertFullStat, WbAdvertFullStatApp, WbAdvertFullStatDay, WbAdvertFullStatNm,
+        WildberriesApiClient,
+    },
 };
 use anyhow::Result;
+use contracts::domain::a026_wb_advert_daily::aggregate::{
+    WbAdvertDaily, WbAdvertDailyHeader, WbAdvertDailyLine, WbAdvertDailyMetrics,
+    WbAdvertDailySourceMeta,
+};
 use contracts::domain::common::AggregateId;
 use contracts::usecases::u504_import_from_wildberries::{
     progress::ImportStatus,
     request::ImportRequest,
     response::{ImportResponse, ImportStartStatus},
 };
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Форматирует f64 с запятой как десятичным разделителем (для CSV в Excel)
+fn fmt_dec(v: f64) -> String {
+    format!("{:.4}", v).replace('.', ",")
+}
+
+#[derive(Default)]
+struct AdvertLineAccumulator {
+    nm_name: String,
+    metrics: WbAdvertDailyMetrics,
+    advert_ids: BTreeSet<i64>,
+    app_types: BTreeSet<i32>,
+}
+
+#[derive(Default)]
+struct AdvertDayAccumulator {
+    totals: WbAdvertDailyMetrics,
+    lines: BTreeMap<i64, AdvertLineAccumulator>,
+}
+
+fn normalize_day_date(value: &str) -> String {
+    if value.len() >= 10 {
+        value[..10].to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn append_metrics(target: &mut WbAdvertDailyMetrics, source: &WbAdvertDailyMetrics) {
+    target.views += source.views;
+    target.clicks += source.clicks;
+    target.atbs += source.atbs;
+    target.orders += source.orders;
+    target.shks += source.shks;
+    target.sum += source.sum;
+    target.sum_price += source.sum_price;
+    target.canceled += source.canceled;
+}
+
+fn metrics_from_day(day: &WbAdvertFullStatDay) -> WbAdvertDailyMetrics {
+    WbAdvertDailyMetrics {
+        views: day.views,
+        clicks: day.clicks,
+        atbs: day.atbs,
+        orders: day.orders,
+        shks: day.shks,
+        sum: day.sum,
+        sum_price: day.sum_price,
+        canceled: day.canceled,
+        ..Default::default()
+    }
+}
+
+fn metrics_from_nm(nm: &WbAdvertFullStatNm) -> WbAdvertDailyMetrics {
+    WbAdvertDailyMetrics {
+        views: nm.views,
+        clicks: nm.clicks,
+        atbs: nm.atbs,
+        orders: nm.orders,
+        shks: nm.shks,
+        sum: nm.sum,
+        sum_price: nm.sum_price,
+        canceled: nm.canceled,
+        ..Default::default()
+    }
+}
+
+fn finalize_metrics(metrics: &mut WbAdvertDailyMetrics) {
+    metrics.ctr = if metrics.views > 0 {
+        (metrics.clicks as f64 / metrics.views as f64) * 100.0
+    } else {
+        0.0
+    };
+    metrics.cpc = if metrics.clicks > 0 {
+        metrics.sum / metrics.clicks as f64
+    } else {
+        0.0
+    };
+    metrics.cr = if metrics.clicks > 0 {
+        (metrics.orders as f64 / metrics.clicks as f64) * 100.0
+    } else {
+        0.0
+    };
+}
 
 /// Executor для UseCase импорта из Wildberries
 pub struct ImportExecutor {
@@ -52,6 +144,7 @@ impl ImportExecutor {
                 "p905_wb_commission_history" => "История комиссий WB",
                 "p908_wb_goods_prices" => "Цены товаров WB",
                 "a020_wb_promotion" => "Акции WB (Календарь)",
+                "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -151,6 +244,15 @@ impl ImportExecutor {
                 }
                 "a020_wb_promotion" => {
                     self.import_wb_promotions(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "wb_advert_stats_csv" => {
+                    self.import_wb_advert_stats_csv(
                         session_id,
                         connection,
                         request.date_from,
@@ -537,8 +639,10 @@ impl ImportExecutor {
         use crate::domain::a002_organization;
 
         let aggregate_index = "p903_wb_finance_report";
-        let mut total_processed = 0;
-        let mut total_inserted = 0;
+        let mut processed_days = 0;
+        let mut changed_days = 0;
+        let mut total_source_rows = 0;
+        let mut total_gl_rows = 0;
 
         tracing::info!(
             "Importing WB finance report for session: {} from date: {} to date: {}",
@@ -586,77 +690,114 @@ impl ImportExecutor {
             session_id,
             aggregate_index,
             Some(format!(
-                "Загрузка за период {} - {} (API: 1 запрос/мин)",
+                "Р”РЅРµРІРЅРѕР№ reconciliation {} - {} (API: 1 Р·Р°РїСЂРѕСЃ/РјРёРЅ)",
                 date_from.format("%Y-%m-%d"),
                 date_to.format("%Y-%m-%d")
             )),
         );
 
-        // Загружаем финансовые отчеты за весь период с пагинацией
-        // API сам использует пагинацию через rrdid и ждет между запросами
-        let report_rows = self
-            .api_client
-            .fetch_finance_report_by_period(connection, date_from, date_to)
-            .await?;
+        let total_days = (date_to - date_from).num_days() as i32 + 1;
+        let mut current_date = date_from;
+        while current_date <= date_to {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Р”Р°С‚Р° {}: Р·Р°РіСЂСѓР·РєР° Рё reconciliation",
+                    current_date.format("%Y-%m-%d")
+                )),
+            );
 
-        let total_rows = report_rows.len() as i32;
-        tracing::info!(
-            "Received {} finance report rows for period {} - {}",
-            total_rows,
-            date_from,
-            date_to
-        );
+            let report_rows = self
+                .api_client
+                .fetch_finance_report_by_period(connection, current_date, current_date)
+                .await?;
 
-        // Вставляем новые записи
-        for row in report_rows {
-            match finance_report::process_finance_report_row(connection, &organization_id, &row)
-                .await
+            let mut entries = Vec::with_capacity(report_rows.len());
+            for row in report_rows {
+                match finance_report::map_finance_report_row(connection, &organization_id, &row) {
+                    Ok(entry) => entries.push(entry),
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to map finance report row for {}: {}",
+                            current_date,
+                            e
+                        );
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!(
+                                "Failed to map finance report row for {}",
+                                current_date.format("%Y-%m-%d")
+                            ),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+            }
+
+            match crate::projections::p903_wb_finance_report::service::reconcile_day(
+                &connection.to_string_id(),
+                current_date,
+                &entries,
+            )
+            .await
             {
-                Ok(_) => {
-                    total_inserted += 1;
+                Ok(result) => {
+                    if result.changed {
+                        changed_days += 1;
+                    }
+                    total_source_rows += result.source_rows as i32;
+                    total_gl_rows += result.general_ledger_rows as i32;
                 }
                 Err(e) => {
-                    tracing::error!("Failed to process finance report row: {}", e);
+                    tracing::error!(
+                        "Failed to reconcile finance report day {}: {}",
+                        current_date,
+                        e
+                    );
                     self.progress_tracker.add_error(
                         session_id,
                         Some(aggregate_index.to_string()),
-                        "Failed to process finance report row".to_string(),
+                        format!(
+                            "Failed to reconcile finance report day {}",
+                            current_date.format("%Y-%m-%d")
+                        ),
                         Some(e.to_string()),
                     );
                 }
             }
 
-            total_processed += 1;
+            processed_days += 1;
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                processed_days,
+                Some(total_days),
+                total_source_rows,
+                total_gl_rows,
+            );
 
-            // Обновляем прогресс каждые 100 записей
-            if total_processed % 100 == 0 {
-                self.progress_tracker.update_aggregate(
-                    session_id,
-                    aggregate_index,
-                    total_processed,
-                    Some(total_rows),
-                    total_inserted,
-                    0,
-                );
-            }
+            current_date += chrono::Duration::days(1);
         }
 
-        // Финальное обновление с точным числом записей
         self.progress_tracker.update_aggregate(
             session_id,
             aggregate_index,
-            total_processed,
-            Some(total_rows),
-            total_inserted,
-            0,
+            processed_days,
+            Some(total_days),
+            total_source_rows,
+            total_gl_rows,
         );
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
-            "WB finance report import completed: processed={}, inserted={}",
-            total_processed,
-            total_inserted
+            "WB finance report import completed: days={}, changed_days={}, source_rows={}, gl_rows={}",
+            processed_days,
+            changed_days,
+            total_source_rows,
+            total_gl_rows
         );
 
         Ok(())
@@ -957,6 +1098,442 @@ impl ImportExecutor {
         );
 
         Ok(())
+    }
+
+    /// Получить статистику рекламных кампаний WB за период и сохранить в CSV
+    async fn import_wb_advert_stats_csv(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "wb_advert_stats_csv";
+        let begin_date = date_from.format("%Y-%m-%d").to_string();
+        let end_date = date_to.format("%Y-%m-%d").to_string();
+
+        tracing::info!(
+            "WB Advert stats CSV: session={}, period={} to {}",
+            session_id,
+            begin_date,
+            end_date
+        );
+
+        // Шаг 1: получить все advertId
+        let advert_ids = match self.api_client.fetch_advert_campaign_ids(connection).await {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::error!("Failed to fetch WB advert campaign IDs: {}", e);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Failed to fetch advert campaign IDs: {}", e),
+                    None,
+                );
+                self.progress_tracker
+                    .complete_aggregate(session_id, aggregate_index);
+                return Ok(());
+            }
+        };
+
+        if advert_ids.is_empty() {
+            tracing::info!("WB Advert: no campaigns found, clearing existing documents");
+            crate::domain::a026_wb_advert_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &[],
+            )
+            .await?;
+            self.progress_tracker
+                .complete_aggregate(session_id, aggregate_index);
+            return Ok(());
+        }
+
+        tracing::info!("WB Advert: found {} campaigns total", advert_ids.len());
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            0,
+            Some(advert_ids.len() as i32),
+            0,
+            0,
+        );
+
+        // Шаг 2: подготовить CSV файл
+        let csv_dir = std::path::Path::new("csv_export");
+        if let Err(e) = std::fs::create_dir_all(csv_dir) {
+            tracing::error!("Failed to create csv_export directory: {}", e);
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                format!("Cannot create csv_export directory: {}", e),
+                None,
+            );
+            self.progress_tracker
+                .complete_aggregate(session_id, aggregate_index);
+            return Ok(());
+        }
+
+        let csv_path = csv_dir.join(format!("wb_advert_stats_{}_{}.csv", begin_date, end_date));
+
+        // UTF-8 BOM для корректного отображения кириллицы в Excel
+        let mut csv_content = String::from(
+            "\u{FEFF}advert_id;date;app_type;nm_id;nm_name;views;clicks;ctr;cpc;atbs;orders;shks;sum;sum_price;cr;canceled\n",
+        );
+
+        // Шаг 3: запрашивать fullstats чанками по 50 с паузой (rate limit: 3/мин)
+        let chunks: Vec<&[i64]> = advert_ids.chunks(50).collect();
+        let total_chunks = chunks.len();
+        let mut total_rows = 0i32;
+        let mut processed_campaigns = 0i32;
+        let mut had_fetch_errors = false;
+        let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
+
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Чанк {}/{} (advertIds: {}..)",
+                    chunk_idx + 1,
+                    total_chunks,
+                    chunk[0]
+                )),
+            );
+
+            match self
+                .api_client
+                .fetch_advert_fullstats(connection, chunk, &begin_date, &end_date)
+                .await
+            {
+                Ok(stats) => {
+                    all_stats.extend(stats.iter().cloned());
+                    for stat in &stats {
+                        for day in &stat.days {
+                            // Убираем только время из ISO-даты (оставляем YYYY-MM-DD)
+                            let date_str = normalize_day_date(&day.date);
+
+                            if day.apps.is_empty() {
+                                // Нет детализации по app — пишем строку с нулевым app_type
+                                let line = format!(
+                                    "{};{};0;0;;{};{};{};{};{};{};{};{};{};{};{}\n",
+                                    stat.advert_id,
+                                    date_str,
+                                    day.views,
+                                    day.clicks,
+                                    fmt_dec(day.ctr),
+                                    fmt_dec(day.cpc),
+                                    day.atbs,
+                                    day.orders,
+                                    day.shks,
+                                    fmt_dec(day.sum),
+                                    fmt_dec(day.sum_price),
+                                    fmt_dec(day.cr),
+                                    day.canceled,
+                                );
+                                csv_content.push_str(&line);
+                                total_rows += 1;
+                            } else {
+                                for app in &day.apps {
+                                    if app.nms.is_empty() {
+                                        let line = format!(
+                                            "{};{};{};0;;{};{};{};{};{};{};{};{};{};{};{}\n",
+                                            stat.advert_id,
+                                            date_str,
+                                            app.app_type,
+                                            app.views,
+                                            app.clicks,
+                                            fmt_dec(app.ctr),
+                                            fmt_dec(app.cpc),
+                                            app.atbs,
+                                            app.orders,
+                                            app.shks,
+                                            fmt_dec(app.sum),
+                                            fmt_dec(app.sum_price),
+                                            fmt_dec(app.cr),
+                                            app.canceled,
+                                        );
+                                        csv_content.push_str(&line);
+                                        total_rows += 1;
+                                    } else {
+                                        for nm in &app.nms {
+                                            let nm_name =
+                                                nm.name.as_deref().unwrap_or("").replace(';', " ");
+                                            let line = format!(
+                                                "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\n",
+                                                stat.advert_id,
+                                                date_str,
+                                                app.app_type,
+                                                nm.nm_id,
+                                                nm_name,
+                                                nm.views,
+                                                nm.clicks,
+                                                fmt_dec(nm.ctr),
+                                                fmt_dec(nm.cpc),
+                                                nm.atbs,
+                                                nm.orders,
+                                                nm.shks,
+                                                fmt_dec(nm.sum),
+                                                fmt_dec(nm.sum_price),
+                                                fmt_dec(nm.cr),
+                                                nm.canceled,
+                                            );
+                                            csv_content.push_str(&line);
+                                            total_rows += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        processed_campaigns += 1;
+                    }
+                }
+                Err(e) => {
+                    had_fetch_errors = true;
+                    tracing::warn!(
+                        "Failed to fetch fullstats for chunk {}: {}",
+                        chunk_idx + 1,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Chunk {} failed: {}", chunk_idx + 1, e),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                processed_campaigns,
+                Some(advert_ids.len() as i32),
+                total_rows,
+                0,
+            );
+
+            // Соблюдаем rate limit: 3 запроса в минуту → 21 сек между запросами
+            if chunk_idx + 1 < total_chunks {
+                tokio::time::sleep(tokio::time::Duration::from_secs(21)).await;
+            }
+        }
+
+        // Шаг 4: записать CSV на диск
+        match std::fs::write(&csv_path, csv_content.as_bytes()) {
+            Ok(_) => {
+                let path_str = csv_path.display().to_string();
+                tracing::info!(
+                    "WB Advert stats CSV saved: {} ({} rows)",
+                    path_str,
+                    total_rows
+                );
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("Сохранено: {} ({} строк)", path_str, total_rows)),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to write CSV file {:?}: {}", csv_path, e);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Failed to write CSV: {}", e),
+                    None,
+                );
+            }
+        }
+
+        if had_fetch_errors {
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                "Часть рекламной статистики не загрузилась, документы за период не обновлялись"
+                    .to_string(),
+                None,
+            );
+        } else {
+            let documents = self
+                .build_wb_advert_documents(connection, &all_stats)
+                .await?;
+            let documents_count = crate::domain::a026_wb_advert_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &documents,
+            )
+            .await?;
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                processed_campaigns,
+                Some(advert_ids.len() as i32),
+                documents_count as i32,
+                0,
+            );
+
+            tracing::info!(
+                "WB Advert documents synced: connection={}, period={}..{}, documents={}",
+                connection.to_string_id(),
+                begin_date,
+                end_date,
+                documents_count
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Advert stats CSV completed: {} campaigns processed, {} CSV rows",
+            processed_campaigns,
+            total_rows
+        );
+
+        Ok(())
+    }
+
+    async fn build_wb_advert_documents(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        stats: &[WbAdvertFullStat],
+    ) -> Result<Vec<WbAdvertDaily>> {
+        let mut by_day: BTreeMap<String, AdvertDayAccumulator> = BTreeMap::new();
+
+        for stat in stats {
+            for day in &stat.days {
+                let date_key = normalize_day_date(&day.date);
+                let day_acc = by_day.entry(date_key).or_default();
+                append_metrics(&mut day_acc.totals, &metrics_from_day(day));
+
+                for app in &day.apps {
+                    self.accumulate_day_app(day_acc, stat.advert_id, app);
+                }
+            }
+        }
+
+        let mut nomenclature_cache: HashMap<i64, Option<String>> = HashMap::new();
+        let mut documents = Vec::with_capacity(by_day.len());
+
+        for (document_date, mut day_acc) in by_day {
+            let mut lines = Vec::with_capacity(day_acc.lines.len());
+            let mut attributed_totals = WbAdvertDailyMetrics::default();
+
+            for (nm_id, line_acc) in &mut day_acc.lines {
+                let nomenclature_ref = self
+                    .resolve_wb_nomenclature_ref(connection, *nm_id, &mut nomenclature_cache)
+                    .await?;
+
+                let mut metrics = line_acc.metrics.clone();
+                finalize_metrics(&mut metrics);
+                append_metrics(&mut attributed_totals, &metrics);
+
+                lines.push(WbAdvertDailyLine {
+                    nm_id: *nm_id,
+                    nm_name: line_acc.nm_name.clone(),
+                    nomenclature_ref,
+                    advert_ids: line_acc.advert_ids.iter().copied().collect(),
+                    app_types: line_acc.app_types.iter().copied().collect(),
+                    metrics,
+                });
+            }
+
+            lines.sort_by(|a, b| {
+                a.nm_name
+                    .to_lowercase()
+                    .cmp(&b.nm_name.to_lowercase())
+                    .then_with(|| a.nm_id.cmp(&b.nm_id))
+            });
+
+            let mut totals = day_acc.totals.clone();
+            finalize_metrics(&mut totals);
+
+            let mut unattributed_totals =
+                crate::domain::a026_wb_advert_daily::repository::subtract_metrics(
+                    &day_acc.totals,
+                    &attributed_totals,
+                );
+            finalize_metrics(&mut unattributed_totals);
+
+            let header = WbAdvertDailyHeader {
+                document_no: format!("WB-ADV-{}-{}", document_date, connection.to_string_id()),
+                document_date: document_date.clone(),
+                connection_id: connection.to_string_id(),
+                organization_id: connection.organization_ref.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+            };
+
+            let source_meta = WbAdvertDailySourceMeta {
+                source: "wb_advert_stats_csv".to_string(),
+                fetched_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            let mut document = WbAdvertDaily::new_for_insert(
+                header,
+                totals,
+                unattributed_totals,
+                lines,
+                source_meta,
+            );
+            document.before_write();
+            document.validate().map_err(|e| anyhow::anyhow!(e))?;
+            documents.push(document);
+        }
+
+        Ok(documents)
+    }
+
+    fn accumulate_day_app(
+        &self,
+        day_acc: &mut AdvertDayAccumulator,
+        advert_id: i64,
+        app: &WbAdvertFullStatApp,
+    ) {
+        for nm in &app.nms {
+            let line = day_acc.lines.entry(nm.nm_id).or_default();
+            if line.nm_name.is_empty() {
+                line.nm_name = nm.name.clone().unwrap_or_default();
+            }
+            append_metrics(&mut line.metrics, &metrics_from_nm(nm));
+            line.advert_ids.insert(advert_id);
+            line.app_types.insert(app.app_type);
+        }
+    }
+
+    async fn resolve_wb_nomenclature_ref(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        nm_id: i64,
+        cache: &mut HashMap<i64, Option<String>>,
+    ) -> Result<Option<String>> {
+        if let Some(cached) = cache.get(&nm_id) {
+            return Ok(cached.clone());
+        }
+
+        let connection_id = connection.to_string_id();
+        let sku = nm_id.to_string();
+        let mut resolved =
+            crate::domain::a007_marketplace_product::repository::get_by_connection_and_sku(
+                &connection_id,
+                &sku,
+            )
+            .await?
+            .and_then(|item| item.nomenclature_ref);
+
+        if resolved.is_none() {
+            if let Some(price_row) =
+                crate::projections::p908_wb_goods_prices::repository::get_by_nm_id(nm_id).await?
+            {
+                if price_row.connection_mp_ref == connection_id {
+                    resolved = price_row.ext_nomenklature_ref;
+                }
+            }
+        }
+
+        cache.insert(nm_id, resolved.clone());
+        Ok(resolved)
     }
 }
 

@@ -252,6 +252,14 @@ static ERP_IMPORT_EXECUTOR: Lazy<Arc<usecases::u507_import_from_erp::ImportExecu
         Arc::new(usecases::u507_import_from_erp::ImportExecutor::new(tracker))
     });
 
+static REPOST_EXECUTOR: Lazy<Arc<usecases::u508_repost_documents::RepostExecutor>> =
+    Lazy::new(|| {
+        let tracker = Arc::new(usecases::u508_repost_documents::ProgressTracker::new());
+        Arc::new(usecases::u508_repost_documents::RepostExecutor::new(
+            tracker,
+        ))
+    });
+
 /// POST /api/u507/import/start
 pub async fn u507_start_import(
     Json(request): Json<contracts::usecases::u507_import_from_erp::ImportRequest>,
@@ -274,6 +282,63 @@ pub async fn u507_get_progress(
     axum::http::StatusCode,
 > {
     match ERP_IMPORT_EXECUTOR.get_progress(&session_id) {
+        Some(progress) => Ok(Json(progress)),
+        None => Err(axum::http::StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /api/u508/repost/projections
+pub async fn u508_get_projections() -> Result<
+    Json<Vec<contracts::usecases::u508_repost_documents::ProjectionOption>>,
+    axum::http::StatusCode,
+> {
+    Ok(Json(REPOST_EXECUTOR.list_available_projections()))
+}
+
+/// GET /api/u508/repost/aggregates
+pub async fn u508_get_aggregates() -> Result<
+    Json<Vec<contracts::usecases::u508_repost_documents::AggregateOption>>,
+    axum::http::StatusCode,
+> {
+    Ok(Json(REPOST_EXECUTOR.list_available_aggregates()))
+}
+
+/// POST /api/u508/repost/start
+pub async fn u508_start_repost(
+    Json(request): Json<contracts::usecases::u508_repost_documents::RepostRequest>,
+) -> Result<Json<contracts::usecases::u508_repost_documents::RepostResponse>, axum::http::StatusCode>
+{
+    match REPOST_EXECUTOR.start_repost(request).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            tracing::error!("Failed to start projection repost: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// POST /api/u508/repost/aggregate/start
+pub async fn u508_start_aggregate_repost(
+    Json(request): Json<contracts::usecases::u508_repost_documents::AggregateRepostRequest>,
+) -> Result<Json<contracts::usecases::u508_repost_documents::RepostResponse>, axum::http::StatusCode>
+{
+    match REPOST_EXECUTOR.start_aggregate_repost(request).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            tracing::error!("Failed to start aggregate repost: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /api/u508/repost/:session_id/progress
+pub async fn u508_get_progress(
+    Path(session_id): Path<String>,
+) -> Result<
+    Json<contracts::usecases::u508_repost_documents::progress::RepostProgress>,
+    axum::http::StatusCode,
+> {
+    match REPOST_EXECUTOR.get_progress(&session_id) {
         Some(progress) => Ok(Json(progress)),
         None => Err(axum::http::StatusCode::NOT_FOUND),
     }

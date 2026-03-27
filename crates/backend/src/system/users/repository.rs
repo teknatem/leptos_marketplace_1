@@ -10,8 +10,8 @@ pub async fn create_with_password(user: &User, password_hash: &str) -> Result<()
 
     conn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
-        "INSERT INTO sys_users (id, username, email, password_hash, full_name, is_active, is_admin, created_at, updated_at, last_login_at, created_by) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sys_users (id, username, email, password_hash, full_name, is_active, is_admin, primary_role_code, created_at, updated_at, last_login_at, created_by) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             user.id.clone().into(),
             user.username.clone().into(),
@@ -20,6 +20,7 @@ pub async fn create_with_password(user: &User, password_hash: &str) -> Result<()
             user.full_name.clone().into(),
             (if user.is_active { 1 } else { 0 }).into(),
             (if user.is_admin { 1 } else { 0 }).into(),
+            user.primary_role_code.clone().into(),
             user.created_at.clone().into(),
             user.updated_at.clone().into(),
             user.last_login_at.clone().into(),
@@ -32,6 +33,24 @@ pub async fn create_with_password(user: &User, password_hash: &str) -> Result<()
     Ok(())
 }
 
+fn row_to_user(row: &sea_orm::QueryResult) -> Result<User> {
+    Ok(User {
+        id: row.try_get("", "id")?,
+        username: row.try_get("", "username")?,
+        email: row.try_get("", "email")?,
+        full_name: row.try_get("", "full_name")?,
+        is_active: row.try_get::<i32>("", "is_active")? != 0,
+        is_admin: row.try_get::<i32>("", "is_admin")? != 0,
+        primary_role_code: row
+            .try_get::<Option<String>>("", "primary_role_code")?
+            .unwrap_or_else(|| "viewer".to_string()),
+        created_at: row.try_get("", "created_at")?,
+        updated_at: row.try_get("", "updated_at")?,
+        last_login_at: row.try_get("", "last_login_at")?,
+        created_by: row.try_get("", "created_by")?,
+    })
+}
+
 /// Get user by ID
 pub async fn get_by_id(id: &str) -> Result<Option<User>> {
     use crate::shared::data::db::get_connection;
@@ -41,28 +60,14 @@ pub async fn get_by_id(id: &str) -> Result<Option<User>> {
     let result = conn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "SELECT id, username, email, full_name, is_active, is_admin, created_at, updated_at, last_login_at, created_by 
+            "SELECT id, username, email, full_name, is_active, is_admin, primary_role_code, created_at, updated_at, last_login_at, created_by 
              FROM sys_users WHERE id = ?",
             [id.into()],
         ))
         .await?;
 
     match result {
-        Some(row) => {
-            let user = User {
-                id: row.try_get("", "id")?,
-                username: row.try_get("", "username")?,
-                email: row.try_get("", "email")?,
-                full_name: row.try_get("", "full_name")?,
-                is_active: row.try_get::<i32>("", "is_active")? != 0,
-                is_admin: row.try_get::<i32>("", "is_admin")? != 0,
-                created_at: row.try_get("", "created_at")?,
-                updated_at: row.try_get("", "updated_at")?,
-                last_login_at: row.try_get("", "last_login_at")?,
-                created_by: row.try_get("", "created_by")?,
-            };
-            Ok(Some(user))
-        }
+        Some(row) => Ok(Some(row_to_user(&row)?)),
         None => Ok(None),
     }
 }
@@ -76,28 +81,14 @@ pub async fn get_by_username(username: &str) -> Result<Option<User>> {
     let result = conn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "SELECT id, username, email, full_name, is_active, is_admin, created_at, updated_at, last_login_at, created_by 
+            "SELECT id, username, email, full_name, is_active, is_admin, primary_role_code, created_at, updated_at, last_login_at, created_by 
              FROM sys_users WHERE username = ?",
             [username.into()],
         ))
         .await?;
 
     match result {
-        Some(row) => {
-            let user = User {
-                id: row.try_get("", "id")?,
-                username: row.try_get("", "username")?,
-                email: row.try_get("", "email")?,
-                full_name: row.try_get("", "full_name")?,
-                is_active: row.try_get::<i32>("", "is_active")? != 0,
-                is_admin: row.try_get::<i32>("", "is_admin")? != 0,
-                created_at: row.try_get("", "created_at")?,
-                updated_at: row.try_get("", "updated_at")?,
-                last_login_at: row.try_get("", "last_login_at")?,
-                created_by: row.try_get("", "created_by")?,
-            };
-            Ok(Some(user))
-        }
+        Some(row) => Ok(Some(row_to_user(&row)?)),
         None => Ok(None),
     }
 }
@@ -134,26 +125,14 @@ pub async fn list_all() -> Result<Vec<User>> {
     let rows = conn
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "SELECT id, username, email, full_name, is_active, is_admin, created_at, updated_at, last_login_at, created_by 
+            "SELECT id, username, email, full_name, is_active, is_admin, primary_role_code, created_at, updated_at, last_login_at, created_by 
              FROM sys_users ORDER BY created_at DESC".to_string(),
         ))
         .await?;
 
     let mut users = Vec::new();
     for row in rows {
-        let user = User {
-            id: row.try_get("", "id")?,
-            username: row.try_get("", "username")?,
-            email: row.try_get("", "email")?,
-            full_name: row.try_get("", "full_name")?,
-            is_active: row.try_get::<i32>("", "is_active")? != 0,
-            is_admin: row.try_get::<i32>("", "is_admin")? != 0,
-            created_at: row.try_get("", "created_at")?,
-            updated_at: row.try_get("", "updated_at")?,
-            last_login_at: row.try_get("", "last_login_at")?,
-            created_by: row.try_get("", "created_by")?,
-        };
-        users.push(user);
+        users.push(row_to_user(&row)?);
     }
 
     Ok(users)
@@ -168,13 +147,14 @@ pub async fn update(user: &User) -> Result<()> {
     conn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE sys_users 
-         SET email = ?, full_name = ?, is_active = ?, is_admin = ?, updated_at = ? 
+         SET email = ?, full_name = ?, is_active = ?, is_admin = ?, primary_role_code = ?, updated_at = ? 
          WHERE id = ?",
         [
             user.email.clone().into(),
             user.full_name.clone().into(),
             (if user.is_active { 1 } else { 0 }).into(),
             (if user.is_admin { 1 } else { 0 }).into(),
+            user.primary_role_code.clone().into(),
             user.updated_at.clone().into(),
             user.id.clone().into(),
         ],

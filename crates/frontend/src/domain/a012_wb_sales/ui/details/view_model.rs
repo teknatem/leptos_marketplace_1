@@ -3,6 +3,7 @@
 //! Contains reactive state, commands, and lazy loading logic.
 
 use super::model::*;
+use contracts::projections::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -29,6 +30,11 @@ pub struct WbSalesDetailsVm {
     pub finance_reports_loaded: RwSignal<bool>,
     pub finance_reports_loading: RwSignal<bool>,
     pub finance_reports_error: RwSignal<Option<String>>,
+
+    pub general_ledger_entries: RwSignal<Vec<GeneralLedgerEntryDto>>,
+    pub general_ledger_entries_loaded: RwSignal<bool>,
+    pub general_ledger_entries_loading: RwSignal<bool>,
+    pub general_ledger_entries_error: RwSignal<Option<String>>,
 
     pub marketplace_product_info: RwSignal<Option<MarketplaceProductInfo>>,
     pub nomenclature_info: RwSignal<Option<NomenclatureInfo>>,
@@ -64,6 +70,11 @@ impl WbSalesDetailsVm {
             finance_reports_loading: RwSignal::new(false),
             finance_reports_error: RwSignal::new(None),
 
+            general_ledger_entries: RwSignal::new(Vec::new()),
+            general_ledger_entries_loaded: RwSignal::new(false),
+            general_ledger_entries_loading: RwSignal::new(false),
+            general_ledger_entries_error: RwSignal::new(None),
+
             marketplace_product_info: RwSignal::new(None),
             nomenclature_info: RwSignal::new(None),
             connection_info: RwSignal::new(None),
@@ -82,6 +93,12 @@ impl WbSalesDetailsVm {
     pub fn is_posted(&self) -> Signal<bool> {
         let sale = self.sale;
         Signal::derive(move || sale.get().map(|s| s.metadata.is_posted).unwrap_or(false))
+    }
+
+    /// Check if document is a customer return
+    pub fn is_customer_return(&self) -> Signal<bool> {
+        let sale = self.sale;
+        Signal::derive(move || sale.get().map(|s| s.is_customer_return).unwrap_or(false))
     }
 
     /// Get document number for display
@@ -120,7 +137,11 @@ impl WbSalesDetailsVm {
                         .as_array()
                         .map(|a| a.len())
                         .unwrap_or(0);
-                    p900_len + p904_len
+                    let p909_len = p["p909_order_line_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p900_len + p904_len + p909_len
                 })
                 .unwrap_or(0)
         })
@@ -130,6 +151,12 @@ impl WbSalesDetailsVm {
     pub fn finance_reports_count(&self) -> Signal<usize> {
         let reports = self.finance_reports;
         Signal::derive(move || reports.get().len())
+    }
+
+    /// Get journal entries count for badge
+    pub fn general_ledger_entries_count(&self) -> Signal<usize> {
+        let entries = self.general_ledger_entries;
+        Signal::derive(move || entries.get().len())
     }
 
     /// Set active tab
@@ -153,9 +180,10 @@ impl WbSalesDetailsVm {
                     // Load related data (marketplace product, nomenclature)
                     vm.load_related_data(&data);
 
-                    // Load data for badges immediately (projections and finance reports)
+                    // Load data for badges immediately (projections, finance reports, journal)
                     vm.load_projections();
                     vm.load_finance_reports();
+                    vm.load_general_ledger_entries();
 
                     vm.loading.set(false);
                 }
@@ -278,6 +306,36 @@ impl WbSalesDetailsVm {
         });
     }
 
+    /// Load journal entries (lazy, for "journal" tab)
+    pub fn load_general_ledger_entries(&self) {
+        if self.general_ledger_entries_loaded.get_untracked()
+            || self.general_ledger_entries_loading.get_untracked()
+        {
+            return;
+        }
+
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.general_ledger_entries_loading.set(true);
+        vm.general_ledger_entries_error.set(None);
+
+        spawn_local(async move {
+            match fetch_general_ledger_entries(&id).await {
+                Ok(entries) => {
+                    vm.general_ledger_entries.set(entries);
+                    vm.general_ledger_entries_loaded.set(true);
+                }
+                Err(e) => {
+                    vm.general_ledger_entries_error.set(Some(e));
+                }
+            }
+            vm.general_ledger_entries_loading.set(false);
+        });
+    }
+
     /// Load finance reports (lazy, for "links" or "line" tabs)
     pub fn load_finance_reports(&self) {
         if self.finance_reports_loaded.get_untracked()
@@ -376,6 +434,15 @@ impl WbSalesDetailsVm {
             if let Ok(proj) = fetch_projections(&id).await {
                 self.projections.set(Some(proj));
             }
+        }
+
+        // Reset journal entries so they reload on next tab visit
+        self.general_ledger_entries_loaded.set(false);
+        self.general_ledger_entries_loading.set(false);
+        self.general_ledger_entries.set(Vec::new());
+        if let Ok(entries) = fetch_general_ledger_entries(&id).await {
+            self.general_ledger_entries.set(entries);
+            self.general_ledger_entries_loaded.set(true);
         }
     }
 

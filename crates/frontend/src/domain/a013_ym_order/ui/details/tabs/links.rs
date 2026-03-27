@@ -117,7 +117,7 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                         let tabs_store = tabs_store;
                                                         move |_| {
                                                             let tab_key = format!(
-                                                                "p907_ym_payment_report_detail_{}",
+                                                                "p907_ym_payment_report_details_{}",
                                                                 js_sys::encode_uri_component(&record_key)
                                                                     .as_string()
                                                                     .unwrap_or_else(|| record_key.clone())

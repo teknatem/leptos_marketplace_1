@@ -175,7 +175,13 @@ impl LlmProvider for OpenAiProvider {
 
         // Добавляем инструменты если есть
         if has_tools {
+            use async_openai::types::chat::{ChatCompletionToolChoiceOption, ToolChoiceOptions};
             request_builder.tools(self.convert_tools(tools));
+            // Явно указываем "auto" чтобы модель сама решала вызывать ли инструмент.
+            // Без этого некоторые endpoint'ы могут игнорировать инструменты.
+            request_builder.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                ToolChoiceOptions::Auto,
+            ));
         }
 
         // Добавляем расширенные параметры только для поддерживающих моделей

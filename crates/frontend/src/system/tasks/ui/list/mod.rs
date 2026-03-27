@@ -63,13 +63,13 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     let open_details = move |id: String, code: String| {
         tabs_store.open_tab(
-            &format!("sys_scheduled_task_detail_{}", id),
+            &format!("sys_scheduled_task_details_{}", id),
             &format!("Задача: {}", code),
         );
     };
 
     let create_new = move |_| {
-        tabs_store.open_tab("sys_scheduled_task_detail_new", "Новая задача");
+        tabs_store.open_tab("sys_scheduled_task_details", "Новая задача");
     };
 
     view! {

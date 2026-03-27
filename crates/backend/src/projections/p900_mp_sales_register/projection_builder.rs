@@ -25,12 +25,25 @@ async fn get_cost_for_nomenclature(
     nomenclature_ref: &Option<String>,
     sale_date: &str,
 ) -> anyhow::Result<Option<f64>> {
-    match nomenclature_ref {
-        Some(ref nom_ref) => {
-            p906_nomenclature_prices::repository::get_price_for_date(nom_ref, sale_date).await
+    Ok(
+        p906_nomenclature_prices::service::resolve_price_for_optional_nomenclature(
+            nomenclature_ref.as_deref(),
+            sale_date,
+        )
+        .await?
+        .map(|resolved_price| resolved_price.price),
+    )
+}
+
+fn normalize_cost_sign(cost: Option<f64>, is_return: bool) -> Option<f64> {
+    cost.map(|value| {
+        let abs_cost = value.abs();
+        if is_return {
+            abs_cost
+        } else {
+            -abs_cost
         }
-        None => Ok(None),
-    }
+    })
 }
 
 /// Конвертировать OZON FBS Posting в записи Sales Register
@@ -211,15 +224,15 @@ pub async fn from_wb_sales(
     // Получить nomenclature_ref из a007
     let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
 
-    // Получить себестоимость из p906_nomenclature_prices
-    let mut cost = get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?;
-
-    // Если это возврат (price_effective <= 0), то себестоимость записывается с минусом
-    if let Some(price_eff) = document.line.price_effective {
-        if price_eff <= 0.0 {
-            cost = cost.map(|c| -c);
-        }
-    }
+    // Для реализации себестоимость пишем с минусом, для возврата - с плюсом.
+    let is_return = document.line.price_effective.unwrap_or(0.0) <= 0.0;
+    let resolved_cost = document
+        .line
+        .cost_of_production
+        .filter(|price| *price > 0.0)
+        .or(document.line.dealer_price_ut.filter(|price| *price > 0.0))
+        .or(get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?);
+    let cost = normalize_cost_sign(resolved_cost, is_return);
 
     Ok(SalesRegisterEntry {
         // NK
@@ -293,6 +306,7 @@ pub async fn from_ym_order(
     for line in document.lines.iter() {
         // Используем delivery_date как дату события
         let event_time = delivery_date;
+        let sale_date_str = event_time.date_naive().format("%Y-%m-%d").to_string();
 
         // Поиск или создание a007
         let marketplace_product_ref = find_or_create_for_sale(FindOrCreateParams {
@@ -306,6 +320,13 @@ pub async fn from_ym_order(
 
         // Получить nomenclature_ref из a007
         let nomenclature_ref = get_nomenclature_ref(marketplace_product_ref).await?;
+        let is_return = line.price_effective.unwrap_or(0.0) < 0.0
+            || line.amount_line.unwrap_or(0.0) < 0.0
+            || line.qty < 0.0;
+        let cost = normalize_cost_sign(
+            get_cost_for_nomenclature(&nomenclature_ref, &sale_date_str).await?,
+            is_return,
+        );
 
         let entry = SalesRegisterEntry {
             // NK
@@ -341,7 +362,7 @@ pub async fn from_ym_order(
             // Quantities and money
             qty: line.qty,
             price_list: line.price_list,
-            cost: Some(0.00),
+            cost,
             dealer_price_ut: None,
             discount_total: line.discount_total,
             price_effective: line.price_effective,

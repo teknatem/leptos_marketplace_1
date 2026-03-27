@@ -19,7 +19,7 @@ pub fn WbPromotionDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
         let vm = vm.clone();
         move || {
             if let Some(promo) = vm.promotion.get() {
-                let tab_key = format!("a020_wb_promotion_detail_{}", stored_id.get_value());
+                let tab_key = format!("a020_wb_promotion_details_{}", stored_id.get_value());
                 let tab_title = format!("WB Акция: {}", promo.data.name);
                 tabs_store.update_tab_title(&tab_key, &tab_title);
             }

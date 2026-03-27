@@ -30,6 +30,15 @@ pub struct QueryBuilder<'a> {
 }
 
 impl<'a> QueryBuilder<'a> {
+    fn filter_expr_for_field(column_ref: &str, field_type: &FieldType) -> String {
+        match field_type {
+            // Date fields are often stored as RFC3339 text in SQLite.
+            // Normalize to YYYY-MM-DD so the period end includes the whole last day.
+            FieldType::Date => format!("substr({}, 1, 10)", column_ref),
+            _ => column_ref.to_string(),
+        }
+    }
+
     /// Create a new query builder
     pub fn new(
         schema: &'a DataSourceSchema,
@@ -286,7 +295,11 @@ impl<'a> QueryBuilder<'a> {
                 .ok_or("No date field found in schema")?;
 
             let source_table = date_field.source_table.unwrap_or(main_table);
-            conditions.push(format!("{}.{} >= ?", source_table, date_field.db_column));
+            let column_ref = format!("{}.{}", source_table, date_field.db_column);
+            conditions.push(format!(
+                "{} >= ?",
+                Self::filter_expr_for_field(&column_ref, &date_field.field_type)
+            ));
             params.push(QueryParam::Text(date_from.clone()));
         }
 
@@ -299,7 +312,11 @@ impl<'a> QueryBuilder<'a> {
                 .ok_or("No date field found in schema")?;
 
             let source_table = date_field.source_table.unwrap_or(main_table);
-            conditions.push(format!("{}.{} <= ?", source_table, date_field.db_column));
+            let column_ref = format!("{}.{}", source_table, date_field.db_column);
+            conditions.push(format!(
+                "{} <= ?",
+                Self::filter_expr_for_field(&column_ref, &date_field.field_type)
+            ));
             params.push(QueryParam::Text(date_to.clone()));
         }
 
@@ -344,6 +361,7 @@ impl<'a> QueryBuilder<'a> {
         for filter in &self.config.filters.field_filters {
             let field = self.find_field(&filter.field_id)?;
             let column_ref = format!("{}.{}", main_table, field.db_column);
+            let filter_expr = Self::filter_expr_for_field(&column_ref, &field.field_type);
 
             match filter.operator {
                 FilterOperator::IsNull => {
@@ -351,7 +369,7 @@ impl<'a> QueryBuilder<'a> {
                 }
                 FilterOperator::Between => {
                     if let Some(value2) = &filter.value2 {
-                        conditions.push(format!("{} BETWEEN ? AND ?", column_ref));
+                        conditions.push(format!("{} BETWEEN ? AND ?", filter_expr));
                         self.push_typed_param(&mut params, &filter.value, &field.field_type)?;
                         self.push_typed_param(&mut params, value2, &field.field_type)?;
                     } else {
@@ -365,18 +383,18 @@ impl<'a> QueryBuilder<'a> {
                         continue;
                     }
                     let placeholders: Vec<_> = (0..values.len()).map(|_| "?").collect();
-                    conditions.push(format!("{} IN ({})", column_ref, placeholders.join(", ")));
+                    conditions.push(format!("{} IN ({})", filter_expr, placeholders.join(", ")));
                     for value in values {
                         self.push_typed_param(&mut params, value, &field.field_type)?;
                     }
                 }
                 FilterOperator::Like => {
-                    conditions.push(format!("{} LIKE ?", column_ref));
+                    conditions.push(format!("{} LIKE ?", filter_expr));
                     params.push(QueryParam::Text(format!("%{}%", filter.value)));
                 }
                 _ => {
                     // Standard comparison operators: =, <>, <, >, <=, >=
-                    conditions.push(format!("{} {} ?", column_ref, filter.operator.to_sql()));
+                    conditions.push(format!("{} {} ?", filter_expr, filter.operator.to_sql()));
                     self.push_typed_param(&mut params, &filter.value, &field.field_type)?;
                 }
             }
@@ -536,27 +554,28 @@ impl<'a> QueryBuilder<'a> {
             ));
         }
         let column_ref = format!("{}.{}", table_alias, field.db_column);
+        let filter_expr = Self::filter_expr_for_field(&column_ref, &field.field_type);
 
         let mut params = Vec::new();
 
         let sql = match &condition.definition {
             ConditionDef::Comparison { operator, value } => {
                 self.push_typed_param(&mut params, value, &field.field_type)?;
-                format!("{} {} ?", column_ref, comparison_op_to_sql(*operator))
+                format!("{} {} ?", filter_expr, comparison_op_to_sql(*operator))
             }
             ConditionDef::Range { from, to } => match (from, to) {
                 (Some(f), Some(t)) => {
                     self.push_typed_param(&mut params, f, &field.field_type)?;
                     self.push_typed_param(&mut params, t, &field.field_type)?;
-                    format!("{} BETWEEN ? AND ?", column_ref)
+                    format!("{} BETWEEN ? AND ?", filter_expr)
                 }
                 (Some(f), None) => {
                     self.push_typed_param(&mut params, f, &field.field_type)?;
-                    format!("{} >= ?", column_ref)
+                    format!("{} >= ?", filter_expr)
                 }
                 (None, Some(t)) => {
                     self.push_typed_param(&mut params, t, &field.field_type)?;
-                    format!("{} <= ?", column_ref)
+                    format!("{} <= ?", filter_expr)
                 }
                 (None, None) => {
                     return Err("Range condition requires at least one bound".to_string())
@@ -574,15 +593,15 @@ impl<'a> QueryBuilder<'a> {
                     (Some(f), Some(t)) => {
                         params.push(QueryParam::Text(f));
                         params.push(QueryParam::Text(t));
-                        format!("{} BETWEEN ? AND ?", column_ref)
+                        format!("{} BETWEEN ? AND ?", filter_expr)
                     }
                     (Some(f), None) => {
                         params.push(QueryParam::Text(f));
-                        format!("{} >= ?", column_ref)
+                        format!("{} >= ?", filter_expr)
                     }
                     (None, Some(t)) => {
                         params.push(QueryParam::Text(t));
-                        format!("{} <= ?", column_ref)
+                        format!("{} <= ?", filter_expr)
                     }
                     (None, None) => {
                         return Err("Date period condition requires at least one date".to_string())
@@ -826,5 +845,47 @@ mod tests {
         assert!(result.sql.contains("SUM(test_table.amount)"));
         assert!(result.sql.contains("FROM test_table"));
         assert!(result.sql.contains("GROUP BY test_table.date"));
+    }
+
+    #[test]
+    fn test_date_filters_use_date_part_for_inclusive_period_end() {
+        let schema = DataSourceSchema {
+            id: "test_table",
+            name: "Test Table",
+            fields: &[FieldDef {
+                id: "date",
+                name: "Date",
+                field_type: FieldType::Date,
+                can_group: true,
+                can_aggregate: false,
+                can_filter: true,
+                db_column: "date",
+                ref_table: None,
+                ref_display_column: None,
+                source_table: None,
+                join_on_column: None,
+            }],
+            schema_filters: &[],
+        };
+
+        let config = DashboardConfig {
+            data_source: "test_table".to_string(),
+            selected_fields: vec![],
+            groupings: vec!["date".to_string()],
+            display_fields: vec![],
+            enabled_fields: vec!["date".to_string()],
+            sort: DashboardSort::default(),
+            filters: DashboardFilters {
+                date_from: Some("2026-03-01".to_string()),
+                date_to: Some("2026-03-31".to_string()),
+                ..DashboardFilters::default()
+            },
+        };
+
+        let builder = QueryBuilder::new(&schema, &config, "test_table".to_string());
+        let result = builder.build().unwrap();
+
+        assert!(result.sql.contains("substr(test_table.date, 1, 10) >= ?"));
+        assert!(result.sql.contains("substr(test_table.date, 1, 10) <= ?"));
     }
 }

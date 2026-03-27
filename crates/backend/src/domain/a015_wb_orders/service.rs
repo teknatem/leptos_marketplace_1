@@ -233,6 +233,43 @@ pub async fn fill_dealer_price(document: &mut WbOrders) -> Result<()> {
     Ok(())
 }
 
+pub async fn fill_dealer_price_resolved(document: &mut WbOrders) -> Result<()> {
+    let Some(ref nom_ref) = document.nomenclature_ref else {
+        document.line.dealer_price_ut = None;
+        return Ok(());
+    };
+
+    let order_date = document.state.order_dt.format("%Y-%m-%d").to_string();
+    let resolved =
+        crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
+            nom_ref,
+            &order_date,
+        )
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to resolve dealer price for {}: {}", nom_ref, e);
+            None
+        });
+
+    if let Some(ref resolved_price) = resolved {
+        tracing::info!(
+            "Filled dealer_price_ut = {:?} for WB Orders document {} (from {})",
+            resolved_price.price,
+            document.base.id.as_string(),
+            resolved_price.describe(&order_date)
+        );
+    } else {
+        tracing::warn!(
+            "Could not find dealer_price_ut for WB Orders document {} (nomenclature: {})",
+            document.base.id.as_string(),
+            nom_ref
+        );
+    }
+
+    document.line.dealer_price_ut = resolved.map(|resolved_price| resolved_price.price);
+    Ok(())
+}
+
 /// Расчёт margin_pro в процентах, если dealer_price_ut > 0:
 /// 1) Основная формула:
 ///    (price_with_disc * (100 - planned_commission_percent) / 100 - dealer_price_ut)
@@ -320,6 +357,16 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
             tracing::error!("Failed to post WB Orders document: {}", e);
             // Не останавливаем выполнение, т.к. документ уже сохранен
         }
+    } else if let Err(e) =
+        crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+            &format!("a015:{}", id),
+        )
+        .await
+    {
+        tracing::error!(
+            "Failed to delete P909 projections for WB Orders document: {}",
+            e
+        );
     }
 
     Ok(id)

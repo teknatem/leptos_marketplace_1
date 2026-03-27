@@ -21,12 +21,25 @@ async fn get_cost_for_nomenclature(
     nomenclature_ref: &Option<String>,
     sale_date: &str,
 ) -> Result<Option<f64>> {
-    match nomenclature_ref {
-        Some(ref nom_ref) => {
-            p906_nomenclature_prices::repository::get_price_for_date(nom_ref, sale_date).await
+    Ok(
+        p906_nomenclature_prices::service::resolve_price_for_optional_nomenclature(
+            nomenclature_ref.as_deref(),
+            sale_date,
+        )
+        .await?
+        .map(|resolved_price| resolved_price.price),
+    )
+}
+
+fn normalize_cost_sign(cost: Option<f64>, is_return: bool) -> Option<f64> {
+    cost.map(|value| {
+        let abs_cost = value.abs();
+        if is_return {
+            abs_cost
+        } else {
+            -abs_cost
         }
-        None => Ok(None),
-    }
+    })
 }
 
 pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Result<Vec<Model>> {
@@ -94,14 +107,16 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
     let seller_out = -(customer_out + customer_in) - (acquiring_out + coinvest_in + commission_out);
     let total = -seller_out;
 
-    // Получить cost из p906_nomenclature_prices
+    // Для реализации себестоимость пишем с минусом, для возврата - с плюсом.
     let sale_date_str = document.state.sale_dt.format("%Y-%m-%d").to_string();
-    let mut cost = get_cost_for_nomenclature(&document.nomenclature_ref, &sale_date_str).await?;
-
-    // Если это возврат (price_effective <= 0), то себестоимость записывается с минусом
-    if price_effective <= 0.0 {
-        cost = cost.map(|c| -c);
-    }
+    let is_return = price_effective <= 0.0;
+    let resolved_cost = document
+        .line
+        .cost_of_production
+        .filter(|price| *price > 0.0)
+        .or(document.line.dealer_price_ut.filter(|price| *price > 0.0))
+        .or(get_cost_for_nomenclature(&document.nomenclature_ref, &sale_date_str).await?);
+    let cost = normalize_cost_sign(resolved_cost, is_return);
 
     let entry = Model {
         id,
@@ -482,11 +497,20 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> Result<Vec<
         .or_else(|| document.state.status_changed_at.map(|dt| dt.to_rfc3339()))
         .unwrap_or_else(|| Utc::now().to_rfc3339());
 
+    let sale_date_str = date.split('T').next().unwrap_or(&date).to_string();
+
     for line in &document.lines {
         // customer_in берём из buyer_price или amount_line
         let customer_in = line
             .buyer_price
             .unwrap_or_else(|| line.amount_line.unwrap_or(0.0));
+        let is_return = line.price_effective.unwrap_or(0.0) < 0.0
+            || line.amount_line.unwrap_or(0.0) < 0.0
+            || line.qty < 0.0;
+        let cost = normalize_cost_sign(
+            get_cost_for_nomenclature(&line.nomenclature_ref, &sale_date_str).await?,
+            is_return,
+        );
 
         let entry = Model {
             id: Uuid::new_v4().to_string(),
@@ -512,7 +536,7 @@ pub async fn from_ym_order(document: &YmOrder, document_id: &str) -> Result<Vec<
             commission_percent: 0.0,
             coinvest_persent: 0.0,
             total: customer_in,
-            cost: None,
+            cost,
 
             document_no: document.header.document_no.clone(),
             article: line.shop_sku.clone(),

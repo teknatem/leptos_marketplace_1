@@ -8,5 +8,5 @@ pub mod ui;
 
 pub use types::{
     DataViewMeta, DimensionMeta, FilterDef, FilterKind, FilterRef, GlobalFiltersResponse,
-    SelectOption, ViewFiltersResponse,
+    ResourceMeta, SelectOption, ViewFiltersResponse,
 };

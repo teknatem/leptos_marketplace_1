@@ -2,17 +2,20 @@
 //!
 //! Источник данных: p904_sales_data
 //! Поддерживаемые метрики (params["metric"]):
-//!   revenue    = customer_in + customer_out   (по умолчанию)
-//!   cost       = cost
-//!   commission = commission_out
-//!   expenses   = acquiring_out + penalty_out + logistics_out
-//!   profit     = seller_out
+//!   revenue     = customer_in + customer_out   (по умолчанию)
+//!   order_count = COUNT(DISTINCT registrator_ref)
+//!   avg_check   = revenue / order_count
+//!   cost        = cost
+//!   commission  = commission_out
+//!   expenses    = acquiring_out + penalty_out + logistics_out
+//!   profit      = -seller_out
+//!   profit_d    = revenue + cost
 
 use anyhow::Result;
+use contracts::shared::analytics::{IndicatorId, IndicatorStatus, IndicatorValue};
 use contracts::shared::data_view::ViewContext;
-use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow};
-use contracts::shared::indicators::{IndicatorId, IndicatorStatus, IndicatorValue};
-use sea_orm::{FromQueryResult, Statement};
+use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, MetricColumnDef};
+use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 
 use crate::shared::data::db::get_connection;
 
@@ -64,10 +67,7 @@ fn shift_date(d: &str, months: i32) -> String {
 fn resolve_period2(ctx: &ViewContext) -> (String, String) {
     match (&ctx.period2_from, &ctx.period2_to) {
         (Some(f), Some(t)) => (f.clone(), t.clone()),
-        _ => (
-            shift_date(&ctx.date_from, -1),
-            shift_date(&ctx.date_to, -1),
-        ),
+        _ => (shift_date(&ctx.date_from, -1), shift_date(&ctx.date_to, -1)),
     }
 }
 
@@ -112,24 +112,90 @@ fn status_by_change(change: Option<f64>) -> IndicatorStatus {
 // ---------------------------------------------------------------------------
 
 /// Returns (sql_expression, display_label) for the requested metric.
-fn resolve_metric(ctx: &ViewContext) -> (&'static str, &'static str) {
-    match ctx
-        .params
-        .get("metric")
-        .map(|s| s.as_str())
-        .unwrap_or("revenue")
-    {
-        "cost" => ("COALESCE(cost, 0)", "Себестоимость"),
-        "commission" => ("COALESCE(commission_out, 0)", "Комиссия"),
-        "expenses" => (
-            "COALESCE(acquiring_out, 0) + COALESCE(penalty_out, 0) + COALESCE(logistics_out, 0)",
-            "Расходы",
-        ),
-        "profit" => ("COALESCE(seller_out, 0)", "Прибыль"),
-        _ => (
-            "COALESCE(customer_in, 0) + COALESCE(customer_out, 0)",
-            "Выручка",
-        ),
+#[derive(Clone, Copy)]
+enum MetricKind {
+    SumExpr(&'static str),
+    CountDistinct(&'static str),
+    AggregateExpr(&'static str),
+}
+
+#[derive(Clone, Copy)]
+struct MetricDef {
+    kind: MetricKind,
+    label: &'static str,
+}
+
+impl MetricDef {
+    fn aggregate_sql(self, alias: &str) -> String {
+        match self.kind {
+            MetricKind::SumExpr(expr) => {
+                let expr = expr.replace("{alias}", alias);
+                format!("CAST(COALESCE(SUM({expr}), 0) AS REAL)")
+            }
+            MetricKind::CountDistinct(column) => {
+                format!("CAST(COUNT(DISTINCT {alias}.{column}) AS REAL)")
+            }
+            MetricKind::AggregateExpr(expr) => expr.replace("{alias}", alias),
+        }
+    }
+}
+
+fn resolve_metric(ctx: &ViewContext) -> MetricDef {
+    resolve_metric_by_id(
+        ctx.params
+            .get("metric")
+            .map(|s| s.as_str())
+            .unwrap_or("revenue"),
+    )
+}
+
+/// Возвращает описание метрики для конкретного metric_id.
+fn resolve_metric_by_id(id: &str) -> MetricDef {
+    match id {
+        "order_count" => MetricDef {
+            kind: MetricKind::CountDistinct("registrator_ref"),
+            label: "Количество заказов",
+        },
+        "avg_check" => MetricDef {
+            kind: MetricKind::AggregateExpr(
+                "CAST(CASE \
+                    WHEN COUNT(DISTINCT {alias}.registrator_ref) = 0 THEN 0 \
+                    ELSE COALESCE(SUM(COALESCE({alias}.customer_in, 0) + COALESCE({alias}.customer_out, 0)), 0) * 1.0 \
+                        / COUNT(DISTINCT {alias}.registrator_ref) \
+                END AS REAL)",
+            ),
+            label: "Средний чек",
+        },
+        "cost" => MetricDef {
+            kind: MetricKind::SumExpr("COALESCE({alias}.cost, 0)"),
+            label: "Себестоимость",
+        },
+        "commission" => MetricDef {
+            kind: MetricKind::SumExpr("COALESCE({alias}.commission_out, 0)"),
+            label: "Комиссия",
+        },
+        "expenses" => MetricDef {
+            kind: MetricKind::SumExpr(
+                "COALESCE({alias}.acquiring_out, 0) + COALESCE({alias}.penalty_out, 0) + COALESCE({alias}.logistics_out, 0)",
+            ),
+            label: "Расходы",
+        },
+        "profit" => MetricDef {
+            kind: MetricKind::SumExpr("-COALESCE({alias}.seller_out, 0)"),
+            label: "Прибыль",
+        },
+        "profit_d" => MetricDef {
+            kind: MetricKind::SumExpr(
+                "(COALESCE({alias}.customer_in, 0) + COALESCE({alias}.customer_out, 0)) + COALESCE({alias}.cost, 0)",
+            ),
+            label: "Прибыль (дилер)",
+        },
+        _ => MetricDef {
+            kind: MetricKind::SumExpr(
+                "COALESCE({alias}.customer_in, 0) + COALESCE({alias}.customer_out, 0)",
+            ),
+            label: "Выручка",
+        },
     }
 }
 
@@ -151,6 +217,15 @@ struct DailyRow {
     total: f64,
 }
 
+fn sort_daily_rows(mut rows: Vec<DailyRow>) -> Vec<DailyRow> {
+    rows.sort_by(|a, b| {
+        a.day_offset
+            .cmp(&b.day_offset)
+            .then_with(|| a.day_label.cmp(&b.day_label))
+    });
+    rows
+}
+
 #[derive(Debug, FromQueryResult)]
 struct DrilldownAggRow {
     group_key: String,
@@ -164,7 +239,7 @@ struct DrilldownAggRow {
 
 /// Fetch aggregate total for a single period (used for P2 previous_value).
 async fn fetch_aggregate(
-    metric_expr: &str,
+    metric: MetricDef,
     date_from: &str,
     date_to: &str,
     connection_mp_refs: &[String],
@@ -173,10 +248,11 @@ async fn fetch_aggregate(
 
     let mut sql = format!(
         r#"
-        SELECT CAST(COALESCE(SUM({metric_expr}), 0) AS REAL) AS total
+        SELECT {metric_expr} AS total
         FROM p904_sales_data p
-        WHERE p.date >= ? AND p.date <= ?
-        "#
+        WHERE substr(p.date, 1, 10) >= ? AND substr(p.date, 1, 10) <= ?
+        "#,
+        metric_expr = metric.aggregate_sql("p")
     );
 
     let mut params: Vec<sea_orm::Value> =
@@ -204,10 +280,10 @@ async fn fetch_aggregate(
 
 /// Fetch daily rows for a period, sorted by date ascending.
 ///
-/// Returns one row per day that has data. Used for both scalar total (via sum)
-/// and sparkline points.
+/// Returns one row per day that has data. Used for sparkline points and
+/// day-by-day drilldown.
 async fn fetch_daily_rows(
-    metric_expr: &str,
+    metric: MetricDef,
     date_from: &str,
     date_to: &str,
     connection_mp_refs: &[String],
@@ -219,10 +295,11 @@ async fn fetch_daily_rows(
         SELECT
             printf('%06d', CAST(julianday(DATE(t.date)) - julianday(?) AS INTEGER)) AS day_offset,
             DATE(t.date) AS day_label,
-            CAST(COALESCE(SUM({metric_expr}), 0) AS REAL) AS total
+            {metric_expr} AS total
         FROM p904_sales_data t
-        WHERE t.date >= ? AND t.date <= ?
-        "#
+        WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+        "#,
+        metric_expr = metric.aggregate_sql("t")
     );
 
     let mut params: Vec<sea_orm::Value> = vec![
@@ -254,7 +331,7 @@ async fn fetch_daily_rows(
 /// a LEFT JOIN on `nomenclature_ref` and groups by the dimension column.
 async fn fetch_drilldown_period(
     group_col: &str,
-    metric_expr: &str,
+    metric: MetricDef,
     ref_table: Option<&str>,
     ref_display_col: Option<&str>,
     source_table: Option<&str>,
@@ -272,10 +349,11 @@ async fn fetch_drilldown_period(
             SELECT
                 printf('%06d', CAST(julianday(DATE(t.date)) - julianday(?) AS INTEGER)) AS group_key,
                 DATE(t.date) AS label,
-                CAST(COALESCE(SUM({metric_expr}), 0) AS REAL) AS total
+                {metric_expr} AS total
             FROM p904_sales_data t
-            WHERE t.date >= ? AND t.date <= ?
-            "#
+            WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+            "#,
+            metric_expr = metric.aggregate_sql("t")
         );
 
         let mut params: Vec<sea_orm::Value> = vec![
@@ -309,11 +387,12 @@ async fn fetch_drilldown_period(
             SELECT
                 COALESCE({alias}.{group_col}, '') AS group_key,
                 COALESCE({alias}.{group_col}, '') AS label,
-                CAST(COALESCE(SUM({metric_expr}), 0) AS REAL) AS total
+                {metric_expr} AS total
             FROM p904_sales_data t
             LEFT JOIN {src_tbl} {alias} ON t.{join_col} = {alias}.id
-            WHERE t.date >= ? AND t.date <= ?
-            "#
+            WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+            "#,
+            metric_expr = metric.aggregate_sql("t")
         );
 
         let mut params: Vec<sea_orm::Value> =
@@ -354,11 +433,12 @@ async fn fetch_drilldown_period(
         SELECT
             COALESCE(t.{group_col}, '') AS group_key,
             COALESCE({select_label}, '') AS label,
-            CAST(COALESCE(SUM({metric_expr}), 0) AS REAL) AS total
+            {metric_expr} AS total
         FROM p904_sales_data t
         {join_clause}
-        WHERE t.date >= ? AND t.date <= ?
+        WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
         "#,
+        metric_expr = metric.aggregate_sql("t")
     );
 
     let mut params: Vec<sea_orm::Value> =
@@ -381,29 +461,184 @@ async fn fetch_drilldown_period(
     Ok(DrilldownAggRow::find_by_statement(stmt).all(db).await?)
 }
 
+/// Fetch drilldown data for multiple metrics in a single SQL query.
+///
+/// Builds: SELECT group_key, label, SUM(expr_0) AS m0, SUM(expr_1) AS m1, ...
+/// and returns Vec<(group_key, label, Vec<f64>)> where the Vec<f64> has one
+/// value per metric in the same order as `metrics`.
+async fn fetch_drilldown_multi_period(
+    group_col: &str,
+    metrics: &[(&str, MetricDef)], // [(metric_id, metric_def)]
+    ref_table: Option<&str>,
+    ref_display_col: Option<&str>,
+    source_table: Option<&str>,
+    join_on_col: Option<&str>,
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+) -> Result<Vec<(String, String, Vec<f64>)>> {
+    let db = get_connection();
+
+    // Build metric SELECT columns: SUM(expr) AS m0, SUM(expr) AS m1, ...
+    let metric_cols: String = metrics
+        .iter()
+        .enumerate()
+        .map(|(i, (_, metric))| format!("{} AS m{}", metric.aggregate_sql("t"), i))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sql;
+    let mut params: Vec<sea_orm::Value>;
+
+    if group_col == "date" {
+        sql = format!(
+            r#"
+            SELECT
+                printf('%06d', CAST(julianday(DATE(t.date)) - julianday(?) AS INTEGER)) AS group_key,
+                DATE(t.date) AS label,
+                {metric_cols}
+            FROM p904_sales_data t
+            WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+            "#
+        );
+        params = vec![
+            date_from.to_string().into(),
+            date_from.to_string().into(),
+            date_to.to_string().into(),
+        ];
+    } else if let (Some(src_tbl), Some(join_col)) = (source_table, join_on_col) {
+        let alias = "dim_t";
+        sql = format!(
+            r#"
+            SELECT
+                COALESCE({alias}.{group_col}, '') AS group_key,
+                COALESCE({alias}.{group_col}, '') AS label,
+                {metric_cols}
+            FROM p904_sales_data t
+            LEFT JOIN {src_tbl} {alias} ON t.{join_col} = {alias}.id
+            WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+            "#
+        );
+        params = vec![date_from.to_string().into(), date_to.to_string().into()];
+    } else {
+        let (select_label, join_clause) =
+            if let (Some(rt), Some(rdc)) = (ref_table, ref_display_col) {
+                let alias = "ref_t";
+                (
+                    format!("COALESCE({alias}.{rdc}, t.{group_col})"),
+                    format!("LEFT JOIN {rt} {alias} ON t.{group_col} = {alias}.id"),
+                )
+            } else {
+                (format!("t.{group_col}"), String::new())
+            };
+        sql = format!(
+            r#"
+            SELECT
+                COALESCE(t.{group_col}, '') AS group_key,
+                COALESCE({select_label}, '') AS label,
+                {metric_cols}
+            FROM p904_sales_data t
+            {join_clause}
+            WHERE substr(t.date, 1, 10) >= ? AND substr(t.date, 1, 10) <= ?
+            "#,
+        );
+        params = vec![date_from.to_string().into(), date_to.to_string().into()];
+    }
+
+    if !connection_mp_refs.is_empty() {
+        let placeholders: Vec<&str> = connection_mp_refs.iter().map(|_| "?").collect();
+        let mut final_sql = sql.trim_end().to_string();
+        final_sql.push_str(&format!(
+            " AND t.connection_mp_ref IN ({})",
+            placeholders.join(", ")
+        ));
+        for r in connection_mp_refs {
+            params.push(r.clone().into());
+        }
+        let group_clause = if group_col == "date" {
+            " GROUP BY DATE(t.date) ORDER BY group_key ASC".to_string()
+        } else if source_table.is_some() {
+            format!(" GROUP BY dim_t.{group_col} ORDER BY m0 DESC")
+        } else {
+            format!(" GROUP BY t.{group_col} ORDER BY m0 DESC")
+        };
+        let final_sql = format!("{}{}", final_sql, group_clause);
+        let stmt =
+            Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, &final_sql, params);
+        let rows = db.query_all(stmt).await?;
+        return rows
+            .into_iter()
+            .map(|row| {
+                let group_key: String = row.try_get("", "group_key")?;
+                let label: String = row.try_get("", "label")?;
+                let values: Vec<f64> = (0..metrics.len())
+                    .map(|i| row.try_get::<f64>("", &format!("m{}", i)).unwrap_or(0.0))
+                    .collect();
+                Ok((group_key, label, values))
+            })
+            .collect::<Result<Vec<_>, sea_orm::DbErr>>()
+            .map_err(anyhow::Error::from);
+    }
+
+    let group_clause = if group_col == "date" {
+        " GROUP BY DATE(t.date) ORDER BY group_key ASC".to_string()
+    } else if source_table.is_some() {
+        format!(" GROUP BY dim_t.{group_col} ORDER BY m0 DESC")
+    } else {
+        format!(" GROUP BY t.{group_col} ORDER BY m0 DESC")
+    };
+    let final_sql = format!("{}{}", sql.trim_end(), group_clause);
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, &final_sql, params);
+    let rows = db.query_all(stmt).await?;
+    rows.into_iter()
+        .map(|row| {
+            let group_key: String = row.try_get("", "group_key")?;
+            let label: String = row.try_get("", "label")?;
+            let values: Vec<f64> = (0..metrics.len())
+                .map(|i| row.try_get::<f64>("", &format!("m{}", i)).unwrap_or(0.0))
+                .collect();
+            Ok((group_key, label, values))
+        })
+        .collect::<Result<Vec<_>, sea_orm::DbErr>>()
+        .map_err(anyhow::Error::from)
+}
+
 // ---------------------------------------------------------------------------
 // Public: compute_scalar
 // ---------------------------------------------------------------------------
 
 /// Вычислить скалярное значение метрики за 2 периода с sparkline данными.
 ///
-/// P1 данные всегда запрашиваются по дням (для sparkline + сумма = scalar).
+/// P1 запрашивается двумя способами:
+/// - агрегат за весь период — для основного scalar значения;
+/// - по дням — для sparkline.
 /// P2 — агрегат одним запросом.
-/// Оба запроса выполняются параллельно через `tokio::join!`.
+/// Все запросы выполняются параллельно через `tokio::join!`.
 pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
-    let (metric_expr, _metric_label) = resolve_metric(ctx);
+    let metric = resolve_metric(ctx);
     let (p2_from, p2_to) = resolve_period2(ctx);
 
-    let (daily_result, prev_result) = tokio::join!(
-        fetch_daily_rows(metric_expr, &ctx.date_from, &ctx.date_to, &ctx.connection_mp_refs),
-        fetch_aggregate(metric_expr, &p2_from, &p2_to, &ctx.connection_mp_refs),
+    let (current_result, daily_result, prev_result) = tokio::join!(
+        fetch_aggregate(
+            metric,
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs
+        ),
+        fetch_daily_rows(
+            metric,
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs
+        ),
+        fetch_aggregate(metric, &p2_from, &p2_to, &ctx.connection_mp_refs),
     );
 
-    let daily = daily_result?;
+    let cur = current_result?;
+    let daily = sort_daily_rows(daily_result?);
     let prev = prev_result?;
 
     let spark_points: Vec<f64> = daily.iter().map(|r| r.total).collect();
-    let cur: f64 = spark_points.iter().sum();
     let change = pct_change(cur, prev);
 
     Ok(IndicatorValue {
@@ -423,26 +658,19 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
 
 /// Вычислить детализацию по измерению за 2 периода.
 ///
-/// `group_by` — field_id из схемы ds03_p904_sales.
+/// `group_by` — id измерения из `meta().available_dimensions`.
 /// Данные для обоих периодов запрашиваются всегда по дням при group_by == "date",
 /// иначе — агрегаты по выбранному измерению.
 pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<DrilldownResponse> {
-    use crate::shared::universal_dashboard::get_registry;
+    let dim = meta()
+        .available_dimensions
+        .into_iter()
+        .find(|d| d.id == group_by)
+        .ok_or_else(|| anyhow::anyhow!("Unknown group_by field: {}", group_by))?;
 
-    let registry = get_registry();
-    let schema = registry
-        .get_schema("ds03_p904_sales")
-        .ok_or_else(|| anyhow::anyhow!("Schema ds03_p904_sales not found"))?;
-
-    let group_field = schema
-        .fields
-        .iter()
-        .find(|f| f.id == group_by)
-        .ok_or_else(|| anyhow::anyhow!("Unknown group_by field: {}", group_by))?
-        .clone();
-
-    let (metric_expr, metric_label) = resolve_metric(ctx);
-    let group_by_label = group_field.name.clone();
+    let metric = resolve_metric(ctx);
+    let group_by_label = dim.label.clone();
+    let db_col = dim.db_column.as_deref().unwrap_or(group_by).to_string();
 
     let (p2_from, p2_to) = resolve_period2(ctx);
     let period1_label = period_label(&ctx.date_from, &ctx.date_to);
@@ -451,7 +679,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
     tracing::info!(
         "drilldown: group_by={} metric={} | P1 {} .. {} | P2 {} .. {}",
         group_by,
-        metric_expr,
+        metric.label,
         ctx.date_from,
         ctx.date_to,
         p2_from,
@@ -460,23 +688,23 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
 
     let (rows1_result, rows2_result) = tokio::join!(
         fetch_drilldown_period(
-            &group_field.db_column,
-            metric_expr,
-            group_field.ref_table.as_deref(),
-            group_field.ref_display_column.as_deref(),
-            group_field.source_table.as_deref(),
-            group_field.join_on_column.as_deref(),
+            &db_col,
+            metric,
+            dim.ref_table.as_deref(),
+            dim.ref_display_column.as_deref(),
+            dim.source_table.as_deref(),
+            dim.join_on_column.as_deref(),
             &ctx.date_from,
             &ctx.date_to,
             &ctx.connection_mp_refs,
         ),
         fetch_drilldown_period(
-            &group_field.db_column,
-            metric_expr,
-            group_field.ref_table.as_deref(),
-            group_field.ref_display_column.as_deref(),
-            group_field.source_table.as_deref(),
-            group_field.join_on_column.as_deref(),
+            &db_col,
+            metric,
+            dim.ref_table.as_deref(),
+            dim.ref_display_column.as_deref(),
+            dim.source_table.as_deref(),
+            dim.join_on_column.as_deref(),
             &p2_from,
             &p2_to,
             &ctx.connection_mp_refs,
@@ -490,8 +718,16 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         "drilldown: rows1={} rows2={} | sample_keys1={:?} sample_keys2={:?}",
         rows1.len(),
         rows2.len(),
-        rows1.iter().take(3).map(|r| r.group_key.as_str()).collect::<Vec<_>>(),
-        rows2.iter().take(3).map(|r| r.group_key.as_str()).collect::<Vec<_>>(),
+        rows1
+            .iter()
+            .take(3)
+            .map(|r| r.group_key.as_str())
+            .collect::<Vec<_>>(),
+        rows2
+            .iter()
+            .take(3)
+            .map(|r| r.group_key.as_str())
+            .collect::<Vec<_>>(),
     );
 
     let mut merged: std::collections::HashMap<String, DrilldownRow> =
@@ -506,6 +742,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
+                metric_values: std::collections::HashMap::new(),
             })
             .value1 = r.total;
     }
@@ -519,6 +756,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
+                metric_values: std::collections::HashMap::new(),
             });
         entry.value2 = r.total;
     }
@@ -539,7 +777,11 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
     if is_date_group {
         rows.sort_by(|a, b| a.group_key.cmp(&b.group_key));
     } else {
-        rows.sort_by(|a, b| b.value1.partial_cmp(&a.value1).unwrap_or(std::cmp::Ordering::Equal));
+        rows.sort_by(|a, b| {
+            b.value1
+                .partial_cmp(&a.value1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     Ok(DrilldownResponse {
@@ -547,8 +789,221 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         group_by_label,
         period1_label,
         period2_label,
-        metric_label: metric_label.to_string(),
+        metric_label: metric.label.to_string(),
+        metric_columns: vec![],
     })
+}
+
+// ---------------------------------------------------------------------------
+// Public: compute_drilldown_multi
+// ---------------------------------------------------------------------------
+
+/// Вычислить детализацию по нескольким метрикам за 2 периода.
+///
+/// Выполняет ровно 2 SQL-запроса (П1 и П2), каждый возвращает все запрошенные
+/// метрики как отдельные агрегатные колонки.
+/// Если `metric_ids` пуст — делегирует в `compute_drilldown` (backward compat).
+pub async fn compute_drilldown_multi(
+    ctx: &ViewContext,
+    group_by: &str,
+    metric_ids: &[String],
+) -> Result<DrilldownResponse> {
+    if metric_ids.is_empty() {
+        return compute_drilldown(ctx, group_by).await;
+    }
+
+    let dim = meta()
+        .available_dimensions
+        .into_iter()
+        .find(|d| d.id == group_by)
+        .ok_or_else(|| anyhow::anyhow!("Unknown group_by field: {}", group_by))?;
+
+    // Resolve metric expressions for all requested ids
+    let metric_resolved: Vec<(String, MetricDef)> = metric_ids
+        .iter()
+        .map(|id| (id.clone(), resolve_metric_by_id(id)))
+        .collect();
+
+    let metrics: Vec<(&str, MetricDef)> = metric_resolved
+        .iter()
+        .map(|(id, metric)| (id.as_str(), *metric))
+        .collect();
+
+    let group_by_label = dim.label.clone();
+    let db_col = dim.db_column.as_deref().unwrap_or(group_by).to_string();
+    let (p2_from, p2_to) = resolve_period2(ctx);
+    let period1_label = period_label(&ctx.date_from, &ctx.date_to);
+    let period2_label = period_label(&p2_from, &p2_to);
+
+    let is_date_group = group_by == "date";
+
+    let (rows1_result, rows2_result) = tokio::join!(
+        fetch_drilldown_multi_period(
+            &db_col,
+            &metrics,
+            dim.ref_table.as_deref(),
+            dim.ref_display_column.as_deref(),
+            dim.source_table.as_deref(),
+            dim.join_on_column.as_deref(),
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs,
+        ),
+        fetch_drilldown_multi_period(
+            &db_col,
+            &metrics,
+            dim.ref_table.as_deref(),
+            dim.ref_display_column.as_deref(),
+            dim.source_table.as_deref(),
+            dim.join_on_column.as_deref(),
+            &p2_from,
+            &p2_to,
+            &ctx.connection_mp_refs,
+        ),
+    );
+
+    let rows1 = rows1_result?;
+    let rows2 = rows2_result?;
+
+    // Merge by group_key → HashMap<group_key, DrilldownRow>
+    let mut merged: std::collections::HashMap<String, DrilldownRow> =
+        std::collections::HashMap::new();
+
+    for (group_key, label, values) in rows1 {
+        let entry = merged
+            .entry(group_key.clone())
+            .or_insert_with(|| DrilldownRow {
+                group_key: group_key.clone(),
+                label: label.clone(),
+                value1: 0.0,
+                value2: 0.0,
+                delta_pct: None,
+                metric_values: std::collections::HashMap::new(),
+            });
+        for (i, (id, _)) in metric_resolved.iter().enumerate() {
+            let mv = entry.metric_values.entry(id.clone()).or_default();
+            mv.value1 = values.get(i).copied().unwrap_or(0.0);
+        }
+    }
+
+    for (group_key, label, values) in rows2 {
+        let entry = merged
+            .entry(group_key.clone())
+            .or_insert_with(|| DrilldownRow {
+                group_key: group_key.clone(),
+                label: label.clone(),
+                value1: 0.0,
+                value2: 0.0,
+                delta_pct: None,
+                metric_values: std::collections::HashMap::new(),
+            });
+        for (i, (id, _)) in metric_resolved.iter().enumerate() {
+            let mv = entry.metric_values.entry(id.clone()).or_default();
+            mv.value2 = values.get(i).copied().unwrap_or(0.0);
+        }
+    }
+
+    let mut rows: Vec<DrilldownRow> = merged
+        .into_values()
+        .map(|mut r| {
+            for mv in r.metric_values.values_mut() {
+                mv.delta_pct = pct_change(mv.value1, mv.value2);
+            }
+            if is_date_group {
+                r.label = fmt_day_label(&r.label);
+            }
+            r
+        })
+        .collect();
+
+    if is_date_group {
+        rows.sort_by(|a, b| a.group_key.cmp(&b.group_key));
+    } else {
+        // Sort by first metric descending
+        let first_id = metric_resolved.first().map(|(id, _)| id.clone());
+        rows.sort_by(|a, b| {
+            let va = first_id
+                .as_ref()
+                .and_then(|id| a.metric_values.get(id))
+                .map(|mv| mv.value1)
+                .unwrap_or(0.0);
+            let vb = first_id
+                .as_ref()
+                .and_then(|id| b.metric_values.get(id))
+                .map(|mv| mv.value1)
+                .unwrap_or(0.0);
+            vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+
+    let metric_columns: Vec<MetricColumnDef> = metric_resolved
+        .iter()
+        .map(|(id, metric)| MetricColumnDef {
+            id: id.clone(),
+            label: metric.label.to_string(),
+        })
+        .collect();
+
+    Ok(DrilldownResponse {
+        rows,
+        group_by_label,
+        period1_label,
+        period2_label,
+        metric_label: String::new(),
+        metric_columns,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pct_change, sort_daily_rows, DailyRow};
+
+    fn finalize_scalar(
+        current_total: f64,
+        previous_total: f64,
+        spark_points: &[f64],
+    ) -> (f64, Option<f64>) {
+        let cur = current_total;
+        let change = pct_change(cur, previous_total);
+        let _ = spark_points;
+        (cur, change)
+    }
+
+    #[test]
+    fn sparkline_daily_rows_are_sorted_by_day_offset() {
+        let rows = vec![
+            DailyRow {
+                day_offset: "000009".to_string(),
+                day_label: "2026-03-10".to_string(),
+                total: 10.0,
+            },
+            DailyRow {
+                day_offset: "000001".to_string(),
+                day_label: "2026-03-02".to_string(),
+                total: 2.0,
+            },
+            DailyRow {
+                day_offset: "000000".to_string(),
+                day_label: "2026-03-01".to_string(),
+                total: 1.0,
+            },
+        ];
+
+        let sorted = sort_daily_rows(rows);
+        let totals: Vec<f64> = sorted.into_iter().map(|row| row.total).collect();
+
+        assert_eq!(totals, vec![1.0, 2.0, 10.0]);
+    }
+
+    #[test]
+    fn scalar_uses_period_aggregate_not_sum_of_daily_ratio_points() {
+        let spark_points = vec![12000.0, 11000.0, 13000.0];
+        let (cur, change) = finalize_scalar(12018.0, 10000.0, &spark_points);
+
+        assert_eq!(spark_points.iter().sum::<f64>(), 36000.0);
+        assert_eq!(cur, 12018.0);
+        assert_eq!(change, Some(((12018.0 - 10000.0) / 10000.0) * 100.0));
+    }
 }
 
 // ---------------------------------------------------------------------------

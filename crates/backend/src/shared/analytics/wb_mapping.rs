@@ -1,0 +1,172 @@
+use contracts::shared::analytics::{
+    AmountColumn, DateSource, EventKind, KeySource, SourceRefStrategy, TargetProjection,
+    TurnoverMappingRule,
+};
+
+pub const WB_TURNOVER_MAPPING_RULES: &[TurnoverMappingRule] = &[
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "a015_wb_orders",
+        source_variant: "default",
+        target_projection: TargetProjection::P909,
+        turnover_code: "qty_ordered",
+        amount_column: AmountColumn::Oper,
+        event_kind: EventKind::Ordered,
+        business_date_source: DateSource::OrderDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::AggregateId,
+        match_description: "a015 line.qty -> qty_ordered",
+        notes: "WB v1 uses srid as both order_key and line_key.",
+        priority: 10,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "a012_wb_sales",
+        source_variant: "sale",
+        target_projection: TargetProjection::P909,
+        turnover_code: "qty_sold",
+        amount_column: AmountColumn::Oper,
+        event_kind: EventKind::Sold,
+        business_date_source: DateSource::SaleDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::AggregateId,
+        match_description: "a012 sale line.qty -> qty_sold",
+        notes: "Operational sale quantity.",
+        priority: 20,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "a012_wb_sales",
+        source_variant: "return",
+        target_projection: TargetProjection::P909,
+        turnover_code: "qty_returned",
+        amount_column: AmountColumn::Oper,
+        event_kind: EventKind::Returned,
+        business_date_source: DateSource::SaleDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::AggregateId,
+        match_description: "a012 return line.qty -> qty_returned",
+        notes: "Operational return quantity.",
+        priority: 20,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "a012_wb_sales",
+        source_variant: "sale",
+        target_projection: TargetProjection::P909,
+        turnover_code: "customer_revenue",
+        amount_column: AmountColumn::Oper,
+        event_kind: EventKind::Sold,
+        business_date_source: DateSource::SaleDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::AggregateId,
+        match_description: "a012 sell_out_plan -> customer_revenue",
+        notes: "Uses planned value until fact arrives.",
+        priority: 30,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "a012_wb_sales",
+        source_variant: "return",
+        target_projection: TargetProjection::P909,
+        turnover_code: "customer_return",
+        amount_column: AmountColumn::Oper,
+        event_kind: EventKind::Returned,
+        business_date_source: DateSource::SaleDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::AggregateId,
+        match_description: "a012 sell_out_plan -> customer_return",
+        notes: "Stores negative value for return.",
+        priority: 30,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "p903_wb_finance_report",
+        source_variant: "linked_sale",
+        target_projection: TargetProjection::P909,
+        turnover_code: "customer_revenue",
+        amount_column: AmountColumn::Fact,
+        event_kind: EventKind::Sold,
+        business_date_source: DateSource::FinanceDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::CompositeFinanceKey,
+        match_description: "p903 retail_amount by srid -> customer_revenue",
+        notes: "Fact sale revenue from finance report.",
+        priority: 40,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "p903_wb_finance_report",
+        source_variant: "linked_return",
+        target_projection: TargetProjection::P909,
+        turnover_code: "customer_return",
+        amount_column: AmountColumn::Fact,
+        event_kind: EventKind::Returned,
+        business_date_source: DateSource::FinanceDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::CompositeFinanceKey,
+        match_description: "p903 return_amount by srid -> customer_return",
+        notes: "Fact return amount from finance report.",
+        priority: 40,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "p903_wb_finance_report",
+        source_variant: "linked_fee",
+        target_projection: TargetProjection::P909,
+        turnover_code: "mp_logistics",
+        amount_column: AmountColumn::Fact,
+        event_kind: EventKind::Fee,
+        business_date_source: DateSource::FinanceDate,
+        order_key_source: KeySource::Srid,
+        line_key_source: KeySource::Srid,
+        source_ref_strategy: SourceRefStrategy::CompositeFinanceKey,
+        match_description: "p903 rebill_logistic_cost by srid -> mp_logistics",
+        notes: "Fee rows remain linked to srid.",
+        priority: 50,
+    },
+    TurnoverMappingRule {
+        marketplace_code: "wb",
+        source_entity: "p903_wb_finance_report",
+        source_variant: "unlinked",
+        target_projection: TargetProjection::P910,
+        turnover_code: "adjustment_expense",
+        amount_column: AmountColumn::Fact,
+        event_kind: EventKind::Adjustment,
+        business_date_source: DateSource::FinanceDate,
+        order_key_source: KeySource::None,
+        line_key_source: KeySource::None,
+        source_ref_strategy: SourceRefStrategy::CompositeFinanceKey,
+        match_description: "p903 row without srid -> normalized unlinked turnover",
+        notes: "Turnover code depends on row contents after normalization.",
+        priority: 100,
+    },
+];
+
+pub fn wb_mapping_rules() -> &'static [TurnoverMappingRule] {
+    WB_TURNOVER_MAPPING_RULES
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::analytics::turnover_registry::get_turnover_class;
+
+    #[test]
+    fn all_rules_reference_existing_turnovers() {
+        for rule in WB_TURNOVER_MAPPING_RULES {
+            assert!(
+                get_turnover_class(rule.turnover_code).is_some(),
+                "mapping references unknown turnover: {}",
+                rule.turnover_code
+            );
+        }
+    }
+}
