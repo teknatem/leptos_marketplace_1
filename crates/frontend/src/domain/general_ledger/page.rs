@@ -1,4 +1,4 @@
-﻿use crate::layout::global_context::AppGlobalContext;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{TableCellMoney, TableCrosshairHighlight};
@@ -9,7 +9,7 @@ use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
 use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use chrono::{Datelike, Utc};
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;

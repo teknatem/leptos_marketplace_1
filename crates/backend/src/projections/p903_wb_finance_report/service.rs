@@ -242,7 +242,7 @@ async fn load_day_models(
 
 fn build_general_ledger_entries(
     models: &[crate::projections::p903_wb_finance_report::repository::Model],
-) -> Result<Vec<crate::projections::general_ledger::repository::Model>> {
+) -> Result<Vec<crate::general_ledger::repository::Model>> {
     models
         .iter()
         .map(|item| {
@@ -286,7 +286,7 @@ pub async fn reconcile_day(
         return Ok(ReconcileResult {
             changed: false,
             source_rows: existing.len(),
-            general_ledger_rows: crate::projections::general_ledger::repository::count_by_registrator_refs(
+            general_ledger_rows: crate::general_ledger::repository::count_by_registrator_refs(
                     &registrator_refs_from_models(&existing),
                 )
                 .await?
@@ -299,7 +299,7 @@ pub async fn reconcile_day(
     let txn = db.begin().await?;
 
     let registrator_refs = registrator_refs_from_models(&existing);
-    crate::projections::general_ledger::repository::delete_by_registrator_refs_with_conn(
+    crate::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
         &registrator_refs,
     )
@@ -339,7 +339,7 @@ pub async fn reconcile_day(
     let general_ledger_entries = build_general_ledger_entries(&models)?;
 
     for entry in &general_ledger_entries {
-        crate::projections::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
+        crate::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
     }
 
     txn.commit().await?;
@@ -367,7 +367,7 @@ pub async fn rebuild_day_from_existing(
 
     let txn = db.begin().await?;
     let registrator_refs = registrator_refs_from_models(&existing);
-    crate::projections::general_ledger::repository::delete_by_registrator_refs_with_conn(
+    crate::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
         &registrator_refs,
     )
@@ -375,7 +375,7 @@ pub async fn rebuild_day_from_existing(
 
     let general_ledger_entries = build_general_ledger_entries(&existing)?;
     for entry in &general_ledger_entries {
-        crate::projections::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
+        crate::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
     }
 
     txn.commit().await?;

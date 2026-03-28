@@ -18,6 +18,7 @@ pub mod dashboards;
 pub mod data_schemes;
 pub mod data_view;
 pub mod domain;
+pub mod general_ledger;
 pub mod projections;
 pub mod shared;
 pub mod system;

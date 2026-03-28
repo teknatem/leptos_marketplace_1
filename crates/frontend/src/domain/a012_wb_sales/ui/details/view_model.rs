@@ -3,7 +3,7 @@
 //! Contains reactive state, commands, and lazy loading logic.
 
 use super::model::*;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;

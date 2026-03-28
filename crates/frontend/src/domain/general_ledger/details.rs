@@ -4,7 +4,7 @@ use crate::shared::date_utils::{format_date, format_datetime, format_datetime_sp
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;

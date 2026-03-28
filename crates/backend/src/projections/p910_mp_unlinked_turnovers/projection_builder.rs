@@ -4,7 +4,7 @@ use contracts::shared::analytics::TurnoverLayer;
 use uuid::Uuid;
 
 use super::repository::Model;
-use crate::projections::general_ledger::repository::Model as GeneralLedgerModel;
+use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::shared::analytics::normalization::{normalize_expense, opt_nonzero};
 use crate::shared::analytics::turnover_registry::get_turnover_class;
 

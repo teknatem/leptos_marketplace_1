@@ -29,6 +29,7 @@ pub mod app_shell;
 pub mod dashboards;
 pub mod data_view;
 pub mod domain;
+pub mod general_ledger;
 pub mod layout;
 pub mod projections;
 pub mod shared;

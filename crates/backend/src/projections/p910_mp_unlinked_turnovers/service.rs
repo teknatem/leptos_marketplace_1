@@ -62,7 +62,7 @@ pub async fn project_wb_finance_entry(
     for model in result.turnovers {
         repository::upsert_entry(&model).await?;
     }
-    crate::projections::general_ledger::service::save_entries(&result.general_ledger_entries)
+    crate::general_ledger::service::save_entries(&result.general_ledger_entries)
         .await?;
     Ok(())
 }
@@ -80,7 +80,7 @@ pub async fn rebuild_wb_range(date_from: &str, date_to: &str) -> Result<()> {
     .await?
     {
         let source_ref = projection_builder::source_ref_from_model(&finance_row);
-        crate::projections::general_ledger::service::remove_by_registrator_ref(&source_ref).await?;
+        crate::general_ledger::service::remove_by_registrator_ref(&source_ref).await?;
         remove_by_registrator_ref(&source_ref).await?;
         let posting_id = uuid::Uuid::new_v4().to_string();
         project_wb_finance_entry(&finance_row, &posting_id).await?;

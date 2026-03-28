@@ -29,7 +29,7 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
                     "category": {
                         "type": "string",
                         "description": "Необязательный фильтр по категории данных.",
-                        "enum": ["wb", "ozon", "ym", "ref", "llm", "promotion", "bi", "dashboard"]
+                        "enum": ["wb", "ozon", "ym", "ref", "llm", "promotion", "bi", "dashboard", "gl", "accounting"]
                     }
                 }
             }),
@@ -207,6 +207,31 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["view_id", "group_by", "metric_id", "date_from", "date_to", "description"]
             }),
         },
+        ToolDefinition {
+            name: "list_gl_turnovers".into(),
+            description: "Получить список видов оборотов General Ledger \
+                          (turnover_code, name, description, счета Дт/Кт, формулы). \
+                          Используй для понимания структуры учёта: какие операции фиксируются \
+                          в sys_general_ledger, какой turnover_code использовать в WHERE-условии, \
+                          какой счёт дебетуется/кредитуется при продаже/возврате/комиссии."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_group": {
+                        "type": "string",
+                        "description": "Фильтр по группе отчёта: revenue, returns, commission, \
+                                        acquiring, logistics, storage, penalty, advertising, \
+                                        cost, quantity, ratio, adjustment, other",
+                        "enum": [
+                            "revenue", "returns", "payout", "commission", "acquiring",
+                            "logistics", "storage", "penalty", "advertising",
+                            "cost", "quantity", "ratio", "adjustment", "other"
+                        ]
+                    }
+                }
+            }),
+        },
     ]
 }
 
@@ -352,11 +377,38 @@ pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -
             create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
         }
 
+        "list_gl_turnovers" => {
+            let args = serde_json::from_str::<serde_json::Value>(&call.arguments).unwrap_or_default();
+            let report_group = args.get("report_group").and_then(|v| v.as_str());
+            let items: Vec<_> = crate::general_ledger::turnover_registry::TURNOVER_CLASSES
+                .iter()
+                .filter(|t| report_group.map_or(true, |g| t.report_group.as_str() == g))
+                .map(|t| serde_json::json!({
+                    "code": t.code,
+                    "name": t.name,
+                    "description": t.description,
+                    "llm_description": t.llm_description,
+                    "debit_account": t.debit_account,
+                    "credit_account": t.credit_account,
+                    "report_group": t.report_group.as_str(),
+                    "generates_journal_entry": t.generates_journal_entry,
+                    "formula_hint": t.formula_hint,
+                }))
+                .collect();
+            let count = items.len();
+            serde_json::json!({
+                "turnovers": items,
+                "count": count,
+                "hint": "Используй turnover_code в WHERE sys_general_ledger.turnover_code = '...' \
+                         для фильтрации проводок нужного типа."
+            })
+        }
+
         unknown => serde_json::json!({
             "error": format!(
                 "Unknown tool: '{}'. Available tools: list_entities, get_entity_schema, \
                  get_join_hint, search_knowledge, get_knowledge, list_data_views, \
-                 execute_query, create_drilldown_report.",
+                 execute_query, create_drilldown_report, list_gl_turnovers.",
                 unknown
             )
         }),

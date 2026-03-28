@@ -4,7 +4,7 @@ use axum::{
 };
 use contracts::domain::a026_wb_advert_daily::aggregate::{WbAdvertDaily, WbAdvertDailyMetrics};
 use contracts::domain::common::AggregateId;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::shared::analytics::TurnoverLayer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -320,7 +320,7 @@ pub async fn get_general_ledger_entries(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let registrator_ref = format!("a026:{}", id);
-    let rows = crate::projections::general_ledger::repository::list_with_filters(
+    let rows = crate::general_ledger::repository::list_with_filters(
         None,
         None,
         Some(registrator_ref),
@@ -353,10 +353,10 @@ pub async fn get_general_ledger_entries(
 }
 
 fn to_journal_dto(
-    row: crate::projections::general_ledger::repository::Model,
+    row: crate::general_ledger::repository::Model,
 ) -> GeneralLedgerEntryDto {
     let comment =
-        crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
+        crate::general_ledger::turnover_registry::get_turnover_class(&row.turnover_code)
             .map(|c| c.journal_comment.to_string())
             .unwrap_or_default();
 

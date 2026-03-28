@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p911_wb_advert_by_items::dto::{
     WbAdvertByItemDetailDto, WbAdvertByItemDto, WbAdvertByItemListResponse,
 };
@@ -100,7 +100,7 @@ pub async fn get_by_general_ledger_ref(
     }
 
     let general_ledger_entry =
-        crate::projections::general_ledger::repository::get_by_id(&general_ledger_ref)
+        crate::general_ledger::repository::get_by_id(&general_ledger_ref)
             .await
             .map_err(|error| {
                 tracing::error!(
@@ -153,7 +153,7 @@ pub(crate) fn model_to_dto(
 }
 
 fn to_general_ledger_dto(
-    row: crate::projections::general_ledger::repository::Model,
+    row: crate::general_ledger::repository::Model,
 ) -> GeneralLedgerEntryDto {
     let comment =
         crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)

@@ -1,6 +1,7 @@
 pub mod dashboards;
 pub mod domain;
 pub mod enums;
+pub mod general_ledger;
 pub mod projections;
 pub mod shared;
 pub mod system;
