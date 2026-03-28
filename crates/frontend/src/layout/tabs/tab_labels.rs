@@ -61,6 +61,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "u507_import_from_erp" => "Импорт из ERP",
         "u508_repost_documents" => "Перепроведение по проекции",
         "general_ledger" => "Главная книга",
+        "general_ledger_turnovers" => "Обороты GL",
         k if k.starts_with("general_ledger_details_") => "Главная книга",
         "a021_production_output" => "Выпуск продукции",
         "a022_kit_variant" => "Варианты комплектации",

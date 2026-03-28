@@ -271,21 +271,6 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "dollar-sign",
         },
         MegaMenuItem {
-            key: "p909_mp_order_line_turnovers",
-            title: tab_label_for_key("p909_mp_order_line_turnovers"),
-            icon_name: "list-ordered",
-        },
-        MegaMenuItem {
-            key: "p910_mp_unlinked_turnovers",
-            title: tab_label_for_key("p910_mp_unlinked_turnovers"),
-            icon_name: "file-stack",
-        },
-        MegaMenuItem {
-            key: "p911_wb_advert_by_items",
-            title: tab_label_for_key("p911_wb_advert_by_items"),
-            icon_name: "list-ordered",
-        },
-        MegaMenuItem {
             key: "p905_commission_history",
             title: tab_label_for_key("p905_commission_history"),
             icon_name: "percent",

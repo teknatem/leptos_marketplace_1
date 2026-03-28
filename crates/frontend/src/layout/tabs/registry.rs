@@ -50,7 +50,9 @@ use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
 use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
 use crate::domain::a026_wb_advert_daily::ui::details::WbAdvertDailyDetail;
 use crate::domain::a026_wb_advert_daily::ui::list::WbAdvertDailyList;
-use crate::domain::general_ledger::{GeneralLedgerDetailsPage, GeneralLedgerPage};
+use crate::domain::general_ledger::{
+    GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerTurnoversPage,
+};
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
@@ -64,12 +66,6 @@ use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesLi
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
-use crate::projections::p909_mp_order_line_turnovers::ui::details::MpOrderLineTurnoverDetail;
-use crate::projections::p909_mp_order_line_turnovers::ui::list::MpOrderLineTurnoversList;
-use crate::projections::p910_mp_unlinked_turnovers::ui::details::MpUnlinkedTurnoverDetail;
-use crate::projections::p910_mp_unlinked_turnovers::ui::list::MpUnlinkedTurnoversList;
-use crate::projections::p911_wb_advert_by_items::ui::details::WbAdvertByItemDetail;
-use crate::projections::p911_wb_advert_by_items::ui::list::WbAdvertByItemsList;
 use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
@@ -658,6 +654,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // Журнал операций (general_ledger)
         "general_ledger" => view! { <GeneralLedgerPage /> }.into_any(),
+        "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
         k if k.starts_with("general_ledger_details_") => {
             let id = k
                 .strip_prefix("general_ledger_details_")
@@ -684,26 +681,18 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "p901_barcodes" => view! { <BarcodesList /> }.into_any(),
         "p902_ozon_finance_realization" => view! { <OzonFinanceRealizationList /> }.into_any(),
         "p903_wb_finance_report" => view! { <WbFinanceReportList /> }.into_any(),
-        k if k.starts_with("p903_wb_finance_report_details_") => {
-            let rest = k
-                .strip_prefix("p903_wb_finance_report_details_")
+        k if k.starts_with("p903_wb_finance_report_details_id_") => {
+            let id = k
+                .strip_prefix("p903_wb_finance_report_details_id_")
                 .unwrap()
                 .to_string();
-            let Some((rr_dt_encoded, rrd_id_str)) = rest.rsplit_once("__") else {
-                log!("⚠️ Bad p903 details tab key: {}", k);
-                return view! { <div class="placeholder">{"Bad finance report tab key"}</div> }
-                    .into_any();
-            };
-
-            let rr_dt = urlencoding::decode(&rr_dt_encoded)
+            let id = urlencoding::decode(&id)
                 .map(|s| s.into_owned())
-                .unwrap_or_else(|_| rr_dt_encoded.to_string());
-            let rrd_id: i64 = rrd_id_str.parse().unwrap_or_default();
+                .unwrap_or(id);
 
             view! {
                 <WbFinanceReportDetail
-                    rr_dt=rr_dt
-                    rrd_id=rrd_id
+                    id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
                         move |_| {
@@ -717,69 +706,6 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "p904_sales_data" => {
             log!("✅ Creating SalesDataList");
             view! { <SalesDataList /> }.into_any()
-        }
-        "p909_mp_order_line_turnovers" => view! { <MpOrderLineTurnoversList /> }.into_any(),
-        k if k.starts_with("p909_mp_order_line_turnovers_details_") => {
-            let encoded = k
-                .strip_prefix("p909_mp_order_line_turnovers_details_")
-                .unwrap_or_default();
-            let id = urlencoding::decode(encoded)
-                .map(|s| s.into_owned())
-                .unwrap_or_else(|_| encoded.to_string());
-            view! {
-                <MpOrderLineTurnoverDetail
-                    id=id
-                    on_close=Callback::new({
-                        let key_for_close = key_for_close.clone();
-                        move |_| {
-                            tabs_store.close_tab(&key_for_close);
-                        }
-                    })
-                />
-            }
-            .into_any()
-        }
-        "p910_mp_unlinked_turnovers" => view! { <MpUnlinkedTurnoversList /> }.into_any(),
-        k if k.starts_with("p910_mp_unlinked_turnovers_details_") => {
-            let encoded = k
-                .strip_prefix("p910_mp_unlinked_turnovers_details_")
-                .unwrap_or_default();
-            let id = urlencoding::decode(encoded)
-                .map(|s| s.into_owned())
-                .unwrap_or_else(|_| encoded.to_string());
-            view! {
-                <MpUnlinkedTurnoverDetail
-                    id=id
-                    on_close=Callback::new({
-                        let key_for_close = key_for_close.clone();
-                        move |_| {
-                            tabs_store.close_tab(&key_for_close);
-                        }
-                    })
-                />
-            }
-            .into_any()
-        }
-        "p911_wb_advert_by_items" => view! { <WbAdvertByItemsList /> }.into_any(),
-        k if k.starts_with("p911_wb_advert_by_items_details_") => {
-            let encoded = k
-                .strip_prefix("p911_wb_advert_by_items_details_")
-                .unwrap_or_default();
-            let general_ledger_ref = urlencoding::decode(encoded)
-                .map(|s| s.into_owned())
-                .unwrap_or_else(|_| encoded.to_string());
-            view! {
-                <WbAdvertByItemDetail
-                    general_ledger_ref=general_ledger_ref
-                    on_close=Callback::new({
-                        let key_for_close = key_for_close.clone();
-                        move |_| {
-                            tabs_store.close_tab(&key_for_close);
-                        }
-                    })
-                />
-            }
-            .into_any()
         }
         "p905_commission_history" => view! { <CommissionHistoryList /> }.into_any(),
         k if k.starts_with("p905-commission/") => {

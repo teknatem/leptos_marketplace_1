@@ -330,6 +330,7 @@ pub async fn get_general_ledger_entries(
         None,
         None,
         None,
+        None,
         false,
         None,
         None,
@@ -345,6 +346,7 @@ pub async fn get_general_ledger_entries(
     })?;
 
     let general_ledger_entries = rows.into_iter().map(to_journal_dto).collect::<Vec<_>>();
+
     Ok(Json(
         serde_json::json!({ "general_ledger_entries": general_ledger_entries }),
     ))
@@ -360,9 +362,9 @@ fn to_journal_dto(
 
     GeneralLedgerEntryDto {
         id: row.id,
-        posting_id: row.posting_id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
+        cabinet_mp: row.cabinet_mp,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
         debit_account: row.debit_account,
@@ -370,9 +372,8 @@ fn to_journal_dto(
         amount: row.amount,
         qty: row.qty,
         turnover_code: row.turnover_code,
-        detail_kind: row.detail_kind,
-        detail_id: row.detail_id,
-        resource_name: row.resource_name,
+        resource_table: row.resource_table,
+        resource_field: row.resource_field,
         resource_sign: row.resource_sign,
         created_at: row.created_at,
         comment,

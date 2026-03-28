@@ -41,7 +41,7 @@ fn classifier_kinds(turnover_code: &str) -> (String, String) {
 pub fn source_ref_from_model(
     entry: &crate::projections::p903_wb_finance_report::repository::Model,
 ) -> String {
-    format!("p903:{}:{}", entry.rr_dt, entry.rrd_id)
+    entry.source_row_ref.clone()
 }
 
 fn build_row(
@@ -80,7 +80,7 @@ fn build_row(
     })
 }
 
-fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLedgerModel> {
+fn make_general_ledger_entry(row: &Model, _posting_id: &str) -> Option<GeneralLedgerModel> {
     let class = get_turnover_class(&row.turnover_code)?;
     if !class.generates_journal_entry || row.amount.abs() <= f64::EPSILON {
         return None;
@@ -88,9 +88,9 @@ fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLed
 
     Some(GeneralLedgerModel {
         id: Uuid::new_v4().to_string(),
-        posting_id: posting_id.to_string(),
         entry_date: row.entry_date.clone(),
         layer: row.layer.clone(),
+        cabinet_mp: Some(row.connection_mp_ref.clone()),
         registrator_type: row.registrator_type.clone(),
         registrator_ref: row.registrator_ref.clone(),
         debit_account: class.debit_account.to_string(),
@@ -98,9 +98,8 @@ fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLed
         amount: row.amount,
         qty: None,
         turnover_code: row.turnover_code.clone(),
-        detail_kind: "p910_mp_unlinked_turnovers".to_string(),
-        detail_id: row.id.clone(),
-        resource_name: row.turnover_code.clone(),
+        resource_table: "p910_mp_unlinked_turnovers".to_string(),
+        resource_field: "amount".to_string(),
         resource_sign: 1,
         created_at: now_str(),
     })

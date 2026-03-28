@@ -92,25 +92,22 @@ pub fn LinksTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <TableBody>
                                 <For
                                     each=move || reports_for_table.clone()
-                                    key=|r| format!("{}_{}", r.rr_dt, r.rrd_id)
+                                    key=|r| r.id.clone()
                                     children={
                                         let tabs_store = tabs_store;
                                         move |report: WbFinanceReportDto| {
+                                            let report_id = report.id.clone();
                                             let rr_dt = report.rr_dt.clone();
                                             let rrd_id = report.rrd_id;
-                                            let rr_dt_for_click = rr_dt.clone();
+                                            let rr_dt_for_title = rr_dt.clone();
 
                                             view! {
                                                 <TableRow
                                                     on:click={
                                                         let tabs_store = tabs_store;
                                                         move |_| {
-                                                            let rr_dt_encoded = urlencoding::encode(&rr_dt_for_click).into_owned();
-                                                            let tab_key = format!(
-                                                                "p903_wb_finance_report_details_{}__{}",
-                                                                rr_dt_encoded, rrd_id
-                                                            );
-                                                            let tab_title = format!("WB FR {} #{}", rr_dt_for_click, rrd_id);
+                                                            let tab_key = format!("p903_wb_finance_report_details_id_{}", urlencoding::encode(&report_id));
+                                                            let tab_title = format!("WB FR {} #{}", rr_dt_for_title, rrd_id);
                                                             tabs_store.open_tab(&tab_key, &tab_title);
                                                         }
                                                     }

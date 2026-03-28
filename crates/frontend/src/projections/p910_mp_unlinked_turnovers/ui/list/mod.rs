@@ -48,20 +48,7 @@ fn truncate(value: &str, max_chars: usize) -> String {
 }
 
 fn open_registrator_tab(tabs: &AppGlobalContext, registrator_ref: &str) {
-    let Some(rest) = registrator_ref.strip_prefix("p903:") else {
-        return;
-    };
-    let Some((rr_dt, rrd_id)) = rest.rsplit_once(':') else {
-        return;
-    };
-    tabs.open_tab(
-        &format!(
-            "p903_wb_finance_report_details_{}__{}",
-            urlencoding::encode(rr_dt),
-            rrd_id
-        ),
-        &format!("WB Finance #{rrd_id}"),
-    );
+    let _ = (tabs, registrator_ref);
 }
 
 #[component]

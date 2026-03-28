@@ -93,7 +93,7 @@ fn new_row(
     })
 }
 
-fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLedgerModel> {
+fn make_general_ledger_entry(row: &Model, _posting_id: &str) -> Option<GeneralLedgerModel> {
     let class = get_turnover_class(&row.turnover_code)?;
     if !class.generates_journal_entry || row.amount.abs() <= f64::EPSILON {
         return None;
@@ -101,9 +101,9 @@ fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLed
 
     Some(GeneralLedgerModel {
         id: Uuid::new_v4().to_string(),
-        posting_id: posting_id.to_string(),
         entry_date: row.entry_date.clone(),
         layer: row.layer.clone(),
+        cabinet_mp: Some(row.connection_mp_ref.clone()),
         registrator_type: row.registrator_type.clone(),
         registrator_ref: row.registrator_ref.clone(),
         debit_account: class.debit_account.to_string(),
@@ -111,9 +111,8 @@ fn make_general_ledger_entry(row: &Model, posting_id: &str) -> Option<GeneralLed
         amount: row.amount,
         qty: None,
         turnover_code: row.turnover_code.clone(),
-        detail_kind: "p909_mp_order_line_turnovers".to_string(),
-        detail_id: row.id.clone(),
-        resource_name: row.turnover_code.clone(),
+        resource_table: "p909_mp_order_line_turnovers".to_string(),
+        resource_field: "amount".to_string(),
         resource_sign: 1,
         created_at: now_str(),
     })
@@ -151,14 +150,10 @@ pub fn oper_source_ref(document_id: &str) -> String {
     format!("a012:{document_id}")
 }
 
-fn finance_source_ref(rr_dt: &str, rrd_id: i64) -> String {
-    format!("p903:{rr_dt}:{rrd_id}")
-}
-
 pub fn finance_source_ref_from_model(
     entry: &crate::projections::p903_wb_finance_report::repository::Model,
 ) -> String {
-    finance_source_ref(&entry.rr_dt, entry.rrd_id)
+    entry.source_row_ref.clone()
 }
 
 pub fn is_finance_row_linked(

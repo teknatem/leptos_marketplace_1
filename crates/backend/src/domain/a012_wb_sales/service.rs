@@ -423,17 +423,6 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
                 e
             );
         }
-        if let Err(e) =
-            crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-                &format!("a012:{}", id),
-            )
-            .await
-        {
-            tracing::error!(
-                "Failed to delete P909 projections for WB Sales document: {}",
-                e
-            );
-        }
     }
 
     Ok(id)

@@ -61,19 +61,7 @@ fn open_registrator_tab(tabs: &AppGlobalContext, registrator_ref: &str) {
             &format!("a015_wb_orders_details_{rest}"),
             &format!("WB Order {rest}"),
         ),
-        "p903" => {
-            let Some((rr_dt, rrd_id)) = rest.rsplit_once(':') else {
-                return;
-            };
-            tabs.open_tab(
-                &format!(
-                    "p903_wb_finance_report_details_{}__{}",
-                    urlencoding::encode(rr_dt),
-                    rrd_id
-                ),
-                &format!("WB Finance #{rrd_id}"),
-            );
-        }
+        "p903" => {}
         _ => {}
     }
 }

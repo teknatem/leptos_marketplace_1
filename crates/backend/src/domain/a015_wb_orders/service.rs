@@ -357,16 +357,6 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
             tracing::error!("Failed to post WB Orders document: {}", e);
             // Не останавливаем выполнение, т.к. документ уже сохранен
         }
-    } else if let Err(e) =
-        crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-            &format!("a015:{}", id),
-        )
-        .await
-    {
-        tracing::error!(
-            "Failed to delete P909 projections for WB Orders document: {}",
-            e
-        );
     }
 
     Ok(id)

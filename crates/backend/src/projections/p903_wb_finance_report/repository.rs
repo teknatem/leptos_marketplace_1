@@ -4,6 +4,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
 
@@ -11,10 +12,9 @@ use crate::shared::data::db::get_connection;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "p903_wb_finance_report")]
 pub struct Model {
-    // Composite Primary Key
     #[sea_orm(primary_key, auto_increment = false)]
+    pub id: String,
     pub rr_dt: String,
-    #[sea_orm(primary_key, auto_increment = false)]
     pub rrd_id: i64,
     pub source_row_ref: String,
 
@@ -92,14 +92,18 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
-pub fn make_source_row_ref(rr_dt: &str, rrd_id: i64) -> String {
-    format!("p903:{rr_dt}:{rrd_id}")
+pub fn make_source_row_ref(rrd_id: i64) -> String {
+    format!("p903:{rrd_id}")
+}
+
+pub fn make_entry_id() -> String {
+    Uuid::new_v4().to_string()
 }
 
 /// Структура для передачи данных в upsert
 #[derive(Debug, Clone)]
 pub struct WbFinanceReportEntry {
-    // Composite Key
+    // Logical natural key
     pub rr_dt: NaiveDate,
     pub rrd_id: i64,
     pub source_row_ref: String,
@@ -156,14 +160,13 @@ pub async fn delete_by_date(date: NaiveDate) -> Result<u64> {
     Ok(result.rows_affected)
 }
 
-/// Upsert записи в finance_report по композитному ключу (rr_dt, rrd_id)
+/// Upsert logical natural key rrd_id
 pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
     let db = get_connection();
     let rr_dt_str = entry.rr_dt.format("%Y-%m-%d").to_string();
 
     // Проверяем, существует ли запись
     let existing = Entity::find()
-        .filter(Column::RrDt.eq(&rr_dt_str))
         .filter(Column::RrdId.eq(entry.rrd_id))
         .one(db)
         .await?;
@@ -172,8 +175,12 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
 
     if let Some(existing_model) = existing {
         // Обновить существующую запись
+        let existing_id = existing_model.id.clone();
         let mut active_model: ActiveModel = existing_model.into();
 
+        active_model.rr_dt = Set(rr_dt_str);
+        active_model.rrd_id = Set(entry.rrd_id);
+        active_model.id = Set(existing_id);
         active_model.source_row_ref = Set(entry.source_row_ref.clone());
         active_model.connection_mp_ref = Set(entry.connection_mp_ref.clone());
         active_model.organization_ref = Set(entry.organization_ref.clone());
@@ -215,6 +222,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
         let new_model = ActiveModel {
             rr_dt: Set(rr_dt_str),
             rrd_id: Set(entry.rrd_id),
+            id: Set(make_entry_id()),
             source_row_ref: Set(entry.source_row_ref.clone()),
             connection_mp_ref: Set(entry.connection_mp_ref.clone()),
             organization_ref: Set(entry.organization_ref.clone()),
@@ -474,18 +482,6 @@ pub async fn list_with_filters(
     Ok((items, total_count))
 }
 
-/// Получить запись по композитному ключу
-pub async fn get_by_id(rr_dt: &str, rrd_id: i64) -> Result<Option<Model>> {
-    let db = get_connection();
-
-    let item = Entity::find()
-        .filter(Column::RrDt.eq(rr_dt))
-        .filter(Column::RrdId.eq(rrd_id))
-        .one(db)
-        .await?;
-
-    Ok(item)
-}
 
 /// Поиск записей по srid
 pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
@@ -495,6 +491,15 @@ pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
 
     Ok(items)
 }
+
+pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
+    let db = get_connection();
+
+    let item = Entity::find().filter(Column::Id.eq(id)).one(db).await?;
+
+    Ok(item)
+}
+
 
 pub async fn list_distinct_supplier_oper_names(
     date_from: &str,
@@ -544,3 +549,5 @@ pub async fn list_by_date_range(date_from: &str, date_to: &str) -> Result<Vec<Mo
 
     Ok(items)
 }
+
+

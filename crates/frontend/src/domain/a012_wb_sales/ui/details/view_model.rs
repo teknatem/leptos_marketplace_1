@@ -137,11 +137,7 @@ impl WbSalesDetailsVm {
                         .as_array()
                         .map(|a| a.len())
                         .unwrap_or(0);
-                    let p909_len = p["p909_order_line_turnovers"]
-                        .as_array()
-                        .map(|a| a.len())
-                        .unwrap_or(0);
-                    p900_len + p904_len + p909_len
+                    p900_len + p904_len
                 })
                 .unwrap_or(0)
         })

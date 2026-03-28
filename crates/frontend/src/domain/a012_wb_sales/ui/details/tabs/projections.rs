@@ -1,11 +1,11 @@
-//! Projections tab - p900, p904 and p909 projection data
+//! Projections tab - p900 and p904 projection data
 
 use super::super::view_model::WbSalesDetailsVm;
 use crate::shared::json_viewer::widget::JsonViewer;
 use leptos::prelude::*;
 use thaw::*;
 
-/// Projections tab component - displays p900/p904/p909 projection data
+/// Projections tab component - displays p900/p904 projection data
 #[component]
 pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
     view! {
@@ -30,10 +30,6 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     .as_array()
                     .map(|a| a.len())
                     .unwrap_or(0);
-                let p909_len = proj_data["p909_order_line_turnovers"]
-                    .as_array()
-                    .map(|a| a.len())
-                    .unwrap_or(0);
                 let pretty = serde_json::to_string_pretty(&proj_data)
                     .unwrap_or_else(|_| proj_data.to_string());
 
@@ -47,15 +43,12 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
                                 {format!("p904_sales_data: {}", p904_len)}
                             </Badge>
-                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                                {format!("p909_order_line_turnovers: {}", p909_len)}
-                            </Badge>
                         </Flex>
 
                         // JSON content with highlighting
                         <JsonViewer
                             json_content=pretty
-                            title="Проекции (p900 / p904 / p909)".to_string()
+                            title="Проекции (p900 / p904)".to_string()
                         />
                     </div>
                 }.into_any()
@@ -72,3 +65,4 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
         }}
     }
 }
+

@@ -116,10 +116,6 @@ pub async fn replace_for_period(
 
     for id in existing_ids {
         let registrator_ref = format!("a026:{}", id);
-        crate::projections::p911_wb_advert_by_items::service::remove_by_registrator_ref(
-            &registrator_ref,
-        )
-        .await?;
         crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
             .await?;
     }
