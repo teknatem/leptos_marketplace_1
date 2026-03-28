@@ -2,7 +2,7 @@ use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::{
     WbFinanceReportDetailResponse, WbFinanceReportDto,
 };

@@ -1,6 +1,6 @@
 use axum::{extract::Query, Json};
 use chrono::NaiveDate;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::{
     WbFinanceReportDetailResponse, WbFinanceReportDto, WbFinanceReportListRequest,
     WbFinanceReportListResponse,
@@ -34,7 +34,7 @@ pub async fn list_reports(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let gl_counts = crate::projections::general_ledger::repository::count_by_registrator_refs(
+    let gl_counts = crate::general_ledger::repository::count_by_registrator_refs(
         &items
             .iter()
             .map(|item| item.id.clone())
@@ -175,7 +175,7 @@ async fn load_report_detail_by_id(
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
     let general_ledger_entries =
-        crate::projections::general_ledger::repository::list_by_registrator_ref(&item.id)
+        crate::general_ledger::repository::list_by_registrator_ref(&item.id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to load p903 general ledger rows by id: {}", e);
@@ -240,7 +240,7 @@ fn model_to_dto(
 }
 
 fn to_general_ledger_dto(
-    row: crate::projections::general_ledger::repository::Model,
+    row: crate::general_ledger::repository::Model,
 ) -> GeneralLedgerEntryDto {
     let comment =
         crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)

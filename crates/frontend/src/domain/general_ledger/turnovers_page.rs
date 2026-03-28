@@ -3,7 +3,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
-use contracts::projections::general_ledger::GeneralLedgerTurnoverDto;
+use contracts::general_ledger::GeneralLedgerTurnoverDto;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;

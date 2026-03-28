@@ -50,7 +50,7 @@ use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
 use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
 use crate::domain::a026_wb_advert_daily::ui::details::WbAdvertDailyDetail;
 use crate::domain::a026_wb_advert_daily::ui::list::WbAdvertDailyList;
-use crate::domain::general_ledger::{
+use crate::general_ledger::{
     GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerTurnoversPage,
 };
 use crate::layout::global_context::AppGlobalContext;

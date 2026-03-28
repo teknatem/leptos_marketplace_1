@@ -3,7 +3,7 @@
 //! Contains DTOs and async API functions for fetching and mutating WB Sales data.
 
 use crate::shared::api_utils::api_base;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};

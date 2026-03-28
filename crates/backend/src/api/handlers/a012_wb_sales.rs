@@ -719,12 +719,12 @@ pub async fn get_projections(
 pub async fn get_general_ledger_entries(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    use crate::shared::analytics::turnover_registry::get_turnover_class;
-    use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+    use crate::general_ledger::turnover_registry::get_turnover_class;
+    use contracts::general_ledger::GeneralLedgerEntryDto;
 
     let registrator_ref = format!("a012:{}", id);
 
-    let rows = crate::projections::general_ledger::repository::list_with_filters(
+    let rows = crate::general_ledger::repository::list_with_filters(
         None,
         None,
         Some(registrator_ref),

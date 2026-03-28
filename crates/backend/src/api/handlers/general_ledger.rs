@@ -1,8 +1,8 @@
 use axum::{extract::Query, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::shared::analytics::turnover_registry::{get_turnover_class, TURNOVER_CLASSES};
-use contracts::projections::general_ledger::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
+use crate::general_ledger::turnover_registry::{get_turnover_class, TURNOVER_CLASSES};
+use contracts::general_ledger::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
 use contracts::shared::analytics::TurnoverLayer;
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +45,7 @@ pub async fn list(
     let page = if page_size > 0 { offset / page_size } else { 0 };
     let sort_desc = q.sort_desc.unwrap_or(true);
 
-    let total = crate::projections::general_ledger::repository::count_with_filters(
+    let total = crate::general_ledger::repository::count_with_filters(
         q.date_from.clone(),
         q.date_to.clone(),
         q.registrator_ref.clone(),
@@ -62,7 +62,7 @@ pub async fn list(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let rows = crate::projections::general_ledger::repository::list_with_filters(
+    let rows = crate::general_ledger::repository::list_with_filters(
         q.date_from,
         q.date_to,
         q.registrator_ref,
@@ -104,7 +104,7 @@ pub async fn list(
 pub async fn get_by_id(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<GeneralLedgerEntryDto>, axum::http::StatusCode> {
-    let item = crate::projections::general_ledger::repository::get_by_id(&id)
+    let item = crate::general_ledger::repository::get_by_id(&id)
         .await
         .map_err(|e| {
             tracing::error!("general_ledger get_by_id error: {}", e);
@@ -117,7 +117,7 @@ pub async fn get_by_id(
 
 pub async fn list_turnovers(
 ) -> Result<Json<GeneralLedgerTurnoverListResponse>, axum::http::StatusCode> {
-    let counts = crate::projections::general_ledger::repository::count_grouped_by_turnover_code()
+    let counts = crate::general_ledger::repository::count_grouped_by_turnover_code()
         .await
         .map_err(|e| {
             tracing::error!("general_ledger turnover counts error: {}", e);
@@ -165,7 +165,7 @@ pub async fn list_turnovers(
     Ok(Json(GeneralLedgerTurnoverListResponse { items, total }))
 }
 
-fn to_dto(row: crate::projections::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
+fn to_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
     let comment = get_turnover_class(&row.turnover_code)
         .map(|c| c.journal_comment.to_string())
         .unwrap_or_default();

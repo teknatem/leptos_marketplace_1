@@ -3,7 +3,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDailyMetrics;
-use contracts::projections::general_ledger::GeneralLedgerEntryDto;
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;

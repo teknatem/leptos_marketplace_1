@@ -4,9 +4,9 @@ use contracts::shared::analytics::TurnoverLayer;
 use uuid::Uuid;
 
 use super::repository;
-use crate::projections::general_ledger::repository::Model as GeneralLedgerModel;
+use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::shared::analytics::normalization::normalize_positive;
-use crate::shared::analytics::turnover_registry::get_turnover_class;
+use crate::general_ledger::turnover_registry::get_turnover_class;
 
 const REGISTRATOR_TYPE: &str = "a026_wb_advert_daily";
 const TURNOVER_CODE: &str = "advertising_allocated";
@@ -56,7 +56,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     let registrator_ref = format!("a026:{}", id);
-    crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
+    crate::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 
     let mut total_amount = 0.0;
@@ -78,7 +78,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
             &registrator_ref,
             total_amount,
         );
-        crate::projections::general_ledger::service::save_entries(&[general_ledger_entry]).await?;
+        crate::general_ledger::service::save_entries(&[general_ledger_entry]).await?;
     }
 
     Ok(())
@@ -95,7 +95,7 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     let registrator_ref = format!("a026:{}", id);
-    crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
+    crate::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 
     Ok(())

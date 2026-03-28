@@ -91,7 +91,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
-    crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
+    crate::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 
     crate::projections::p900_mp_sales_register::service::project_wb_sales(&document, id).await?;
@@ -116,7 +116,7 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
-    crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
+    crate::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 
     Ok(())

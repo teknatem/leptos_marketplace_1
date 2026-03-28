@@ -1,5 +1,5 @@
 use crate::shared::api_utils::api_base;
-use contracts::projections::general_ledger::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
+use contracts::general_ledger::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 

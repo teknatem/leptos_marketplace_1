@@ -96,7 +96,7 @@ pub async fn project_wb_sales(
     for entry in result.turnovers {
         repository::upsert_entry(&entry).await?;
     }
-    crate::projections::general_ledger::service::save_entries(&result.general_ledger_entries)
+    crate::general_ledger::service::save_entries(&result.general_ledger_entries)
         .await?;
     Ok(())
 }
@@ -113,7 +113,7 @@ pub async fn project_wb_finance_entry(
     for model in result.turnovers {
         repository::upsert_entry(&model).await?;
     }
-    crate::projections::general_ledger::service::save_entries(&result.general_ledger_entries)
+    crate::general_ledger::service::save_entries(&result.general_ledger_entries)
         .await?;
 
     Ok(())

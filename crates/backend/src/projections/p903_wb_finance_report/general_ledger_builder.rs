@@ -2,9 +2,9 @@ use anyhow::Result;
 use contracts::shared::analytics::TurnoverLayer;
 use uuid::Uuid;
 
-use crate::projections::general_ledger::repository::Model as GeneralLedgerModel;
+use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::shared::analytics::normalization::opt_nonzero;
-use crate::shared::analytics::turnover_registry::get_turnover_class;
+use crate::general_ledger::turnover_registry::get_turnover_class;
 
 const DETAIL_KIND: &str = "p903_wb_finance_report";
 const REGISTRATOR_TYPE: &str = "p903_wb_finance_report";
