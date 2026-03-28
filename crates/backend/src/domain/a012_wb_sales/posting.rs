@@ -91,23 +91,11 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &registrator_ref,
-    )
-    .await?;
     crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 
-    let posting_id = Uuid::new_v4().to_string();
-
     crate::projections::p900_mp_sales_register::service::project_wb_sales(&document, id).await?;
     crate::projections::p904_sales_data::service::project_wb_sales(&document, id).await?;
-    crate::projections::p909_mp_order_line_turnovers::service::project_wb_sales(
-        &document,
-        id,
-        &posting_id,
-    )
-    .await?;
 
     Ok(())
 }
@@ -128,10 +116,6 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &registrator_ref,
-    )
-    .await?;
     crate::projections::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
         .await?;
 

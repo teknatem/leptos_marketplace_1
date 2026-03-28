@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 /// DTO для строки финансового отчета Wildberries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbFinanceReportDto {
+    pub id: String,
     // Composite Key
     pub rr_dt: String,
     pub rrd_id: i64,

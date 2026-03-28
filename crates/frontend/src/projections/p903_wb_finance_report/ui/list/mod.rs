@@ -333,11 +333,8 @@ pub fn WbFinanceReportList() -> impl IntoView {
         load();
     };
 
-    let open_detail = move |rr_dt: String, rrd_id: i64| {
-        let tab_key = format!(
-            "p903_wb_finance_report_details_{}__{rrd_id}",
-            encode_q(&rr_dt)
-        );
+    let open_detail = move |id: String, rrd_id: i64| {
+        let tab_key = format!("p903_wb_finance_report_details_id_{}", encode_q(&id));
         let tab_title = format!("WB Finance #{rrd_id}");
         tabs_store.open_tab(&tab_key, &tab_title);
     };
@@ -937,7 +934,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                             {data
                                                 .into_iter()
                                                 .map(|item| {
-                                                    let rr_dt_link = item.rr_dt.clone();
+                                                    let detail_id = item.id.clone();
                                                     let rrd_id_clone = item.rrd_id;
                                                     let connection_id = item.connection_mp_ref.clone();
                                                     view! {
@@ -951,7 +948,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                                                                         style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                                                         on:click=move |e| {
                                                                             e.prevent_default();
-                                                                            open_detail(rr_dt_link.clone(), rrd_id_clone);
+                                                                            open_detail(detail_id.clone(), rrd_id_clone);
                                                                         }
                                                                     >
                                                                         {rrd_id_clone}

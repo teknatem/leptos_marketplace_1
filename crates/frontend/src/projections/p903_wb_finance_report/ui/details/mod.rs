@@ -55,8 +55,7 @@ pub struct WbSalesStateLink {
 
 #[component]
 pub fn WbFinanceReportDetail(
-    rr_dt: String,
-    rrd_id: i64,
+    id: String,
     #[prop(into)] on_close: Callback<()>,
 ) -> impl IntoView {
     let (data, set_data) = signal::<Option<WbFinanceReportDto>>(None);
@@ -77,13 +76,12 @@ pub fn WbFinanceReportDetail(
     let (selected_sale_id, set_selected_sale_id) = signal::<Option<String>>(None);
 
     // Загрузка данных
-    let rr_dt_clone = rr_dt.clone();
+    let id_clone = id.clone();
     Effect::new(move || {
-        let rr_dt = rr_dt_clone.clone();
-        let rrd_id_val = rrd_id;
+        let id = id_clone.clone();
 
         spawn_local(async move {
-            match fetch_detail(&rr_dt, rrd_id_val).await {
+            match fetch_detail(&id).await {
                 Ok(response) => {
                     set_action_message.set(None);
                     set_general_ledger_entries.set(response.general_ledger_entries);
@@ -366,6 +364,11 @@ pub fn WbFinanceReportDetail(
                 value: item.srid.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
+                description: "ID".to_string(),
+                field_id: "id".to_string(),
+                value: item.id.clone(),
+            },
+            FieldRow {
                 description: "Source row reference".to_string(),
                 field_id: "source_row_ref".to_string(),
                 value: item.source_row_ref.clone(),
@@ -462,12 +465,12 @@ pub fn WbFinanceReportDetail(
     };
 
     let post_click = move |_| {
-        let rr_dt = rr_dt.clone();
+        let id = id.clone();
         set_posting.set(true);
         set_action_message.set(None);
 
         spawn_local(async move {
-            match post_detail(&rr_dt, rrd_id).await {
+            match post_detail(&id).await {
                 Ok(response) => {
                     set_general_ledger_entries.set(response.general_ledger_entries);
                     set_data.set(Some(response.item));
@@ -671,6 +674,7 @@ pub fn WbFinanceReportDetail(
                                             <div>
                                                 <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); font-weight: 600;">
                                                     <span>"Entries: " {entries.len()}</span>
+                                                    <span>"ID: " {data.get().map(|item| item.id).unwrap_or_default()}</span>
                                                     <span>"Source: " {data.get().map(|item| item.source_row_ref).unwrap_or_default()}</span>
                                                 </div>
 
@@ -696,7 +700,7 @@ pub fn WbFinanceReportDetail(
                                                                             <TableCell><TableCellLayout>{entry.entry_date}</TableCellLayout></TableCell>
                                                                             <TableCell><TableCellLayout truncate=true>{entry.turnover_code}</TableCellLayout></TableCell>
                                                                             <TableCell class="table__cell--right"><TableCellLayout>{format_number(entry.amount)}</TableCellLayout></TableCell>
-                                                                            <TableCell><TableCellLayout truncate=true>{entry.resource_name}</TableCellLayout></TableCell>
+                                                                            <TableCell><TableCellLayout truncate=true>{entry.resource_field}</TableCellLayout></TableCell>
                                                                             <TableCell class="table__cell--right"><TableCellLayout>{entry.resource_sign}</TableCellLayout></TableCell>
                                                                             <TableCell><TableCellLayout>{entry.debit_account}</TableCellLayout></TableCell>
                                                                             <TableCell><TableCellLayout>{entry.credit_account}</TableCellLayout></TableCell>
@@ -827,9 +831,9 @@ pub fn WbFinanceReportDetail(
     }
 }
 
-async fn fetch_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailResponse, String> {
+async fn fetch_detail(id: &str) -> Result<WbFinanceReportDetailResponse, String> {
     let window = web_sys::window().ok_or("No window object")?;
-    let url = format!("/api/p903/finance-report/{}/{}", rr_dt, rrd_id);
+    let url = format!("/api/p903/finance-report/by-id/{}", urlencoding::encode(id));
 
     let resp_value = JsFuture::from(window.fetch_with_str(&url))
         .await
@@ -850,11 +854,14 @@ async fn fetch_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailR
     serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
 }
 
-async fn post_detail(rr_dt: &str, rrd_id: i64) -> Result<WbFinanceReportDetailResponse, String> {
+async fn post_detail(id: &str) -> Result<WbFinanceReportDetailResponse, String> {
     use web_sys::{Request, RequestInit, RequestMode};
 
     let window = web_sys::window().ok_or("No window object")?;
-    let url = format!("/api/p903/finance-report/{}/{}/post", rr_dt, rrd_id);
+    let url = format!(
+        "/api/p903/finance-report/by-id/{}/post",
+        urlencoding::encode(id)
+    );
 
     let opts = RequestInit::new();
     opts.set_method("POST");

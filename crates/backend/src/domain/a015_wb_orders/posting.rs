@@ -84,13 +84,6 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     repository::upsert_document(&document).await?;
 
-    let registrator_ref = format!("a015:{}", id);
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &registrator_ref,
-    )
-    .await?;
-    crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
-        .await?;
     tracing::info!("Posted WB Orders document: {}", id);
 
     Ok(())
@@ -107,11 +100,6 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     repository::upsert_document(&document).await?;
 
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(&format!(
-        "a015:{}",
-        id
-    ))
-    .await?;
     tracing::info!("Unposted WB Orders document: {}", id);
 
     Ok(())

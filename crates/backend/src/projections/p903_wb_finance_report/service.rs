@@ -5,8 +5,6 @@ use serde::Serialize;
 
 use crate::shared::data::db::get_connection;
 
-const DETAIL_KIND: &str = "p903_wb_finance_report";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReconcileResult {
     pub changed: bool,
@@ -49,6 +47,8 @@ struct SnapshotRow {
     srv_dbs: Option<i32>,
     srid: Option<String>,
 }
+
+type P903NaturalKey = i64;
 
 fn snapshot_from_model(
     row: &crate::projections::p903_wb_finance_report::repository::Model,
@@ -134,6 +134,7 @@ fn active_model_from_model(
     crate::projections::p903_wb_finance_report::repository::ActiveModel {
         rr_dt: Set(row.rr_dt.clone()),
         rrd_id: Set(row.rrd_id),
+        id: Set(row.id.clone()),
         source_row_ref: Set(row.source_row_ref.clone()),
         connection_mp_ref: Set(row.connection_mp_ref.clone()),
         organization_ref: Set(row.organization_ref.clone()),
@@ -173,11 +174,13 @@ fn active_model_from_model(
 
 fn model_from_entry(
     row: &crate::projections::p903_wb_finance_report::repository::WbFinanceReportEntry,
+    id: String,
     loaded_at_utc: &str,
 ) -> crate::projections::p903_wb_finance_report::repository::Model {
     crate::projections::p903_wb_finance_report::repository::Model {
         rr_dt: row.rr_dt.format("%Y-%m-%d").to_string(),
         rrd_id: row.rrd_id,
+        id,
         source_row_ref: row.source_row_ref.clone(),
         connection_mp_ref: row.connection_mp_ref.clone(),
         organization_ref: row.organization_ref.clone(),
@@ -240,17 +243,31 @@ async fn load_day_models(
 fn build_general_ledger_entries(
     models: &[crate::projections::p903_wb_finance_report::repository::Model],
 ) -> Result<Vec<crate::projections::general_ledger::repository::Model>> {
-    let posting_id = uuid::Uuid::new_v4().to_string();
     models
         .iter()
         .map(|item| {
             crate::projections::p903_wb_finance_report::general_ledger_builder::build_general_ledger_entries(
                 item,
-                &posting_id,
+                "",
             )
         })
         .collect::<Result<Vec<_>>>()
         .map(|items| items.into_iter().flatten().collect())
+}
+
+fn registrator_refs_from_models(
+    models: &[crate::projections::p903_wb_finance_report::repository::Model],
+) -> Vec<String> {
+    models.iter().map(|item| item.id.clone()).collect()
+}
+
+fn existing_id_map(
+    models: &[crate::projections::p903_wb_finance_report::repository::Model],
+) -> std::collections::HashMap<P903NaturalKey, String> {
+    models
+        .iter()
+        .map(|item| (item.rrd_id, item.id.clone()))
+        .collect()
 }
 
 pub async fn reconcile_day(
@@ -269,13 +286,8 @@ pub async fn reconcile_day(
         return Ok(ReconcileResult {
             changed: false,
             source_rows: existing.len(),
-            general_ledger_rows:
-                crate::projections::general_ledger::repository::count_by_detail_ids(
-                    DETAIL_KIND,
-                    &existing
-                        .iter()
-                        .map(|item| item.source_row_ref.clone())
-                        .collect::<Vec<_>>(),
+            general_ledger_rows: crate::projections::general_ledger::repository::count_by_registrator_refs(
+                    &registrator_refs_from_models(&existing),
                 )
                 .await?
                 .values()
@@ -286,14 +298,10 @@ pub async fn reconcile_day(
 
     let txn = db.begin().await?;
 
-    let source_row_refs = existing
-        .iter()
-        .map(|item| item.source_row_ref.clone())
-        .collect::<Vec<_>>();
-    crate::projections::general_ledger::repository::delete_by_detail_ids_with_conn(
+    let registrator_refs = registrator_refs_from_models(&existing);
+    crate::projections::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
-        DETAIL_KIND,
-        &source_row_refs,
+        &registrator_refs,
     )
     .await?;
 
@@ -306,10 +314,18 @@ pub async fn reconcile_day(
         .exec(&txn)
         .await?;
 
+    let preserved_ids = existing_id_map(&existing);
     let loaded_at_utc = chrono::Utc::now().to_rfc3339();
     let models = entries
         .iter()
-        .map(|item| model_from_entry(item, &loaded_at_utc))
+        .map(|item| {
+            let key = item.rrd_id;
+            let id = preserved_ids
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(crate::projections::p903_wb_finance_report::repository::make_entry_id);
+            model_from_entry(item, id, &loaded_at_utc)
+        })
         .collect::<Vec<_>>();
 
     for model in &models {
@@ -350,14 +366,10 @@ pub async fn rebuild_day_from_existing(
     }
 
     let txn = db.begin().await?;
-    let source_row_refs = existing
-        .iter()
-        .map(|item| item.source_row_ref.clone())
-        .collect::<Vec<_>>();
-    crate::projections::general_ledger::repository::delete_by_detail_ids_with_conn(
+    let registrator_refs = registrator_refs_from_models(&existing);
+    crate::projections::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
-        DETAIL_KIND,
-        &source_row_refs,
+        &registrator_refs,
     )
     .await?;
 

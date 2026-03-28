@@ -34,11 +34,10 @@ pub async fn list_reports(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let gl_counts = crate::projections::general_ledger::repository::count_by_detail_ids(
-        "p903_wb_finance_report",
+    let gl_counts = crate::projections::general_ledger::repository::count_by_registrator_refs(
         &items
             .iter()
-            .map(|item| item.source_row_ref.clone())
+            .map(|item| item.id.clone())
             .collect::<Vec<_>>(),
     )
     .await
@@ -50,10 +49,7 @@ pub async fn list_reports(
     let dtos: Vec<WbFinanceReportDto> = items
         .into_iter()
         .map(|item| {
-            let count = gl_counts
-                .get(&item.source_row_ref)
-                .copied()
-                .unwrap_or_default();
+            let count = gl_counts.get(&item.id).copied().unwrap_or_default();
             model_to_dto(item, count)
         })
         .collect();
@@ -94,29 +90,25 @@ pub async fn list_operation_kinds(
     Ok(Json(items))
 }
 
-pub async fn get_report_detail(
-    axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
+pub async fn get_report_detail_by_id(
+    axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<WbFinanceReportDetailResponse>, axum::http::StatusCode> {
-    load_report_detail(&rr_dt, rrd_id).await.map(Json)
+    load_report_detail_by_id(&id).await.map(Json)
 }
 
-pub async fn post_report(
-    axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
+pub async fn post_report_by_id(
+    axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<WbFinanceReportDetailResponse>, axum::http::StatusCode> {
-    let item = repository::get_by_id(&rr_dt, rrd_id)
+    let item = repository::get_by_id(&id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get finance report detail before post: {}", e);
+            tracing::error!("Failed to get finance report detail before post by id: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
     let day = NaiveDate::parse_from_str(&item.rr_dt, "%Y-%m-%d").map_err(|e| {
-        tracing::error!(
-            "Failed to parse p903 rr_dt '{}' for post: {}",
-            item.rr_dt,
-            e
-        );
+        tracing::error!("Failed to parse p903 rr_dt '{}' for post by id: {}", item.rr_dt, e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -126,26 +118,21 @@ pub async fn post_report(
     )
     .await
     .map_err(|e| {
-        tracing::error!(
-            "Failed to rebuild p903 general ledger for {} / {}: {}",
-            rr_dt,
-            rrd_id,
-            e
-        );
+        tracing::error!("Failed to rebuild p903 general ledger for id {}: {}", id, e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    load_report_detail(&rr_dt, rrd_id).await.map(Json)
+    load_report_detail_by_id(&id).await.map(Json)
 }
 
 /// Handler для получения raw JSON по композитному ключу
-pub async fn get_raw_json(
-    axum::extract::Path((rr_dt, rrd_id)): axum::extract::Path<(String, i64)>,
+pub async fn get_raw_json_by_id(
+    axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<String, axum::http::StatusCode> {
-    let item = repository::get_by_id(&rr_dt, rrd_id)
+    let item = repository::get_by_id(&id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get finance report raw json: {}", e);
+            tracing::error!("Failed to get finance report raw json by id: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
@@ -176,31 +163,27 @@ pub async fn search_by_srid(
 }
 
 /// Преобразование Model в DTO для списка (без extra для экономии трафика)
-async fn load_report_detail(
-    rr_dt: &str,
-    rrd_id: i64,
+async fn load_report_detail_by_id(
+    id: &str,
 ) -> Result<WbFinanceReportDetailResponse, axum::http::StatusCode> {
-    let item = repository::get_by_id(rr_dt, rrd_id)
+    let item = repository::get_by_id(id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get finance report detail: {}", e);
+            tracing::error!("Failed to get finance report detail by id: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
     let general_ledger_entries =
-        crate::projections::general_ledger::repository::list_by_detail_kind_and_detail_id(
-            "p903_wb_finance_report",
-            &item.source_row_ref,
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to load p903 general ledger rows: {}", e);
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .into_iter()
-        .map(to_general_ledger_dto)
-        .collect::<Vec<_>>();
+        crate::projections::general_ledger::repository::list_by_registrator_ref(&item.id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to load p903 general ledger rows by id: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .into_iter()
+            .map(to_general_ledger_dto)
+            .collect::<Vec<_>>();
 
     Ok(WbFinanceReportDetailResponse {
         item: model_to_dto(item, general_ledger_entries.len()),
@@ -215,6 +198,7 @@ fn model_to_dto(
     // Убрано форматирование даты для оптимизации - отправляем как есть
     // Поле extra не включаем в список - оно может содержать большой JSON (~3KB на запись)
     WbFinanceReportDto {
+        id: model.id,
         rr_dt: model.rr_dt,
         rrd_id: model.rrd_id,
         source_row_ref: model.source_row_ref,
@@ -265,9 +249,9 @@ fn to_general_ledger_dto(
 
     GeneralLedgerEntryDto {
         id: row.id,
-        posting_id: row.posting_id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
+        cabinet_mp: row.cabinet_mp,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
         debit_account: row.debit_account,
@@ -275,9 +259,8 @@ fn to_general_ledger_dto(
         amount: row.amount,
         qty: row.qty,
         turnover_code: row.turnover_code,
-        detail_kind: row.detail_kind,
-        detail_id: row.detail_id,
-        resource_name: row.resource_name,
+        resource_table: row.resource_table,
+        resource_field: row.resource_field,
         resource_sign: row.resource_sign,
         created_at: row.created_at,
         comment,

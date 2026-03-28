@@ -2,6 +2,7 @@ use anyhow::Result;
 use sea_orm::entity::prelude::*;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set,
+    Statement,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,9 +14,10 @@ use crate::shared::data::db::get_connection;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    pub posting_id: String,
     pub entry_date: String,
     pub layer: String,
+    #[sea_orm(nullable)]
+    pub cabinet_mp: Option<String>,
     pub registrator_type: String,
     pub registrator_ref: String,
     pub debit_account: String,
@@ -24,9 +26,8 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub qty: Option<f64>,
     pub turnover_code: String,
-    pub detail_kind: String,
-    pub detail_id: String,
-    pub resource_name: String,
+    pub resource_table: String,
+    pub resource_field: String,
     pub resource_sign: i32,
     pub created_at: String,
 }
@@ -47,9 +48,9 @@ pub async fn save_entry(entry: &Model) -> Result<()> {
 pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
     let active = ActiveModel {
         id: Set(entry.id.clone()),
-        posting_id: Set(entry.posting_id.clone()),
         entry_date: Set(entry.entry_date.clone()),
         layer: Set(entry.layer.clone()),
+        cabinet_mp: Set(entry.cabinet_mp.clone()),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
         debit_account: Set(entry.debit_account.clone()),
@@ -57,9 +58,8 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
         amount: Set(entry.amount),
         qty: Set(entry.qty),
         turnover_code: Set(entry.turnover_code.clone()),
-        detail_kind: Set(entry.detail_kind.clone()),
-        detail_id: Set(entry.detail_id.clone()),
-        resource_name: Set(entry.resource_name.clone()),
+        resource_table: Set(entry.resource_table.clone()),
+        resource_field: Set(entry.resource_field.clone()),
         resource_sign: Set(entry.resource_sign),
         created_at: Set(entry.created_at.clone()),
     };
@@ -86,68 +86,78 @@ pub async fn delete_by_registrator_ref(registrator_ref: &str) -> Result<u64> {
 }
 
 pub async fn delete_by_posting_id(posting_id: &str) -> Result<u64> {
-    let result = Entity::delete_many()
-        .filter(Column::PostingId.eq(posting_id))
-        .exec(conn())
-        .await?;
-    Ok(result.rows_affected)
+    let _ = posting_id;
+    Ok(0)
 }
 
 pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
     Ok(Entity::find_by_id(id.to_string()).one(conn()).await?)
 }
 
-pub async fn list_by_detail_kind_and_detail_id(
-    detail_kind: &str,
-    detail_id: &str,
-) -> Result<Vec<Model>> {
+pub async fn list_by_registrator_ref(registrator_ref: &str) -> Result<Vec<Model>> {
     Ok(Entity::find()
-        .filter(Column::DetailKind.eq(detail_kind))
-        .filter(Column::DetailId.eq(detail_id))
+        .filter(Column::RegistratorRef.eq(registrator_ref))
         .order_by_asc(Column::CreatedAt)
         .order_by_asc(Column::Id)
         .all(conn())
         .await?)
 }
 
-pub async fn delete_by_detail_ids(detail_kind: &str, detail_ids: &[String]) -> Result<u64> {
-    delete_by_detail_ids_with_conn(conn(), detail_kind, detail_ids).await
+pub async fn delete_by_registrator_refs(registrator_refs: &[String]) -> Result<u64> {
+    delete_by_registrator_refs_with_conn(conn(), registrator_refs).await
 }
 
-pub async fn delete_by_detail_ids_with_conn<C: ConnectionTrait>(
+pub async fn delete_by_registrator_refs_with_conn<C: ConnectionTrait>(
     db: &C,
-    detail_kind: &str,
-    detail_ids: &[String],
+    registrator_refs: &[String],
 ) -> Result<u64> {
-    if detail_ids.is_empty() {
+    if registrator_refs.is_empty() {
         return Ok(0);
     }
 
     let result = Entity::delete_many()
-        .filter(Column::DetailKind.eq(detail_kind))
-        .filter(Column::DetailId.is_in(detail_ids.iter().cloned()))
+        .filter(Column::RegistratorRef.is_in(registrator_refs.iter().cloned()))
         .exec(db)
         .await?;
     Ok(result.rows_affected)
 }
 
-pub async fn count_by_detail_ids(
-    detail_kind: &str,
-    detail_ids: &[String],
-) -> Result<HashMap<String, usize>> {
-    if detail_ids.is_empty() {
+pub async fn count_by_registrator_refs(registrator_refs: &[String]) -> Result<HashMap<String, usize>> {
+    if registrator_refs.is_empty() {
         return Ok(HashMap::new());
     }
 
     let rows = Entity::find()
-        .filter(Column::DetailKind.eq(detail_kind))
-        .filter(Column::DetailId.is_in(detail_ids.iter().cloned()))
+        .filter(Column::RegistratorRef.is_in(registrator_refs.iter().cloned()))
         .all(conn())
         .await?;
 
     let mut counts = HashMap::new();
     for row in rows {
-        *counts.entry(row.detail_id).or_insert(0) += 1;
+        *counts.entry(row.registrator_ref).or_insert(0) += 1;
+    }
+
+    Ok(counts)
+}
+
+pub async fn count_grouped_by_turnover_code() -> Result<HashMap<String, usize>> {
+    let stmt = Statement::from_string(
+        conn().get_database_backend(),
+        r#"
+            SELECT turnover_code, COUNT(*) AS gl_entries_count
+            FROM sys_general_ledger
+            GROUP BY turnover_code
+        "#
+        .to_string(),
+    );
+
+    let rows = conn().query_all(stmt).await?;
+    let mut counts = HashMap::new();
+
+    for row in rows {
+        let code: String = row.try_get("", "turnover_code")?;
+        let count: i64 = row.try_get("", "gl_entries_count")?;
+        counts.insert(code, count.max(0) as usize);
     }
 
     Ok(counts)
@@ -163,6 +173,7 @@ pub async fn list_with_filters(
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
+    cabinet_mp: Option<String>,
     sort_by: Option<String>,
     sort_desc: bool,
     offset: Option<u64>,
@@ -178,6 +189,7 @@ pub async fn list_with_filters(
         &debit_account,
         &credit_account,
         &turnover_code,
+        &cabinet_mp,
     );
     query = apply_sort(query, sort_by.as_deref().unwrap_or("entry_date"), sort_desc);
     if let Some(value) = offset {
@@ -199,6 +211,7 @@ pub async fn count_with_filters(
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
+    cabinet_mp: Option<String>,
 ) -> Result<u64> {
     let query = apply_filters(
         Entity::find(),
@@ -210,6 +223,7 @@ pub async fn count_with_filters(
         &debit_account,
         &credit_account,
         &turnover_code,
+        &cabinet_mp,
     );
     Ok(query.count(conn()).await?)
 }
@@ -225,6 +239,7 @@ fn apply_filters(
     debit_account: &Option<String>,
     credit_account: &Option<String>,
     turnover_code: &Option<String>,
+    cabinet_mp: &Option<String>,
 ) -> Select<Entity> {
     if let Some(v) = date_from {
         query = query.filter(Column::EntryDate.gte(v.clone()));
@@ -250,6 +265,9 @@ fn apply_filters(
     if let Some(v) = turnover_code {
         query = query.filter(Column::TurnoverCode.eq(v.clone()));
     }
+    if let Some(v) = cabinet_mp {
+        query = query.filter(Column::CabinetMp.eq(v.clone()));
+    }
     query
 }
 
@@ -269,12 +287,16 @@ fn apply_sort(mut query: Select<Entity>, sort_by: &str, sort_desc: bool) -> Sele
         ("qty", false) => query = query.order_by_asc(Column::Qty),
         ("turnover_code", true) => query = query.order_by_desc(Column::TurnoverCode),
         ("turnover_code", false) => query = query.order_by_asc(Column::TurnoverCode),
+        ("cabinet_mp", true) => query = query.order_by_desc(Column::CabinetMp),
+        ("cabinet_mp", false) => query = query.order_by_asc(Column::CabinetMp),
         ("registrator_type", true) => query = query.order_by_desc(Column::RegistratorType),
         ("registrator_type", false) => query = query.order_by_asc(Column::RegistratorType),
         ("registrator_ref", true) => query = query.order_by_desc(Column::RegistratorRef),
         ("registrator_ref", false) => query = query.order_by_asc(Column::RegistratorRef),
-        ("detail_kind", true) => query = query.order_by_desc(Column::DetailKind),
-        ("detail_kind", false) => query = query.order_by_asc(Column::DetailKind),
+        ("resource_table", true) => query = query.order_by_desc(Column::ResourceTable),
+        ("resource_table", false) => query = query.order_by_asc(Column::ResourceTable),
+        ("resource_field", true) => query = query.order_by_desc(Column::ResourceField),
+        ("resource_field", false) => query = query.order_by_asc(Column::ResourceField),
         ("created_at", true) => query = query.order_by_desc(Column::CreatedAt),
         ("created_at", false) => query = query.order_by_asc(Column::CreatedAt),
         _ if sort_desc => query = query.order_by_desc(Column::EntryDate),

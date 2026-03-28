@@ -23,7 +23,7 @@ const OP_TRANSPORT_STORAGE_REIMBURSEMENT_RU: &str =
 #[derive(Debug, Clone)]
 struct ResourceAmount {
     amount: f64,
-    resource_name: &'static str,
+    resource_field: &'static str,
     resource_sign: i32,
 }
 
@@ -39,42 +39,42 @@ fn amount_sign(amount: f64) -> i32 {
     }
 }
 
-fn resource_amount(amount: f64, resource_name: &'static str) -> Option<ResourceAmount> {
+fn resource_amount(amount: f64, resource_field: &'static str) -> Option<ResourceAmount> {
     if amount.abs() <= f64::EPSILON {
         return None;
     }
 
     Some(ResourceAmount {
         amount,
-        resource_name,
+        resource_field,
         resource_sign: amount_sign(amount),
     })
 }
 
-fn passthrough_amount(value: Option<f64>, resource_name: &'static str) -> Option<ResourceAmount> {
-    resource_amount(opt_nonzero(value)?, resource_name)
+fn passthrough_amount(value: Option<f64>, resource_field: &'static str) -> Option<ResourceAmount> {
+    resource_amount(opt_nonzero(value)?, resource_field)
 }
 
 fn scaled_passthrough_amount(
     value: Option<f64>,
-    resource_name: &'static str,
+    resource_field: &'static str,
     multiplier: f64,
 ) -> Option<ResourceAmount> {
-    resource_amount(opt_nonzero(value)? * multiplier, resource_name)
+    resource_amount(opt_nonzero(value)? * multiplier, resource_field)
 }
 
 fn normalized_expense_amount(
     value: Option<f64>,
-    resource_name: &'static str,
+    resource_field: &'static str,
 ) -> Option<ResourceAmount> {
     let raw = opt_nonzero(value)?;
     let amount = if raw > 0.0 { -raw } else { raw };
-    resource_amount(amount, resource_name)
+    resource_amount(amount, resource_field)
 }
 
 fn build_entry(
     row: &crate::projections::p903_wb_finance_report::repository::Model,
-    posting_id: &str,
+    _posting_id: &str,
     turnover_code: &str,
     resource: ResourceAmount,
 ) -> Option<GeneralLedgerModel> {
@@ -85,19 +85,18 @@ fn build_entry(
 
     Some(GeneralLedgerModel {
         id: Uuid::new_v4().to_string(),
-        posting_id: posting_id.to_string(),
         entry_date: row.rr_dt.clone(),
         layer: TurnoverLayer::Fact.as_str().to_string(),
+        cabinet_mp: Some(row.connection_mp_ref.clone()),
         registrator_type: REGISTRATOR_TYPE.to_string(),
-        registrator_ref: row.source_row_ref.clone(),
+        registrator_ref: row.id.clone(),
         debit_account: class.debit_account.to_string(),
         credit_account: class.credit_account.to_string(),
         amount: resource.amount,
         qty: None,
         turnover_code: turnover_code.to_string(),
-        detail_kind: DETAIL_KIND.to_string(),
-        detail_id: row.source_row_ref.clone(),
-        resource_name: resource.resource_name.to_string(),
+        resource_table: DETAIL_KIND.to_string(),
+        resource_field: resource.resource_field.to_string(),
         resource_sign: resource.resource_sign,
         created_at: now_str(),
     })
@@ -209,12 +208,12 @@ fn commission_adjustment_amount(
 fn expense_amount_for_branch(
     row: &crate::projections::p903_wb_finance_report::repository::Model,
     value: Option<f64>,
-    resource_name: &'static str,
+    resource_field: &'static str,
 ) -> Option<ResourceAmount> {
     if is_linked(row) {
-        passthrough_amount(value, resource_name)
+        passthrough_amount(value, resource_field)
     } else {
-        normalized_expense_amount(value, resource_name)
+        normalized_expense_amount(value, resource_field)
     }
 }
 
@@ -251,7 +250,7 @@ fn push_penalty_entry(
             "mp_penalty_reversal",
             Some(ResourceAmount {
                 amount: raw.abs(),
-                resource_name: "penalty",
+                resource_field: "penalty",
                 resource_sign: -1,
             }),
         )
@@ -401,7 +400,8 @@ mod tests {
         crate::projections::p903_wb_finance_report::repository::Model {
             rr_dt: "2026-03-01".to_string(),
             rrd_id: 100,
-            source_row_ref: "p903:2026-03-01:100".to_string(),
+            id: "p903-row-100".to_string(),
+            source_row_ref: "p903:100".to_string(),
             connection_mp_ref: "conn-1".to_string(),
             organization_ref: "org-1".to_string(),
             acquiring_fee: None,
@@ -451,15 +451,13 @@ mod tests {
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
         assert!(!entries.is_empty());
         assert!(entries.iter().all(|item| item.layer == "fact"));
+        assert!(entries.iter().all(|item| item.registrator_ref == row.id));
         assert!(entries
             .iter()
-            .all(|item| item.detail_kind == "p903_wb_finance_report"));
+            .all(|item| item.resource_table == "p903_wb_finance_report"));
         assert!(entries
             .iter()
-            .all(|item| item.detail_id == row.source_row_ref));
-        assert!(entries
-            .iter()
-            .all(|item| item.registrator_ref == row.source_row_ref));
+            .all(|item| item.cabinet_mp.as_deref() == Some("conn-1")));
 
         let acquiring = entries
             .iter()
@@ -501,7 +499,7 @@ mod tests {
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
         assert!(!entries
             .iter()
-            .any(|item| item.resource_name == "rebill_logistic_cost"));
+            .any(|item| item.resource_field == "rebill_logistic_cost"));
 
         let commission_adjustment = entries
             .iter()
@@ -515,7 +513,7 @@ mod tests {
             .find(|item| item.turnover_code == "mp_logistics")
             .unwrap();
         assert_eq!(logistics.debit_account, "4404");
-        assert_eq!(logistics.resource_name, "delivery_rub");
+        assert_eq!(logistics.resource_field, "delivery_rub");
         assert_eq!(logistics.amount, -70.0);
     }
 
@@ -532,7 +530,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(storage.debit_account, "4404");
-        assert_eq!(storage.resource_name, "storage_fee");
+        assert_eq!(storage.resource_field, "storage_fee");
         assert_eq!(storage.resource_sign, -1);
         assert_eq!(storage.amount, -100.0);
     }
@@ -560,7 +558,7 @@ mod tests {
             .iter()
             .find(|item| {
                 item.turnover_code == "mp_transport_storage_reimbursement"
-                    && item.resource_name == "delivery_rub"
+                    && item.resource_field == "delivery_rub"
             })
             .unwrap();
         assert_eq!(delivery.debit_account, "4404");
@@ -570,7 +568,7 @@ mod tests {
             .iter()
             .find(|item| {
                 item.turnover_code == "mp_transport_storage_reimbursement"
-                    && item.resource_name == "storage_fee"
+                    && item.resource_field == "storage_fee"
             })
             .unwrap();
         assert_eq!(storage.debit_account, "4404");

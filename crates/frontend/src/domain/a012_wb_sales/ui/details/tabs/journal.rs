@@ -60,7 +60,7 @@ pub fn JournalTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let total_amount: f64 = entries.iter().map(|e| e.amount).sum();
             let entries_count = entries.len();
 
-            let posting_id = entries.first().map(|e| e.posting_id.clone()).unwrap_or_default();
+            let posting_id = entries.first().map(|e| e.id.clone()).unwrap_or_default();
 
             view! {
                 <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_journal_table">

@@ -692,7 +692,7 @@ pub async fn migrate_fill_sale_id() -> Result<Json<serde_json::Value>, axum::htt
 pub async fn get_projections(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    // Получаем данные из проекций p900, p904 и p909 для документа a012_wb_sales
+    // Load p900 and p904 projections for a012_wb_sales
     let p900_items = crate::projections::p900_mp_sales_register::service::get_by_registrator(&id)
         .await
         .map_err(|e| {
@@ -706,22 +706,10 @@ pub async fn get_projections(
             tracing::error!("Failed to get p904 projections: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
-
-    let p909_items = crate::projections::p909_mp_order_line_turnovers::repository::list_by_registrator_ref_and_layer(
-        &format!("a012:{}", id),
-        TurnoverLayer::Oper.as_str(),
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to get p909 projections: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
     // Объединяем результаты
     let result = serde_json::json!({
         "p900_sales_register": p900_items,
         "p904_sales_data": p904_items,
-        "p909_order_line_turnovers": p909_items,
     });
 
     Ok(Json(result))
@@ -746,6 +734,7 @@ pub async fn get_general_ledger_entries(
         None,
         None,
         None,
+        None,
         false,
         None,
         None,
@@ -765,9 +754,9 @@ pub async fn get_general_ledger_entries(
                 .unwrap_or_default();
             GeneralLedgerEntryDto {
                 id: r.id,
-                posting_id: r.posting_id,
                 entry_date: r.entry_date,
                 layer: TurnoverLayer::from_str(&r.layer).unwrap_or(TurnoverLayer::Oper),
+                cabinet_mp: r.cabinet_mp,
                 registrator_type: r.registrator_type,
                 registrator_ref: r.registrator_ref,
                 debit_account: r.debit_account,
@@ -775,9 +764,8 @@ pub async fn get_general_ledger_entries(
                 amount: r.amount,
                 qty: r.qty,
                 turnover_code: r.turnover_code,
-                detail_kind: r.detail_kind,
-                detail_id: r.detail_id,
-                resource_name: r.resource_name,
+                resource_table: r.resource_table,
+                resource_field: r.resource_field,
                 resource_sign: r.resource_sign,
                 created_at: r.created_at,
                 comment,
@@ -803,3 +791,5 @@ pub async fn refresh_dealer_price(
 
     Ok(Json(serde_json::json!({"success": true})))
 }
+
+

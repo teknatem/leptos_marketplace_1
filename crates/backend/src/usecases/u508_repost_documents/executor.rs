@@ -1,4 +1,4 @@
-use super::progress_tracker::ProgressTracker;
+﻿use super::progress_tracker::ProgressTracker;
 use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
 use contracts::usecases::u508_repost_documents::{
@@ -14,8 +14,6 @@ use uuid::Uuid;
 
 const P904_SALES_DATA: &str = "p904_sales_data";
 const P903_FINANCE_REPORT: &str = "p903_wb_finance_report";
-const P909_ORDER_LINE_TURNOVERS: &str = "p909_mp_order_line_turnovers";
-const P910_UNLINKED_TURNOVERS: &str = "p910_mp_unlinked_turnovers";
 const A012_WB_SALES: &str = "a012_wb_sales";
 const A026_WB_ADVERT_DAILY: &str = "a026_wb_advert_daily";
 
@@ -34,30 +32,15 @@ impl RepostExecutor {
                 key: P903_FINANCE_REPORT.to_string(),
                 label: "WB Finance Report".to_string(),
                 description:
-                    "Локальная пересборка general ledger по сохраненным строкам p903_wb_finance_report".to_string(),
+                    "Р›РѕРєР°Р»СЊРЅР°СЏ РїРµСЂРµСЃР±РѕСЂРєР° general ledger РїРѕ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рј СЃС‚СЂРѕРєР°Рј p903_wb_finance_report".to_string(),
             },
             ProjectionOption {
                 key: P904_SALES_DATA.to_string(),
                 label: "Sales Data".to_string(),
                 description:
-                    "Перепроведение документов по registrator_ref из p904_sales_data".to_string(),
-            },
-            ProjectionOption {
-                key: P909_ORDER_LINE_TURNOVERS.to_string(),
-                label: "MP Order Line Turnovers".to_string(),
-                description:
-                    "Пересборка p909 по posted WB orders/sales".to_string(),
-            },
-            ProjectionOption {
-                key: P910_UNLINKED_TURNOVERS.to_string(),
-                label: "MP Unlinked Turnovers".to_string(),
-                description: "Пересборка p910 по непривязанным строкам WB finance report"
-                    .to_string(),
+                    "РџРµСЂРµРїСЂРѕРІРµРґРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚РѕРІ РїРѕ registrator_ref РёР· p904_sales_data".to_string(),
             },
         ]
-        .into_iter()
-        .filter(|item| item.key != P910_UNLINKED_TURNOVERS)
-        .collect()
     }
 
     pub fn list_available_aggregates(&self) -> Vec<AggregateOption> {
@@ -66,13 +49,13 @@ impl RepostExecutor {
                 key: A012_WB_SALES.to_string(),
                 label: "WB Sales".to_string(),
                 description:
-                    "Перепроведение документов a012_wb_sales с пересборкой связанных проекций"
+                    "РџРµСЂРµРїСЂРѕРІРµРґРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚РѕРІ a012_wb_sales СЃ РїРµСЂРµСЃР±РѕСЂРєРѕР№ СЃРІСЏР·Р°РЅРЅС‹С… РїСЂРѕРµРєС†РёР№"
                         .to_string(),
             },
             AggregateOption {
             key: A026_WB_ADVERT_DAILY.to_string(),
             label: "WB Advert Daily".to_string(),
-            description: "Перепроведение проведенных документов a026_wb_advert_daily с пересборкой связанных проекций".to_string(),
+            description: "РџРµСЂРµРїСЂРѕРІРµРґРµРЅРёРµ РїСЂРѕРІРµРґРµРЅРЅС‹С… РґРѕРєСѓРјРµРЅС‚РѕРІ a026_wb_advert_daily СЃ РїРµСЂРµСЃР±РѕСЂРєРѕР№ СЃРІСЏР·Р°РЅРЅС‹С… РїСЂРѕРµРєС†РёР№".to_string(),
             },
         ]
     }
@@ -152,7 +135,6 @@ impl RepostExecutor {
     fn validate_request(request: &RepostRequest) -> Result<()> {
         if request.projection_key != P903_FINANCE_REPORT
             && request.projection_key != P904_SALES_DATA
-            && request.projection_key != P909_ORDER_LINE_TURNOVERS
         {
             return Err(anyhow!(
                 "Unsupported projection_key: {}",
@@ -223,29 +205,6 @@ impl RepostExecutor {
                     &request.date_to,
                 )
                 .await?
-            }
-            P909_ORDER_LINE_TURNOVERS => {
-                self.progress_tracker.set_total(session_id, 1);
-                self.progress_tracker.update_progress(
-                    session_id,
-                    0,
-                    0,
-                    Some("Rebuilding p909".to_string()),
-                );
-                crate::projections::p909_mp_order_line_turnovers::service::rebuild_wb_range(
-                    &request.date_from,
-                    &request.date_to,
-                )
-                .await?;
-                self.progress_tracker.update_progress(
-                    session_id,
-                    1,
-                    1,
-                    Some("Rebuilding p909".to_string()),
-                );
-                self.progress_tracker
-                    .complete_session(session_id, RepostStatus::Completed);
-                return Ok(());
             }
             _ => {
                 return Err(anyhow!(
@@ -484,3 +443,4 @@ async fn dispatch_aggregate_repost(aggregate_key: &str, aggregate_id: Uuid) -> R
         _ => Err(anyhow!("Unsupported aggregate_key: {}", aggregate_key)),
     }
 }
+

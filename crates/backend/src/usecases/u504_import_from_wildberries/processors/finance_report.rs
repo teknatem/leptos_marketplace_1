@@ -21,7 +21,7 @@ pub fn map_finance_report_row(
     Ok(WbFinanceReportEntry {
         rr_dt,
         rrd_id,
-        source_row_ref: repository::make_source_row_ref(&rr_dt_str, rrd_id),
+        source_row_ref: repository::make_source_row_ref(rrd_id),
         connection_mp_ref: connection.base.id.as_string(),
         organization_ref: organization_id.to_string(),
         acquiring_fee: row.acquiring_fee,

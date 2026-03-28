@@ -28,22 +28,18 @@ fn parse_registrator_ref(value: &str) -> (&str, &str) {
 }
 
 fn p903_tab_key_from_ref(value: &str) -> Option<String> {
-    let trimmed = value.strip_prefix("p903:").unwrap_or(value);
-    let (rr_dt, rrd_id) = trimmed.split_once(':')?;
-    Some(format!(
-        "p903_wb_finance_report_details_{}__{}",
-        urlencoding::encode(rr_dt),
-        rrd_id
-    ))
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(format!(
+            "p903_wb_finance_report_details_id_{}",
+            urlencoding::encode(value)
+        ))
+    }
 }
 
 fn p903_tab_label(value: &str) -> String {
-    let trimmed = value.strip_prefix("p903:").unwrap_or(value);
-    if let Some((_, rrd_id)) = trimmed.split_once(':') {
-        format!("WB Finance #{rrd_id}")
-    } else {
-        format!("WB Finance {}", short_id(trimmed))
-    }
+    format!("WB Finance {}", short_id(value))
 }
 
 fn registrator_tab_key(registrator_type: &str, id: &str) -> Option<String> {
@@ -75,32 +71,17 @@ fn registrator_tab_label(registrator_type: &str, id: &str) -> String {
     }
 }
 
-fn detail_tab_key(detail_kind: &str, detail_id: &str) -> Option<String> {
-    match detail_kind {
-        "p909_mp_order_line_turnovers" => Some(format!(
-            "p909_mp_order_line_turnovers_details_{}",
-            urlencoding::encode(detail_id)
-        )),
-        "p910_mp_unlinked_turnovers" => Some(format!(
-            "p910_mp_unlinked_turnovers_details_{}",
-            urlencoding::encode(detail_id)
-        )),
-        "p911_wb_advert_by_items" => Some(format!(
-            "p911_wb_advert_by_items_details_{}",
-            urlencoding::encode(detail_id)
-        )),
-        "p903_wb_finance_report" => p903_tab_key_from_ref(detail_id),
+fn resource_tab_key(resource_table: &str, registrator_ref: &str) -> Option<String> {
+    match resource_table {
+        "p903_wb_finance_report" => p903_tab_key_from_ref(registrator_ref),
         _ => None,
     }
 }
 
-fn detail_tab_label(detail_kind: &str, detail_id: &str) -> String {
-    match detail_kind {
-        "p909_mp_order_line_turnovers" => format!("P909 {}", short_id(detail_id)),
-        "p910_mp_unlinked_turnovers" => format!("P910 {}", short_id(detail_id)),
-        "p911_wb_advert_by_items" => format!("P911 {}", short_id(detail_id)),
-        "p903_wb_finance_report" => p903_tab_label(detail_id),
-        _ => format!("{detail_kind} :: {}", short_id(detail_id)),
+fn resource_tab_label(resource_table: &str, registrator_ref: &str) -> String {
+    match resource_table {
+        "p903_wb_finance_report" => p903_tab_label(registrator_ref),
+        _ => format!("{resource_table} :: {}", short_id(registrator_ref)),
     }
 }
 
@@ -169,9 +150,9 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
         }
     };
 
-    let open_detail_target = move |detail_kind: String, detail_id: String| {
-        if let Some(key) = detail_tab_key(&detail_kind, &detail_id) {
-            tabs_store.open_tab(&key, &detail_tab_label(&detail_kind, &detail_id));
+    let open_resource_target = move |resource_table: String, registrator_ref: String| {
+        if let Some(key) = resource_tab_key(&resource_table, &registrator_ref) {
+            tabs_store.open_tab(&key, &resource_tab_label(&resource_table, &registrator_ref));
         }
     };
 
@@ -250,10 +231,10 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                         registrator_tab_key(&item.registrator_type, reg_id).is_some();
                     let registrator_type_for_click = item.registrator_type.clone();
                     let registrator_ref_for_click = item.registrator_ref.clone();
-                    let has_detail_link =
-                        detail_tab_key(&item.detail_kind, &item.detail_id).is_some();
-                    let detail_kind_for_click = item.detail_kind.clone();
-                    let detail_id_for_click = item.detail_id.clone();
+                    let has_resource_link =
+                        resource_tab_key(&item.resource_table, &item.registrator_ref).is_some();
+                    let resource_table_for_click = item.resource_table.clone();
+                    let registrator_ref_for_resource_click = item.registrator_ref.clone();
                     let comment = if item.comment.trim().is_empty() {
                         "-".to_string()
                     } else {
@@ -281,19 +262,19 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                         view! { <></> }.into_any()
                     };
 
-                    let detail_button = if has_detail_link {
+                    let detail_button = if has_resource_link {
                         view! {
                             <div class="form__group">
-                                <label class="form__label">"Detail"</label>
+                                <label class="form__label">"Resource"</label>
                                 <Button
                                     appearance=ButtonAppearance::Secondary
-                                    on_click=move |_| open_detail_target(
-                                        detail_kind_for_click.clone(),
-                                        detail_id_for_click.clone(),
+                                    on_click=move |_| open_resource_target(
+                                        resource_table_for_click.clone(),
+                                        registrator_ref_for_resource_click.clone(),
                                     )
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
-                                    "Open detail"
+                                    "Open resource"
                                 </Button>
                             </div>
                         }
@@ -308,7 +289,6 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                 <CardAnimated delay_ms=0 nav_id="general_ledger_details_main">
                                     <h4 class="details-section__title">"Main"</h4>
                                     <ReadonlyField label="ID" value=item.id.clone() />
-                                    <ReadonlyField label="Posting ID" value=item.posting_id.clone() />
                                     <ReadonlyField label="Entry Date" value=format_general_ledger_datetime(&item.entry_date) />
                                     <ReadonlyField label="Created At" value=format_general_ledger_datetime(&item.created_at) />
                                     <ReadonlyField label="Amount" value=format!("{:.2}", item.amount) />
@@ -321,10 +301,13 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                     <ReadonlyField label="Debit" value=item.debit_account.clone() />
                                     <ReadonlyField label="Credit" value=item.credit_account.clone() />
                                     <ReadonlyField label="Turnover Code" value=item.turnover_code.clone() />
-                                    <ReadonlyField label="Resource" value=item.resource_name.clone() />
+                                    <ReadonlyField
+                                        label="Cabinet MP"
+                                        value=item.cabinet_mp.clone().unwrap_or_else(|| "-".to_string())
+                                    />
+                                    <ReadonlyField label="Resource Table" value=item.resource_table.clone() />
+                                    <ReadonlyField label="Resource Field" value=item.resource_field.clone() />
                                     <ReadonlyField label="Resource Sign" value=item.resource_sign.to_string() />
-                                    <ReadonlyField label="Detail Kind" value=item.detail_kind.clone() />
-                                    <ReadonlyField label="Detail ID" value=item.detail_id.clone() />
                                 </CardAnimated>
                             </div>
 

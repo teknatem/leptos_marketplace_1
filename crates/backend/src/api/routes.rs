@@ -739,10 +739,6 @@ fn a026_routes() -> Router {
             post(handlers::a026_wb_advert_daily::unpost_document),
         )
         .route(
-            "/api/a026/wb-advert-daily/:id/projections",
-            get(handlers::a026_wb_advert_daily::get_projections),
-        )
-        .route(
             "/api/a026/wb-advert-daily/:id/journal",
             get(handlers::a026_wb_advert_daily::get_general_ledger_entries),
         )
@@ -1032,46 +1028,19 @@ fn projection_routes() -> Router {
             get(handlers::p903_wb_finance_report::list_operation_kinds),
         )
         .route(
-            "/api/p903/finance-report/:rr_dt/:rrd_id",
-            get(handlers::p903_wb_finance_report::get_report_detail),
+            "/api/p903/finance-report/by-id/:id",
+            get(handlers::p903_wb_finance_report::get_report_detail_by_id),
         )
         .route(
-            "/api/p903/finance-report/:rr_dt/:rrd_id/post",
-            post(handlers::p903_wb_finance_report::post_report),
+            "/api/p903/finance-report/by-id/:id/post",
+            post(handlers::p903_wb_finance_report::post_report_by_id),
         )
         .route(
-            "/api/p903/finance-report/:rr_dt/:rrd_id/raw",
-            get(handlers::p903_wb_finance_report::get_raw_json),
+            "/api/p903/finance-report/by-id/:id/raw",
+            get(handlers::p903_wb_finance_report::get_raw_json_by_id),
         )
         // P904 Sales Data
         .route("/api/p904/sales-data", get(handlers::p904_sales_data::list))
-        // P909 MP Order Line Turnovers
-        .route(
-            "/api/p909/order-line-turnovers",
-            get(handlers::p909_mp_order_line_turnovers::list),
-        )
-        .route(
-            "/api/p909/order-line-turnovers/:id",
-            get(handlers::p909_mp_order_line_turnovers::get_by_id),
-        )
-        // P910 MP Unlinked Turnovers
-        .route(
-            "/api/p910/unlinked-turnovers",
-            get(handlers::p910_mp_unlinked_turnovers::list),
-        )
-        .route(
-            "/api/p910/unlinked-turnovers/:id",
-            get(handlers::p910_mp_unlinked_turnovers::get_by_id),
-        )
-        // P911 WB Advert By Items Turnovers
-        .route(
-            "/api/p911/wb-advert-by-items",
-            get(handlers::p911_wb_advert_by_items::list),
-        )
-        .route(
-            "/api/p911/wb-advert-by-items/:general_ledger_ref",
-            get(handlers::p911_wb_advert_by_items::get_by_general_ledger_ref),
-        )
         // P905 WB Commission History
         .route(
             "/api/p905-commission/list",
@@ -1355,6 +1324,10 @@ fn misc_routes() -> Router {
         .route(
             "/api/general-ledger",
             axum::routing::get(handlers::general_ledger::list),
+        )
+        .route(
+            "/api/general-ledger/turnovers",
+            axum::routing::get(handlers::general_ledger::list_turnovers),
         )
         .route(
             "/api/general-ledger/:id",

@@ -280,6 +280,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "book-open",
                 ),
                 SidebarItem::new(
+                    "general_ledger_turnovers",
+                    tab_label_for_key("general_ledger_turnovers"),
+                    "table",
+                ),
+                SidebarItem::new(
                     "u505_match_nomenclature",
                     tab_label_for_key("u505_match_nomenclature"),
                     "layers",
@@ -326,21 +331,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "p904_sales_data",
                     tab_label_for_key("p904_sales_data"),
                     "dollar-sign",
-                ),
-                SidebarItem::new(
-                    "p909_mp_order_line_turnovers",
-                    tab_label_for_key("p909_mp_order_line_turnovers"),
-                    "list-ordered",
-                ),
-                SidebarItem::new(
-                    "p910_mp_unlinked_turnovers",
-                    tab_label_for_key("p910_mp_unlinked_turnovers"),
-                    "file-stack",
-                ),
-                SidebarItem::new(
-                    "p911_wb_advert_by_items",
-                    tab_label_for_key("p911_wb_advert_by_items"),
-                    "list-ordered",
                 ),
                 SidebarItem::new(
                     "p905_commission_history",
