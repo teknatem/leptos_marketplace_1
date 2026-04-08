@@ -17,6 +17,8 @@ pub struct PaginatedMarketplaceProductResponse {
 #[derive(Debug, Deserialize)]
 pub struct ListMarketplaceProductsQuery {
     pub marketplace_ref: Option<String>,
+    pub connection_mp_ref: Option<String>,
+    pub problems_only: Option<bool>,
     pub search: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -36,6 +38,8 @@ pub async fn list_paginated(
 
     let list_query = MarketplaceProductListQuery {
         marketplace_ref: query.marketplace_ref,
+        connection_mp_ref: query.connection_mp_ref,
+        problems_only: query.problems_only.unwrap_or(false),
         search: query.search,
         sort_by: query.sort_by.unwrap_or_else(|| "code".to_string()),
         sort_desc: query.sort_desc.unwrap_or(false),

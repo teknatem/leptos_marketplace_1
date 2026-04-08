@@ -1,7 +1,9 @@
 pub mod commission;
+pub mod document;
 pub mod finance_report;
 pub mod goods_prices;
 pub mod order;
 pub mod product;
 pub mod promotion;
 pub mod sales;
+pub mod wb_nomenclature;

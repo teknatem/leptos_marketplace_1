@@ -1,8 +1,16 @@
 use axum::{extract::Query, Json};
 use serde::{Deserialize, Serialize};
 
+use crate::general_ledger::drilldown_dimensions::dimensions_for_turnover;
+use crate::general_ledger::drilldown_session_repository;
+use crate::general_ledger::report_repository;
 use crate::general_ledger::turnover_registry::{get_turnover_class, TURNOVER_CLASSES};
-use contracts::general_ledger::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
+use contracts::general_ledger::{
+    GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
+    GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownSessionCreate,
+    GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord, GlReportQuery, GlReportResponse,
+    WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+};
 use contracts::shared::analytics::TurnoverLayer;
 
 #[derive(Debug, Deserialize)]
@@ -13,7 +21,7 @@ pub struct GeneralLedgerQuery {
     pub registrator_type: Option<String>,
     pub layer: Option<String>,
     pub turnover_code: Option<String>,
-    pub cabinet_mp: Option<String>,
+    pub connection_mp_ref: Option<String>,
     pub debit_account: Option<String>,
     pub credit_account: Option<String>,
     pub sort_by: Option<String>,
@@ -54,7 +62,7 @@ pub async fn list(
         q.debit_account.clone(),
         q.credit_account.clone(),
         q.turnover_code.clone(),
-        q.cabinet_mp.clone(),
+        q.connection_mp_ref.clone(),
     )
     .await
     .map_err(|e| {
@@ -71,7 +79,7 @@ pub async fn list(
         q.debit_account,
         q.credit_account,
         q.turnover_code,
-        q.cabinet_mp,
+        q.connection_mp_ref,
         q.sort_by,
         sort_desc,
         Some(offset as u64),
@@ -150,6 +158,7 @@ pub async fn list_turnovers(
             generates_journal_entry: item.generates_journal_entry,
             journal_comment: item.journal_comment.to_string(),
             gl_entries_count: counts.get(item.code).copied().unwrap_or(0),
+            available_dimensions: dimensions_for_turnover(item.code),
         })
         .collect::<Vec<_>>();
 
@@ -165,6 +174,137 @@ pub async fn list_turnovers(
     Ok(Json(GeneralLedgerTurnoverListResponse { items, total }))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GL Report endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub async fn report(
+    Json(query): Json<GlReportQuery>,
+) -> Result<Json<GlReportResponse>, axum::http::StatusCode> {
+    report_repository::get_report(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("GL report error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct DimensionsParams {
+    pub turnover_code: String,
+}
+
+pub async fn report_dimensions(
+    Query(params): Query<DimensionsParams>,
+) -> Json<GlDimensionsResponse> {
+    let dimensions = dimensions_for_turnover(&params.turnover_code);
+    Json(GlDimensionsResponse {
+        turnover_code: params.turnover_code,
+        dimensions,
+    })
+}
+
+pub async fn report_drilldown(
+    Json(query): Json<GlDrilldownQuery>,
+) -> Result<Json<GlDrilldownResponse>, axum::http::StatusCode> {
+    report_repository::get_drilldown(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("GL drilldown error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn create_drilldown_session(
+    Json(body): Json<GlDrilldownSessionCreate>,
+) -> Result<Json<GlDrilldownSessionCreateResponse>, axum::http::StatusCode> {
+    drilldown_session_repository::create_session(&body)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("GL drilldown session create error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn get_drilldown_session(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<GlDrilldownSessionRecord>, axum::http::StatusCode> {
+    let session = drilldown_session_repository::get_session(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("GL drilldown session get error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    drilldown_session_repository::touch_session(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("GL drilldown session touch error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(session))
+}
+
+pub async fn get_drilldown_session_data(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<GlDrilldownResponse>, axum::http::StatusCode> {
+    let session = drilldown_session_repository::get_session(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("GL drilldown session data get error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    drilldown_session_repository::touch_session(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("GL drilldown session data touch error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    report_repository::get_drilldown(&session.query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("GL drilldown session data error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GL Account View endpoint
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub async fn account_view(
+    Json(query): Json<GlAccountViewQuery>,
+) -> Result<Json<GlAccountViewResponse>, axum::http::StatusCode> {
+    crate::general_ledger::account_view::repository::get_view(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("GL account view error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn wb_weekly_reconciliation(
+    Query(query): Query<WbWeeklyReconciliationQuery>,
+) -> Result<Json<WbWeeklyReconciliationResponse>, axum::http::StatusCode> {
+    crate::general_ledger::weekly_reconciliation::get_report(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("WB weekly reconciliation report error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
 fn to_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
     let comment = get_turnover_class(&row.turnover_code)
         .map(|c| c.journal_comment.to_string())
@@ -174,9 +314,10 @@ fn to_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDt
         id: row.id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        cabinet_mp: row.cabinet_mp,
+        connection_mp_ref: row.connection_mp_ref,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
+        order_id: row.order_id,
         debit_account: row.debit_account,
         credit_account: row.credit_account,
         amount: row.amount,

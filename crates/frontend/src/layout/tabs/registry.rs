@@ -50,8 +50,11 @@ use crate::domain::a025_bi_dashboard::ui::details::BiDashboardDetails;
 use crate::domain::a025_bi_dashboard::ui::list::BiDashboardList;
 use crate::domain::a026_wb_advert_daily::ui::details::WbAdvertDailyDetail;
 use crate::domain::a026_wb_advert_daily::ui::list::WbAdvertDailyList;
-use crate::general_ledger::{
-    GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerTurnoversPage,
+use crate::domain::a027_wb_documents::ui::details::WbDocumentsDetail;
+use crate::domain::a027_wb_documents::ui::list::WbDocumentsList;
+use crate::general_ledger::ui::{
+    GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerReportPage,
+    GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
@@ -81,6 +84,7 @@ use crate::usecases::u505_match_nomenclature;
 use crate::usecases::u506_import_from_lemanapro;
 use crate::usecases::u507_import_from_erp;
 use crate::usecases::u508_repost_documents;
+use contracts::general_ledger::GlDrilldownQuery;
 use leptos::logging::log;
 use leptos::prelude::*;
 
@@ -403,6 +407,25 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             }
             .into_any()
         }
+        "a027_wb_documents" => view! { <WbDocumentsList /> }.into_any(),
+        k if k.starts_with("a027_wb_documents_details_") => {
+            let id = k
+                .strip_prefix("a027_wb_documents_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbDocumentsDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // a016: Yandex Market Returns
         "a016_ym_returns" => view! { <YmReturnsList /> }.into_any(),
@@ -655,6 +678,77 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // Журнал операций (general_ledger)
         "general_ledger" => view! { <GeneralLedgerPage /> }.into_any(),
         "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
+        "general_ledger_report" => view! { <GeneralLedgerReportPage /> }.into_any(),
+        "gl_account_view__7609" => view! { <GlAccountViewPage /> }.into_any(),
+        "wb_weekly_reconciliation" => view! { <WbWeeklyReconciliationPage /> }.into_any(),
+
+        // GL Drilldown (детализация оборота в отдельной закладке)
+        // Key format:
+        // gl_drilldown__{session_id}
+        // Legacy format:
+        // gl_drilldown__{tc}__{group_by}__{date_from}__{date_to}__{connection_mp_ref}__{account}__{layer}
+        k if k.starts_with("gl_drilldown__") => {
+            let rest = k.strip_prefix("gl_drilldown__").unwrap_or("");
+            let key_for_close2 = key_for_close.clone();
+            if rest.contains("__") {
+                let parts: Vec<&str> = rest.splitn(7, "__").collect();
+                if parts.len() != 7 {
+                    log!("⚠️ Bad gl_drilldown legacy tab key: {}", k);
+                    return view! { <div class="page__placeholder">"Неверный ключ закладки детализации"</div> }
+                        .into_any();
+                }
+                let query = GlDrilldownQuery {
+                    turnover_code: parts[0].to_string(),
+                    group_by: parts[1].to_string(),
+                    date_from: parts[2].to_string(),
+                    date_to: parts[3].to_string(),
+                    connection_mp_ref: if parts[4].is_empty() {
+                        None
+                    } else {
+                        Some(parts[4].to_string())
+                    },
+                    connection_mp_refs: vec![],
+                    account: if parts[5].is_empty() {
+                        None
+                    } else {
+                        Some(parts[5].to_string())
+                    },
+                    layer: if parts[6].is_empty() {
+                        None
+                    } else {
+                        Some(parts[6].to_string())
+                    },
+                    corr_account: None,
+                };
+                view! {
+                    <GlDrilldownPage
+                        session_id=None
+                        initial_query=Some(query)
+                        on_close=Callback::new(move |_| {
+                            tabs_store.close_tab(&key_for_close2);
+                        })
+                    />
+                }
+                .into_any()
+            } else if rest.is_empty() {
+                log!("⚠️ Empty gl_drilldown session id");
+                view! { <div class="page__placeholder">"Не указан идентификатор детализации"</div> }
+                    .into_any()
+            } else {
+                let session_id = rest.to_string();
+                view! {
+                    <GlDrilldownPage
+                        session_id=Some(session_id)
+                        initial_query=None
+                        on_close=Callback::new(move |_| {
+                            tabs_store.close_tab(&key_for_close2);
+                        })
+                    />
+                }
+                .into_any()
+            }
+        }
+
         k if k.starts_with("general_ledger_details_") => {
             let id = k
                 .strip_prefix("general_ledger_details_")

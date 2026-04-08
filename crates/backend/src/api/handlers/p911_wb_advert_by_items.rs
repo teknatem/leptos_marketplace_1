@@ -99,18 +99,17 @@ pub async fn get_by_general_ledger_ref(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let general_ledger_entry =
-        crate::general_ledger::repository::get_by_id(&general_ledger_ref)
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    "Failed to load general_ledger entry '{}' for p911 detail: {}",
-                    general_ledger_ref,
-                    error
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .map(to_general_ledger_dto);
+    let general_ledger_entry = crate::general_ledger::repository::get_by_id(&general_ledger_ref)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                "Failed to load general_ledger entry '{}' for p911 detail: {}",
+                general_ledger_ref,
+                error
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(to_general_ledger_dto);
 
     let total_amount = items.iter().map(|item| item.amount).sum();
 
@@ -142,6 +141,7 @@ pub(crate) fn model_to_dto(
         registrator_type: model.registrator_type,
         registrator_ref: model.registrator_ref,
         general_ledger_ref: model.general_ledger_ref,
+        is_problem: model.is_problem,
         created_at: model.created_at,
         updated_at: model.updated_at,
         turnover_name: class.name.to_string(),
@@ -152,9 +152,7 @@ pub(crate) fn model_to_dto(
     }
 }
 
-fn to_general_ledger_dto(
-    row: crate::general_ledger::repository::Model,
-) -> GeneralLedgerEntryDto {
+fn to_general_ledger_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
     let comment =
         crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
             .map(|c| c.journal_comment.to_string())
@@ -164,9 +162,10 @@ fn to_general_ledger_dto(
         id: row.id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        cabinet_mp: row.cabinet_mp,
+        connection_mp_ref: row.connection_mp_ref,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
+        order_id: row.order_id,
         debit_account: row.debit_account,
         credit_account: row.credit_account,
         amount: row.amount,

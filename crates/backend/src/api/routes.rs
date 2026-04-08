@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::Request,
     middleware::{self, Next},
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 
@@ -40,6 +40,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a024_routes())
         .merge(a025_routes())
         .merge(a026_routes())
+        .merge(a027_routes())
         .merge(usecase_routes())
         .merge(projection_routes())
         .merge(dashboard_routes())
@@ -759,6 +760,14 @@ fn a023_routes() -> Router {
             "/api/a023/purchase-of-goods/:id",
             get(handlers::a023_purchase_of_goods::get_by_id),
         )
+        .route(
+            "/api/a023/purchase-of-goods/:id/post",
+            post(handlers::a023_purchase_of_goods::post_purchase_of_goods),
+        )
+        .route(
+            "/api/a023/purchase-of-goods/:id/unpost",
+            post(handlers::a023_purchase_of_goods::unpost_purchase_of_goods),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a023_purchase_of_goods", req, next).await
@@ -810,6 +819,10 @@ fn a024_routes() -> Router {
     // Read-only compute routes: these POST endpoints only compute/query data,
     // they never mutate state — "read" access is sufficient.
     let compute_routes = Router::new()
+        .route(
+            "/api/a024-bi-indicator/resolve-batch",
+            post(handlers::a024_bi_indicator::resolve_batch),
+        )
         .route(
             "/api/a024-bi-indicator/:id/compute",
             post(handlers::a024_bi_indicator::compute),
@@ -868,6 +881,31 @@ fn a025_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a025_bi_dashboard", req, next).await
+            },
+        ))
+}
+
+fn a027_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a027/wb-documents/list",
+            get(handlers::a027_wb_documents::list_paginated),
+        )
+        .route(
+            "/api/a027/wb-documents/:id",
+            get(handlers::a027_wb_documents::get_by_id),
+        )
+        .route(
+            "/api/a027/wb-documents/:id/manual",
+            put(handlers::a027_wb_documents::update_manual_fields),
+        )
+        .route(
+            "/api/a027/wb-documents/:id/download/:extension",
+            get(handlers::a027_wb_documents::download_document),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a027_wb_documents", req, next).await
             },
         ))
 }
@@ -1020,6 +1058,10 @@ fn projection_routes() -> Router {
             get(handlers::p903_wb_finance_report::list_reports),
         )
         .route(
+            "/api/p903/finance-report/export",
+            get(handlers::p903_wb_finance_report::export_reports),
+        )
+        .route(
             "/api/p903/finance-report/search-by-srid",
             get(handlers::p903_wb_finance_report::search_by_srid),
         )
@@ -1090,6 +1132,10 @@ fn projection_routes() -> Router {
         .route(
             "/api/p908/goods-prices/:nm_id",
             get(handlers::p908_wb_goods_prices::get_goods_price),
+        )
+        .route(
+            "/api/p912/nomenclature-costs",
+            get(handlers::p912_nomenclature_costs::list),
         )
         .layer(middleware::from_fn(require_auth))
 }
@@ -1328,6 +1374,38 @@ fn misc_routes() -> Router {
         .route(
             "/api/general-ledger/turnovers",
             axum::routing::get(handlers::general_ledger::list_turnovers),
+        )
+        .route(
+            "/api/general-ledger/report",
+            axum::routing::post(handlers::general_ledger::report),
+        )
+        .route(
+            "/api/general-ledger/account-view",
+            axum::routing::post(handlers::general_ledger::account_view),
+        )
+        .route(
+            "/api/reports/wb-weekly-reconciliation",
+            axum::routing::get(handlers::general_ledger::wb_weekly_reconciliation),
+        )
+        .route(
+            "/api/general-ledger/report/dimensions",
+            axum::routing::get(handlers::general_ledger::report_dimensions),
+        )
+        .route(
+            "/api/general-ledger/report/drilldown",
+            axum::routing::post(handlers::general_ledger::report_drilldown),
+        )
+        .route(
+            "/api/general-ledger/drilldown",
+            axum::routing::post(handlers::general_ledger::create_drilldown_session),
+        )
+        .route(
+            "/api/general-ledger/drilldown/:id",
+            axum::routing::get(handlers::general_ledger::get_drilldown_session),
+        )
+        .route(
+            "/api/general-ledger/drilldown/:id/data",
+            axum::routing::get(handlers::general_ledger::get_drilldown_session_data),
         )
         .route(
             "/api/general-ledger/:id",

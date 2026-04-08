@@ -17,9 +17,11 @@ pub struct Model {
     pub entry_date: String,
     pub layer: String,
     #[sea_orm(nullable)]
-    pub cabinet_mp: Option<String>,
+    pub connection_mp_ref: Option<String>,
     pub registrator_type: String,
     pub registrator_ref: String,
+    #[sea_orm(nullable)]
+    pub order_id: Option<String>,
     pub debit_account: String,
     pub credit_account: String,
     pub amount: f64,
@@ -50,9 +52,10 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
         id: Set(entry.id.clone()),
         entry_date: Set(entry.entry_date.clone()),
         layer: Set(entry.layer.clone()),
-        cabinet_mp: Set(entry.cabinet_mp.clone()),
+        connection_mp_ref: Set(entry.connection_mp_ref.clone()),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
+        order_id: Set(entry.order_id.clone()),
         debit_account: Set(entry.debit_account.clone()),
         credit_account: Set(entry.credit_account.clone()),
         amount: Set(entry.amount),
@@ -77,10 +80,58 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
     Ok(())
 }
 
+/// Batch INSERT новых GL-записей без проверки существования.
+/// Используется только в контексте перепроведения, где записи предварительно удалены.
+pub async fn insert_entries_bulk(entries: &[Model]) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let models: Vec<ActiveModel> = entries
+        .iter()
+        .map(|entry| ActiveModel {
+            id: Set(entry.id.clone()),
+            entry_date: Set(entry.entry_date.clone()),
+            layer: Set(entry.layer.clone()),
+            connection_mp_ref: Set(entry.connection_mp_ref.clone()),
+            registrator_type: Set(entry.registrator_type.clone()),
+            registrator_ref: Set(entry.registrator_ref.clone()),
+            order_id: Set(entry.order_id.clone()),
+            debit_account: Set(entry.debit_account.clone()),
+            credit_account: Set(entry.credit_account.clone()),
+            amount: Set(entry.amount),
+            qty: Set(entry.qty),
+            turnover_code: Set(entry.turnover_code.clone()),
+            resource_table: Set(entry.resource_table.clone()),
+            resource_field: Set(entry.resource_field.clone()),
+            resource_sign: Set(entry.resource_sign),
+            created_at: Set(entry.created_at.clone()),
+        })
+        .collect();
+    Entity::insert_many(models).exec(conn()).await?;
+    Ok(())
+}
+
 pub async fn delete_by_registrator_ref(registrator_ref: &str) -> Result<u64> {
     let result = Entity::delete_many()
         .filter(Column::RegistratorRef.eq(registrator_ref))
         .exec(conn())
+        .await?;
+    Ok(result.rows_affected)
+}
+
+pub async fn delete_by_registrator(registrator_type: &str, registrator_ref: &str) -> Result<u64> {
+    delete_by_registrator_with_conn(conn(), registrator_type, registrator_ref).await
+}
+
+pub async fn delete_by_registrator_with_conn<C: ConnectionTrait>(
+    db: &C,
+    registrator_type: &str,
+    registrator_ref: &str,
+) -> Result<u64> {
+    let result = Entity::delete_many()
+        .filter(Column::RegistratorType.eq(registrator_type))
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .exec(db)
         .await?;
     Ok(result.rows_affected)
 }
@@ -96,6 +147,19 @@ pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
 
 pub async fn list_by_registrator_ref(registrator_ref: &str) -> Result<Vec<Model>> {
     Ok(Entity::find()
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .order_by_asc(Column::CreatedAt)
+        .order_by_asc(Column::Id)
+        .all(conn())
+        .await?)
+}
+
+pub async fn list_by_registrator(
+    registrator_type: &str,
+    registrator_ref: &str,
+) -> Result<Vec<Model>> {
+    Ok(Entity::find()
+        .filter(Column::RegistratorType.eq(registrator_type))
         .filter(Column::RegistratorRef.eq(registrator_ref))
         .order_by_asc(Column::CreatedAt)
         .order_by_asc(Column::Id)
@@ -122,7 +186,9 @@ pub async fn delete_by_registrator_refs_with_conn<C: ConnectionTrait>(
     Ok(result.rows_affected)
 }
 
-pub async fn count_by_registrator_refs(registrator_refs: &[String]) -> Result<HashMap<String, usize>> {
+pub async fn count_by_registrator_refs(
+    registrator_refs: &[String],
+) -> Result<HashMap<String, usize>> {
     if registrator_refs.is_empty() {
         return Ok(HashMap::new());
     }
@@ -173,7 +239,7 @@ pub async fn list_with_filters(
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
-    cabinet_mp: Option<String>,
+    connection_mp_ref: Option<String>,
     sort_by: Option<String>,
     sort_desc: bool,
     offset: Option<u64>,
@@ -189,7 +255,7 @@ pub async fn list_with_filters(
         &debit_account,
         &credit_account,
         &turnover_code,
-        &cabinet_mp,
+        &connection_mp_ref,
     );
     query = apply_sort(query, sort_by.as_deref().unwrap_or("entry_date"), sort_desc);
     if let Some(value) = offset {
@@ -211,7 +277,7 @@ pub async fn count_with_filters(
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
-    cabinet_mp: Option<String>,
+    connection_mp_ref: Option<String>,
 ) -> Result<u64> {
     let query = apply_filters(
         Entity::find(),
@@ -223,7 +289,7 @@ pub async fn count_with_filters(
         &debit_account,
         &credit_account,
         &turnover_code,
-        &cabinet_mp,
+        &connection_mp_ref,
     );
     Ok(query.count(conn()).await?)
 }
@@ -239,7 +305,7 @@ fn apply_filters(
     debit_account: &Option<String>,
     credit_account: &Option<String>,
     turnover_code: &Option<String>,
-    cabinet_mp: &Option<String>,
+    connection_mp_ref: &Option<String>,
 ) -> Select<Entity> {
     if let Some(v) = date_from {
         query = query.filter(Column::EntryDate.gte(v.clone()));
@@ -265,8 +331,8 @@ fn apply_filters(
     if let Some(v) = turnover_code {
         query = query.filter(Column::TurnoverCode.eq(v.clone()));
     }
-    if let Some(v) = cabinet_mp {
-        query = query.filter(Column::CabinetMp.eq(v.clone()));
+    if let Some(v) = connection_mp_ref {
+        query = query.filter(Column::ConnectionMpRef.eq(v.clone()));
     }
     query
 }
@@ -287,8 +353,10 @@ fn apply_sort(mut query: Select<Entity>, sort_by: &str, sort_desc: bool) -> Sele
         ("qty", false) => query = query.order_by_asc(Column::Qty),
         ("turnover_code", true) => query = query.order_by_desc(Column::TurnoverCode),
         ("turnover_code", false) => query = query.order_by_asc(Column::TurnoverCode),
-        ("cabinet_mp", true) => query = query.order_by_desc(Column::CabinetMp),
-        ("cabinet_mp", false) => query = query.order_by_asc(Column::CabinetMp),
+        ("connection_mp_ref", true) => query = query.order_by_desc(Column::ConnectionMpRef),
+        ("connection_mp_ref", false) => query = query.order_by_asc(Column::ConnectionMpRef),
+        ("order_id", true) => query = query.order_by_desc(Column::OrderId),
+        ("order_id", false) => query = query.order_by_asc(Column::OrderId),
         ("registrator_type", true) => query = query.order_by_desc(Column::RegistratorType),
         ("registrator_type", false) => query = query.order_by_asc(Column::RegistratorType),
         ("registrator_ref", true) => query = query.order_by_desc(Column::RegistratorRef),

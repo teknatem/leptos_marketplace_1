@@ -21,6 +21,11 @@ pub struct BiIndicatorListParams {
     pub q: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct IndicatorBatchLookupRequest {
+    pub ids: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct BiIndicatorPaginatedResponse {
     pub items: Vec<BiIndicator>,
@@ -80,6 +85,16 @@ pub async fn list_by_owner(
 /// GET /api/a024-bi-indicator/public
 pub async fn list_public() -> Result<Json<Vec<BiIndicator>>, axum::http::StatusCode> {
     match a024_bi_indicator::service::list_public().await {
+        Ok(v) => Ok(Json(v)),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// POST /api/a024-bi-indicator/resolve-batch
+pub async fn resolve_batch(
+    Json(req): Json<IndicatorBatchLookupRequest>,
+) -> Result<Json<Vec<BiIndicator>>, axum::http::StatusCode> {
+    match a024_bi_indicator::service::list_by_ids(&req.ids).await {
         Ok(v) => Ok(Json(v)),
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -251,6 +266,7 @@ pub async fn compute(
             "change_percent": val.change_percent,
             "status": val.status,
             "subtitle": val.subtitle,
+            "details": val.details,
             "spark_points": val.spark_points,
         }))),
         Err(e) => {
@@ -302,6 +318,7 @@ pub async fn compute_batch(
                     "change_percent": val.change_percent,
                     "status": val.status,
                     "subtitle": val.subtitle,
+                    "details": val.details,
                     "spark_points": val.spark_points,
                 }));
             }

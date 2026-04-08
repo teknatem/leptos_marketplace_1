@@ -62,8 +62,7 @@ pub async fn project_wb_finance_entry(
     for model in result.turnovers {
         repository::upsert_entry(&model).await?;
     }
-    crate::general_ledger::service::save_entries(&result.general_ledger_entries)
-        .await?;
+    crate::general_ledger::service::save_entries(&result.general_ledger_entries).await?;
     Ok(())
 }
 

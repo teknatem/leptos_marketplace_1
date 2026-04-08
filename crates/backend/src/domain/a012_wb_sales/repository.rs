@@ -6,7 +6,7 @@ use contracts::domain::a012_wb_sales::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -207,23 +207,128 @@ pub async fn list_ids_by_sale_date_range(
     date_to: &str,
     only_posted: bool,
 ) -> Result<Vec<String>> {
-    let mut query = Entity::find()
-        .filter(Column::IsDeleted.eq(false))
-        .filter(Column::SaleDate.is_not_null())
-        .filter(Column::SaleDate.gte(date_from))
-        .filter(Column::SaleDate.lte(format!("{}T23:59:59", date_to)));
+    let date_to_end = format!("{}T23:59:59", date_to);
+    let posted_clause = if only_posted {
+        " AND is_posted = 1"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT id FROM a012_wb_sales WHERE is_deleted = 0 AND sale_date IS NOT NULL AND sale_date >= ? AND sale_date <= ?{}",
+        posted_clause
+    );
+    let stmt = Statement::from_sql_and_values(
+        conn().get_database_backend(),
+        &sql,
+        [date_from.into(), date_to_end.into()],
+    );
+    let rows = conn().query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| row.try_get::<String>("", "id").unwrap_or_default())
+        .collect())
+}
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepostChunkKey {
+    pub sale_date: String,
+    pub connection_mp_ref: String,
+}
+
+pub async fn list_repost_chunks_by_sale_date_range(
+    date_from: &str,
+    date_to: &str,
+    only_posted: bool,
+    connection_mp_refs: &[String],
+) -> Result<Vec<RepostChunkKey>> {
+    let date_to_end = format!("{}T23:59:59", date_to);
+    let mut sql = String::from(
+        "SELECT substr(sale_date, 1, 10) AS sale_date, connection_id AS connection_mp_ref \
+         FROM a012_wb_sales \
+         WHERE is_deleted = 0 \
+           AND sale_date IS NOT NULL \
+           AND sale_date >= ? \
+           AND sale_date <= ? \
+           AND connection_id IS NOT NULL \
+           AND connection_id <> ''",
+    );
+
+    let mut params = vec![date_from.into(), date_to_end.into()];
     if only_posted {
-        query = query.filter(Column::IsPosted.eq(true));
+        sql.push_str(" AND is_posted = 1");
     }
+    let filtered_connection_refs: Vec<&str> = connection_mp_refs
+        .iter()
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .collect();
+    if !filtered_connection_refs.is_empty() {
+        let placeholders = std::iter::repeat("?")
+            .take(filtered_connection_refs.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        sql.push_str(&format!(" AND connection_id IN ({placeholders})"));
+        for connection_mp_ref in filtered_connection_refs {
+            params.push(connection_mp_ref.into());
+        }
+    }
+    sql.push_str(" GROUP BY substr(sale_date, 1, 10), connection_id ORDER BY sale_date ASC, connection_id ASC");
 
-    let items = query.all(conn()).await?;
-    Ok(items.into_iter().map(|item| item.id).collect())
+    let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+    let rows = conn().query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| RepostChunkKey {
+            sale_date: row.try_get("", "sale_date").unwrap_or_default(),
+            connection_mp_ref: row.try_get("", "connection_mp_ref").unwrap_or_default(),
+        })
+        .collect())
+}
+
+pub async fn list_ids_by_sale_date_and_connection(
+    sale_date: &str,
+    connection_mp_ref: &str,
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    let mut sql = String::from(
+        "SELECT id FROM a012_wb_sales \
+         WHERE is_deleted = 0 \
+           AND sale_date IS NOT NULL \
+           AND substr(sale_date, 1, 10) = ? \
+           AND connection_id = ?",
+    );
+    if only_posted {
+        sql.push_str(" AND is_posted = 1");
+    }
+    sql.push_str(" ORDER BY sale_date ASC, id ASC");
+
+    let stmt = Statement::from_sql_and_values(
+        conn().get_database_backend(),
+        &sql,
+        [sale_date.into(), connection_mp_ref.into()],
+    );
+    let rows = conn().query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| row.try_get::<String>("", "id").unwrap_or_default())
+        .collect())
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbSales>> {
     let result = Entity::find_by_id(id.to_string()).one(conn()).await?;
     Ok(result.map(Into::into))
+}
+
+pub async fn list_by_ids(ids: &[String]) -> Result<Vec<WbSales>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let items = Entity::find()
+        .filter(Column::Id.is_in(ids.iter().cloned()))
+        .all(conn())
+        .await?;
+    Ok(items.into_iter().map(Into::into).collect())
 }
 
 pub async fn get_by_document_no(document_no: &str) -> Result<Option<WbSales>> {

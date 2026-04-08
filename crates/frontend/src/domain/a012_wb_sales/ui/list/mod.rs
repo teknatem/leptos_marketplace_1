@@ -441,6 +441,23 @@ pub fn WbSalesList() -> impl IntoView {
             .clone()
             .unwrap_or_default(),
     );
+    let last_applied_org_id = leptos::prelude::StoredValue::new(selected_org_id.get_untracked());
+    let suppress_org_reload = leptos::prelude::StoredValue::new(false);
+
+    Effect::new(move || {
+        let state_org_id = state
+            .with(|s| s.selected_organization_id.clone())
+            .unwrap_or_default();
+        let current_org_id = selected_org_id.get();
+
+        if current_org_id != state_org_id {
+            untrack(move || {
+                suppress_org_reload.set_value(true);
+                last_applied_org_id.set_value(state_org_id.clone());
+                selected_org_id.set(state_org_id);
+            });
+        }
+    });
 
     Effect::new(move || {
         let v = search_document_no.get();
@@ -479,6 +496,18 @@ pub fn WbSalesList() -> impl IntoView {
                 s.selected_organization_id = if v.is_empty() { None } else { Some(v.clone()) };
                 s.page = 0;
             });
+
+            let prev = last_applied_org_id.get_value();
+            last_applied_org_id.set_value(v.clone());
+
+            if suppress_org_reload.get_value() {
+                suppress_org_reload.set_value(false);
+                return;
+            }
+
+            if state.with(|s| s.is_loaded) && prev != v {
+                load_sales();
+            }
         });
     });
 
@@ -751,6 +780,12 @@ pub fn WbSalesList() -> impl IntoView {
         spawn_local(async move {
             match load_saved_settings(FORM_KEY).await {
                 Ok(Some(settings)) => {
+                    let restored_org_id = settings
+                        .get("selected_organization_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
                     state.update(|s| {
                         if let Some(date_from_val) =
                             settings.get("date_from").and_then(|v| v.as_str())
@@ -789,6 +824,8 @@ pub fn WbSalesList() -> impl IntoView {
                             s.show_total_price = show_tp;
                         }
                     });
+                    suppress_org_reload.set_value(true);
+                    selected_org_id.set(restored_org_id);
                     set_save_notification.set(Some("✓ Настройки восстановлены".to_string()));
                     spawn_local(async move {
                         gloo_timers::future::TimeoutFuture::new(3000).await;

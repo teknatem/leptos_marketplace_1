@@ -24,3 +24,4 @@ pub mod a023_purchase_of_goods;
 pub mod a024_bi_indicator;
 pub mod a025_bi_dashboard;
 pub mod a026_wb_advert_daily;
+pub mod a027_wb_documents;

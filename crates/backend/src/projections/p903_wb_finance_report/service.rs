@@ -26,6 +26,7 @@ struct SnapshotRow {
     delivery_amount: Option<f64>,
     delivery_rub: Option<f64>,
     nm_id: Option<i64>,
+    a004_nomenclature_ref: Option<String>,
     penalty: Option<f64>,
     ppvz_vw: Option<f64>,
     ppvz_vw_nds: Option<f64>,
@@ -66,6 +67,7 @@ fn snapshot_from_model(
         delivery_amount: row.delivery_amount,
         delivery_rub: row.delivery_rub,
         nm_id: row.nm_id,
+        a004_nomenclature_ref: row.a004_nomenclature_ref.clone(),
         penalty: row.penalty,
         ppvz_vw: row.ppvz_vw,
         ppvz_vw_nds: row.ppvz_vw_nds,
@@ -105,6 +107,7 @@ fn snapshot_from_entry(
         delivery_amount: row.delivery_amount,
         delivery_rub: row.delivery_rub,
         nm_id: row.nm_id,
+        a004_nomenclature_ref: row.a004_nomenclature_ref.clone(),
         penalty: row.penalty,
         ppvz_vw: row.ppvz_vw,
         ppvz_vw_nds: row.ppvz_vw_nds,
@@ -146,6 +149,7 @@ fn active_model_from_model(
         delivery_amount: Set(row.delivery_amount),
         delivery_rub: Set(row.delivery_rub),
         nm_id: Set(row.nm_id),
+        a004_nomenclature_ref: Set(row.a004_nomenclature_ref.clone()),
         penalty: Set(row.penalty),
         ppvz_vw: Set(row.ppvz_vw),
         ppvz_vw_nds: Set(row.ppvz_vw_nds),
@@ -192,6 +196,7 @@ fn model_from_entry(
         delivery_amount: row.delivery_amount,
         delivery_rub: row.delivery_rub,
         nm_id: row.nm_id,
+        a004_nomenclature_ref: row.a004_nomenclature_ref.clone(),
         penalty: row.penalty,
         ppvz_vw: row.ppvz_vw,
         ppvz_vw_nds: row.ppvz_vw_nds,
@@ -287,12 +292,12 @@ pub async fn reconcile_day(
             changed: false,
             source_rows: existing.len(),
             general_ledger_rows: crate::general_ledger::repository::count_by_registrator_refs(
-                    &registrator_refs_from_models(&existing),
-                )
-                .await?
-                .values()
-                .copied()
-                .sum(),
+                &registrator_refs_from_models(&existing),
+            )
+            .await?
+            .values()
+            .copied()
+            .sum(),
         });
     }
 
@@ -320,10 +325,9 @@ pub async fn reconcile_day(
         .iter()
         .map(|item| {
             let key = item.rrd_id;
-            let id = preserved_ids
-                .get(&key)
-                .cloned()
-                .unwrap_or_else(crate::projections::p903_wb_finance_report::repository::make_entry_id);
+            let id = preserved_ids.get(&key).cloned().unwrap_or_else(
+                crate::projections::p903_wb_finance_report::repository::make_entry_id,
+            );
             model_from_entry(item, id, &loaded_at_utc)
         })
         .collect::<Vec<_>>();

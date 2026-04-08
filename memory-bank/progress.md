@@ -1,6 +1,6 @@
 # Progress Tracker
 
-_Последнее обновление: 2026-02-25_
+_Последнее обновление: 2026-03-28_
 
 ## ✅ Реализовано и работает
 
@@ -80,6 +80,9 @@ _Последнее обновление: 2026-02-25_
 - ✅ **a020_wb_promotion** - WB-продвижение
   - Акции Wildberries
   - Интеграция с WB Promotion API
+- ✅ **a021_production_output** - Выпуск продукции
+- ✅ **a022_kit_variant** - Варианты комплектов
+- ✅ **a023_purchase_of_goods** - Закупки товаров
 - ✅ **a024_bi_indicator** - BI Индикаторы
   - CRUD операции, пагинация
   - DataSpec с приоритетной цепочкой: view_id → data_source_config → schema_query → schema_id
@@ -90,6 +93,9 @@ _Последнее обновление: 2026-02-25_
 - ✅ **a025_bi_dashboard** - BI Дашборды
   - CRUD операции
   - Метаданные в LLM MetadataRegistry (category: bi/dashboard)
+- ✅ **a026_wb_advert_daily** - Реклама Wildberries по дням
+  - Ежедневная статистика рекламных кампаний WB
+  - UI список и детали
 - ✅ **sys_scheduled_task** - Регламентные задания
   - Хранение расписаний (Cron) и параметров (JSON)
   - Статус последнего запуска и ссылка на сессию
@@ -137,6 +143,8 @@ _Последнее обновление: 2026-02-25_
   - LemanaPro API client
   - Базовая структура
   - Progress tracking
+- ✅ **u507_import_from_erp** - Импорт из ERP
+- ✅ **u508_repost_documents** - Перепроведение документов
 
 ### Projections (Analytics)
 
@@ -171,6 +179,34 @@ _Последнее обновление: 2026-02-25_
   - Импорт цен из 1С
   - История изменения цен
   - UI для просмотра
+- ✅ **p907_ym_payment_report** - Финансовый отчёт Яндекс.Маркет
+- ✅ **p908_wb_goods_prices** - Цены товаров Wildberries
+- ✅ **p909_mp_order_line_turnovers** - Обороты по строкам заказов маркетплейсов
+- ✅ **p910_mp_unlinked_turnovers** - Несвязанные обороты маркетплейсов
+- ✅ **p911_wb_advert_by_items** - Реклама WB в разрезе товаров
+
+### General Ledger (независимая система)
+
+- ✅ **General Ledger** — бухгалтерский журнал проводок
+  - Хранение проводок (entry_date, layer, debit/credit account, amount, qty, turnover_code, cabinet_mp)
+  - Реестр видов оборотов (27 turnover codes) + реестр счетов (план счетов)
+  - API: list с фильтрами (date, layer, account, turnover, cabinet_mp), get by id, list turnovers
+  - Frontend: список с Select-фильтрами, детали записи, страница Обороты GL
+  - Расположение: `crates/*/src/general_ledger/` (НЕ в domain/)
+
+### DataView (аналитический слой)
+
+- ✅ **dv001_revenue** — DataView выручки/продаж
+  - 12 измерений с SQL-полями (DimensionMeta)
+  - Самодостаточен (не зависит от SchemaRegistry)
+  - Интегрирован с LLM (инструмент `list_data_views`)
+
+### Roles & Permissions (sys_roles)
+
+- ✅ **Система ролей** — управление доступом на основе ролей
+  - Роли: CRUD + матрица прав (`sys_roles_matrix`)
+  - Табы: `sys_roles`, `sys_roles_matrix`, `sys_role_details_{id}`
+  - Frontend: `crates/frontend/src/system/roles/ui/`
 
 ### System Infrastructure
 
@@ -198,41 +234,6 @@ _Последнее обновление: 2026-02-25_
   - История чатов (a018) и артефакты (a019)
   - System prompt: `crates/backend/src/domain/a018_llm_chat/prompts/default_agent.md`
 
-### Frontend Components
-
-- ✅ **Layout система**
-  - Левая панель навигации
-  - Центральная область с табами
-  - Tab persistence (восстановление после перезагрузки)
-- ✅ **Shared utilities**
-  - `list_utils.rs` - Сортировка, фильтрация таблиц
-  - `date_utils.rs` - Форматирование дат
-  - Form components
-  - Picker components (generic, aggregate)
-- ✅ **Styling**
-  - Component-based CSS
-  - Консистентные таблицы
-  - Form styles
-  - Date picker styles
-
-### UI Libraries
-
-- ✅ **Thaw UI 0.5.0-beta**
-  - ConfigProvider и темизация (light/dark/forest)
-  - Table с сортировкой и фильтрацией
-  - Form components (Input, Select, DatePicker, Button)
-  - Layout components
-  - CSS переменная система
-  - Программная модификация стилей через DOM API
-- ✅ **Hybrid подход к таблицам**
-  - Некоторые таблицы используют Thaw Table (a006_connection_mp и др.)
-  - Некоторые используют нативный HTML `<table>` (a002, a016 и др.)
-  - Оба подхода поддерживаются
-  - Выбор зависит от требований к функциональности
-- ✅ **Реактивность**
-  - Leptos Signal параметры для компонентов
-  - Effect для автоматического обновления
-  - State management через отдельные state.rs файлы
 
 ### Database
 
@@ -249,27 +250,9 @@ _Последнее обновление: 2026-02-25_
 
 ## 🔨 В процессе разработки
 
-### Field Metadata System
-
-- 🔄 **Расширение на остальные агрегаты**
-  - ✅ `a001_connection_1c` — POC реализован
-  - 📋 `a002_organization` — планируется
-  - 📋 `a003_counterparty` — планируется
-  - 📋 `a004_nomenclature` — планируется
-  - 📋 Остальные агрегаты (a005-a016) — планируется
-
-### Documentation
-
-- 🔄 **Memory Bank система**
-  - ✅ `.cursorrules` создан
-  - ✅ Core файлы актуализированы
-  - ✅ `architecture/metadata-system.md` — документация системы метаданных
-
-### UI Improvements
-
-- 🔄 **State management**
-  - state.rs файлы для компонентов
-  - Новые файлы: a014_ozon_transactions/state.rs, p904_sales_data/state.rs
+- 🔄 Field Metadata System — POC на a001, расширение на остальные агрегаты планируется
+- 🔄 Новые DataView (dv002+)
+- 🔄 Экспорт данных (CSV, Excel)
 
 ## 📋 Планируется (Backlog)
 
@@ -305,60 +288,3 @@ _Нет критических проблем на данный момент_
 - ⚠️ **Frontend hot reload**: Иногда требует полной перезагрузки страницы
 - ⚠️ **Large datasets**: Pagination работает, но UI может тормозить на > 10k строк в таблице
 
-### Workarounds Applied
-
-- ✅ **Wildberries pagination**: Реализован правильный пейджинг с rId
-- ✅ **Date input**: Гибридный picker (input + calendar)
-- ✅ **Connection testing**: Добавлены детальные ошибки
-
-## 📊 Статистика проекта
-
-### Codebase Size
-
-```
-Frontend: ~50+ components/views
-Backend: ~30+ domain/usecase modules
-Contracts: ~30+ aggregate definitions
-Database: ~40+ tables
-```
-
-### Test Coverage
-
-- Unit tests: Частично реализованы
-- Integration tests: Минимально
-- Manual testing: Активно используется
-
-### Performance Metrics
-
-- Backend API response: < 100ms для большинства endpoints
-- Frontend initial load: ~2-3 seconds (dev build)
-- Database queries: Оптимизированы индексами
-
-## 🎯 Milestones
-
-### Completed
-
-- ✅ **Stage 1**: Базовая архитектура и workspace setup
-- ✅ **Stage 2**: 1C integration (u501)
-- ✅ **Stage 3**: Wildberries integration (u504)
-- ✅ **Stage 4**: Ozon integration (u505)
-- ✅ **Stage 5**: Analytics projections (p904, p905)
-- ✅ **Stage 6**: UI improvements и user experience
-
-### Current
-
-- 🔄 **Metadata System Rollout**: Расширение на все агрегаты
-- 🔄 **LLM Integration**: Подготовка контекста для встроенного чата
-
-### Next
-
-- 📋 **Frontend Integration**: Автогенерация UI на основе метаданных
-- 📋 **Refinement phase**: Polish, optimization, testing
-- 📋 **Production ready**: Deployment strategy, packaging
-
-## 🔗 Связанные документы
-
-- `projectbrief.md` - Общая информация о проекте
-- `activeContext.md` - Текущий фокус работы
-- `systemPatterns.md` - Архитектурные паттерны
-- `techContext.md` - Технологический стек

@@ -483,6 +483,14 @@ pub fn ImportWidget() -> impl IntoView {
                     selected_connection=selected_connection
                 />
                 <ServiceRow
+                    row_id="a027"
+                    title="WB Documents"
+                    description="a027_wb_documents"
+                    aggregate="a027_wb_documents"
+                    needs_period=true
+                    selected_connection=selected_connection
+                />
+                <ServiceRow
                     row_id="wb_advert_csv"
                     title="Статистика рекламных кампаний WB"
                     description="Пишет дневные документы и дополнительно сохраняет CSV"

@@ -352,7 +352,7 @@ pub fn MpOrderLineTurnoversList() -> impl IntoView {
                                 <div style="min-width: 120px;">
                                     <Flex vertical=true gap=FlexGap::Small>
                                         <Label>"Layer"</Label>
-                                        <Input value=layer placeholder="oper|fact|plan" />
+                                        <Input value=layer placeholder="oper|fact|plan|prod" />
                                     </Flex>
                                 </div>
                                 <div style="min-width: 220px;">

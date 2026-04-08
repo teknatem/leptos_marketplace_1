@@ -98,6 +98,7 @@ pub fn WbAdvertByItemDetail(
                     let Some(detail) = data.get() else {
                         return view! { <div class="text-muted">"No data"</div> }.into_any();
                     };
+                    let problem_count = detail.items.iter().filter(|item| item.is_problem).count();
 
                     let summary = detail.items.first().cloned().map(|item| {
                         view! {
@@ -108,6 +109,7 @@ pub fn WbAdvertByItemDetail(
                                     <KvField label="Layer" value=item.layer.as_str().to_string() />
                                     <KvField label="Connection" value=item.connection_mp_ref.clone() mono=true />
                                     <KvField label="Rows" value=detail.items.len().to_string() />
+                                    <KvField label="Problem Rows" value=problem_count.to_string() />
                                     <KvField label="Total Amount" value=format_number(detail.total_amount) />
                                 </div>
                             </section>
@@ -192,6 +194,7 @@ pub fn WbAdvertByItemDetail(
                                                     <TableHeaderCell min_width=120.0>"Entry Date"</TableHeaderCell>
                                                     <TableHeaderCell min_width=220.0>"Nomenclature"</TableHeaderCell>
                                                     <TableHeaderCell min_width=120.0>"Amount"</TableHeaderCell>
+                                                    <TableHeaderCell min_width=120.0>"Problem"</TableHeaderCell>
                                                     <TableHeaderCell min_width=260.0>"Registrator"</TableHeaderCell>
                                                 </TableRow>
                                             </TableHeader>
@@ -202,6 +205,19 @@ pub fn WbAdvertByItemDetail(
                                                             <TableCell><TableCellLayout>{item.entry_date}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.nomenclature_ref.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                             <TableCell class="table__cell--right"><TableCellLayout>{format_number(item.amount)}</TableCellLayout></TableCell>
+                                                            <TableCell>
+                                                                <TableCellLayout>
+                                                                    {if item.is_problem {
+                                                                        view! {
+                                                                            <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Danger>
+                                                                                <span>"Problem"</span>
+                                                                            </Badge>
+                                                                        }.into_any()
+                                                                    } else {
+                                                                        view! { <span class="text-muted">"—"</span> }.into_any()
+                                                                    }}
+                                                                </TableCellLayout>
+                                                            </TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.registrator_ref}</TableCellLayout></TableCell>
                                                         </TableRow>
                                                     }

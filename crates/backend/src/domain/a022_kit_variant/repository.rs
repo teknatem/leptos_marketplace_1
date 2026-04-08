@@ -3,8 +3,9 @@ use chrono::Utc;
 use contracts::domain::a022_kit_variant::aggregate::{KitVariant, KitVariantId};
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{EntityTrait, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
@@ -67,6 +68,48 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<KitVariant>> {
     let db = get_connection();
     let model = Entity::find_by_id(id.to_string()).one(db).await?;
     Ok(model.map(|m| m.into()))
+}
+
+pub async fn get_main_by_owner_ref(owner_ref: &str) -> Result<Option<KitVariant>> {
+    if owner_ref.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let db = get_connection();
+    let model = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::OwnerRef.eq(owner_ref.to_string()))
+        .order_by_desc(Column::UpdatedAt)
+        .order_by_desc(Column::FetchedAt)
+        .one(db)
+        .await?;
+    Ok(model.map(Into::into))
+}
+
+pub async fn list_main_by_owner_refs(owner_refs: &[String]) -> Result<HashMap<String, KitVariant>> {
+    if owner_refs.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let db = get_connection();
+    let rows = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::OwnerRef.is_in(owner_refs.iter().cloned()))
+        .order_by_asc(Column::OwnerRef)
+        .order_by_desc(Column::UpdatedAt)
+        .order_by_desc(Column::FetchedAt)
+        .all(db)
+        .await?;
+
+    let mut result = HashMap::new();
+    for row in rows {
+        let Some(owner_ref) = row.owner_ref.clone() else {
+            continue;
+        };
+        result.entry(owner_ref).or_insert_with(|| row.into());
+    }
+
+    Ok(result)
 }
 
 /// Upsert варианта комплектации по ID (1С UUID является первичным ключом)
@@ -175,7 +218,10 @@ pub async fn list_sql(query: KitVariantListQuery) -> Result<KitVariantListResult
     let sort_dir = if query.sort_desc { "DESC" } else { "ASC" };
 
     let count_sql = format!(
-        "SELECT COUNT(*) as cnt FROM a022_kit_variant k WHERE {}",
+        "SELECT COUNT(*) as cnt \
+         FROM a022_kit_variant k \
+         LEFT JOIN a004_nomenclature n ON n.id = k.owner_ref AND n.is_deleted = 0 \
+         WHERE {}",
         where_clause
     );
 

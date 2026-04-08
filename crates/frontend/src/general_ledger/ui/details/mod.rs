@@ -9,21 +9,13 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;
 
-use super::model::fetch_general_ledger_entry_by_id;
+use crate::general_ledger::api::fetch_general_ledger_entry_by_id;
 
 fn short_id(value: &str) -> &str {
     if value.len() >= 8 {
         &value[..8]
     } else {
         value
-    }
-}
-
-fn parse_registrator_ref(value: &str) -> (&str, &str) {
-    if let Some(pos) = value.find(':') {
-        (&value[..pos], &value[pos + 1..])
-    } else {
-        ("", value)
     }
 }
 
@@ -143,10 +135,11 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
     });
 
     let open_registrator = move |registrator_type: String, registrator_ref: String| {
-        let (_, id) = parse_registrator_ref(&registrator_ref);
-        let id = id.to_string();
-        if let Some(key) = registrator_tab_key(&registrator_type, &id) {
-            tabs_store.open_tab(&key, &registrator_tab_label(&registrator_type, &id));
+        if let Some(key) = registrator_tab_key(&registrator_type, &registrator_ref) {
+            tabs_store.open_tab(
+                &key,
+                &registrator_tab_label(&registrator_type, &registrator_ref),
+            );
         }
     };
 
@@ -182,8 +175,7 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                 <div class="page__header-right">
                     <Show when=move || {
                         entry.get().and_then(|item| {
-                            let (_, reg_id) = parse_registrator_ref(&item.registrator_ref);
-                            registrator_tab_key(&item.registrator_type, reg_id)
+                            registrator_tab_key(&item.registrator_type, &item.registrator_ref)
                         }).is_some()
                     }>
                         <Button
@@ -226,9 +218,8 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                         return view! { <div class="alert">"Entry not found."</div> }.into_any();
                     };
 
-                    let (_, reg_id) = parse_registrator_ref(&item.registrator_ref);
                     let has_registrator_link =
-                        registrator_tab_key(&item.registrator_type, reg_id).is_some();
+                        registrator_tab_key(&item.registrator_type, &item.registrator_ref).is_some();
                     let registrator_type_for_click = item.registrator_type.clone();
                     let registrator_ref_for_click = item.registrator_ref.clone();
                     let has_resource_link =
@@ -293,6 +284,10 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                     <ReadonlyField label="Created At" value=format_general_ledger_datetime(&item.created_at) />
                                     <ReadonlyField label="Amount" value=format!("{:.2}", item.amount) />
                                     <ReadonlyField label="Qty" value=format_optional_number(item.qty) />
+                                    <ReadonlyField
+                                        label="Order ID"
+                                        value=item.order_id.clone().unwrap_or_else(|| "-".to_string())
+                                    />
                                 </CardAnimated>
 
                                 <CardAnimated delay_ms=80 nav_id="general_ledger_details_accounts">
@@ -302,8 +297,8 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                     <ReadonlyField label="Credit" value=item.credit_account.clone() />
                                     <ReadonlyField label="Turnover Code" value=item.turnover_code.clone() />
                                     <ReadonlyField
-                                        label="Cabinet MP"
-                                        value=item.cabinet_mp.clone().unwrap_or_else(|| "-".to_string())
+                                        label="Connection MP"
+                                        value=item.connection_mp_ref.clone().unwrap_or_else(|| "-".to_string())
                                     />
                                     <ReadonlyField label="Resource Table" value=item.resource_table.clone() />
                                     <ReadonlyField label="Resource Field" value=item.resource_field.clone() />

@@ -108,14 +108,12 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
     let total = -seller_out;
 
     // Для реализации себестоимость пишем с минусом, для возврата - с плюсом.
-    let sale_date_str = document.state.sale_dt.format("%Y-%m-%d").to_string();
     let is_return = price_effective <= 0.0;
     let resolved_cost = document
         .line
         .cost_of_production
         .filter(|price| *price > 0.0)
-        .or(document.line.dealer_price_ut.filter(|price| *price > 0.0))
-        .or(get_cost_for_nomenclature(&document.nomenclature_ref, &sale_date_str).await?);
+        .or(document.line.dealer_price_ut.filter(|price| *price > 0.0));
     let cost = normalize_cost_sign(resolved_cost, is_return);
 
     let entry = Model {
@@ -216,6 +214,7 @@ pub async fn from_ozon_transactions(
                         marketplace_ref: document.header.marketplace_id.clone(),
                         connection_mp_ref: document.header.connection_id.clone(),
                         marketplace_sku: sku_str.clone(),
+                        article: None,
                         barcode: None,
                         title: item.name.clone(),
                     },
@@ -320,6 +319,7 @@ pub async fn from_ozon_transactions(
                         marketplace_ref: document.header.marketplace_id.clone(),
                         connection_mp_ref: document.header.connection_id.clone(),
                         marketplace_sku: line.offer_id.clone(),
+                        article: None,
                         barcode: line.barcode.clone(),
                         title: line.name.clone(),
                     },
@@ -405,6 +405,7 @@ pub async fn from_ozon_transactions(
                         marketplace_ref: document.header.marketplace_id.clone(),
                         connection_mp_ref: document.header.connection_id.clone(),
                         marketplace_sku: line.offer_id.clone(),
+                        article: None,
                         barcode: line.barcode.clone(),
                         title: line.name.clone(),
                     },
@@ -690,6 +691,7 @@ pub async fn from_ozon_fbs(document: &OzonFbsPosting, document_id: &str) -> Resu
                     marketplace_ref: document.header.marketplace_id.clone(),
                     connection_mp_ref: document.header.connection_id.clone(),
                     marketplace_sku: line.offer_id.clone(),
+                    article: None,
                     barcode: line.barcode.clone(),
                     title: line.name.clone(),
                 },
@@ -784,6 +786,7 @@ pub async fn from_ozon_fbo(document: &OzonFboPosting, document_id: &str) -> Resu
                     marketplace_ref: document.header.marketplace_id.clone(),
                     connection_mp_ref: document.header.connection_id.clone(),
                     marketplace_sku: line.offer_id.clone(),
+                    article: None,
                     barcode: line.barcode.clone(),
                     title: line.name.clone(),
                 },
@@ -867,6 +870,7 @@ pub async fn from_ozon_returns(document: &OzonReturns, document_id: &str) -> Res
                 marketplace_ref: document.marketplace_id.clone(),
                 connection_mp_ref: document.connection_id.clone(),
                 marketplace_sku: document.sku.clone(),
+                article: None,
                 barcode: None,
                 title: document.product_name.clone(),
             },

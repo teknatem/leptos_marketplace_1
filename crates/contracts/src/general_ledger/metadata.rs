@@ -1,8 +1,8 @@
 //! Метаданные таблицы sys_general_ledger для LLM metadata registry.
 
 use crate::shared::metadata::{
-    EntityAiMetadata, EntityMetadataInfo, EntityType, EntityUiMetadata, FieldMetadata,
-    FieldSource, FieldType, FieldUiMetadata, ValidationRules,
+    EntityAiMetadata, EntityMetadataInfo, EntityType, EntityUiMetadata, FieldMetadata, FieldSource,
+    FieldType, FieldUiMetadata, ValidationRules,
 };
 
 pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
@@ -144,7 +144,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             column_width: Some(200),
         },
         validation: ValidationRules::required(),
-        ai_hint: Some("Ссылка формата '{type}:{id}', например 'a012_wb_sales:uuid'"),
+        ai_hint: Some("Чистый id регистратора; тип документа хранится отдельно в registrator_type"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -188,9 +188,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             column_width: Some(80),
         },
         validation: ValidationRules::required(),
-        ai_hint: Some(
-            "Кредитуемый счёт по плану счетов (9001, 7609, 90, 76, ...)",
-        ),
+        ai_hint: Some("Кредитуемый счёт по плану счетов (9001, 7609, 90, 76, ...)"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -211,9 +209,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             column_width: Some(120),
         },
         validation: ValidationRules::required(),
-        ai_hint: Some(
-            "Сумма проводки. Знак может быть отрицательным в зависимости от оборота",
-        ),
+        ai_hint: Some("Сумма проводки. Знак может быть отрицательным в зависимости от оборота"),
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -243,13 +239,13 @@ pub const FIELDS: &[FieldMetadata] = &[
         enum_values: None,
     },
     FieldMetadata {
-        name: "cabinet_mp",
+        name: "connection_mp_ref",
         rust_type: "Option<String>",
         field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
-            label: "Кабинет МП",
-            label_en: Some("Cabinet MP"),
+            label: "Подключение МП",
+            label_en: Some("Marketplace Connection"),
             placeholder: None,
             hint: None,
             visible_in_list: true,
@@ -258,9 +254,30 @@ pub const FIELDS: &[FieldMetadata] = &[
             column_width: Some(180),
         },
         validation: ValidationRules::none(),
-        ai_hint: Some("Ссылка на a006_connection_mp.id (кабинет маркетплейса)"),
+        ai_hint: Some("Ссылка на a006_connection_mp.id"),
         nested_fields: None,
         ref_aggregate: Some("a006"),
+        enum_values: None,
+    },
+    FieldMetadata {
+        name: "order_id",
+        rust_type: "Option<String>",
+        field_type: FieldType::Primitive,
+        source: FieldSource::Specific,
+        ui: FieldUiMetadata {
+            label: "Order ID",
+            label_en: Some("Order ID"),
+            placeholder: None,
+            hint: Some("document_no/srid, если регистратор связан с заказом"),
+            visible_in_list: true,
+            visible_in_form: true,
+            widget: None,
+            column_width: Some(180),
+        },
+        validation: ValidationRules::none(),
+        ai_hint: Some("Идентификатор заказа из регистратора: a012.document_no или p903.srid"),
+        nested_fields: None,
+        ref_aggregate: None,
         enum_values: None,
     },
     FieldMetadata {

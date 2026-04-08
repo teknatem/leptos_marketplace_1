@@ -29,11 +29,11 @@ impl MatchExecutor {
         let session_id = Uuid::new_v4().to_string();
 
         // Получить количество товаров для обработки
-        let products = if let Some(marketplace_id) = &request.marketplace_id {
-            a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
-        } else {
-            a007_marketplace_product::service::list_all().await?
-        };
+        let products = a007_marketplace_product::repository::list_for_matching(
+            request.marketplace_id.as_deref(),
+            !request.overwrite_existing,
+        )
+        .await?;
 
         let total = products.len() as i32;
         self.progress_tracker
@@ -131,11 +131,11 @@ impl MatchExecutor {
 
         // Загрузить товары маркетплейса
         let load_products_start = std::time::Instant::now();
-        let products = if let Some(marketplace_id) = &request.marketplace_id {
-            a007_marketplace_product::repository::list_by_marketplace_ref(marketplace_id).await?
-        } else {
-            a007_marketplace_product::service::list_all().await?
-        };
+        let products = a007_marketplace_product::repository::list_for_matching(
+            request.marketplace_id.as_deref(),
+            !request.overwrite_existing,
+        )
+        .await?;
         let load_products_duration = load_products_start.elapsed();
         tracing::info!(
             "Loaded {} products in {:?}ms",
@@ -179,6 +179,7 @@ impl MatchExecutor {
                             cleared += 1;
                             ambiguous += 1;
                         }
+                        MatchResult::AmbiguousUnchanged => ambiguous += 1,
                         MatchResult::Skipped => skipped += 1,
                     }
                 }
@@ -363,15 +364,16 @@ impl MatchExecutor {
         };
 
         // Получить список номенклатур из индекса
-        let found_items = article_index.get(&search_key).cloned().unwrap_or_default();
+        let found_items = article_index.get(&search_key);
+        let found_count = found_items.map(|items| items.len()).unwrap_or(0);
 
         tracing::debug!(
             "Found {} nomenclature items for article '{}'",
-            found_items.len(),
+            found_count,
             article
         );
 
-        match found_items.len() {
+        match found_count {
             0 => {
                 // Не найдено совпадений - очистить связь
                 tracing::debug!("No nomenclature found for article: {}", article);
@@ -379,7 +381,7 @@ impl MatchExecutor {
             }
             1 => {
                 // Найдено ровно 1 совпадение - установить связь
-                let nomenclature = &found_items[0];
+                let nomenclature = &found_items.expect("count checked")[0];
                 tracing::info!(
                     "Matched product {} with nomenclature {} ({})",
                     article,
@@ -394,7 +396,7 @@ impl MatchExecutor {
                 tracing::warn!(
                     "Ambiguous match for article {}: found {} nomenclature items",
                     article,
-                    found_items.len()
+                    found_count
                 );
                 self.clear_nomenclature_link_ambiguous(product).await
             }
@@ -407,6 +409,10 @@ impl MatchExecutor {
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
         nomenclature_id: String,
     ) -> Result<MatchResult> {
+        if product.nomenclature_ref.as_deref() == Some(nomenclature_id.as_str()) {
+            return Ok(MatchResult::Skipped);
+        }
+
         let mut product_clone = product.clone();
         product_clone.nomenclature_ref = Some(nomenclature_id);
         product_clone.before_write();
@@ -421,8 +427,8 @@ impl MatchExecutor {
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
     ) -> Result<MatchResult> {
         if product.nomenclature_ref.is_none() {
-            // Уже пусто - не нужно обновлять
-            return Ok(MatchResult::Cleared);
+            // Уже пусто - это no-op, не считаем очисткой
+            return Ok(MatchResult::Skipped);
         }
 
         let mut product_clone = product.clone();
@@ -439,8 +445,8 @@ impl MatchExecutor {
         product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
     ) -> Result<MatchResult> {
         if product.nomenclature_ref.is_none() {
-            // Уже пусто - не нужно обновлять
-            return Ok(MatchResult::ClearedAmbiguous);
+            // Уже пусто - связь не меняем, но ambiguity нужно показать в статистике
+            return Ok(MatchResult::AmbiguousUnchanged);
         }
 
         let mut product_clone = product.clone();
@@ -468,6 +474,8 @@ enum MatchResult {
     Cleared,
     /// Связь очищена (неоднозначное сопоставление)
     ClearedAmbiguous,
+    /// Найдено неоднозначное сопоставление, но связь и так была пустой
+    AmbiguousUnchanged,
     /// Пропущен
     Skipped,
 }

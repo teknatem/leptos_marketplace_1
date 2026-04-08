@@ -31,6 +31,69 @@ VALUES (
     1
 );
 
+-- 6. MP acquiring (fact) -- test indicator on universal GL turnover DataView dv004
+INSERT OR IGNORE INTO a024_bi_indicator
+    (id, code, description, comment, data_spec_json, params_json, view_spec_json,
+     drill_spec_json, status, owner_user_id, is_public, created_at, updated_at, version)
+VALUES (
+    'a024a024-0016-4001-a001-000000000016',
+    'IND-GL-MP-ACQ-FACT',
+    'MP acquiring (fact)',
+    'Test indicator on dv004_general_ledger_turnovers with turnover_code=mp_acquiring and layer=fact.',
+    '{"view_id":"dv004_general_ledger_turnovers","metric_id":"amount"}',
+    '[{"key":"turnover_code","param_type":"string","label":"Turnover code","default_value":"mp_acquiring","required":true,"global_filter_key":null},{"key":"layer","param_type":"string","label":"Layer","default_value":"fact","required":true,"global_filter_key":null}]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);
+
+-- 7. MP penalty (fact) -- test indicator on universal GL turnover DataView dv004
+INSERT OR IGNORE INTO a024_bi_indicator
+    (id, code, description, comment, data_spec_json, params_json, view_spec_json,
+     drill_spec_json, status, owner_user_id, is_public, created_at, updated_at, version)
+VALUES (
+    'a024a024-0017-4001-a001-000000000017',
+    'IND-GL-MP-PENALTY-FACT',
+    'MP penalty (fact)',
+    'Test indicator on dv004_general_ledger_turnovers with turnover_code=mp_penalty and layer=fact.',
+    '{"view_id":"dv004_general_ledger_turnovers","metric_id":"amount"}',
+    '[{"key":"turnover_code","param_type":"string","label":"Turnover code","default_value":"mp_penalty","required":true,"global_filter_key":null},{"key":"layer","param_type":"string","label":"Layer","default_value":"fact","required":true,"global_filter_key":null}]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);
+
+-- 8. MP logistics (fact) -- test indicator on universal GL turnover DataView dv004
+INSERT OR IGNORE INTO a024_bi_indicator
+    (id, code, description, comment, data_spec_json, params_json, view_spec_json,
+     drill_spec_json, status, owner_user_id, is_public, created_at, updated_at, version)
+VALUES (
+    'a024a024-0018-4001-a001-000000000018',
+    'IND-GL-MP-LOGISTICS-FACT',
+    'MP logistics (fact)',
+    'Test indicator on dv004_general_ledger_turnovers with turnover_code=mp_logistics and layer=fact.',
+    '{"view_id":"dv004_general_ledger_turnovers","metric_id":"amount"}',
+    '[{"key":"turnover_code","param_type":"string","label":"Turnover code","default_value":"mp_logistics","required":true,"global_filter_key":null},{"key":"layer","param_type":"string","label":"Layer","default_value":"fact","required":true,"global_filter_key":null}]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);
+
 -- 2. Маржинальность — кольцеобразный индикатор процента + пороги
 INSERT OR IGNORE INTO a024_bi_indicator
     (id, code, description, comment, data_spec_json, params_json, view_spec_json,

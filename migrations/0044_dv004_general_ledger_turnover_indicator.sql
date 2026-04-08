@@ -1,0 +1,41 @@
+-- Ready-to-use BI indicator for dv004_general_ledger_turnovers.
+
+INSERT OR IGNORE INTO a024_bi_indicator (
+    id,
+    code,
+    description,
+    comment,
+    data_spec_json,
+    params_json,
+    view_spec_json,
+    drill_spec_json,
+    status,
+    owner_user_id,
+    is_public,
+    created_by,
+    updated_by,
+    is_deleted,
+    is_posted,
+    created_at,
+    updated_at,
+    version
+) VALUES (
+    'a024a024-0016-4001-a001-000000000016',
+    'IND-GL-MP-ACQ-FACT',
+    'MP acquiring (fact)',
+    'Ready-to-use BI indicator on DataView dv004_general_ledger_turnovers with turnover_code=mp_acquiring and layer=fact.',
+    '{"view_id":"dv004_general_ledger_turnovers","metric_id":"amount"}',
+    '[{"key":"turnover_code","param_type":"string","label":"Turnover code","default_value":"mp_acquiring","required":true,"global_filter_key":null},{"key":"layer","param_type":"string","label":"Layer","default_value":"fact","required":true,"global_filter_key":null}]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    'system',
+    'system',
+    0,
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);

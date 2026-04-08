@@ -1,13 +1,340 @@
 //! DataSpec tab — DataView source + metric selection + live test
 
-use super::super::view_model::{value_format_presets, BiIndicatorDetailsVm};
+use super::super::view_model::{
+    value_format_presets, BiIndicatorDetailsVm, GL_TURNOVER_DATA_VIEW_ID,
+};
 use crate::data_view::api as dv_api;
 use crate::data_view::types::{DataViewMeta, FilterDef};
 use crate::data_view::ui::FilterBar;
+use crate::general_ledger::api::fetch_general_ledger_turnovers;
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
+use contracts::projections::general_ledger::GeneralLedgerTurnoverDto;
 use leptos::prelude::*;
 use thaw::*;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GlTurnoverSlot {
+    code: String,
+    sign: i32,
+}
+
+fn empty_gl_turnover_slot() -> GlTurnoverSlot {
+    GlTurnoverSlot {
+        code: String::new(),
+        sign: 1,
+    }
+}
+
+fn parse_gl_turnover_slots(turnover_items: &str, turnover_code: &str) -> [GlTurnoverSlot; 2] {
+    let mut slots: Vec<GlTurnoverSlot> = turnover_items
+        .split(|ch| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .filter_map(|token| {
+            let (sign, code) = match token.chars().next() {
+                Some('-') => (-1, token[1..].trim()),
+                Some('+') => (1, token[1..].trim()),
+                _ => (1, token),
+            };
+            (!code.is_empty()).then(|| GlTurnoverSlot {
+                code: code.to_string(),
+                sign,
+            })
+        })
+        .take(2)
+        .collect();
+
+    if slots.is_empty() && !turnover_code.trim().is_empty() {
+        slots.push(GlTurnoverSlot {
+            code: turnover_code.trim().to_string(),
+            sign: 1,
+        });
+    }
+
+    while slots.len() < 2 {
+        slots.push(empty_gl_turnover_slot());
+    }
+
+    [slots.remove(0), slots.remove(0)]
+}
+
+fn compose_turnover_items(slots: &[GlTurnoverSlot; 2]) -> String {
+    slots
+        .iter()
+        .filter_map(|slot| {
+            let code = slot.code.trim();
+            if code.is_empty() {
+                None
+            } else if slot.sign < 0 {
+                Some(format!("-{code}"))
+            } else {
+                Some(code.to_string())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn gl_formula_preview(slots: &[GlTurnoverSlot; 2]) -> String {
+    let mut parts = Vec::new();
+    for (index, slot) in slots.iter().enumerate() {
+        let code = slot.code.trim();
+        if code.is_empty() {
+            continue;
+        }
+        if index == 0 {
+            if slot.sign < 0 {
+                parts.push(format!("- {code}"));
+            } else {
+                parts.push(code.to_string());
+            }
+        } else if slot.sign < 0 {
+            parts.push(format!("- {code}"));
+        } else {
+            parts.push(format!("+ {code}"));
+        }
+    }
+
+    if parts.is_empty() {
+        "Обороты GL не выбраны".to_string()
+    } else {
+        parts.join(" ")
+    }
+}
+
+fn sync_gl_turnover_params(
+    vm: &BiIndicatorDetailsVm,
+    slot_index: usize,
+    next_code: Option<&str>,
+    next_sign: Option<i32>,
+) {
+    let current_items = vm.get_param_default_value("turnover_items");
+    let current_code = vm.get_param_default_value("turnover_code");
+    let mut slots = parse_gl_turnover_slots(&current_items, &current_code);
+
+    if slot_index >= slots.len() {
+        return;
+    }
+
+    if let Some(code) = next_code {
+        slots[slot_index].code = code.trim().to_string();
+    }
+    if let Some(sign) = next_sign {
+        slots[slot_index].sign = if sign < 0 { -1 } else { 1 };
+    }
+
+    let fallback_code = slots
+        .iter()
+        .find_map(|slot| {
+            let code = slot.code.trim();
+            (!code.is_empty()).then(|| code.to_string())
+        })
+        .unwrap_or_default();
+    let turnover_items = compose_turnover_items(&slots);
+
+    vm.set_param_default_value("turnover_items", "string", "GL turnovers", &turnover_items);
+    vm.set_param_default_value("turnover_code", "string", "Turnover code", &fallback_code);
+}
+
+#[component]
+fn GlTurnoverConfigSection(
+    vm: BiIndicatorDetailsVm,
+    gl_turnovers: RwSignal<Vec<GeneralLedgerTurnoverDto>>,
+    gl_turnovers_loading: RwSignal<bool>,
+    gl_turnovers_error: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let vm_slots = vm.clone();
+    let turnover_slots = Signal::derive(move || {
+        parse_gl_turnover_slots(
+            &vm_slots.get_param_default_value("turnover_items"),
+            &vm_slots.get_param_default_value("turnover_code"),
+        )
+    });
+    let vm_layer = vm.clone();
+    let layer_value = Signal::derive(move || vm_layer.get_param_default_value("layer"));
+    let formula_preview = Signal::derive(move || gl_formula_preview(&turnover_slots.get()));
+    let turnover_items_preview =
+        Signal::derive(move || compose_turnover_items(&turnover_slots.get()));
+
+    view! {
+        <div class="bi-indicator-action__section">
+            <div class="bi-indicator-action__section-header">
+                <h5 class="bi-indicator-action__section-title">"Конфигурация оборотов GL"</h5>
+            </div>
+            <p class="form__hint">
+                "Для dv004 можно задать один или два GL-оборота. Каждый оборот хранится со знаком, а итоговая сумма уходит в "
+                <code>"turnover_items"</code>
+                ". Для совместимости первый код также дублируется в "
+                <code>"turnover_code"</code>
+                "."
+            </p>
+
+            <div class="bi-indicator-dataspec__formula-box">
+                <span class="bi-indicator-dataspec__overview-label">"Формула расчёта"</span>
+                <strong class="bi-indicator-dataspec__formula-value">{move || formula_preview.get()}</strong>
+                <code class="bi-indicator-dataspec__formula-raw">
+                    {move || {
+                        let raw = turnover_items_preview.get();
+                        if raw.trim().is_empty() {
+                            "turnover_items = ∅".to_string()
+                        } else {
+                            format!("turnover_items = {raw}")
+                        }
+                    }}
+                </code>
+            </div>
+
+            <div class="bi-indicator-dataspec__gl-grid">
+                <div class="bi-indicator-dataspec__gl-row">
+                    <div class="form__group bi-indicator-dataspec__field">
+                        <label class="form__label">"Оборот 1: знак"</label>
+                        <select
+                            class="form__select"
+                            prop:value=move || {
+                                if turnover_slots.get()[0].sign < 0 { "-".to_string() } else { "+".to_string() }
+                            }
+                            on:change={
+                                let vm = vm.clone();
+                                move |ev| {
+                                    let sign = if event_target_value(&ev) == "-" { -1 } else { 1 };
+                                    sync_gl_turnover_params(&vm, 0, None, Some(sign));
+                                }
+                            }
+                        >
+                            <option value="+">"+ (прибавить)"</option>
+                            <option value="-">"- (вычесть)"</option>
+                        </select>
+                    </div>
+                    <div class="form__group bi-indicator-dataspec__field">
+                        <label class="form__label">"Оборот 1: код"</label>
+                        <select
+                            class="form__select"
+                            prop:value=move || turnover_slots.get()[0].code.clone()
+                            on:change={
+                                let vm = vm.clone();
+                                move |ev| {
+                                    sync_gl_turnover_params(
+                                        &vm,
+                                        0,
+                                        Some(&event_target_value(&ev)),
+                                        None,
+                                    );
+                                }
+                            }
+                        >
+                            <option value="">"Не выбран"</option>
+                            {move || {
+                                gl_turnovers.get().into_iter().map(|item| {
+                                    let label = format!("{} - {}", item.code, item.name);
+                                    view! {
+                                        <option value=item.code>{label}</option>
+                                    }
+                                }).collect_view()
+                            }}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bi-indicator-dataspec__gl-row">
+                    <div class="form__group bi-indicator-dataspec__field">
+                        <label class="form__label">"Оборот 2: знак"</label>
+                        <select
+                            class="form__select"
+                            prop:value=move || {
+                                if turnover_slots.get()[1].sign < 0 { "-".to_string() } else { "+".to_string() }
+                            }
+                            on:change={
+                                let vm = vm.clone();
+                                move |ev| {
+                                    let sign = if event_target_value(&ev) == "-" { -1 } else { 1 };
+                                    sync_gl_turnover_params(&vm, 1, None, Some(sign));
+                                }
+                            }
+                        >
+                            <option value="+">"+ (прибавить)"</option>
+                            <option value="-">"- (вычесть)"</option>
+                        </select>
+                    </div>
+                    <div class="form__group bi-indicator-dataspec__field">
+                        <label class="form__label">"Оборот 2: код"</label>
+                        <select
+                            class="form__select"
+                            prop:value=move || turnover_slots.get()[1].code.clone()
+                            on:change={
+                                let vm = vm.clone();
+                                move |ev| {
+                                    sync_gl_turnover_params(
+                                        &vm,
+                                        1,
+                                        Some(&event_target_value(&ev)),
+                                        None,
+                                    );
+                                }
+                            }
+                        >
+                            <option value="">"Не выбран"</option>
+                            {move || {
+                                gl_turnovers.get().into_iter().map(|item| {
+                                    let label = format!("{} - {}", item.code, item.name);
+                                    view! {
+                                        <option value=item.code>{label}</option>
+                                    }
+                                }).collect_view()
+                            }}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form__group bi-indicator-dataspec__field">
+                    <label class="form__label">"Слой"</label>
+                    <select
+                        class="form__select"
+                        prop:value=move || layer_value.get()
+                        on:change={
+                            let vm = vm.clone();
+                            move |ev| {
+                                vm.set_param_default_value(
+                                    "layer",
+                                    "string",
+                                    "Layer",
+                                    &event_target_value(&ev),
+                                );
+                            }
+                        }
+                    >
+                        <option value="">"Не выбран"</option>
+                        <option value="oper">"oper"</option>
+                        <option value="fact">"fact"</option>
+                        <option value="plan">"plan"</option>
+                    </select>
+                </div>
+            </div>
+
+            {move || {
+                if gl_turnovers_loading.get() {
+                    view! { <p class="form__hint">"Загрузка оборотов GL..."</p> }.into_any()
+                } else if let Some(error) = gl_turnovers_error.get() {
+                    view! { <p class="form__hint" style="color: var(--color-danger);">{error}</p> }.into_any()
+                } else {
+                    view! {
+                        <p class="form__hint">
+                            "Для COST используйте "
+                            <code>"item_cost"</code>
+                            " и "
+                            <code>"item_cost_storno"</code>
+                            " со знаком "
+                            <code>"+"</code>
+                            " на слое "
+                            <code>"oper"</code>
+                            "."
+                        </p>
+                    }.into_any()
+                }
+            }}
+        </div>
+    }
+}
 
 #[component]
 pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
@@ -22,6 +349,7 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     let metric_value = Signal::derive(move || dsc_metric_id.get());
     let vm_format_value = vm.clone();
     let vm_for_formats = vm.clone();
+    let vm_gl_picker = vm.clone();
     let format_preset_value = Signal::derive(move || vm_format_value.current_format_preset_key());
 
     let dv_list: RwSignal<Vec<DataViewMeta>> = RwSignal::new(vec![]);
@@ -31,6 +359,9 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
     let drawer_open: RwSignal<bool> = RwSignal::new(false);
     let selected_view_meta: RwSignal<Option<DataViewMeta>> = RwSignal::new(None);
     let test_filter_defs: RwSignal<Vec<FilterDef>> = RwSignal::new(vec![]);
+    let gl_turnovers: RwSignal<Vec<GeneralLedgerTurnoverDto>> = RwSignal::new(vec![]);
+    let gl_turnovers_loading: RwSignal<bool> = RwSignal::new(false);
+    let gl_turnovers_error: RwSignal<Option<String>> = RwSignal::new(None);
 
     Effect::new(move |_| {
         leptos::task::spawn_local(async move {
@@ -86,6 +417,28 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
         });
     });
 
+    Effect::new(move |_| {
+        let view_id = dsc_view_id.get();
+        if view_id != GL_TURNOVER_DATA_VIEW_ID
+            || gl_turnovers_loading.get_untracked()
+            || !gl_turnovers.get_untracked().is_empty()
+        {
+            return;
+        }
+
+        gl_turnovers_loading.set(true);
+        leptos::task::spawn_local(async move {
+            match fetch_general_ledger_turnovers().await {
+                Ok(response) => {
+                    gl_turnovers.set(response.items);
+                    gl_turnovers_error.set(None);
+                }
+                Err(error) => gl_turnovers_error.set(Some(error)),
+            }
+            gl_turnovers_loading.set(false);
+        });
+    });
+
     let filtered_list = Signal::derive(move || {
         let q = dv_search.get().trim().to_lowercase();
         dv_list.with(|list| {
@@ -116,7 +469,6 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
             .map(|resource| resource.label)
             .unwrap_or_default()
     });
-
     view! {
         <CardAnimated delay_ms=0 nav_id="a024_bi_indicator_details_data_spec_main">
             <h4 class="details-section__title">
@@ -183,17 +535,21 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
 
                 {move || match selected_view_meta.get() {
                     Some(meta) => {
+                        let meta_id = meta.id.clone();
+                        let is_gl_turnover_view = meta_id == GL_TURNOVER_DATA_VIEW_ID;
                         let resources = meta.available_resources.clone();
                         let dimensions = meta.available_dimensions.clone();
                         let data_sources = meta.data_sources.clone();
+                        let current_metric_id = metric_value.get();
+                        let current_metric_label = selected_metric_label.get();
                         let vm_format_change = vm_for_formats.clone();
                         let format_preset_signal = format_preset_value;
                         view! {
                             <div class="bi-indicator-dataspec__summary">
                                 <div class="bi-indicator-dataspec__summary-main">
                                     <div class="bi-indicator-dataspec__title-row">
-                                        <strong>{meta.name}</strong>
-                                        <span class="bi-indicator-dataspec__meta-code">{meta.id}</span>
+                                        <strong>{meta.name.clone()}</strong>
+                                        <span class="bi-indicator-dataspec__meta-code">{meta_id.clone()}</span>
                                         <span class="bi-indicator-dataspec__meta-code">
                                             "v"{meta.version}
                                         </span>
@@ -203,16 +559,53 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                                     </p>
                                 </div>
 
-                                <div class="bi-indicator-dataspec__stats">
-                                    <span class="bi-indicator-dataspec__meta-code">
-                                        "Источники: " {data_sources.join(", ")}
-                                    </span>
-                                    <span class="bi-indicator-dataspec__meta-code">
-                                        "Измерения: " {dimensions.len().to_string()}
-                                    </span>
-                                    <span class="bi-indicator-dataspec__meta-code">
-                                        "Фильтры: " {test_filter_defs.get().len().to_string()}
-                                    </span>
+                                <div class="bi-indicator-dataspec__overview-grid">
+                                    <div class="bi-indicator-dataspec__overview-card">
+                                        <span class="bi-indicator-dataspec__overview-label">"DataView"</span>
+                                        <strong class="bi-indicator-dataspec__overview-value">
+                                            {meta.name.clone()}
+                                        </strong>
+                                        <code class="bi-indicator-dataspec__overview-code">{meta_id.clone()}</code>
+                                    </div>
+                                    <div class="bi-indicator-dataspec__overview-card">
+                                        <span class="bi-indicator-dataspec__overview-label">"Метрика"</span>
+                                        <strong class="bi-indicator-dataspec__overview-value">
+                                            {if current_metric_label.trim().is_empty() {
+                                                "Не выбрана".to_string()
+                                            } else {
+                                                current_metric_label.clone()
+                                            }}
+                                        </strong>
+                                        <code class="bi-indicator-dataspec__overview-code">
+                                            {if current_metric_id.trim().is_empty() {
+                                                "metric_id = ∅".to_string()
+                                            } else {
+                                                format!("metric_id = {}", current_metric_id)
+                                            }}
+                                        </code>
+                                    </div>
+                                    <div class="bi-indicator-dataspec__overview-card">
+                                        <span class="bi-indicator-dataspec__overview-label">"Источники данных"</span>
+                                        <strong class="bi-indicator-dataspec__overview-value">
+                                            {data_sources.len().to_string()}
+                                        </strong>
+                                        <span class="bi-indicator-dataspec__overview-meta">
+                                            {if data_sources.is_empty() {
+                                                "Не указаны".to_string()
+                                            } else {
+                                                data_sources.join(", ")
+                                            }}
+                                        </span>
+                                    </div>
+                                    <div class="bi-indicator-dataspec__overview-card">
+                                        <span class="bi-indicator-dataspec__overview-label">"Структура"</span>
+                                        <strong class="bi-indicator-dataspec__overview-value">
+                                            {format!("{} измерений", dimensions.len())}
+                                        </strong>
+                                        <span class="bi-indicator-dataspec__overview-meta">
+                                            {format!("{} фильтров для теста", test_filter_defs.get().len())}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {if resources.is_empty() {
@@ -299,6 +692,20 @@ pub fn DataSpecTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                                         </div>
                                     }
                                         .into_any()
+                                }}
+
+                                {if is_gl_turnover_view {
+                                    view! {
+                                        <GlTurnoverConfigSection
+                                            vm=vm_gl_picker.clone()
+                                            gl_turnovers=gl_turnovers
+                                            gl_turnovers_loading=gl_turnovers_loading
+                                            gl_turnovers_error=gl_turnovers_error
+                                        />
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! { <span /> }.into_any()
                                 }}
                             </div>
                         }

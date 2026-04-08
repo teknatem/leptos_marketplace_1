@@ -116,10 +116,10 @@ fn apply_drop(layout: &mut LayoutEdit, from: &DragItem, onto: &DragItem) {
                 if si != ti && sg < layout.groups.len() {
                     let g = &mut layout.groups[sg];
                     if si < g.items.len() && ti < g.items.len() {
-                        g.items.swap(si, ti);
-                        for (i, it) in g.items.iter_mut().enumerate() {
-                            it.sort_order = i as i32;
-                        }
+                        let item = g.items.remove(si);
+                        let insert_at = if si < ti { ti - 1 } else { ti };
+                        g.items.insert(insert_at, item);
+                        renumber_items(g);
                     }
                 }
             } else if sg < layout.groups.len()

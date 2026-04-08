@@ -3,7 +3,7 @@ use chrono::Utc;
 use contracts::domain::a021_production_output::aggregate::{ProductionOutput, ProductionOutputId};
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{EntityTrait, Set};
+use sea_orm::{EntityTrait, QueryFilter, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -303,4 +303,23 @@ pub async fn soft_delete(id: Uuid) -> Result<bool> {
     } else {
         Ok(false)
     }
+}
+
+pub async fn list_ids_by_document_date_range(
+    date_from: &str,
+    date_to: &str,
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    let mut query = Entity::find()
+        .select_only()
+        .column(Column::Id)
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to));
+
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+
+    Ok(query.into_tuple::<String>().all(get_connection()).await?)
 }

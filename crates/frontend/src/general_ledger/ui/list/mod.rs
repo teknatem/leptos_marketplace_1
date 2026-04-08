@@ -1,4 +1,5 @@
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{TableCellMoney, TableCrosshairHighlight};
@@ -9,15 +10,131 @@ use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
 use crate::shared::table_utils::{init_column_resize, was_just_resizing};
 use chrono::{Datelike, Utc};
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::common::AggregateId;
 use contracts::general_ledger::GeneralLedgerEntryDto;
+use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;
 
-use super::model::{fetch_general_ledger, GeneralLedgerListQuery};
+use crate::general_ledger::api::{fetch_general_ledger, GeneralLedgerListQuery};
 
 const TABLE_ID: &str = "general-ledger-table";
 const COLUMN_WIDTHS_KEY: &str = "general_ledger_column_widths";
+
+#[derive(Clone, Debug)]
+struct CabinetOption {
+    id: String,
+    label: String,
+}
+
+async fn load_cabinet_options() -> Vec<CabinetOption> {
+    let url = format!("{}/api/connection_mp", api_base());
+    let Ok(resp) = Request::get(&url).send().await else {
+        return vec![];
+    };
+    if !resp.ok() {
+        return vec![];
+    }
+    let Ok(data) = resp.json::<Vec<ConnectionMP>>().await else {
+        return vec![];
+    };
+    let mut opts: Vec<CabinetOption> = data
+        .into_iter()
+        .map(|c| {
+            let label = if c.base.description.trim().is_empty() {
+                c.base.code.clone()
+            } else {
+                c.base.description.clone()
+            };
+            CabinetOption {
+                id: c.base.id.as_string(),
+                label,
+            }
+        })
+        .collect();
+    opts.sort_by(|a, b| a.label.cmp(&b.label));
+    opts
+}
+
+static ACCOUNT_OPTIONS: &[(&str, &str)] = &[
+    ("", "Все"),
+    ("62", "62 — Расчёты с покупателями"),
+    ("44", "44 — Расходы на продажу"),
+    ("4401", "4401 — Расходы МП"),
+    ("41", "41 — Товары"),
+    ("90", "90 — Продажи"),
+    ("9001", "9001 — Выручка"),
+    ("9002", "9002 — Себестоимость"),
+    ("91", "91 — Прочие доходы/расходы"),
+    ("76", "76 — Расчёты с прочими"),
+    ("7609", "7609 — Расчёты с МП"),
+];
+
+static TURNOVER_OPTIONS: &[(&str, &str)] = &[
+    ("", "Все"),
+    ("qty_ordered", "qty_ordered — Количество заказано"),
+    ("qty_sold", "qty_sold — Количество продано"),
+    ("qty_returned", "qty_returned — Количество возвращено"),
+    (
+        "customer_revenue",
+        "customer_revenue — Выручка от покупателя",
+    ),
+    ("customer_return", "customer_return — Возврат покупателя"),
+    ("seller_payout", "seller_payout — Выплата продавцу"),
+    ("mp_commission", "mp_commission — Комиссия МП"),
+    (
+        "mp_commission_adjustment",
+        "mp_commission_adjustment — Корректировка комиссии",
+    ),
+    ("mp_acquiring", "mp_acquiring — Эквайринг МП"),
+    ("mp_logistics", "mp_logistics — Логистика МП"),
+    ("mp_storage", "mp_storage — Хранение МП"),
+    ("mp_penalty", "mp_penalty — Штраф МП"),
+    ("mp_penalty_storno", "mp_penalty_storno — Штраф МП (сторно)"),
+    (
+        "mp_rebill_logistic_cost",
+        "mp_rebill_logistic_cost — Rebill logistics",
+    ),
+    (
+        "mp_ppvz_reward",
+        "mp_ppvz_reward — Возмещение за выдачу и возврат товаров на ПВЗ",
+    ),
+    ("item_cost", "item_cost — Себестоимость"),
+    ("spp_discount", "spp_discount — Скидка СПП"),
+    (
+        "spp_discount_storno",
+        "spp_discount_storno — Скидка СПП (сторно возврат)",
+    ),
+    ("wb_coinvestment", "wb_coinvestment — Соинвестирование WB"),
+    (
+        "wb_coinvestment_storno",
+        "wb_coinvestment_storno — Соинвестирование WB (сторно возврат)",
+    ),
+    (
+        "advertising_allocated",
+        "advertising_allocated — Реклама (распределённая)",
+    ),
+    ("advertising", "advertising — Реклама"),
+    ("acceptance", "acceptance — Приёмка"),
+    (
+        "adjustment_income",
+        "adjustment_income — Корректировка (доход)",
+    ),
+    (
+        "voluntary_return_compensation",
+        "voluntary_return_compensation — Компенсация добр. возврата",
+    ),
+    (
+        "adjustment_expense",
+        "adjustment_expense — Корректировка (расход)",
+    ),
+    (
+        "commission_percent",
+        "commission_percent — Процент комиссии",
+    ),
+];
 
 #[derive(Clone, Debug)]
 struct GeneralLedgerListState {
@@ -28,7 +145,7 @@ struct GeneralLedgerListState {
     registrator_type: String,
     layer: String,
     turnover_code: String,
-    cabinet_mp: String,
+    connection_mp_ref: String,
     debit_account: String,
     credit_account: String,
     sort_field: String,
@@ -65,7 +182,7 @@ impl Default for GeneralLedgerListState {
             registrator_type: String::new(),
             layer: String::new(),
             turnover_code: String::new(),
-            cabinet_mp: String::new(),
+            connection_mp_ref: String::new(),
             debit_account: String::new(),
             credit_account: String::new(),
             sort_field: "entry_date".to_string(),
@@ -84,14 +201,6 @@ fn short_id(value: &str) -> &str {
         &value[..8]
     } else {
         value
-    }
-}
-
-fn parse_registrator_ref(value: &str) -> (&str, &str) {
-    if let Some(pos) = value.find(':') {
-        (&value[..pos], &value[pos + 1..])
-    } else {
-        ("", value)
     }
 }
 
@@ -135,13 +244,12 @@ fn registrator_tab_label(registrator_type: &str, id: &str) -> String {
         "a016_ym_returns" => format!("YM Return {}", short_id(id)),
         "a026_wb_advert_daily" => format!("WB Ads {}", short_id(id)),
         "p903_wb_finance_report" => p903_tab_label(id),
-        _ => format!("{registrator_type} вЂў {}", short_id(id)),
+        _ => format!("{registrator_type} • {}", short_id(id)),
     }
 }
 
 fn registrator_display(registrator_ref: &str, registrator_type: &str) -> String {
-    let (_, id) = parse_registrator_ref(registrator_ref);
-    format!("{registrator_type} вЂў {}", short_id(id))
+    format!("{registrator_type} • {}", short_id(registrator_ref))
 }
 
 fn format_journal_datetime(value: &str) -> String {
@@ -157,7 +265,7 @@ fn format_journal_datetime(value: &str) -> String {
 fn format_optional_number(value: Option<f64>) -> String {
     value
         .map(|value| format!("{value:.2}"))
-        .unwrap_or_else(|| "вЂ”".to_string())
+        .unwrap_or_else(|| "—".to_string())
 }
 
 #[component]
@@ -173,22 +281,31 @@ pub fn GeneralLedgerPage() -> impl IntoView {
     let registrator_ref_input = RwSignal::new(state.get_untracked().registrator_ref.clone());
     let layer_input = RwSignal::new(state.get_untracked().layer.clone());
     let turnover_code_input = RwSignal::new(state.get_untracked().turnover_code.clone());
-    let cabinet_mp_input = RwSignal::new(state.get_untracked().cabinet_mp.clone());
+    let connection_mp_ref_input = RwSignal::new(state.get_untracked().connection_mp_ref.clone());
     let debit_account_input = RwSignal::new(state.get_untracked().debit_account.clone());
     let credit_account_input = RwSignal::new(state.get_untracked().credit_account.clone());
+
+    let cabinet_options = RwSignal::new(Vec::<CabinetOption>::new());
+    Effect::new(move |_| {
+        spawn_local(async move {
+            let opts = load_cabinet_options().await;
+            cabinet_options.set(opts);
+        });
+    });
 
     let open_detail = move |id: String| {
         tabs_store.open_tab(
             &format!("general_ledger_details_{id}"),
-            &format!("Р“Р»Р°РІРЅР°СЏ РєРЅРёРіР° вЂў {}", short_id(&id)),
+            &format!("Главная книга • {}", short_id(&id)),
         );
     };
 
     let open_registrator = move |registrator_type: String, registrator_ref: String| {
-        let (_, id) = parse_registrator_ref(&registrator_ref);
-        let id = id.to_string();
-        if let Some(key) = registrator_tab_key(&registrator_type, &id) {
-            tabs_store.open_tab(&key, &registrator_tab_label(&registrator_type, &id));
+        if let Some(key) = registrator_tab_key(&registrator_type, &registrator_ref) {
+            tabs_store.open_tab(
+                &key,
+                &registrator_tab_label(&registrator_type, &registrator_ref),
+            );
         }
     };
 
@@ -205,7 +322,8 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                     .then(|| s.registrator_type.clone()),
                 layer: (!s.layer.is_empty()).then(|| s.layer.clone()),
                 turnover_code: (!s.turnover_code.is_empty()).then(|| s.turnover_code.clone()),
-                cabinet_mp: (!s.cabinet_mp.is_empty()).then(|| s.cabinet_mp.clone()),
+                connection_mp_ref: (!s.connection_mp_ref.is_empty())
+                    .then(|| s.connection_mp_ref.clone()),
                 debit_account: (!s.debit_account.is_empty()).then(|| s.debit_account.clone()),
                 credit_account: (!s.credit_account.is_empty()).then(|| s.credit_account.clone()),
                 sort_by: Some(s.sort_field.clone()),
@@ -264,7 +382,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         if !s.turnover_code.is_empty() {
             count += 1;
         }
-        if !s.cabinet_mp.is_empty() {
+        if !s.connection_mp_ref.is_empty() {
             count += 1;
         }
         if !s.layer.is_empty() {
@@ -285,7 +403,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
             s.registrator_ref = registrator_ref_input.get_untracked().trim().to_string();
             s.layer = layer_input.get_untracked().trim().to_string();
             s.turnover_code = turnover_code_input.get_untracked().trim().to_string();
-            s.cabinet_mp = cabinet_mp_input.get_untracked().trim().to_string();
+            s.connection_mp_ref = connection_mp_ref_input.get_untracked().trim().to_string();
             s.debit_account = debit_account_input.get_untracked().trim().to_string();
             s.credit_account = credit_account_input.get_untracked().trim().to_string();
             s.page = 0;
@@ -299,7 +417,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         registrator_ref_input.set(String::new());
         layer_input.set(String::new());
         turnover_code_input.set(String::new());
-        cabinet_mp_input.set(String::new());
+        connection_mp_ref_input.set(String::new());
         debit_account_input.set(String::new());
         credit_account_input.set(String::new());
         state.update(|s| {
@@ -309,7 +427,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
             s.registrator_type.clear();
             s.layer.clear();
             s.turnover_code.clear();
-            s.cabinet_mp.clear();
+            s.connection_mp_ref.clear();
             s.debit_account.clear();
             s.credit_account.clear();
             s.sort_field = defaults.sort_field;
@@ -353,7 +471,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         <PageFrame page_id="general_ledger--list" category=PAGE_CAT_LIST>
             <div class="page__header">
                 <div class="page__header-left">
-                    <h1 class="page__title">"Р“Р»Р°РІРЅР°СЏ РєРЅРёРіР°"</h1>
+                    <h1 class="page__title">"Главная книга"</h1>
                     <Badge>{move || state.get().total_count.to_string()}</Badge>
                 </div>
                 <div class="page__header-right">
@@ -368,11 +486,20 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                     <Button
                         appearance=ButtonAppearance::Secondary
+                        on_click=move |_| {
+                            tabs_store.open_tab("general_ledger_report", "Отчёт GL");
+                        }
+                    >
+                        "Отчёт GL"
+                    </Button>
+
+                    <Button
+                        appearance=ButtonAppearance::Secondary
                         on_click=move |_| load_entries()
                         disabled=Signal::derive(move || loading.get())
                     >
                         {icon("refresh")}
-                        {move || if loading.get() { " Р—Р°РіСЂСѓР·РєР°..." } else { " РћР±РЅРѕРІРёС‚СЊ" }}
+                        {move || if loading.get() { " Загрузка..." } else { " Обновить" }}
                     </Button>
                 </div>
             </div>
@@ -408,7 +535,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                             {icon("filter")}
-                            <span class="filter-panel__title">"Р¤РёР»СЊС‚СЂС‹"</span>
+                            <span class="filter-panel__title">"Фильтры"</span>
                             {move || {
                                 let count = active_filters_count.get();
                                 if count > 0 {
@@ -437,7 +564,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                 on_click=move |_| apply_filters()
                                 disabled=Signal::derive(move || loading.get())
                             >
-                                "РќР°Р№С‚Рё"
+                                "Найти"
                             </Button>
                         </div>
                     </div>
@@ -457,57 +584,91 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                             });
                                             load_entries();
                                         })
-                                        label="РџРµСЂРёРѕРґ".to_string()
+                                        label="Период".to_string()
                                     />
 
                                     <div style="width: 220px;">
                                         <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"РўРёРї СЂРµРіРёСЃС‚СЂР°С‚РѕСЂР°"</Label>
+                                            <Label>"Тип регистратора"</Label>
                                             <Input value=registrator_type_input placeholder="a015_wb_orders" />
                                         </Flex>
                                     </div>
 
                                     <div style="width: 260px;">
                                         <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"Р РµРіРёСЃС‚СЂР°С‚РѕСЂ"</Label>
+                                            <Label>"Регистратор"</Label>
                                             <Input value=registrator_ref_input placeholder="a015_wb_orders:uuid" />
-                                        </Flex>
-                                    </div>
-
-                                    <div style="width: 140px;">
-                                        <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"Layer"</Label>
-                                            <Input value=layer_input placeholder="oper|fact|plan" />
-                                        </Flex>
-                                    </div>
-
-                                    <div style="width: 180px;">
-                                        <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"Р’РёРґ РѕР±РѕСЂРѕС‚Р°"</Label>
-                                            <Input value=turnover_code_input placeholder="sale" />
-                                        </Flex>
-                                    </div>
-
-                                    <div style="width: 220px;">
-                                        <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"Cabinet MP"</Label>
-                                            <Input value=cabinet_mp_input placeholder="a006_connection_mp id" />
                                         </Flex>
                                     </div>
                                 </Flex>
 
                                 <Flex gap=FlexGap::Small align=FlexAlign::End style="flex-wrap: wrap;">
-                                    <div style="width: 180px;">
+                                    <div style="width: 160px;">
                                         <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"РЎС‡РµС‚ Р”С‚"</Label>
-                                            <Input value=debit_account_input placeholder="62.01" />
+                                            <Label>"Layer"</Label>
+                                            <Select value=layer_input>
+                                                <option value="">"Все"</option>
+                                                <option value="oper">"oper"</option>
+                                                <option value="fact">"fact"</option>
+                                                <option value="plan">"plan"</option>
+                                            </Select>
                                         </Flex>
                                     </div>
 
-                                    <div style="width: 180px;">
+                                    <div style="width: 340px;">
                                         <Flex vertical=true gap=FlexGap::Small>
-                                            <Label>"РЎС‡РµС‚ РљС‚"</Label>
-                                            <Input value=credit_account_input placeholder="90.01" />
+                                            <Label>"Вид оборота"</Label>
+                                            <Select value=turnover_code_input>
+                                                {TURNOVER_OPTIONS.iter().map(|(val, label)| {
+                                                    let v = val.to_string();
+                                                    let l = label.to_string();
+                                                    view! { <option value=v>{l}</option> }
+                                                }).collect::<Vec<_>>()}
+                                            </Select>
+                                        </Flex>
+                                    </div>
+
+                                    <div style="width: 220px;">
+                                        <Flex vertical=true gap=FlexGap::Small>
+                                            <Label>"Счет Дт"</Label>
+                                            <Select value=debit_account_input>
+                                                {ACCOUNT_OPTIONS.iter().map(|(val, label)| {
+                                                    let v = val.to_string();
+                                                    let l = label.to_string();
+                                                    view! { <option value=v>{l}</option> }
+                                                }).collect::<Vec<_>>()}
+                                            </Select>
+                                        </Flex>
+                                    </div>
+
+                                    <div style="width: 220px;">
+                                        <Flex vertical=true gap=FlexGap::Small>
+                                            <Label>"Счет Кт"</Label>
+                                            <Select value=credit_account_input>
+                                                {ACCOUNT_OPTIONS.iter().map(|(val, label)| {
+                                                    let v = val.to_string();
+                                                    let l = label.to_string();
+                                                    view! { <option value=v>{l}</option> }
+                                                }).collect::<Vec<_>>()}
+                                            </Select>
+                                        </Flex>
+                                    </div>
+
+                                    <div style="width: 240px;">
+                                        <Flex vertical=true gap=FlexGap::Small>
+                                            <Label>"Cabinet MP"</Label>
+                                            <Select value=connection_mp_ref_input>
+                                                <option value="">"Все"</option>
+                                                <For
+                                                    each=move || cabinet_options.get()
+                                                    key=|opt| opt.id.clone()
+                                                    children=move |opt: CabinetOption| {
+                                                        view! {
+                                                            <option value={opt.id.clone()}>{opt.label.clone()}</option>
+                                                        }
+                                                    }
+                                                />
+                                            </Select>
                                         </Flex>
                                     </div>
 
@@ -517,14 +678,14 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                             on_click=move |_| apply_filters()
                                             disabled=Signal::derive(move || loading.get())
                                         >
-                                            "РќР°Р№С‚Рё"
+                                            "Найти"
                                         </Button>
                                         <Button
                                             appearance=ButtonAppearance::Secondary
                                             on_click=move |_| reset_filters()
                                             disabled=Signal::derive(move || loading.get())
                                         >
-                                            "РЎР±СЂРѕСЃРёС‚СЊ"
+                                            "Сбросить"
                                         </Button>
                                     </div>
                                 </Flex>
@@ -538,14 +699,14 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                         return view! {
                             <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-4xl);">
                                 <Spinner />
-                                <span>"Р—Р°РіСЂСѓР·РєР° Р¶СѓСЂРЅР°Р»Р°..."</span>
+                                <span>"Загрузка журнала..."</span>
                             </Flex>
                         }.into_any();
                     }
 
                     if state.with(|s| s.entries.is_empty()) {
                         return view! {
-                            <div class="alert">"Р—Р°РїРёСЃРё Р¶СѓСЂРЅР°Р»Р° РЅРµ РЅР°Р№РґРµРЅС‹."</div>
+                            <div class="alert">"Записи журнала не найдены."</div>
                         }.into_any();
                     }
 
@@ -562,7 +723,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=170.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("entry_date")>
-                                                "Р”Р°С‚Р°"
+                                                "Дата"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "entry_date"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "entry_date", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -580,7 +741,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=140.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("registrator_type")>
-                                                "РўРёРї СЂРµРіРёСЃС‚СЂР°С‚РѕСЂР°"
+                                                "Тип регистратора"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "registrator_type"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "registrator_type", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -589,7 +750,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=180.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("registrator_ref")>
-                                                "Р РµРіРёСЃС‚СЂР°С‚РѕСЂ"
+                                                "Регистратор"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "registrator_ref"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "registrator_ref", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -598,7 +759,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=90.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("debit_account")>
-                                                "Р”С‚"
+                                                "Дт"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "debit_account"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "debit_account", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -607,7 +768,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=90.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("credit_account")>
-                                                "РљС‚"
+                                                "Кт"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "credit_account"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "credit_account", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -616,7 +777,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=120.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("amount")>
-                                                "РЎСѓРјРјР°"
+                                                "Сумма"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "amount"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "amount", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -625,7 +786,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=90.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("qty")>
-                                                "РљРѕР»-РІРѕ"
+                                                "Кол-во"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "qty"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "qty", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -634,7 +795,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=150.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("turnover_code")>
-                                                "Р’РёРґ РѕР±РѕСЂРѕС‚Р°"
+                                                "Вид оборота"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "turnover_code"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "turnover_code", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -642,12 +803,16 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                         </TableHeaderCell>
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=220.0>
-                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("cabinet_mp")>
-                                                "Cabinet MP"
-                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "cabinet_mp"))>
-                                                    {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "cabinet_mp", state.with(|s| s.sort_ascending))}
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("connection_mp_ref")>
+                                                "Connection MP"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "connection_mp_ref"))>
+                                                    {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "connection_mp_ref", state.with(|s| s.sort_ascending))}
                                                 </span>
                                             </div>
+                                        </TableHeaderCell>
+
+                                        <TableHeaderCell resizable=false class="resizable" min_width=180.0>
+                                            "Order ID"
                                         </TableHeaderCell>
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=150.0>
@@ -674,7 +839,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                         <TableHeaderCell resizable=false class="resizable" min_width=170.0>
                                             <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("created_at")>
-                                                "РЎРѕР·РґР°РЅРѕ"
+                                                "Создано"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "created_at"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "created_at", state.with(|s| s.sort_ascending))}
                                                 </span>
@@ -692,8 +857,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                             let reg_type = entry.registrator_type.clone();
                                             let reg_ref = entry.registrator_ref.clone();
                                             let reg_label = registrator_display(&reg_ref, &reg_type);
-                                            let (_, reg_id) = parse_registrator_ref(&reg_ref);
-                                            let has_link = registrator_tab_key(&reg_type, reg_id).is_some();
+                                            let has_link = registrator_tab_key(&reg_type, &reg_ref).is_some();
                                             let reg_type_for_click = reg_type.clone();
                                             let reg_ref_for_click = reg_ref.clone();
 
@@ -781,7 +945,13 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                                     <TableCell>
                                                         <TableCellLayout truncate=true>
-                                                            {entry.cabinet_mp.clone().unwrap_or_else(|| "—".to_string())}
+                                                            {entry.connection_mp_ref.clone().unwrap_or_else(|| "—".to_string())}
+                                                        </TableCellLayout>
+                                                    </TableCell>
+
+                                                    <TableCell>
+                                                        <TableCellLayout truncate=true>
+                                                            {entry.order_id.clone().unwrap_or_else(|| "—".to_string())}
                                                         </TableCellLayout>
                                                     </TableCell>
 
@@ -821,6 +991,3 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         </PageFrame>
     }
 }
-
-
-

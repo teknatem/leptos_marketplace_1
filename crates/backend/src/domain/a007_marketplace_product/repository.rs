@@ -178,6 +178,40 @@ pub async fn get_by_connection_and_sku(
     Ok(result.map(Into::into))
 }
 
+pub async fn list_by_connection_and_article(
+    connection_mp_ref: &str,
+    article: &str,
+) -> anyhow::Result<Vec<MarketplaceProduct>> {
+    let article = article.trim();
+    if article.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let items: Vec<MarketplaceProduct> = Entity::find()
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::Article.eq(article))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok(items)
+}
+
+pub async fn get_unique_by_connection_and_article(
+    connection_mp_ref: &str,
+    article: &str,
+) -> anyhow::Result<Option<MarketplaceProduct>> {
+    let items = list_by_connection_and_article(connection_mp_ref, article).await?;
+    if items.len() == 1 {
+        Ok(items.into_iter().next())
+    } else {
+        Ok(None)
+    }
+}
+
 pub async fn get_by_barcode(barcode: &str) -> anyhow::Result<Vec<MarketplaceProduct>> {
     let items: Vec<MarketplaceProduct> = Entity::find()
         .filter(Column::Barcode.eq(barcode))
@@ -221,6 +255,8 @@ pub async fn get_by_nomenclature_ref(
 #[derive(Debug, Clone)]
 pub struct MarketplaceProductListQuery {
     pub marketplace_ref: Option<String>,
+    pub connection_mp_ref: Option<String>,
+    pub problems_only: bool,
     pub search: Option<String>,
     pub sort_by: String,
     pub sort_desc: bool,
@@ -231,6 +267,36 @@ pub struct MarketplaceProductListQuery {
 pub struct MarketplaceProductListResult {
     pub items: Vec<MarketplaceProduct>,
     pub total: usize,
+}
+
+pub async fn list_for_matching(
+    marketplace_ref: Option<&str>,
+    unresolved_only: bool,
+) -> anyhow::Result<Vec<MarketplaceProduct>> {
+    use sea_orm::Condition;
+
+    let mut select = Entity::find().filter(Column::IsDeleted.eq(false));
+
+    if let Some(mp_ref) = marketplace_ref.filter(|value| !value.is_empty()) {
+        select = select.filter(Column::MarketplaceRef.eq(mp_ref));
+    }
+
+    if unresolved_only {
+        select = select.filter(
+            Condition::any()
+                .add(Column::NomenclatureRef.is_null())
+                .add(Column::NomenclatureRef.eq("")),
+        );
+    }
+
+    let items = select
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    Ok(items)
 }
 
 pub async fn list_paginated(
@@ -245,6 +311,20 @@ pub async fn list_paginated(
         if !mp_ref.is_empty() {
             select = select.filter(Column::MarketplaceRef.eq(mp_ref));
         }
+    }
+
+    if let Some(connection_mp_ref) = query.connection_mp_ref {
+        if !connection_mp_ref.is_empty() {
+            select = select.filter(Column::ConnectionMpRef.eq(connection_mp_ref));
+        }
+    }
+
+    if query.problems_only {
+        select = select.filter(
+            Condition::any()
+                .add(Column::NomenclatureRef.is_null())
+                .add(Column::NomenclatureRef.eq("")),
+        );
     }
 
     if let Some(search) = query.search {

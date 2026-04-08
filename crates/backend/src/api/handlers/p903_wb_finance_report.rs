@@ -35,10 +35,7 @@ pub async fn list_reports(
     })?;
 
     let gl_counts = crate::general_ledger::repository::count_by_registrator_refs(
-        &items
-            .iter()
-            .map(|item| item.id.clone())
-            .collect::<Vec<_>>(),
+        &items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
     )
     .await
     .map_err(|e| {
@@ -61,6 +58,47 @@ pub async fn list_reports(
         total_count: total,
         has_more,
     }))
+}
+
+pub async fn export_reports(
+    Query(req): Query<WbFinanceReportListRequest>,
+) -> Result<Json<Vec<WbFinanceReportDto>>, axum::http::StatusCode> {
+    let items = repository::list_all_with_filters(
+        &req.date_from,
+        &req.date_to,
+        req.nm_id,
+        req.sa_name,
+        req.connection_mp_ref,
+        req.organization_ref,
+        req.supplier_oper_name,
+        req.srid,
+        &req.sort_by,
+        req.sort_desc,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to export finance report: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let gl_counts = crate::general_ledger::repository::count_by_registrator_refs(
+        &items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to count p903 general ledger rows for export: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let dtos = items
+        .into_iter()
+        .map(|item| {
+            let count = gl_counts.get(&item.id).copied().unwrap_or_default();
+            model_to_dto(item, count)
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(dtos))
 }
 
 /// Handler для получения детальной информации по композитному ключу
@@ -102,13 +140,20 @@ pub async fn post_report_by_id(
     let item = repository::get_by_id(&id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get finance report detail before post by id: {}", e);
+            tracing::error!(
+                "Failed to get finance report detail before post by id: {}",
+                e
+            );
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(axum::http::StatusCode::NOT_FOUND)?;
 
     let day = NaiveDate::parse_from_str(&item.rr_dt, "%Y-%m-%d").map_err(|e| {
-        tracing::error!("Failed to parse p903 rr_dt '{}' for post by id: {}", item.rr_dt, e);
+        tracing::error!(
+            "Failed to parse p903 rr_dt '{}' for post by id: {}",
+            item.rr_dt,
+            e
+        );
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -185,8 +230,12 @@ async fn load_report_detail_by_id(
             .map(to_general_ledger_dto)
             .collect::<Vec<_>>();
 
+    let extra = item.extra.clone();
+    let mut dto = model_to_dto(item, general_ledger_entries.len());
+    dto.extra = extra;
+
     Ok(WbFinanceReportDetailResponse {
-        item: model_to_dto(item, general_ledger_entries.len()),
+        item: dto,
         general_ledger_entries,
     })
 }
@@ -212,6 +261,7 @@ fn model_to_dto(
         delivery_amount: model.delivery_amount,
         delivery_rub: model.delivery_rub,
         nm_id: model.nm_id,
+        a004_nomenclature_ref: model.a004_nomenclature_ref,
         penalty: model.penalty,
         ppvz_vw: model.ppvz_vw,
         ppvz_vw_nds: model.ppvz_vw_nds,
@@ -239,9 +289,7 @@ fn model_to_dto(
     }
 }
 
-fn to_general_ledger_dto(
-    row: crate::general_ledger::repository::Model,
-) -> GeneralLedgerEntryDto {
+fn to_general_ledger_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
     let comment =
         crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
             .map(|c| c.journal_comment.to_string())
@@ -251,9 +299,10 @@ fn to_general_ledger_dto(
         id: row.id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        cabinet_mp: row.cabinet_mp,
+        connection_mp_ref: row.connection_mp_ref,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
+        order_id: row.order_id,
         debit_account: row.debit_account,
         credit_account: row.credit_account,
         amount: row.amount,

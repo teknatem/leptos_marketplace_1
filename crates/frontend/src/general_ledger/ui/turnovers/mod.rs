@@ -1,4 +1,4 @@
-use crate::domain::general_ledger::model::fetch_general_ledger_turnovers;
+use crate::general_ledger::api::fetch_general_ledger_turnovers;
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::shared::page_frame::PageFrame;
@@ -72,7 +72,11 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                 }
 
                 if !report_group.is_empty()
-                    && !item.report_group.as_str().to_lowercase().contains(&report_group)
+                    && !item
+                        .report_group
+                        .as_str()
+                        .to_lowercase()
+                        .contains(&report_group)
                 {
                     return false;
                 }
@@ -136,6 +140,15 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                         }
                     >
                         "Журнал GL"
+                    </Button>
+
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| {
+                            tabs_store.open_tab("general_ledger_report", "Отчёт GL");
+                        }
+                    >
+                        "Отчёт GL"
                     </Button>
 
                     <Button

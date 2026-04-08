@@ -72,6 +72,11 @@ pub fn configure_system_routes() -> Router {
             get(handlers::roles::list_scopes)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
+        .route(
+            "/api/system/runtime-info",
+            get(handlers::runtime_info::get_runtime_info)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
         // ========================================
         // SYSTEM SCHEDULED TASKS ROUTES
         // ========================================

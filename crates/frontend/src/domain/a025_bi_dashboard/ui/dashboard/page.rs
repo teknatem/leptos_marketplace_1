@@ -3,6 +3,7 @@ use crate::data_view::api as dv_api;
 use crate::data_view::types::{FilterDef, FilterRef};
 use crate::data_view::ui::filter_bar::apply_defaults;
 use crate::data_view::ui::FilterBar;
+use crate::general_ledger::api::fetch_gl_dimensions;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::bi_card::{
@@ -77,6 +78,14 @@ struct IndicatorDataSpec {
     pub metric_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+struct IndicatorParamDef {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub default_value: Option<String>,
+}
+
 #[derive(Clone, Debug, serde::Deserialize)]
 struct IndicatorDef {
     pub id: String,
@@ -85,9 +94,13 @@ struct IndicatorDef {
     #[serde(default)]
     pub description: String,
     #[serde(default)]
+    pub comment: Option<String>,
+    #[serde(default)]
     pub view_spec: IndicatorViewSpec,
     #[serde(default)]
     pub data_spec: IndicatorDataSpec,
+    #[serde(default)]
+    pub params: Vec<IndicatorParamDef>,
 }
 
 /// Computed value from /api/a024-bi-indicator/compute-batch
@@ -100,6 +113,10 @@ struct ComputedValue {
     pub change_percent: Option<f64>,
     /// "Good" | "Bad" | "Neutral" | "Warning"
     pub status: Option<String>,
+    #[serde(default)]
+    pub subtitle: Option<String>,
+    #[serde(default)]
+    pub details: Vec<String>,
     /// Daily values for period 1 (for sparkline). Empty when not available.
     #[serde(default)]
     pub spark_points: Vec<f64>,
@@ -128,6 +145,151 @@ struct DataViewDim {
 struct DataViewMetaLocal {
     #[serde(default)]
     pub available_dimensions: Vec<DataViewDim>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DrillDimensionGroup {
+    title: &'static str,
+    subtitle: &'static str,
+    items: Vec<(String, String)>,
+}
+
+const GL_TURNOVER_DATA_VIEW_ID_LOCAL: &str = "dv004_general_ledger_turnovers";
+
+fn indicator_default_params(def: &IndicatorDef) -> HashMap<String, String> {
+    def.params
+        .iter()
+        .filter_map(|param| {
+            let value = param.default_value.as_ref()?.trim();
+            if param.key.trim().is_empty() || value.is_empty() {
+                None
+            } else {
+                Some((param.key.clone(), value.to_string()))
+            }
+        })
+        .collect()
+}
+
+fn parse_gl_turnover_items(params: &HashMap<String, String>) -> Vec<String> {
+    if let Some(items) = params
+        .get("turnover_items")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        let mut seen = std::collections::HashSet::new();
+        return items
+            .split(|ch| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .filter_map(|token| {
+                let code = match token.chars().next() {
+                    Some('+') | Some('-') => token[1..].trim(),
+                    _ => token,
+                };
+                if code.is_empty() || !seen.insert(code.to_string()) {
+                    None
+                } else {
+                    Some(code.to_string())
+                }
+            })
+            .collect();
+    }
+
+    params
+        .get("turnover_code")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| vec![value.to_string()])
+        .unwrap_or_default()
+}
+
+async fn fetch_indicator_drill_dimensions(
+    def: &IndicatorDef,
+    params: &HashMap<String, String>,
+) -> Result<Vec<(String, String)>, String> {
+    let Some(view_id) = def.data_spec.view_id.as_deref() else {
+        return Ok(vec![]);
+    };
+
+    if view_id != GL_TURNOVER_DATA_VIEW_ID_LOCAL {
+        let meta = fetch_dataview_meta(view_id).await?;
+        return Ok(meta
+            .available_dimensions
+            .into_iter()
+            .map(|dim| (dim.id, dim.label))
+            .collect());
+    }
+
+    let turnover_codes = parse_gl_turnover_items(params);
+    if turnover_codes.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut common_dims: Option<Vec<(String, String)>> = None;
+    for turnover_code in turnover_codes {
+        let response = fetch_gl_dimensions(&turnover_code).await?;
+        let dims = response
+            .dimensions
+            .into_iter()
+            .map(|dim| (dim.id, dim.label))
+            .collect::<Vec<_>>();
+        common_dims = Some(match common_dims.take() {
+            None => dims,
+            Some(current) => current
+                .into_iter()
+                .filter(|(id, _)| dims.iter().any(|(candidate_id, _)| candidate_id == id))
+                .collect(),
+        });
+    }
+
+    Ok(common_dims.unwrap_or_default())
+}
+
+fn merge_indicator_params(
+    defaults: &HashMap<String, String>,
+    overrides: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut merged = defaults.clone();
+    merged.extend(overrides.clone());
+    merged
+}
+
+fn group_drill_dimensions(dims: &[(String, String)]) -> Vec<DrillDimensionGroup> {
+    let classify = |id: &str| match id {
+        "entry_date" | "connection_mp_ref" | "layer" => 0,
+        "registrator_type" | "registrator_ref" => 1,
+        "nomenclature" | "dim1_category" | "dim2_line" | "dim3_model" | "dim4_format"
+        | "dim5_sink" | "dim6_size" => 2,
+        _ => 3,
+    };
+
+    let mut buckets: [Vec<(String, String)>; 4] = [vec![], vec![], vec![], vec![]];
+    for (id, label) in dims {
+        buckets[classify(id)].push((id.clone(), label.clone()));
+    }
+
+    let specs = [
+        ("Основные", "Период, кабинет и слой учета", 0),
+        ("Документы", "Тип и конкретный документ-регистратор", 1),
+        ("Номенклатура", "Товар и товарные аналитики", 2),
+        ("Другое", "Редко используемые измерения", 3),
+    ];
+
+    specs
+        .into_iter()
+        .filter_map(|(title, subtitle, index)| {
+            let items = std::mem::take(&mut buckets[index]);
+            if items.is_empty() {
+                None
+            } else {
+                Some(DrillDimensionGroup {
+                    title,
+                    subtitle,
+                    items,
+                })
+            }
+        })
+        .collect()
 }
 
 /// Reads a non-OK HTTP response and returns a human-readable error string.
@@ -222,14 +384,18 @@ async fn fetch_dashboard(id: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
 }
 
-fn collect_indicator_ids(groups: &[DashboardGroup], out: &mut Vec<String>) {
+fn collect_indicator_ids(
+    groups: &[DashboardGroup],
+    out: &mut Vec<String>,
+    seen: &mut std::collections::HashSet<String>,
+) {
     for group in groups {
         for item in &group.items {
-            if !out.contains(&item.indicator_id) {
+            if seen.insert(item.indicator_id.clone()) {
                 out.push(item.indicator_id.clone());
             }
         }
-        collect_indicator_ids(&group.subgroups, out);
+        collect_indicator_ids(&group.subgroups, out, seen);
     }
 }
 
@@ -241,17 +407,20 @@ async fn fetch_indicator_defs(ids: &[String]) -> Result<HashMap<String, Indicato
     }
 
     let opts = RequestInit::new();
-    opts.set_method("GET");
+    opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
+    let body = serde_json::json!({ "ids": ids });
+    opts.set_body(&wasm_bindgen::JsValue::from_str(&body.to_string()));
 
-    let url = format!(
-        "{}/api/a024-bi-indicator/list?limit=10000&offset=0&sort_by=code&sort_desc=false",
-        api_base()
-    );
+    let url = format!("{}/api/a024-bi-indicator/resolve-batch", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
         .map_err(|e| format!("{e:?}"))?;
 
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
@@ -268,18 +437,13 @@ async fn fetch_indicator_defs(ids: &[String]) -> Result<HashMap<String, Indicato
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    let id_set: std::collections::HashSet<&str> = ids.iter().map(|s| s.as_str()).collect();
-
-    let items = parsed["items"].as_array().cloned().unwrap_or_default();
+    let items: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     let mut out = HashMap::new();
     for item in items {
         let Ok(def) = serde_json::from_value::<IndicatorDef>(item) else {
             continue;
         };
-        if id_set.contains(def.id.as_str()) {
-            out.insert(def.id.clone(), def);
-        }
+        out.insert(def.id.clone(), def);
     }
 
     Ok(out)
@@ -516,7 +680,8 @@ fn reload_dashboard_data(
             Ok(raw) => match serde_json::from_value::<BiDashboardData>(raw) {
                 Ok(data) => {
                     let mut ids = Vec::new();
-                    collect_indicator_ids(&data.layout.groups, &mut ids);
+                    let mut seen = std::collections::HashSet::new();
+                    collect_indicator_ids(&data.layout.groups, &mut ids, &mut seen);
                     let defs = match fetch_indicator_defs(&ids).await {
                         Ok(d) => d,
                         Err(e) => {
@@ -721,6 +886,95 @@ fn format_full_value(value: f64, format_spec: &serde_json::Value) -> String {
             }
         }
     }
+}
+
+fn push_detail_line(lines: &mut Vec<String>, value: impl Into<String>) {
+    let value = value.into();
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if !lines.iter().any(|item| item == trimmed) {
+        lines.push(trimmed.to_string());
+    }
+}
+
+fn build_indicator_description(def: Option<&IndicatorDef>) -> Option<String> {
+    let def = def?;
+    if let Some(comment) = def.comment.as_ref().map(|value| value.trim()) {
+        if !comment.is_empty() {
+            return Some(comment.to_string());
+        }
+    }
+
+    match (
+        def.data_spec.view_id.as_deref(),
+        def.data_spec.metric_id.as_deref(),
+    ) {
+        (Some(view_id), Some(metric_id)) if !view_id.trim().is_empty() => Some(format!(
+            "Индикатор рассчитывается через {} по метрике {}.",
+            view_id, metric_id
+        )),
+        (Some(view_id), None) if !view_id.trim().is_empty() => {
+            Some(format!("Индикатор рассчитывается через {}.", view_id))
+        }
+        _ => None,
+    }
+}
+
+fn build_indicator_details(
+    def: Option<&IndicatorDef>,
+    computed: Option<&ComputedValue>,
+    effective_params: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if let Some(computed) = computed {
+        if let Some(subtitle) = computed.subtitle.as_deref() {
+            push_detail_line(&mut lines, format!("Схема расчёта: {}", subtitle));
+        }
+        for detail in &computed.details {
+            push_detail_line(&mut lines, detail.clone());
+        }
+    }
+
+    if let Some(def) = def {
+        if let Some(view_id) = def
+            .data_spec
+            .view_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            push_detail_line(&mut lines, format!("Источник данных: {}", view_id));
+        }
+        if let Some(metric_id) = def
+            .data_spec
+            .metric_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            push_detail_line(&mut lines, format!("Показатель: {}", metric_id));
+        }
+    }
+
+    let mut param_pairs: Vec<_> = effective_params
+        .iter()
+        .filter(|(key, value)| {
+            let key = key.as_str();
+            !value.trim().is_empty()
+                && key != "metric"
+                && key != "period2_from"
+                && key != "period2_to"
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    param_pairs.sort_by(|left, right| left.0.cmp(&right.0));
+
+    for (key, value) in param_pairs.into_iter().take(6) {
+        push_detail_line(&mut lines, format!("Параметр: {} = {}", key, value));
+    }
+
+    lines
 }
 
 /// Аббревиатура месяца на русском
@@ -1270,6 +1524,78 @@ html::-webkit-scrollbar-thumb:hover{{
     html
 }
 
+#[component]
+fn IndicatorRefreshOverlay(
+    #[prop(into)] card_count: Signal<usize>,
+    #[prop(into)] filter_hint: Signal<String>,
+) -> impl IntoView {
+    view! {
+        <div class="loading-overlay loading-overlay--dashboard">
+            <div class="indicator-refresh">
+                <div class="indicator-refresh__badge">
+                    {move || {
+                        let count = card_count.get();
+                        if count == 0 {
+                            "Подготавливаем макет".to_string()
+                        } else {
+                            format!("{count} карточек")
+                        }
+                    }}
+                </div>
+                <div class="indicator-refresh__headline">
+                    <span class="indicator-refresh__pulse"></span>
+                    <div class="indicator-refresh__titles">
+                        <strong>"Формируем индикаторы"</strong>
+                        <span>
+                            {move || {
+                                let hint = filter_hint.get();
+                                if hint.trim().is_empty() {
+                                    "Собираем новые значения, сравниваем период и обновляем витрину.".to_string()
+                                } else {
+                                    format!("{hint} • обновляем значения и сравнение периодов")
+                                }
+                            }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="indicator-refresh__timeline">
+                    <div class="indicator-refresh__step">
+                        <span class="indicator-refresh__dot"></span>
+                        <span>"Читаем DataView и GL"</span>
+                    </div>
+                    <div class="indicator-refresh__step">
+                        <span class="indicator-refresh__dot"></span>
+                        <span>"Считаем сравнение с прошлым периодом"</span>
+                    </div>
+                    <div class="indicator-refresh__step">
+                        <span class="indicator-refresh__dot"></span>
+                        <span>"Перерисовываем карточки дашборда"</span>
+                    </div>
+                </div>
+
+                <div class="indicator-refresh__cards" aria-hidden="true">
+                    <div class="indicator-refresh__card indicator-refresh__card--lg">
+                        <span class="indicator-refresh__line indicator-refresh__line--short"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--value"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--medium"></span>
+                    </div>
+                    <div class="indicator-refresh__card">
+                        <span class="indicator-refresh__line indicator-refresh__line--short"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--value"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--short"></span>
+                    </div>
+                    <div class="indicator-refresh__card indicator-refresh__card--accent">
+                        <span class="indicator-refresh__line indicator-refresh__line--short"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--value"></span>
+                        <span class="indicator-refresh__line indicator-refresh__line--medium"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 /// State passed from the iframe postMessage to drive the detail modal.
 #[derive(Clone, Debug)]
 struct IndicatorSelection {
@@ -1579,6 +1905,12 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
                             srcdoc=move || srcdoc.get()
                         />
                         <Show when=move || indicator_refreshing.get()>
+                            <IndicatorRefreshOverlay
+                                card_count=move || indicator_defs.get().len()
+                                filter_hint=move || compact_filter_hint(&view_ctx.get())
+                            />
+                        </Show>
+                        <Show when=move || false && indicator_refreshing.get()>
                             <div class="loading-overlay">
                                 <div class="loading-overlay__spinner">
                                     <span class="spinner spinner--sm" />
@@ -1663,6 +1995,11 @@ fn IndicatorDetailModal(
         .as_ref()
         .and_then(|d| d.data_spec.metric_id.clone())
         .unwrap_or_default();
+    let indicator_default_params = def
+        .as_ref()
+        .map(indicator_default_params)
+        .unwrap_or_default();
+    let effective_indicator_params = merge_indicator_params(&indicator_default_params, &ctx.params);
     let format_spec = def
         .as_ref()
         .map(|d| d.view_spec.format.clone())
@@ -1672,45 +2009,40 @@ fn IndicatorDetailModal(
     let view_id_opt = def.as_ref().and_then(|d| d.data_spec.view_id.clone());
     let metric_id_opt = def.as_ref().and_then(|d| d.data_spec.metric_id.clone());
     let has_drilldown = view_id_opt.is_some();
+    let user_description = build_indicator_description(def.as_ref());
+    let computation_details =
+        build_indicator_details(def.as_ref(), computed.as_ref(), &effective_indicator_params);
+    let active_tab = RwSignal::new("overview".to_string());
+    let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let about_description = user_description.clone();
+    let about_details = computation_details.clone();
 
     // Async-загружаемые измерения из DataViewMeta
     let dv_dims: RwSignal<Option<Vec<(String, String)>>> = RwSignal::new(None);
-    if let Some(vid) = view_id_opt.clone() {
-        let vid2 = vid.clone();
+    if let Some(def_for_dims) = def.clone() {
+        let params_for_dims = effective_indicator_params.clone();
         spawn_local(async move {
-            match fetch_dataview_meta(&vid2).await {
-                Ok(meta) => {
-                    let dims = meta
-                        .available_dimensions
-                        .into_iter()
-                        .map(|d| (d.id, d.label))
-                        .collect();
+            match fetch_indicator_drill_dimensions(&def_for_dims, &params_for_dims).await {
+                Ok(dims) => {
                     dv_dims.set(Some(dims));
                 }
                 Err(e) => {
-                    leptos::logging::warn!("DataView meta fetch failed for {}: {}", vid2, e);
+                    let failed_view_id = def_for_dims.data_spec.view_id.clone().unwrap_or_default();
+                    leptos::logging::warn!(
+                        "Drilldown dimensions fetch failed for {}: {}",
+                        failed_view_id,
+                        e
+                    );
                     dv_dims.set(Some(vec![]));
                 }
             }
         });
     }
 
-    let value_str = computed
-        .as_ref()
-        .and_then(|cv| cv.value)
-        .map(|v| format_value(v, &format_spec))
-        .unwrap_or_else(|| "—".to_string());
-
     let value_full_str = computed
         .as_ref()
         .and_then(|cv| cv.value)
         .map(|v| format_full_value(v, &format_spec))
-        .unwrap_or_else(|| "—".to_string());
-
-    let prev_str = computed
-        .as_ref()
-        .and_then(|cv| cv.previous_value)
-        .map(|v| format_value(v, &format_spec))
         .unwrap_or_else(|| "—".to_string());
 
     let prev_full_str = computed
@@ -1762,6 +2094,17 @@ fn IndicatorDetailModal(
         (None, None) => "Автоматическое сравнение".to_string(),
     };
 
+    let overview_current_period_label = current_period_label.clone();
+    let overview_value_full_str = value_full_str.clone();
+    let overview_comparison_period_title = comparison_period_title.to_string();
+    let overview_comparison_period_label = comparison_period_label.clone();
+    let overview_prev_full_str = prev_full_str.clone();
+    let overview_delta_str = delta_str.clone();
+    let overview_view_id = view_id.clone();
+    let overview_delta_class = delta_class.to_string();
+    let overview_subtitle = computed.as_ref().and_then(|value| value.subtitle.clone());
+    let overview_effective_indicator_params = StoredValue::new(effective_indicator_params.clone());
+
     let modal_style = format!(
         "--from-x: {}px; --from-y: {}px;",
         sel.from_x as i32, sel.from_y as i32
@@ -1788,6 +2131,26 @@ fn IndicatorDetailModal(
 
     let is_direct = |ev: &leptos::ev::MouseEvent| -> bool {
         matches!((ev.target(), ev.current_target()), (Some(t), Some(ct)) if t == ct)
+    };
+
+    let open_edit = {
+        let tabs_store = tabs_store.clone();
+        let indicator_id = sel.id.clone();
+        let code = code.clone();
+        let name = name.clone();
+        let do_close = do_close.clone();
+        move |_| {
+            use crate::layout::tabs::{detail_tab_label, pick_identifier};
+            use contracts::domain::a024_bi_indicator::ENTITY_METADATA as A024;
+
+            let identifier = pick_identifier(None, Some(&code), Some(&name), &indicator_id);
+            let title = detail_tab_label(A024.ui.element_name, identifier);
+            tabs_store.open_tab(
+                &format!("a024_bi_indicator_details_{}", indicator_id),
+                &title,
+            );
+            do_close.run(());
+        }
     };
 
     view! {
@@ -1821,82 +2184,152 @@ fn IndicatorDetailModal(
                 style=modal_style
                 on:click=|ev: leptos::ev::MouseEvent| ev.stop_propagation()
             >
-                <div class="modal-header">
-                    <div class="modal-header__left">
-                        <span class="modal-title">{name.clone()}</span>
-                        {if !code.is_empty() {
-                            view! { <span class="indicator-detail__code-badge">{code}</span> }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }}
-                        {if !metric_id.is_empty() {
-                            view! {
-                                <div class="indicator-detail__meta-row">
-                                    <span class="indicator-detail__meta-label">"Metric"</span>
-                                    <span class="indicator-detail__meta-value">{metric_id.clone()}</span>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }}
-                        {if !metric_id.is_empty() {
-                            view! {
-                                <div class="indicator-detail__meta-row">
-                                    <span class="indicator-detail__meta-label">"Metric"</span>
-                                    <span class="indicator-detail__meta-value">{metric_id.clone()}</span>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }}
+                <div class="modal-header indicator-detail__header">
+                    <div class="modal-header__left indicator-detail__header-main">
+                        <div class="indicator-detail__title-block">
+                            <span class="modal-title">{name.clone()}</span>
+                            {user_description.as_ref().map(|text| view! {
+                                <span class="indicator-detail__title-subtitle">{text.clone()}</span>
+                            })}
+                        </div>
+                        <div class="indicator-detail__header-meta">
+                            {if !code.is_empty() {
+                                view! { <span class="indicator-detail__code-badge">{code.clone()}</span> }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
+                            {if !view_id.is_empty() {
+                                view! { <span class="indicator-detail__header-chip">{view_id.clone()}</span> }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
+                            {if !metric_id.is_empty() {
+                                view! { <span class="indicator-detail__header-chip">{format!("metric: {}", metric_id.clone())}</span> }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
+                            <span class=format!("indicator-detail__status {}", status_class)>{status.clone()}</span>
+                        </div>
                     </div>
-                    <button
-                        class="modal__close"
-                        on:click=move |_| do_close.run(())
-                        aria-label="Закрыть"
-                    >
-                        {icon("x")}
-                    </button>
+                    <div class="indicator-detail__header-actions">
+                        <button
+                            type="button"
+                            class="indicator-detail__edit-link"
+                            on:click=open_edit
+                        >
+                            "Редактировать"
+                        </button>
+                        <button
+                            class="modal__close"
+                            on:click=move |_| do_close.run(())
+                            aria-label="Закрыть"
+                        >
+                            {icon("x")}
+                        </button>
+                    </div>
                 </div>
                 <div class="modal-body indicator-detail__body">
-                    <div class="indicator-detail__periods">
-                        <div class="indicator-detail__period-card">
-                            <span class="indicator-detail__period-caption">"Текущий период"</span>
-                            <span class="indicator-detail__period-range">{current_period_label}</span>
-                            <span class="indicator-detail__period-value">{value_full_str}</span>
-                        </div>
-                        <div class="indicator-detail__period-card">
-                            <span class="indicator-detail__period-caption">{comparison_period_title}</span>
-                            <span class="indicator-detail__period-range">{comparison_period_label}</span>
-                            <span class="indicator-detail__period-value">{prev_full_str}</span>
-                        </div>
-                    </div>
-                    <div class="indicator-detail__meta">
-                        <div class="indicator-detail__meta-row">
-                            <span class="indicator-detail__meta-label">"Изменение"</span>
-                            <span class=format!("indicator-detail__delta {delta_class}")>{delta_str}</span>
-                        </div>
-                        {if !view_id.is_empty() {
-                            view! {
-                                <div class="indicator-detail__meta-row">
-                                    <span class="indicator-detail__meta-label">"Источник данных"</span>
-                                    <span class="indicator-detail__meta-value">{view_id.clone()}</span>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! { <></> }.into_any()
-                        }}
+                    <div class="indicator-detail__tabs">
+                        <button
+                            type="button"
+                            class=move || {
+                                if active_tab.get() == "overview" {
+                                    "indicator-detail__tab indicator-detail__tab--active".to_string()
+                                } else {
+                                    "indicator-detail__tab".to_string()
+                                }
+                            }
+                            on:click=move |_| active_tab.set("overview".to_string())
+                        >
+                            "Обзор"
+                        </button>
+                        <button
+                            type="button"
+                            class=move || {
+                                if active_tab.get() == "about" {
+                                    "indicator-detail__tab indicator-detail__tab--active".to_string()
+                                } else {
+                                    "indicator-detail__tab".to_string()
+                                }
+                            }
+                            on:click=move |_| active_tab.set("about".to_string())
+                        >
+                            "Описание и расчёт"
+                        </button>
                     </div>
 
-                    // Drilldown section — visible only when indicator has a DataView (view_id)
-                    {if has_drilldown {
+                    {move || if active_tab.get() == "about" {
+                        view! {
+                            <div class="indicator-detail__about">
+                                <section class="indicator-detail__section">
+                                    <span class="indicator-detail__section-eyebrow">"Краткое описание"</span>
+                                    {if let Some(text) = about_description.clone() {
+                                        view! { <p class="indicator-detail__description">{text}</p> }.into_any()
+                                    } else {
+                                        view! { <div class="indicator-detail__empty">"Описание для этого индикатора пока не заполнено."</div> }.into_any()
+                                    }}
+                                </section>
+                                <section class="indicator-detail__section">
+                                    <span class="indicator-detail__section-eyebrow">"Подробности расчёта"</span>
+                                    {if about_details.is_empty() {
+                                        view! { <div class="indicator-detail__empty">"Ключевые детали расчёта пока не сформированы."</div> }.into_any()
+                                    } else {
+                                        view! {
+                                            <div class="indicator-detail__details-block">
+                                                {about_details.iter().cloned().map(|line| view! {
+                                                    <div class="indicator-detail__details-line">{line}</div>
+                                                }).collect_view()}
+                                            </div>
+                                        }.into_any()
+                                    }}
+                                </section>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="indicator-detail__periods">
+                                <div class="indicator-detail__period-card">
+                                    <span class="indicator-detail__period-caption">"Текущий период"</span>
+                                    <span class="indicator-detail__period-range">{overview_current_period_label.clone()}</span>
+                                    <span class="indicator-detail__period-value">{overview_value_full_str.clone()}</span>
+                                </div>
+                                <div class="indicator-detail__period-card">
+                                    <span class="indicator-detail__period-caption">{overview_comparison_period_title.clone()}</span>
+                                    <span class="indicator-detail__period-range">{overview_comparison_period_label.clone()}</span>
+                                    <span class="indicator-detail__period-value">{overview_prev_full_str.clone()}</span>
+                                </div>
+                            </div>
+                            <div class="indicator-detail__meta">
+                                <div class="indicator-detail__meta-row">
+                                    <span class="indicator-detail__meta-label">"Изменение"</span>
+                                    <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
+                                </div>
+                                {if !overview_view_id.is_empty() {
+                                    view! {
+                                        <div class="indicator-detail__meta-row">
+                                            <span class="indicator-detail__meta-label">"Источник данных"</span>
+                                            <span class="indicator-detail__meta-value">{overview_view_id.clone()}</span>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
+                                {overview_subtitle.clone().map(|subtitle| view! {
+                                    <div class="indicator-detail__meta-row">
+                                        <span class="indicator-detail__meta-label">"Схема расчёта"</span>
+                                        <span class="indicator-detail__meta-value">{subtitle}</span>
+                                    </div>
+                                })}
+                            </div>
+
+                            // Drilldown section — visible only when indicator has a DataView (view_id)
+                            {if has_drilldown {
                         let indicator_id_c = sel.id.clone();
                         let indicator_name_c = name.clone();
                         let view_id_c = view_id_opt.clone().unwrap_or_default();
                         let metric_id_c = metric_id_opt.clone();
                         let ctx_c = ctx.clone();
-                        let tabs_store = leptos::context::use_context::<AppGlobalContext>();
-                        let date_range_label = format!("{} — {}", ctx.date_from, ctx.date_to);
+                        let tabs_store = Some(tabs_store.clone());
 
                         view! {
                             <div class="drill-picker">
@@ -1915,67 +2348,104 @@ fn IndicatorDetailModal(
                                         }.into_any(),
 
                                         Some(dims_list) => {
-                                            // Clone per reactive call so inner `move` closures can capture
-                                            let id    = indicator_id_c.clone();
-                                            let vid   = view_id_c.clone();
+                                            let id = indicator_id_c.clone();
+                                            let vid = view_id_c.clone();
                                             let metric = metric_id_c.clone();
                                             let drill_ctx = ctx_c.clone();
                                             let iname = indicator_name_c.clone();
-                                            let ts    = tabs_store;
+                                            let ts = tabs_store.clone();
+                                            let grouped_dims = group_drill_dimensions(&dims_list);
+                                            let drill_params = overview_effective_indicator_params.get_value();
 
                                             view! {
-                                                <div class="drill-picker__list">
-                                                    {dims_list.into_iter().map(|(field_id, label)| {
-                                                        let dim = field_id.clone();
-                                                        let dim_label = label.clone();
-                                                        let tab_title = format!("{} — {}", iname, dim_label);
-                                                        let store_opt = ts.clone();
-                                                        let vid2 = vid.clone();
-                                                        let id2 = id.clone();
-                                                        let iname2 = iname.clone();
-                                                        let metric2 = metric.clone();
-                                                        let ctx2 = drill_ctx.clone();
+                                                <div class="drill-picker__groups">
+                                                    {if dims_list.is_empty() {
                                                         view! {
-                                                            <button
-                                                                type="button"
-                                                                class="drill-picker__item drill-picker__item--button"
-                                                                on:click=move |_| {
-                                                                    let store_opt = store_opt.clone();
-                                                                    let dim = dim.clone();
-                                                                    let dim_label = dim_label.clone();
-                                                                    let tab_title = tab_title.clone();
-                                                                    let vid2 = vid2.clone();
-                                                                    let id2 = id2.clone();
-                                                                    let iname2 = iname2.clone();
-                                                                    let metric2 = metric2.clone();
-                                                                    let ctx2 = ctx2.clone();
+                                                            <div class="drill-picker__empty">
+                                                                "Нет общих измерений для выбранных оборотов."
+                                                            </div>
+                                                        }.into_any()
+                                                    } else {
+                                                        grouped_dims.into_iter().map(|group| {
+                                                            let group_title = group.title;
+                                                            let group_subtitle = group.subtitle;
+                                                            let group_items = group.items;
+                                                            let id_group = id.clone();
+                                                            let vid_group = vid.clone();
+                                                            let metric_group = metric.clone();
+                                                            let drill_ctx_group = drill_ctx.clone();
+                                                            let iname_group = iname.clone();
+                                                            let ts_group = ts.clone();
+                                                            let params_group = drill_params.clone();
 
-                                                                    spawn_local(async move {
-                                                                        if let Some(session_id) = post_drilldown_session(
-                                                                            vid2,
-                                                                            id2,
-                                                                            iname2,
-                                                                            metric2,
-                                                                            dim,
-                                                                            dim_label,
-                                                                            ctx2,
-                                                                        ).await {
-                                                                            let tab_key = format!("drilldown__{}", session_id);
-                                                                            if let Some(ref store) = store_opt {
-                                                                                store.open_tab(&tab_key, &tab_title);
+                                                            view! {
+                                                                <section class="drill-picker__group">
+                                                                    <div class="drill-picker__group-header">
+                                                                        <span class="drill-picker__group-title">{group_title}</span>
+                                                                        <span class="drill-picker__group-subtitle">{group_subtitle}</span>
+                                                                    </div>
+                                                                    <div class="drill-picker__list">
+                                                                        {group_items.into_iter().map(|(field_id, label)| {
+                                                                            let dim = field_id.clone();
+                                                                            let dim_code = field_id.clone();
+                                                                            let dim_label = label.clone();
+                                                                            let tab_title = format!("{} - {}", iname_group, dim_label);
+                                                                            let store_opt = ts_group.clone();
+                                                                            let vid2 = vid_group.clone();
+                                                                            let id2 = id_group.clone();
+                                                                            let iname2 = iname_group.clone();
+                                                                            let metric2 = metric_group.clone();
+                                                                            let ctx2 = drill_ctx_group.clone();
+                                                                            let params2 = params_group.clone();
+                                                                            view! {
+                                                                                <button
+                                                                                    type="button"
+                                                                                    class="drill-picker__item drill-picker__item--button"
+                                                                                    on:click=move |_| {
+                                                                                        let store_opt = store_opt.clone();
+                                                                                        let dim = dim.clone();
+                                                                                        let dim_label = dim_label.clone();
+                                                                                        let tab_title = tab_title.clone();
+                                                                                        let vid2 = vid2.clone();
+                                                                                        let id2 = id2.clone();
+                                                                                        let iname2 = iname2.clone();
+                                                                                        let metric2 = metric2.clone();
+                                                                                        let ctx2 = ctx2.clone();
+                                                                                        let params2 = params2.clone();
+
+                                                                                        spawn_local(async move {
+                                                                                            if let Some(session_id) = post_drilldown_session(
+                                                                                                vid2,
+                                                                                                id2,
+                                                                                                iname2,
+                                                                                                metric2,
+                                                                                                dim,
+                                                                                                dim_label,
+                                                                                                ctx2,
+                                                                                                params2,
+                                                                                            ).await {
+                                                                                                let tab_key = format!("drilldown__{}", session_id);
+                                                                                                if let Some(ref store) = store_opt {
+                                                                                                    store.open_tab(&tab_key, &tab_title);
+                                                                                                }
+                                                                                            }
+                                                                                            do_close.run(());
+                                                                                        });
+                                                                                    }
+                                                                                >
+                                                                                    <span class="drill-picker__item-main">
+                                                                                        <span class="drill-picker__item-label">{label}</span>
+                                                                                        <span class="drill-picker__item-hint">{dim_code}</span>
+                                                                                    </span>
+                                                                                    <span class="drill-picker__item-arrow">"→"</span>
+                                                                                </button>
                                                                             }
-                                                                        }
-                                                                        do_close.run(());
-                                                                    });
-                                                                }
-                                                            >
-                                                                <span class="drill-picker__item-main">
-                                                                    <span class="drill-picker__item-label">{label}</span>
-                                                                </span>
-                                                                <span class="drill-picker__item-arrow">"→"</span>
-                                                            </button>
-                                                        }
-                                                    }).collect_view()}
+                                                                        }).collect_view()}
+                                                                    </div>
+                                                                </section>
+                                                            }
+                                                        }).collect_view().into_any()
+                                                    }}
                                                 </div>
                                             }.into_any()
                                         }
@@ -1983,8 +2453,10 @@ fn IndicatorDetailModal(
                                 }}
                             </div>
                         }.into_any()
-                    } else {
-                        view! { <></> }.into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }}
+                        }.into_any()
                     }}
                 </div>
             </div>
@@ -2002,6 +2474,7 @@ async fn post_drilldown_session(
     group_by: String,
     group_by_label: String,
     ctx: ViewContext,
+    params: HashMap<String, String>,
 ) -> Option<String> {
     let body = serde_json::json!({
         "view_id": view_id,
@@ -2015,7 +2488,7 @@ async fn post_drilldown_session(
         "period2_from": ctx.period2_from,
         "period2_to": ctx.period2_to,
         "connection_mp_refs": ctx.connection_mp_refs,
-        "params": ctx.params,
+        "params": params,
     });
 
     let url = format!("{}/api/sys-drilldown", api_base());

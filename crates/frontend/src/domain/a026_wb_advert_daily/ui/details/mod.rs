@@ -115,7 +115,9 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                         }
                         Err(err) => set_error.set(Some(format!("Ошибка парсинга: {}", err))),
                     },
-                    Ok(resp) => set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status()))),
+                    Ok(resp) => {
+                        set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status())))
+                    }
                     Err(err) => set_error.set(Some(format!("Ошибка сети: {}", err))),
                 }
                 set_loading.set(false);
@@ -155,7 +157,9 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                             set_journal_loaded.set(true);
                         }
                     }
-                    Ok(resp) => set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status()))),
+                    Ok(resp) => {
+                        set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status())))
+                    }
                     Err(err) => set_error.set(Some(format!("Ошибка сети: {}", err))),
                 }
             });
@@ -203,7 +207,9 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                         set_journal.set(Vec::new());
                         load_doc.run(());
                     }
-                    Ok(resp) => set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status()))),
+                    Ok(resp) => {
+                        set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status())))
+                    }
                     Err(err) => set_error.set(Some(format!("Ошибка сети: {}", err))),
                 }
                 set_posting.set(false);

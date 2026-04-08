@@ -17,7 +17,7 @@ pub fn GeneralTab(vm: BiIndicatorDetailsVm) -> impl IntoView {
                 </div>
 
                 <div class="form__group bi-indicator-general__group--wide">
-                    <label class="form__label">"Наименование *"</label>
+                    <label class="form__label">"Название индикатора *"</label>
                     <Input value=vm.description placeholder="Название индикатора" />
                 </div>
 

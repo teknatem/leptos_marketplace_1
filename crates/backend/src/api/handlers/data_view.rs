@@ -114,6 +114,7 @@ pub async fn compute(
             "change_percent": val.change_percent,
             "status": format!("{:?}", val.status),
             "subtitle": val.subtitle,
+            "details": val.details,
             "spark_points": val.spark_points,
         }))),
         Err(e) => {

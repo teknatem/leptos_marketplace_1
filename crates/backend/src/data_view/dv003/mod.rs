@@ -629,6 +629,7 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
         change_percent: change,
         status: metric.status(change),
         subtitle: None,
+        details: vec![],
         spark_points,
     })
 }

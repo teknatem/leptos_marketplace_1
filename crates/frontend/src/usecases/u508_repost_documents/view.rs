@@ -1,4 +1,5 @@
 use super::api;
+use crate::shared::filters::ConnectionMpMultiSelect;
 use crate::shared::page_frame::PageFrame;
 use chrono::{Duration, Utc};
 use contracts::usecases::u508_repost_documents::{
@@ -79,6 +80,7 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
     let (aggregate_date_from, set_aggregate_date_from) = signal(default_date_from);
     let (aggregate_date_to, set_aggregate_date_to) = signal(default_date_to);
     let aggregate_only_posted = RwSignal::new(false);
+    let aggregate_connection_mp_refs = RwSignal::new(Vec::<String>::new());
 
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<RepostProgress>);
@@ -207,6 +209,7 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
             date_from: aggregate_date_from.get(),
             date_to: aggregate_date_to.get(),
             only_posted: aggregate_only_posted.get(),
+            connection_mp_refs: aggregate_connection_mp_refs.get(),
         };
 
         clear_storage();
@@ -429,6 +432,15 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                                             on:change=move |ev| set_aggregate_date_to.set(event_target_value(&ev))
                                         />
                                     </div>
+                                    <div class="doc-filter" style="align-items:flex-start;">
+                                        <label class="doc-filter__label">"Кабинеты:"</label>
+                                        <div style="display:flex;flex-direction:column;gap:6px;">
+                                            <ConnectionMpMultiSelect selected=aggregate_connection_mp_refs />
+                                            <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">
+                                                "Если ничего не выбрано, будут обработаны все кабинеты"
+                                            </span>
+                                        </div>
+                                    </div>
                                     <Checkbox
                                         checked=aggregate_only_posted
                                         label="Только проведенные"
@@ -481,6 +493,22 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                                                 view! {
                                                     <div style="font-size:var(--font-size-sm);color:var(--color-text-secondary);">
                                                         {format!("Текущий документ: {}", current_item)}
+                                                    </div>
+                                                }
+                                                .into_any()
+                                            } else {
+                                                view! { <></> }.into_any()
+                                            }}
+
+                                            {if let Some(chunk_label) = current_progress.current_chunk_label.clone() {
+                                                view! {
+                                                    <div style="font-size:var(--font-size-sm);color:var(--color-text-secondary);">
+                                                        {format!(
+                                                            "Текущий чанк: {} ({} / {})",
+                                                            chunk_label,
+                                                            current_progress.chunks_processed,
+                                                            current_progress.chunks_total.unwrap_or(0)
+                                                        )}
                                                     </div>
                                                 }
                                                 .into_any()

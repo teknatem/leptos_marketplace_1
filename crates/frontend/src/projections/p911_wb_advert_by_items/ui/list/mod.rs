@@ -371,6 +371,7 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                                         {move || get_sort_indicator("amount", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
                                 </TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=120.0>"Problem"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=280.0>"Registrator"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=180.0>"General Ledger"</TableHeaderCell>
                             </TableRow>
@@ -379,13 +380,13 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                             {move || {
                                 if is_loading.get() && items.get().is_empty() {
                                     return vec![view! {
-                                        <TableRow><TableCell attr:colspan="7"><TableCellLayout><span class="text-muted">"Loading..."</span></TableCellLayout></TableCell></TableRow>
+                                        <TableRow><TableCell attr:colspan="8"><TableCellLayout><span class="text-muted">"Loading..."</span></TableCellLayout></TableCell></TableRow>
                                     }.into_view()];
                                 }
                                 let data = items.get();
                                 if data.is_empty() {
                                     return vec![view! {
-                                        <TableRow><TableCell attr:colspan="7"><TableCellLayout><span class="text-muted">"No data"</span></TableCellLayout></TableCell></TableRow>
+                                        <TableRow><TableCell attr:colspan="8"><TableCellLayout><span class="text-muted">"No data"</span></TableCellLayout></TableCell></TableRow>
                                     }.into_view()];
                                 }
 
@@ -424,6 +425,19 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell class="table__cell--right"><TableCellLayout>{format_number(row.amount)}</TableCellLayout></TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {if row.is_problem {
+                                                        view! {
+                                                            <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Danger>
+                                                                <span>"Problem"</span>
+                                                            </Badge>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <span class="text-muted">"—"</span> }.into_any()
+                                                    }}
+                                                </TableCellLayout>
+                                            </TableCell>
                                             <TableCell attr:title=registrator_ref_title>
                                                 <TableCellLayout>
                                                     <div>{row.registrator_type.clone()}</div>

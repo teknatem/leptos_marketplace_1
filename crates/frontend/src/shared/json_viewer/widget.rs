@@ -130,12 +130,18 @@ pub fn JsonViewer(
 ) -> impl IntoView {
     let (copied, set_copied) = signal(false);
 
-    let json_content_for_copy = json_content.clone();
-    let json_content_for_download = json_content.clone();
-    let json_content_for_stats = json_content.clone();
+    // Pretty-print JSON если возможно, иначе оставляем как есть
+    let pretty_json = serde_json::from_str::<serde_json::Value>(&json_content)
+        .ok()
+        .and_then(|v| serde_json::to_string_pretty(&v).ok())
+        .unwrap_or_else(|| json_content.clone());
+
+    let json_content_for_copy = pretty_json.clone();
+    let json_content_for_download = pretty_json.clone();
+    let json_content_for_stats = pretty_json.clone();
 
     // Применяем подсветку синтаксиса
-    let highlighted_html = highlight_json_html(&json_content);
+    let highlighted_html = highlight_json_html(&pretty_json);
 
     // Копирование в буфер обмена
     let handle_copy = move |_| {

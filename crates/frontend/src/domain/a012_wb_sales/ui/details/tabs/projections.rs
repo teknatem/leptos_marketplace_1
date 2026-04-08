@@ -65,4 +65,3 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
         }}
     }
 }
-

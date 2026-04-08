@@ -1,0 +1,90 @@
+{
+  "id": "dv004_general_ledger_turnovers",
+  "name": "GL turnover KPI (2 periods)",
+  "category": "general_ledger",
+  "version": 1,
+  "description": "Universal DataView for general-ledger turnovers over 2 periods.",
+  "ai_description": "DataView for indicators based on turnover_code/layer or turnover formulas via turnover_items. Scalar values come from sys_general_ledger. Required params: layer and either turnover_code or turnover_items. Supported resources: amount = signed SUM(amount) for the selected turnover formula, entry_count = signed count of GL rows for the same formula. Returns period 1, period 2, change_percent, status, and a sparkline by entry_date. Common drilldown reads directly from sys_general_ledger. Nomenclature drilldown is available only when the selected GL rows point to supported detail projections through resource_table/general_ledger_ref.",
+  "data_sources": ["sys_general_ledger"],
+  "available_resources": [
+    {
+      "id": "amount",
+      "label": "Turnover amount",
+      "description": "Signed SUM(amount) for the selected turnover formula",
+      "unit": "currency"
+    },
+    {
+      "id": "entry_count",
+      "label": "GL row count",
+      "description": "Signed count of GL rows for the selected turnover formula",
+      "unit": "count"
+    }
+  ],
+  "available_dimensions": [
+    {
+      "id": "entry_date",
+      "label": "By day",
+      "description": "Group by entry_date (YYYY-MM-DD)"
+    },
+    {
+      "id": "connection_mp_ref",
+      "label": "By marketplace cabinet",
+      "description": "Group by marketplace cabinet"
+    },
+    {
+      "id": "registrator_type",
+      "label": "By document type",
+      "description": "Group by registrator type"
+    },
+    {
+      "id": "layer",
+      "label": "By layer",
+      "description": "Group by oper/fact/plan"
+    },
+    {
+      "id": "registrator_ref",
+      "label": "By document",
+      "description": "Group by registrator document"
+    },
+    {
+      "id": "nomenclature",
+      "label": "By nomenclature",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim1_category",
+      "label": "By category",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim2_line",
+      "label": "By line",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim3_model",
+      "label": "By model",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim4_format",
+      "label": "By format",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim5_sink",
+      "label": "By destination",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    },
+    {
+      "id": "dim6_size",
+      "label": "By size",
+      "description": "Available only when GL rows point to a supported detail projection with nomenclature"
+    }
+  ],
+  "filters": [
+    { "filter_id": "date_range_1", "required": true, "order": 1 },
+    { "filter_id": "date_range_2", "required": false, "order": 2 },
+    { "filter_id": "connection_mp_refs", "required": false, "order": 3 }
+  ]
+}

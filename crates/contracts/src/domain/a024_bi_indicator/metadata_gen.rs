@@ -110,9 +110,9 @@ pub const FIELDS: &[FieldMetadata] = &[
         field_type: FieldType::Primitive,
         source: FieldSource::Base,
         ui: FieldUiMetadata {
-            label: "Наименование",
+            label: "Название индикатора",
             label_en: Some("Name"),
-            placeholder: Some("Выручка за период"),
+            placeholder: Some("Название индикатора"),
             hint: Some("Название индикатора"),
             visible_in_list: true,
             visible_in_form: true,

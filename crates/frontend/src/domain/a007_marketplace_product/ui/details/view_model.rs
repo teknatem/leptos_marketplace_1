@@ -5,7 +5,6 @@ use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use std::rc::Rc;
 
-/// ViewModel for MarketplaceProduct details form
 #[derive(Clone)]
 pub struct MarketplaceProductDetailsViewModel {
     pub form: RwSignal<MarketplaceProductDto>,
@@ -60,7 +59,6 @@ impl MarketplaceProductDetailsViewModel {
         Ok(())
     }
 
-    /// Load form data from server if ID is provided
     pub fn load_if_needed(&self, id: Option<String>) {
         let Some(existing_id) = id else {
             return;
@@ -99,7 +97,6 @@ impl MarketplaceProductDetailsViewModel {
             };
             form.set(dto);
 
-            // Загружаем названия связанных сущностей
             if let Ok(mp) = model::fetch_marketplace(&aggregate.marketplace_ref).await {
                 marketplace_name.set(mp.base.description);
             }
@@ -116,7 +113,6 @@ impl MarketplaceProductDetailsViewModel {
         });
     }
 
-    /// Save form data to server
     pub fn save_command(&self, on_saved: Rc<dyn Fn(())>) {
         let current = self.form.get();
 
@@ -135,11 +131,12 @@ impl MarketplaceProductDetailsViewModel {
         });
     }
 
-    /// Поиск номенклатуры по артикулу
     pub fn search_nomenclature_by_article(&self) {
         let article = self.form.get().article.trim().to_string();
         if article.is_empty() {
-            self.error.set(Some("Артикул не заполнен".to_string()));
+            self.error.set(Some(
+                "Для автоподбора заполните артикул товара маркетплейса".to_string(),
+            ));
             return;
         }
 
@@ -154,37 +151,36 @@ impl MarketplaceProductDetailsViewModel {
 
         wasm_bindgen_futures::spawn_local(async move {
             match model::search_nomenclature_by_article(&article).await {
-                Ok(results) => {
-                    match results.len() {
-                        0 => {
-                            error.set(Some(format!(
-                                "Номенклатура не найдена для артикула: {}",
-                                article
-                            )));
-                            success.set(None);
-                        }
-                        1 => {
-                            // Автоматически заполняем
-                            let nom = &results[0];
-                            form.update(|f| f.nomenclature_ref = Some(nom.base.id.as_string()));
-                            nomenclature_name.set(nom.base.description.clone());
-                            nomenclature_code.set(nom.base.code.clone());
-                            nomenclature_article.set(nom.article.clone());
-                            success.set(Some(format!(
-                                "Найдена номенклатура: {}",
-                                nom.base.description
-                            )));
-                            error.set(None);
-                        }
-                        n => {
-                            // Показываем picker с результатами
-                            error.set(None);
-                            success.set(Some(format!("Найдено {} вариантов, выберите нужный", n)));
-                            search_results.set(Some(results));
-                            show_picker.set(true);
-                        }
+                Ok(results) => match results.len() {
+                    0 => {
+                        error.set(Some(format!(
+                            "Автоподбор не нашел позицию 1С для артикула: {}",
+                            article
+                        )));
+                        success.set(None);
                     }
-                }
+                    1 => {
+                        let nom = &results[0];
+                        form.update(|f| f.nomenclature_ref = Some(nom.base.id.as_string()));
+                        nomenclature_name.set(nom.base.description.clone());
+                        nomenclature_code.set(nom.base.code.clone());
+                        nomenclature_article.set(nom.article.clone());
+                        success.set(Some(format!(
+                            "Связь с 1С УТ обновлена автоматически: {}",
+                            nom.base.description
+                        )));
+                        error.set(None);
+                    }
+                    n => {
+                        error.set(None);
+                        success.set(Some(format!(
+                            "Автоподбор нашел {} вариантов. Выберите нужную позицию вручную.",
+                            n
+                        )));
+                        search_results.set(Some(results));
+                        show_picker.set(true);
+                    }
+                },
                 Err(e) => {
                     error.set(Some(format!("Ошибка поиска: {}", e)));
                     success.set(None);
@@ -193,17 +189,15 @@ impl MarketplaceProductDetailsViewModel {
         });
     }
 
-    /// Очистить поле номенклатуры
     pub fn clear_nomenclature(&self) {
         self.form.update(|f| f.nomenclature_ref = None);
         self.nomenclature_name.set(String::new());
         self.nomenclature_code.set(String::new());
         self.nomenclature_article.set(String::new());
         self.success_message
-            .set(Some("Номенклатура очищена".to_string()));
+            .set(Some("Связь с 1С УТ очищена".to_string()));
     }
 
-    /// Открыть picker для выбора номенклатуры
     pub fn open_picker(&self) {
         self.search_results.set(None);
         self.show_picker.set(true);

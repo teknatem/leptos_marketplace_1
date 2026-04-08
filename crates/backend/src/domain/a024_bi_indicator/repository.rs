@@ -5,7 +5,7 @@ use contracts::domain::a024_bi_indicator::aggregate::{
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
-use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
 
 mod bi_indicator {
@@ -95,6 +95,31 @@ impl From<bi_indicator::Model> for BiIndicator {
 // Repository functions
 // ============================================================================
 
+fn normalize_search_text(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn sort_models(models: &mut [bi_indicator::Model], sort_by: &str, sort_desc: bool) {
+    models.sort_by(|left, right| {
+        let ordering = match sort_by {
+            "code" => left.code.to_lowercase().cmp(&right.code.to_lowercase()),
+            "description" => left
+                .description
+                .to_lowercase()
+                .cmp(&right.description.to_lowercase()),
+            "status" => left.status.cmp(&right.status),
+            "created_at" => left.created_at.cmp(&right.created_at),
+            _ => left.created_at.cmp(&right.created_at),
+        };
+
+        if sort_desc {
+            ordering.reverse()
+        } else {
+            ordering
+        }
+    });
+}
+
 /// Получить все индикаторы с пагинацией
 pub async fn list_paginated(
     db: &DatabaseConnection,
@@ -106,12 +131,24 @@ pub async fn list_paginated(
 ) -> Result<(Vec<BiIndicator>, u64), DbErr> {
     let mut query = bi_indicator::Entity::find().filter(bi_indicator::Column::IsDeleted.eq(false));
 
-    if let Some(search) = q.map(str::trim).filter(|s| !s.is_empty()) {
-        query = query.filter(
-            Condition::any()
-                .add(bi_indicator::Column::Code.contains(search))
-                .add(bi_indicator::Column::Description.contains(search)),
-        );
+    if let Some(search) = q.map(normalize_search_text).filter(|s| !s.is_empty()) {
+        let mut models = query.all(db).await?;
+        models.retain(|item| {
+            normalize_search_text(&item.code).contains(&search)
+                || normalize_search_text(&item.description).contains(&search)
+        });
+        sort_models(&mut models, sort_by, sort_desc);
+
+        let total = models.len() as u64;
+        let offset = page.saturating_mul(page_size) as usize;
+        let items = models
+            .into_iter()
+            .skip(offset)
+            .take(page_size as usize)
+            .map(Into::into)
+            .collect();
+
+        return Ok((items, total));
     }
 
     query = match (sort_by, sort_desc) {
@@ -179,6 +216,37 @@ pub async fn find_by_id(
         .one(db)
         .await?;
     Ok(model.map(|m| m.into()))
+}
+
+/// Найти индикатор по code
+pub async fn find_by_code(
+    db: &DatabaseConnection,
+    code: &str,
+) -> Result<Option<BiIndicator>, DbErr> {
+    let model = bi_indicator::Entity::find()
+        .filter(bi_indicator::Column::IsDeleted.eq(false))
+        .filter(bi_indicator::Column::Code.eq(code))
+        .one(db)
+        .await?;
+    Ok(model.map(|m| m.into()))
+}
+
+/// Получить набор индикаторов по списку id
+pub async fn list_by_ids(
+    db: &DatabaseConnection,
+    ids: &[String],
+) -> Result<Vec<BiIndicator>, DbErr> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let models = bi_indicator::Entity::find()
+        .filter(bi_indicator::Column::IsDeleted.eq(false))
+        .filter(bi_indicator::Column::Id.is_in(ids.iter().cloned()))
+        .all(db)
+        .await?;
+
+    Ok(models.into_iter().map(Into::into).collect())
 }
 
 /// Вставить новый индикатор
@@ -269,4 +337,17 @@ pub async fn soft_delete(db: &DatabaseConnection, id: &BiIndicatorId) -> Result<
         .exec(db)
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_search_text;
+
+    #[test]
+    fn normalize_search_text_handles_cyrillic_case_insensitively() {
+        assert!(
+            normalize_search_text("Название индикатора").contains(&normalize_search_text("назв"))
+        );
+        assert!(normalize_search_text("доХод").contains(&normalize_search_text("ДОХ")));
+    }
 }

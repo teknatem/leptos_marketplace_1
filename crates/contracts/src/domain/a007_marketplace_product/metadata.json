@@ -17,11 +17,11 @@
   },
 
   "ai": {
-    "description": "Товар на маркетплейсе — карточка товара с SKU, артикулом и категорией. Связывает номенклатуру 1С с карточкой на маркетплейсе (WB, Ozon, ЯМ). Используется как опорный справочник при импорте продаж, заказов и отчётов.",
+    "description": "A007 — канонический регистр сопоставления позиции маркетплейса с номенклатурой 1С. Ключ идентификации всегда рассматривается в пределах connection_mp_ref. Основные элементы системы: marketplace_sku — собственный идентификатор позиции на маркетплейсе; article — артикул продавца или vendor code; barcode — вспомогательный ключ для поиска, в основном для Yandex через p901_nomenclature_barcodes; nomenclature_ref — итоговая связь с a004_nomenclature. Для Wildberries marketplace_sku должен быть равен nm_id; если nm_id отсутствует, SKU не придумывается и a007 не должен заполняться по артикулу. Для Yandex допускается fallback через barcode/article. Массовое сопоставление с 1С выполняет use case u505_match_nomenclature, а marketplace-специфичные импортеры могут дозаполнять связь при наличии надежного ключа.",
     "questions": [
-      "Как найти товар по артикулу?",
-      "Как привязать товар маркетплейса к номенклатуре 1С?",
-      "Какие товары есть на Wildberries?"
+      "Какой ключ в a007 считается основным для конкретного маркетплейса?",
+      "Как связать позицию маркетплейса с номенклатурой 1С через a007?",
+      "Когда допустим поиск по штрихкоду, а когда нужен только marketplace_sku?"
     ],
     "related": [
       "a004_nomenclature",
@@ -72,7 +72,8 @@
       "source": "specific",
       "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },
-      "ref_aggregate": "a006_connection_mp"
+      "ref_aggregate": "a006_connection_mp",
+      "ai_hint": "Область уникальности сопоставления. Один и тот же marketplace_sku или article в разных кабинетах считается разными позициями."
     },
     {
       "name": "marketplace_sku",
@@ -81,7 +82,7 @@
       "source": "specific",
       "ui": { "label": "SKU маркетплейса", "label_en": "Marketplace SKU", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
       "validation": { "required": true, "max_length": 100 },
-      "ai_hint": "Внутренний идентификатор товара на маркетплейсе (nmId для WB, product_id для Ozon)."
+      "ai_hint": "Основной идентификатор позиции на маркетплейсе. Для Wildberries это nm_id. Для WB нельзя подменять marketplace_sku артикулом; если nm_id отсутствует, поле лучше не заполнять автоматом."
     },
     {
       "name": "article",
@@ -90,7 +91,7 @@
       "source": "specific",
       "ui": { "label": "Артикул", "label_en": "Article", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
       "validation": { "required": true, "max_length": 200 },
-      "ai_hint": "Артикул продавца — используется для сопоставления с номенклатурой 1С."
+      "ai_hint": "Артикул продавца или vendor code. Это вспомогательный ключ сопоставления, который не заменяет marketplace_sku. Часто используется в u505_match_nomenclature."
     },
     {
       "name": "barcode",
@@ -98,7 +99,8 @@
       "field_type": "primitive",
       "source": "specific",
       "ui": { "label": "Штрихкод", "label_en": "Barcode", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": false }
+      "validation": { "required": false },
+      "ai_hint": "Вспомогательный ключ сопоставления. В основном используется для Yandex и сценариев поиска через p901_nomenclature_barcodes, когда прямой marketplace_sku недостаточен."
     },
     {
       "name": "brand",
@@ -123,7 +125,8 @@
       "source": "specific",
       "ui": { "label": "Номенклатура 1С", "label_en": "1C Nomenclature", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": false },
-      "ref_aggregate": "a004_nomenclature"
+      "ref_aggregate": "a004_nomenclature",
+      "ai_hint": "Итоговая связь позиции маркетплейса с номенклатурой 1С. Может быть заполнена импортом, поиском по barcode/article или пакетным use case u505_match_nomenclature."
     }
   ],
 

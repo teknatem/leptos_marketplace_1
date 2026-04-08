@@ -126,6 +126,7 @@ pub async fn compute_indicator_by_id(
     period2_from: Option<&str>,
     period2_to: Option<&str>,
     connection_ids: Vec<String>,
+    params: std::collections::HashMap<String, String>,
 ) -> Result<ComputedIndicatorValue, String> {
     let connection_mp_refs = if connection_ids.is_empty() {
         None
@@ -138,6 +139,7 @@ pub async fn compute_indicator_by_id(
         "period2_from": period2_from,
         "period2_to": period2_to,
         "connection_mp_refs": connection_mp_refs,
+        "params": params,
     });
     let body = serde_json::to_string(&payload).map_err(|e| format!("serialize: {e}"))?;
 

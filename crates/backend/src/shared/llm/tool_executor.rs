@@ -378,22 +378,25 @@ pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -
         }
 
         "list_gl_turnovers" => {
-            let args = serde_json::from_str::<serde_json::Value>(&call.arguments).unwrap_or_default();
+            let args =
+                serde_json::from_str::<serde_json::Value>(&call.arguments).unwrap_or_default();
             let report_group = args.get("report_group").and_then(|v| v.as_str());
             let items: Vec<_> = crate::general_ledger::turnover_registry::TURNOVER_CLASSES
                 .iter()
                 .filter(|t| report_group.map_or(true, |g| t.report_group.as_str() == g))
-                .map(|t| serde_json::json!({
-                    "code": t.code,
-                    "name": t.name,
-                    "description": t.description,
-                    "llm_description": t.llm_description,
-                    "debit_account": t.debit_account,
-                    "credit_account": t.credit_account,
-                    "report_group": t.report_group.as_str(),
-                    "generates_journal_entry": t.generates_journal_entry,
-                    "formula_hint": t.formula_hint,
-                }))
+                .map(|t| {
+                    serde_json::json!({
+                        "code": t.code,
+                        "name": t.name,
+                        "description": t.description,
+                        "llm_description": t.llm_description,
+                        "debit_account": t.debit_account,
+                        "credit_account": t.credit_account,
+                        "report_group": t.report_group.as_str(),
+                        "generates_journal_entry": t.generates_journal_entry,
+                        "formula_hint": t.formula_hint,
+                    })
+                })
                 .collect();
             let count = items.len();
             serde_json::json!({

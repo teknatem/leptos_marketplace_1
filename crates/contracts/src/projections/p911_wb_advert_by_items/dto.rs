@@ -16,6 +16,7 @@ pub struct WbAdvertByItemDto {
     pub registrator_type: String,
     pub registrator_ref: String,
     pub general_ledger_ref: Option<String>,
+    pub is_problem: bool,
     pub created_at: String,
     pub updated_at: String,
     pub turnover_name: String,

@@ -66,8 +66,9 @@ pub async fn create(dto: BiIndicatorDto) -> anyhow::Result<Uuid> {
         .code
         .clone()
         .unwrap_or_else(|| format!("IND-{}", &Uuid::new_v4().to_string()[..8].to_uppercase()));
+    let description = persisted_description(&dto);
 
-    let mut indicator = BiIndicator::new_for_insert(code, dto.description, dto.owner_user_id);
+    let mut indicator = BiIndicator::new_for_insert(code, description, dto.owner_user_id);
 
     // Применяем поля из DTO
     indicator.base.comment = dto.comment;
@@ -120,6 +121,7 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
     let indicator_uuid =
         Uuid::parse_str(id_str).map_err(|e| anyhow::anyhow!("Invalid indicator ID: {}", e))?;
     let indicator_id = BiIndicatorId::new(indicator_uuid);
+    let description = persisted_description(&dto);
 
     let db = crate::shared::data::db::get_connection();
     let mut indicator = repository::find_by_id(&db, &indicator_id)
@@ -130,7 +132,7 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
     if let Some(code) = dto.code {
         indicator.base.code = code;
     }
-    indicator.base.description = dto.description;
+    indicator.base.description = description;
     indicator.base.comment = dto.comment;
 
     if let Some(data_spec) = dto.data_spec {
@@ -227,8 +229,118 @@ pub async fn list_public() -> anyhow::Result<Vec<BiIndicator>> {
     Ok(indicators)
 }
 
+/// Получить набор индикаторов по списку id
+pub async fn list_by_ids(ids: &[String]) -> anyhow::Result<Vec<BiIndicator>> {
+    let db = crate::shared::data::db::get_connection();
+    let indicators = repository::list_by_ids(&db, ids).await?;
+    Ok(indicators)
+}
+
 fn serialize_json<T: Serialize>(value: &T) -> anyhow::Result<String> {
     serde_json::to_string(value).map_err(|e| anyhow::anyhow!("JSON serialize error: {}", e))
+}
+
+fn build_view_ctx(
+    indicator: &BiIndicator,
+    ctx: &IndicatorContext,
+) -> contracts::shared::data_view::ViewContext {
+    use contracts::shared::data_view::ViewContext;
+
+    let mut view_ctx = ViewContext {
+        date_from: ctx.date_from.clone(),
+        date_to: ctx.date_to.clone(),
+        period2_from: ctx.extra.get("period2_from").cloned(),
+        period2_to: ctx.extra.get("period2_to").cloned(),
+        connection_mp_refs: ctx.connection_mp_refs.clone(),
+        params: HashMap::new(),
+    };
+
+    for param in &indicator.params {
+        if let Some(default_value) = param
+            .default_value
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            view_ctx
+                .params
+                .insert(param.key.clone(), default_value.to_string());
+        }
+    }
+
+    for (key, value) in &ctx.extra {
+        view_ctx.params.insert(key.clone(), value.clone());
+    }
+
+    if let Some(metric_id) = indicator
+        .data_spec
+        .metric_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        view_ctx
+            .params
+            .insert("metric".to_string(), metric_id.clone());
+    }
+
+    view_ctx
+}
+
+const INDICATOR_STACK_KEY: &str = "__indicator_stack";
+
+fn indicator_stack(ctx: &IndicatorContext) -> Vec<String> {
+    ctx.extra
+        .get(INDICATOR_STACK_KEY)
+        .map(String::as_str)
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn extend_indicator_stack(
+    ctx: &IndicatorContext,
+    indicator_code: &str,
+) -> anyhow::Result<IndicatorContext> {
+    let mut next = ctx.clone();
+    let mut stack = indicator_stack(ctx);
+    if stack
+        .iter()
+        .any(|value| value.eq_ignore_ascii_case(indicator_code))
+    {
+        return Err(anyhow::anyhow!(
+            "Circular BI indicator dependency detected for '{}'",
+            indicator_code
+        ));
+    }
+    stack.push(indicator_code.to_string());
+    next.extra
+        .insert(INDICATOR_STACK_KEY.to_string(), stack.join(","));
+    Ok(next)
+}
+
+async fn compute_indicator_model(
+    indicator: &BiIndicator,
+    ctx: &IndicatorContext,
+) -> anyhow::Result<IndicatorValue> {
+    let stacked_ctx = extend_indicator_stack(ctx, &indicator.base.code)?;
+
+    if let Some(view_id) = &indicator.data_spec.view_id {
+        use crate::data_view::DataViewRegistry;
+        let registry = DataViewRegistry::new();
+        let view_ctx = build_view_ctx(indicator, &stacked_ctx);
+        return registry
+            .compute_scalar(view_id, &view_ctx)
+            .await
+            .map_err(|e| anyhow::anyhow!("DataView '{}' compute error: {}", view_id, e));
+    }
+
+    Err(anyhow::anyhow!(
+        "BI indicator {} has no supported compute source. Expected view_id.",
+        indicator.base.code
+    ))
 }
 
 fn default_date_params(include_connections: bool) -> Vec<ParamDef> {
@@ -412,10 +524,27 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "Средний чек",
             "Тестовый индикатор: средний чек за период. Формула согласована с revenue / order_count. DataView=dv001_revenue, metric=avg_check.",
             DataSpec {
-                view_id: Some("dv001_revenue".to_string()),
-                metric_id: Some("avg_check".to_string()),
+                view_id: Some("dv006_indicator_ratio_percent".to_string()),
+                metric_id: Some("ratio".to_string()),
             },
-            default_date_params(true),
+            vec![
+                ParamDef {
+                    key: "numerator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator indicator code".to_string(),
+                    default_value: Some("IND-MP-REV-PRICE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator indicator code".to_string(),
+                    default_value: Some("IND-ORDERS".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
             custom_view_spec(
                 "<div class=\"kpi\"><div class=\"kpi__label\">{{title}}</div><div class=\"kpi__value\">{{value}}</div><div class=\"kpi__delta\">{{delta}}</div></div>",
                 ".kpi{display:flex;flex-direction:column;gap:8px;height:100%;padding:4px}.kpi__label{font-size:11px;font-weight:600;color:var(--bi-text-secondary);text-transform:uppercase;letter-spacing:.6px}.kpi__value{font-size:2.4rem;font-weight:800;color:var(--bi-text);line-height:1}.kpi__delta{font-size:14px;font-weight:600;color:var(--bi-success);background:rgba(34,197,94,.12);padding:2px 10px;border-radius:12px;display:inline-block}",
@@ -444,6 +573,353 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
                 preview_values: HashMap::new(),
             },
             "draft",
+        ),
+        (
+            "a024a024-0016-4001-a001-000000000016",
+            "IND-GL-MP-ACQ-FACT",
+            "MP acquiring (fact)",
+            "Test indicator for dv004_general_ledger_turnovers with turnover_code=mp_acquiring and layer=fact.",
+            DataSpec {
+                view_id: Some("dv004_general_ledger_turnovers".to_string()),
+                metric_id: Some("amount".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Turnover code".to_string(),
+                    default_value: Some("mp_acquiring".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Layer".to_string(),
+                    default_value: Some("fact".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0017-4001-a001-000000000017",
+            "IND-GL-MP-PENALTY-FACT",
+            "MP penalty (fact)",
+            "Test indicator for dv004_general_ledger_turnovers with turnover_code=mp_penalty and layer=fact.",
+            DataSpec {
+                view_id: Some("dv004_general_ledger_turnovers".to_string()),
+                metric_id: Some("amount".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Turnover code".to_string(),
+                    default_value: Some("mp_penalty".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Layer".to_string(),
+                    default_value: Some("fact".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0018-4001-a001-000000000018",
+            "IND-GL-MP-LOGISTICS-FACT",
+            "MP logistics (fact)",
+            "Ready-to-use BI indicator on DataView dv004_general_ledger_turnovers with turnover_items=mp_ppvz_reward, mp_ppvz_reward_nm, mp_rebill_logistic_cost, mp_rebill_logistic_cost_nm and layer=fact.",
+            DataSpec {
+                view_id: Some("dv004_general_ledger_turnovers".to_string()),
+                metric_id: Some("amount".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "turnover_items".to_string(),
+                    param_type: ParamType::String,
+                    label: "GL turnovers".to_string(),
+                    default_value: Some(
+                        "mp_ppvz_reward, mp_ppvz_reward_nm, mp_rebill_logistic_cost, mp_rebill_logistic_cost_nm"
+                            .to_string(),
+                    ),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Turnover code".to_string(),
+                    default_value: Some("mp_ppvz_reward".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Layer".to_string(),
+                    default_value: Some("fact".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0019-4001-a001-000000000019",
+            "IND-GL-7609-MAIN-BALANCE",
+            "Итог 7609 (основные обороты)",
+            "Ready-to-use BI indicator on DataView dv005_gl_account_view_total with account=7609, section=main, metric=balance.",
+            DataSpec {
+                view_id: Some("dv005_gl_account_view_total".to_string()),
+                metric_id: Some("balance".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "account".to_string(),
+                    param_type: ParamType::String,
+                    label: "Account".to_string(),
+                    default_value: Some("7609".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "section".to_string(),
+                    param_type: ParamType::String,
+                    label: "Section".to_string(),
+                    default_value: Some("main".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Money {
+                    currency: "RUB".to_string(),
+                    scale: None,
+                    decimals: None,
+                },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0020-4001-a001-000000000020",
+            "IND-REV-TO-PRICE-PCT",
+            "Выручка к прайсу, %",
+            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=REVENUE and denominator=IND-MP-REV-PRICE.",
+            DataSpec {
+                view_id: Some("dv006_indicator_ratio_percent".to_string()),
+                metric_id: Some("ratio_percent".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "numerator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator indicator code".to_string(),
+                    default_value: Some("REVENUE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator indicator code".to_string(),
+                    default_value: Some("IND-MP-REV-PRICE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Percent { decimals: 1 },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0021-4001-a001-000000000021",
+            "IND-GL-7609-TO-PRICE-PCT",
+            "7609 к прайсу, %",
+            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=IND-GL-7609-MAIN-BALANCE and denominator=IND-MP-REV-PRICE.",
+            DataSpec {
+                view_id: Some("dv006_indicator_ratio_percent".to_string()),
+                metric_id: Some("ratio_percent".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "numerator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator indicator code".to_string(),
+                    default_value: Some("IND-GL-7609-MAIN-BALANCE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator indicator code".to_string(),
+                    default_value: Some("IND-MP-REV-PRICE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Percent { decimals: 1 },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0022-4001-a001-000000000022",
+            "IND-MP-RETURNS-COUNT",
+            "РљРѕР»РёС‡РµСЃС‚РІРѕ РІРѕР·РІСЂР°С‚РѕРІ",
+            "Ready-to-use BI indicator on DataView dv004_general_ledger_turnovers with metric=entry_count, turnover_code=customer_revenue_pl_storno and layer=oper.",
+            DataSpec {
+                view_id: Some("dv004_general_ledger_turnovers".to_string()),
+                metric_id: Some("entry_count".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Turnover code".to_string(),
+                    default_value: Some("customer_revenue_pl_storno".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Layer".to_string(),
+                    default_value: Some("oper".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Integer,
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0023-4001-a001-000000000023",
+            "IND-MP-RETURNS-TO-REV-PCT",
+            "Р’РѕР·РІСЂР°С‚С‹ Рє СЂРµР°Р»РёР·Р°С†РёРё, %",
+            "Ready-to-use BI indicator on DataView dv007_gl_turnover_ratio_percent with numerator=customer_revenue_pl_storno/oper and denominator=customer_revenue_pl/oper.",
+            DataSpec {
+                view_id: Some("dv007_gl_turnover_ratio_percent".to_string()),
+                metric_id: Some("ratio_percent".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "numerator_turnover_items".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator GL turnovers".to_string(),
+                    default_value: Some("-customer_revenue_pl_storno".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "numerator_turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator turnover code".to_string(),
+                    default_value: Some("customer_revenue_pl_storno".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "numerator_layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator layer".to_string(),
+                    default_value: Some("oper".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_turnover_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator turnover code".to_string(),
+                    default_value: Some("customer_revenue_pl".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_layer".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator layer".to_string(),
+                    default_value: Some("oper".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Percent { decimals: 1 },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
         ),
     ];
 
@@ -485,32 +961,20 @@ pub async fn compute_indicator(id: &str, ctx: &IndicatorContext) -> anyhow::Resu
         .await?
         .ok_or_else(|| anyhow::anyhow!("BI Indicator not found: {}", id))?;
 
-    // DataView path (highest priority)
-    if let Some(view_id) = &indicator.data_spec.view_id {
-        use crate::data_view::DataViewRegistry;
-        use contracts::shared::data_view::ViewContext;
-        let registry = DataViewRegistry::new();
-        let mut view_ctx = ViewContext::from(ctx);
-        if let Some(metric_id) = indicator
-            .data_spec
-            .metric_id
-            .as_ref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            view_ctx
-                .params
-                .insert("metric".to_string(), metric_id.clone());
-        }
-        return registry
-            .compute_scalar(view_id, &view_ctx)
-            .await
-            .map_err(|e| anyhow::anyhow!("DataView '{}' compute error: {}", view_id, e));
-    }
+    compute_indicator_model(&indicator, ctx).await
+}
 
-    Err(anyhow::anyhow!(
-        "BI indicator {} has no supported compute source. Expected view_id.",
-        id
-    ))
+/// Вычислить значение индикатора по его code.
+pub async fn compute_indicator_by_code(
+    code: &str,
+    ctx: &IndicatorContext,
+) -> anyhow::Result<IndicatorValue> {
+    let db = crate::shared::data::db::get_connection();
+    let indicator = repository::find_by_code(&db, code)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("BI Indicator not found by code: {}", code))?;
+
+    compute_indicator_model(&indicator, ctx).await
 }
 
 /// Выполнить drilldown для индикатора.
@@ -531,19 +995,8 @@ pub async fn get_indicator_drilldown(
     // DataView path (highest priority)
     if let Some(view_id) = &indicator.data_spec.view_id {
         use crate::data_view::DataViewRegistry;
-        use contracts::shared::data_view::ViewContext;
         let registry = DataViewRegistry::new();
-        let mut view_ctx = ViewContext::from(ctx);
-        if let Some(metric_id) = indicator
-            .data_spec
-            .metric_id
-            .as_ref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            view_ctx
-                .params
-                .insert("metric".to_string(), metric_id.clone());
-        }
+        let view_ctx = build_view_ctx(&indicator, ctx);
         return registry
             .compute_drilldown(view_id, &view_ctx, &group_by, &[])
             .await
@@ -564,5 +1017,180 @@ fn sanitize_view_spec_html(view_spec: &mut ViewSpec) {
     if let Some(html) = &view_spec.custom_html {
         let sanitized = sanitize_html(html);
         view_spec.custom_html = Some(sanitized);
+    }
+}
+
+fn persisted_description(dto: &BiIndicatorDto) -> String {
+    dto.view_spec
+        .as_ref()
+        .and_then(|view_spec| view_spec.preview_values.get("name"))
+        .filter(|name| !name.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| dto.description.clone())
+}
+
+#[cfg(test)]
+mod indicator_stack_tests {
+    use super::{extend_indicator_stack, indicator_stack, INDICATOR_STACK_KEY};
+    use contracts::shared::analytics::IndicatorContext;
+    use std::collections::HashMap;
+
+    #[test]
+    fn indicator_stack_detects_circular_dependency() {
+        let mut ctx = IndicatorContext {
+            date_from: "2026-04-01".to_string(),
+            date_to: "2026-04-30".to_string(),
+            organization_ref: None,
+            marketplace: None,
+            connection_mp_refs: vec![],
+            extra: HashMap::new(),
+        };
+        ctx.extra.insert(
+            INDICATOR_STACK_KEY.to_string(),
+            "REVENUE,IND-MP-REV-PRICE".to_string(),
+        );
+
+        let err = extend_indicator_stack(&ctx, "REVENUE").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Circular BI indicator dependency detected"));
+    }
+
+    #[test]
+    fn indicator_stack_appends_new_indicator_code() {
+        let ctx = IndicatorContext {
+            date_from: "2026-04-01".to_string(),
+            date_to: "2026-04-30".to_string(),
+            organization_ref: None,
+            marketplace: None,
+            connection_mp_refs: vec![],
+            extra: HashMap::new(),
+        };
+
+        let next = extend_indicator_stack(&ctx, "IND-GL-7609-MAIN-BALANCE").unwrap();
+        assert_eq!(
+            indicator_stack(&next),
+            vec!["IND-GL-7609-MAIN-BALANCE".to_string()]
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_view_ctx, persisted_description, BiIndicatorDto};
+    use contracts::domain::a024_bi_indicator::aggregate::{
+        BiIndicator, DataSpec, ParamDef, ParamType, ViewSpec,
+    };
+    use contracts::shared::analytics::IndicatorContext;
+    use std::collections::HashMap;
+
+    #[test]
+    fn indicator_param_defaults_are_merged_and_request_overrides_them() {
+        let mut indicator = BiIndicator::new_for_insert(
+            "IND-TEST".to_string(),
+            "Test".to_string(),
+            "owner".to_string(),
+        );
+        indicator.params = vec![
+            ParamDef {
+                key: "turnover_code".to_string(),
+                param_type: ParamType::String,
+                label: "Turnover".to_string(),
+                default_value: Some("mp_acquiring".to_string()),
+                required: true,
+                global_filter_key: None,
+            },
+            ParamDef {
+                key: "layer".to_string(),
+                param_type: ParamType::String,
+                label: "Layer".to_string(),
+                default_value: Some("fact".to_string()),
+                required: true,
+                global_filter_key: None,
+            },
+        ];
+        indicator.data_spec.metric_id = Some("amount".to_string());
+
+        let mut extra = HashMap::new();
+        extra.insert("layer".to_string(), "oper".to_string());
+        extra.insert("custom".to_string(), "value".to_string());
+        let ctx = IndicatorContext {
+            date_from: "2026-03-01".to_string(),
+            date_to: "2026-03-31".to_string(),
+            organization_ref: None,
+            marketplace: None,
+            connection_mp_refs: vec!["cab-1".to_string()],
+            extra,
+        };
+
+        let view_ctx = build_view_ctx(&indicator, &ctx);
+        assert_eq!(
+            view_ctx.params.get("turnover_code").map(String::as_str),
+            Some("mp_acquiring")
+        );
+        assert_eq!(
+            view_ctx.params.get("layer").map(String::as_str),
+            Some("oper")
+        );
+        assert_eq!(
+            view_ctx.params.get("metric").map(String::as_str),
+            Some("amount")
+        );
+        assert_eq!(
+            view_ctx.params.get("custom").map(String::as_str),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn persisted_description_prefers_preview_title_when_present() {
+        let mut preview_values = HashMap::new();
+        preview_values.insert("name".to_string(), "Маржинальность".to_string());
+
+        let dto = BiIndicatorDto {
+            id: None,
+            code: Some("IND-TEST".to_string()),
+            description: "Старое имя".to_string(),
+            comment: None,
+            data_spec: Some(DataSpec::default()),
+            params: None,
+            view_spec: Some(ViewSpec {
+                preview_values,
+                ..ViewSpec::default()
+            }),
+            drill_spec: None,
+            status: None,
+            owner_user_id: "owner".to_string(),
+            is_public: None,
+            updated_by: None,
+        };
+
+        assert_eq!(persisted_description(&dto), "Маржинальность");
+    }
+
+    #[test]
+    fn persisted_description_falls_back_to_description_when_preview_title_is_blank() {
+        let mut preview_values = HashMap::new();
+        preview_values.insert("name".to_string(), "   ".to_string());
+
+        let dto = BiIndicatorDto {
+            id: None,
+            code: Some("IND-TEST".to_string()),
+            description: "Выручка".to_string(),
+            comment: None,
+            data_spec: Some(DataSpec::default()),
+            params: None,
+            view_spec: Some(ViewSpec {
+                preview_values,
+                ..ViewSpec::default()
+            }),
+            drill_spec: None,
+            status: None,
+            owner_user_id: "owner".to_string(),
+            is_public: None,
+            updated_by: None,
+        };
+
+        assert_eq!(persisted_description(&dto), "Выручка");
     }
 }

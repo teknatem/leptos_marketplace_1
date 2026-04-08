@@ -21,7 +21,6 @@ pub fn MarketplaceProductDetails(
     let on_saved_clone = on_saved.clone();
     let on_close_clone = on_close.clone();
 
-    // Use dedicated clones for closures inside `view!` to avoid moving the same `vm` multiple times.
     let vm_title = vm.clone();
     let vm_save = vm.clone();
     let vm_is_valid = vm.clone();
@@ -35,8 +34,6 @@ pub fn MarketplaceProductDetails(
     let vm_clear_nom_disabled = vm.clone();
     let vm_picker = vm.clone();
 
-    // Thaw `Input` expects `value: Model<String>` (e.g. `RwSignal<String>`) and manages input events internally.
-    // Bind editable fields to local signals and sync them with `vm.form`.
     let description = RwSignal::new(vm.form.get_untracked().description.clone());
     let marketplace_sku = RwSignal::new(vm.form.get_untracked().marketplace_sku.clone());
     let article = RwSignal::new(vm.form.get_untracked().article.clone());
@@ -44,7 +41,6 @@ pub fn MarketplaceProductDetails(
     let brand = RwSignal::new(vm.form.get_untracked().brand.clone().unwrap_or_default());
     let comment = RwSignal::new(vm.form.get_untracked().comment.clone().unwrap_or_default());
 
-    // local -> vm.form
     Effect::new({
         let vm = vm.clone();
         move || {
@@ -112,7 +108,6 @@ pub fn MarketplaceProductDetails(
         }
     });
 
-    // vm.form -> local (when loading existing record)
     Effect::new({
         let vm = vm.clone();
         move || {
@@ -227,127 +222,148 @@ pub fn MarketplaceProductDetails(
 
                             <Flex vertical=true gap=FlexGap::Small>
                                 <Label>"Описание"</Label>
-                                <Input
-                                    value=description
-                                    placeholder="Краткое описание товара"
-                                />
+                                <Input value=description placeholder="Краткое описание товара" />
                             </Flex>
 
                             <Flex gap=FlexGap::Medium>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Маркетплейс"</Label>
-                                    <Input
-                                        value=vm.marketplace_name.clone()
-                                        disabled=Signal::derive(|| true)
-                                    />
+                                    <Input value=vm.marketplace_name.clone() disabled=Signal::derive(|| true) />
                                 </Flex>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Кабинет"</Label>
-                                    <Input
-                                        value=vm.connection_name.clone()
-                                        disabled=Signal::derive(|| true)
-                                    />
+                                    <Input value=vm.connection_name.clone() disabled=Signal::derive(|| true) />
                                 </Flex>
                             </Flex>
 
                             <Flex gap=FlexGap::Medium>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"SKU маркетплейса"</Label>
-                                    <Input
-                                        value=marketplace_sku
-                                    />
+                                    <Input value=marketplace_sku />
                                 </Flex>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Артикул"</Label>
-                                    <Input
-                                        value=article
-                                    />
+                                    <Input value=article />
                                 </Flex>
                             </Flex>
 
                             <Flex gap=FlexGap::Medium>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Штрихкод"</Label>
-                                    <Input
-                                        value=barcode
-                                    />
+                                    <Input value=barcode />
                                 </Flex>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Бренд"</Label>
-                                    <Input
-                                        value=brand
-                                    />
+                                    <Input value=brand />
                                 </Flex>
                             </Flex>
                         </Flex>
                     </Card>
 
                     <Card>
-                        <Flex vertical=true gap=FlexGap::Medium>
-                            <h3 style="margin: 0; font-size: var(--font-size-base); font-weight: 600;">"Связь с 1С УТ"</h3>
+                        <div class="a007-link-card">
+                            <div class="a007-link-card__header">
+                                <h3 class="a007-link-card__title">"Связь с 1С УТ"</h3>
+                                <span class=move || {
+                                    if vm.form.get().nomenclature_ref.is_some() {
+                                        "a007-link-card__status a007-link-card__status--linked"
+                                    } else {
+                                        "a007-link-card__status a007-link-card__status--empty"
+                                    }
+                                }>
+                                    {move || {
+                                        if vm.form.get().nomenclature_ref.is_some() {
+                                            "Связана"
+                                        } else {
+                                            "Не связана"
+                                        }
+                                    }}
+                                </span>
+                            </div>
+
+                            <p class="a007-link-card__hint">
+                                "Автоподбор ищет точное совпадение по артикулу товара маркетплейса. Если найдено несколько вариантов, откроется выбор."
+                            </p>
+
+                            <div class="a007-link-card__summary">
+                                <div class="a007-link-card__summary-label">"Основание для автоподбора"</div>
+                                <div class="a007-link-card__summary-value">
+                                    {move || {
+                                        let form = vm.form.get();
+                                        if form.article.trim().is_empty() {
+                                            "Артикул товара маркетплейса не заполнен".to_string()
+                                        } else {
+                                            format!("Артикул: {} | SKU: {}", form.article, form.marketplace_sku)
+                                        }
+                                    }}
+                                </div>
+                            </div>
 
                             <Flex vertical=true gap=FlexGap::Small>
-                                <Label>"Номенклатура"</Label>
-                                <Flex gap=FlexGap::Small>
-                                    <Input
-                                        value=vm.nomenclature_name.clone()
-                                        disabled=Signal::derive(|| true)
-                                    />
-                                    <Button
-                                        appearance=ButtonAppearance::Subtle
-                                        on_click={
-                                            let vm = vm_search_nom.clone();
-                                            move |_| vm.search_nomenclature_by_article()
-                                        }
-                                        disabled=Signal::derive({
-                                            let vm = vm_search_nom_disabled.clone();
-                                            move || vm.form.get().article.trim().is_empty()
-                                        })
-                                    >
-                                        {icon("search")}
-                                    </Button>
-                                    <Button
-                                        appearance=ButtonAppearance::Subtle
-                                        on_click={
-                                            let vm = vm_open_picker.clone();
-                                            move |_| vm.open_picker()
-                                        }
-                                    >
-                                        {icon("list")}
-                                    </Button>
-                                    <Button
-                                        appearance=ButtonAppearance::Subtle
-                                        on_click={
-                                            let vm = vm_clear_nom.clone();
-                                            move |_| vm.clear_nomenclature()
-                                        }
-                                        disabled=Signal::derive({
-                                            let vm = vm_clear_nom_disabled.clone();
-                                            move || vm.form.get().nomenclature_ref.is_none()
-                                        })
-                                    >
-                                        {icon("x")}
-                                    </Button>
-                                </Flex>
+                                <Label>"Связанная номенклатура 1С"</Label>
+                                <Input
+                                    value=vm.nomenclature_name.clone()
+                                    disabled=Signal::derive(|| true)
+                                    placeholder="Связь еще не выбрана"
+                                />
                             </Flex>
+
+                            <div class="a007-link-card__actions">
+                                <Button
+                                    appearance=ButtonAppearance::Primary
+                                    on_click={
+                                        let vm = vm_search_nom.clone();
+                                        move |_| vm.search_nomenclature_by_article()
+                                    }
+                                    disabled=Signal::derive({
+                                        let vm = vm_search_nom_disabled.clone();
+                                        move || vm.form.get().article.trim().is_empty()
+                                    })
+                                >
+                                    {icon("search")}
+                                    " Автоподбор по артикулу"
+                                </Button>
+                                <Button
+                                    appearance=ButtonAppearance::Secondary
+                                    on_click={
+                                        let vm = vm_open_picker.clone();
+                                        move |_| vm.open_picker()
+                                    }
+                                >
+                                    {icon("list")}
+                                    " Выбрать вручную"
+                                </Button>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    on_click={
+                                        let vm = vm_clear_nom.clone();
+                                        move |_| vm.clear_nomenclature()
+                                    }
+                                    disabled=Signal::derive({
+                                        let vm = vm_clear_nom_disabled.clone();
+                                        move || vm.form.get().nomenclature_ref.is_none()
+                                    })
+                                >
+                                    {icon("x")}
+                                    " Очистить связь"
+                                </Button>
+                            </div>
+
+                            <div class="a007-link-card__actions-note">
+                                "Ручной выбор открывает список номенклатуры 1С. Очистка снимает текущую связь и не меняет карточку товара маркетплейса."
+                            </div>
 
                             <Flex gap=FlexGap::Medium>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Код 1С"</Label>
-                                    <Input
-                                        value=vm.nomenclature_code.clone()
-                                        disabled=Signal::derive(|| true)
-                                    />
+                                    <Input value=vm.nomenclature_code.clone() disabled=Signal::derive(|| true) />
                                 </Flex>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
                                     <Label>"Артикул 1С"</Label>
-                                    <Input
-                                        value=vm.nomenclature_article.clone()
-                                        disabled=Signal::derive(|| true)
-                                    />
+                                    <Input value=vm.nomenclature_article.clone() disabled=Signal::derive(|| true) />
                                 </Flex>
                             </Flex>
-                        </Flex>
+                        </div>
                     </Card>
                 </div>
 
@@ -371,8 +387,8 @@ pub fn MarketplaceProductDetails(
                         let vm_for_selected = vm.clone();
                         let vm_for_cancel = vm.clone();
                         let prefiltered = vm.search_results.get();
+                        let article_for_picker = vm.form.get().article;
 
-                        // Открываем picker через ModalStackService (стек модалок)
                         modal_stack.push_with_frame(
                             Some(
                                 "max-width: min(1100px, 95vw); width: min(1100px, 95vw); height: 85vh; overflow: hidden;"
@@ -389,7 +405,7 @@ pub fn MarketplaceProductDetails(
                                             vm.nomenclature_name.set(nom.description);
                                             vm.nomenclature_code.set(nom.code);
                                             vm.nomenclature_article.set(nom.article);
-                                            vm.success_message.set(Some("Номенклатура выбрана".to_string()));
+                                            vm.success_message.set(Some("Связь с 1С УТ обновлена вручную".to_string()));
                                         }
                                         vm.search_results.set(None);
                                         handle.close();
@@ -409,21 +425,31 @@ pub fn MarketplaceProductDetails(
                                     view! {
                                         <NomenclaturePicker
                                             initial_selected_id=None
-                                            prefiltered_items=filtered_list
+                                            prefiltered_items=filtered_list.clone()
+                                            title="Выберите позицию 1С из найденных вариантов"
+                                            subtitle=format!(
+                                                "По артикулу \"{}\" найдено {} вариантов. Выберите нужную позицию 1С УТ.",
+                                                article_for_picker,
+                                                filtered_list.len()
+                                            )
+                                            search_placeholder="Уточните список по артикулу, коду или наименованию"
+                                            empty_state_text="Список вариантов пуст"
                                             on_selected=on_selected_handler
                                             on_cancel=on_cancel_handler
                                         />
-                                    }
-                                    .into_any()
+                                    }.into_any()
                                 } else {
                                     view! {
                                         <NomenclaturePicker
                                             initial_selected_id=None
+                                            title="Ручной выбор позиции 1С УТ"
+                                            subtitle="Откройте полный список номенклатуры 1С и выберите позицию, которую нужно связать с текущим товаром маркетплейса."
+                                            search_placeholder="Поиск по артикулу, коду или наименованию"
+                                            empty_state_text="Подходящие позиции не найдены"
                                             on_selected=on_selected_handler
                                             on_cancel=on_cancel_handler
                                         />
-                                    }
-                                    .into_any()
+                                    }.into_any()
                                 }
                             },
                         );
@@ -431,10 +457,10 @@ pub fn MarketplaceProductDetails(
                         vm.show_picker.set(false);
                         view! { <></> }.into_any()
                     } else {
-                view! {}.into_any()
+                        view! { <></> }.into_any()
+                    }
+                }
             }
-        }
-    }
         </PageFrame>
     }
 }

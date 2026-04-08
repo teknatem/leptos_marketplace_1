@@ -64,6 +64,9 @@ pub struct IndicatorValue {
     pub status: IndicatorStatus,
     /// Optional secondary text displayed below the value.
     pub subtitle: Option<String>,
+    /// Optional short explanation lines about how the indicator was calculated.
+    #[serde(default)]
+    pub details: Vec<String>,
     /// Daily values for period 1, sorted ascending by date (used for sparkline).
     /// Empty when the data source does not provide daily breakdown.
     #[serde(default)]

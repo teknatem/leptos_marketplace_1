@@ -2,355 +2,585 @@ use super::repository;
 use anyhow::Result;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
+use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
-/// Расчёт финансовых полей (план/факт) на основе данных P903
-pub async fn calculate_financial_fields(document: &mut WbSales) -> Result<()> {
-    // Получаем srid из document_no
-    let srid = &document.header.document_no;
+const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
-    // Запрашиваем данные из P903 по srid
-    let p903_entries = crate::projections::p903_wb_finance_report::repository::search_by_srid(srid)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to query P903 for srid {}: {}", srid, e);
-            Vec::new()
-        });
+#[derive(Default)]
+pub struct PostingPreparationCache {
+    connection_by_id:
+        HashMap<String, Option<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>>,
+    marketplace_product_by_id: HashMap<
+        String,
+        Option<contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct>,
+    >,
+    acquiring_fee_rate_by_marketplace_id: HashMap<String, f64>,
+    resolved_price_by_nom_and_date: HashMap<
+        (String, String),
+        Option<crate::projections::p906_nomenclature_prices::service::ResolvedPrice>,
+    >,
+    nomenclature_by_id:
+        HashMap<String, Option<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
+    kit_variant_by_owner_ref:
+        HashMap<String, Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>>,
+    direct_cost_by_nom_and_date: HashMap<(String, String), Option<f64>>,
+    resolved_prod_unit_cost_by_nom_and_date: HashMap<(String, String), Option<f64>>,
+}
 
-    // Получаем acquiring_fee_pro из маркетплейса
-    let acquiring_fee_pro =
-        if let Ok(marketplace_uuid) = Uuid::parse_str(&document.header.marketplace_id) {
-            crate::domain::a005_marketplace::service::get_by_id(marketplace_uuid)
-                .await
-                .ok()
-                .flatten()
-                .map(|m| m.acquiring_fee_pro)
-                .unwrap_or(0.0)
-        } else {
-            tracing::warn!(
-                "Invalid marketplace_id UUID: {}",
-                document.header.marketplace_id
-            );
-            0.0
+impl PostingPreparationCache {
+    async fn get_connection(
+        &mut self,
+        connection_id: &str,
+    ) -> Result<Option<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>> {
+        if let Some(value) = self.connection_by_id.get(connection_id) {
+            return Ok(value.clone());
+        }
+
+        let resolved = match Uuid::parse_str(connection_id) {
+            Ok(id) => crate::domain::a006_connection_mp::service::get_by_id(id).await?,
+            Err(_) => None,
+        };
+        self.connection_by_id
+            .insert(connection_id.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn get_marketplace_product(
+        &mut self,
+        marketplace_product_ref: &str,
+    ) -> Result<Option<contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct>>
+    {
+        if let Some(value) = self.marketplace_product_by_id.get(marketplace_product_ref) {
+            return Ok(value.clone());
+        }
+
+        let resolved = match Uuid::parse_str(marketplace_product_ref) {
+            Ok(id) => crate::domain::a007_marketplace_product::service::get_by_id(id).await?,
+            Err(_) => None,
+        };
+        self.marketplace_product_by_id
+            .insert(marketplace_product_ref.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn get_acquiring_fee_rate(&mut self, marketplace_id: &str) -> Result<f64> {
+        if let Some(value) = self
+            .acquiring_fee_rate_by_marketplace_id
+            .get(marketplace_id)
+        {
+            return Ok(*value);
+        }
+
+        let rate = match Uuid::parse_str(marketplace_id) {
+            Ok(id) => crate::domain::a005_marketplace::service::get_by_id(id)
+                .await?
+                .map(|marketplace| marketplace.acquiring_fee_pro)
+                .unwrap_or(0.0),
+            Err(_) => 0.0,
         };
 
-    // Получаем базовые значения из документа
-    let finished_price = document.line.finished_price.unwrap_or(0.0);
-    let amount_line = document.line.amount_line.unwrap_or(0.0);
-    let cost_of_production = document.line.cost_of_production.unwrap_or(0.0);
+        self.acquiring_fee_rate_by_marketplace_id
+            .insert(marketplace_id.to_string(), rate);
+        Ok(rate)
+    }
 
-    // Определяем тип документа по знаку finished_price
-    let is_return = finished_price < 0.0;
-    let sign = if is_return { -1.0_f64 } else { 1.0_f64 };
-    let target_oper_name = if is_return {
-        "Возврат"
+    async fn resolve_price(
+        &mut self,
+        nomenclature_ref: &str,
+        sale_date: &str,
+    ) -> Result<Option<crate::projections::p906_nomenclature_prices::service::ResolvedPrice>> {
+        let cache_key = (nomenclature_ref.to_string(), sale_date.to_string());
+        if let Some(value) = self.resolved_price_by_nom_and_date.get(&cache_key) {
+            return Ok(value.clone());
+        }
+
+        let resolved =
+            crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
+                nomenclature_ref,
+                sale_date,
+            )
+            .await?;
+        self.resolved_price_by_nom_and_date
+            .insert(cache_key, resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn get_nomenclature(
+        &mut self,
+        nomenclature_ref: &str,
+    ) -> Result<Option<contracts::domain::a004_nomenclature::aggregate::Nomenclature>> {
+        if let Some(value) = self.nomenclature_by_id.get(nomenclature_ref) {
+            return Ok(value.clone());
+        }
+
+        let resolved = match Uuid::parse_str(nomenclature_ref) {
+            Ok(id) => crate::domain::a004_nomenclature::repository::get_by_id(id).await?,
+            Err(_) => None,
+        };
+        self.nomenclature_by_id
+            .insert(nomenclature_ref.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn get_kit_variant_by_owner_ref(
+        &mut self,
+        owner_ref: &str,
+    ) -> Result<Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>> {
+        if let Some(value) = self.kit_variant_by_owner_ref.get(owner_ref) {
+            return Ok(value.clone());
+        }
+
+        let resolved =
+            crate::domain::a022_kit_variant::repository::get_main_by_owner_ref(owner_ref).await?;
+        self.kit_variant_by_owner_ref
+            .insert(owner_ref.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn resolve_direct_cost(
+        &mut self,
+        nomenclature_ref: &str,
+        sale_date: &str,
+    ) -> Result<Option<f64>> {
+        let cache_key = (nomenclature_ref.to_string(), sale_date.to_string());
+        if let Some(value) = self.direct_cost_by_nom_and_date.get(&cache_key) {
+            return Ok(*value);
+        }
+
+        let resolved =
+            crate::projections::p912_nomenclature_costs::service::resolve_latest_cost_before_date(
+                nomenclature_ref,
+                sale_date,
+            )
+            .await?
+            .map(|record| record.cost)
+            .filter(|cost| *cost > 0.0);
+        self.direct_cost_by_nom_and_date.insert(cache_key, resolved);
+        Ok(resolved)
+    }
+
+    async fn resolve_simple_prod_unit_cost(
+        &mut self,
+        nomenclature_ref: &str,
+        sale_date: &str,
+    ) -> Result<Option<f64>> {
+        let cache_key = (nomenclature_ref.to_string(), sale_date.to_string());
+        if let Some(value) = self.resolved_prod_unit_cost_by_nom_and_date.get(&cache_key) {
+            return Ok(*value);
+        }
+
+        let mut resolved = self
+            .resolve_direct_cost(nomenclature_ref, sale_date)
+            .await?;
+        if resolved.is_none() {
+            let base_ref = self
+                .get_nomenclature(nomenclature_ref)
+                .await?
+                .and_then(|nomenclature| nomenclature.base_nomenclature_ref)
+                .filter(|base_ref| {
+                    let trimmed = base_ref.trim();
+                    !trimmed.is_empty() && trimmed != ZERO_UUID && trimmed != nomenclature_ref
+                });
+            if let Some(base_ref) = base_ref {
+                resolved = self.resolve_direct_cost(&base_ref, sale_date).await?;
+            }
+        }
+
+        self.resolved_prod_unit_cost_by_nom_and_date
+            .insert(cache_key, resolved);
+        Ok(resolved)
+    }
+}
+
+fn set_if_changed<T: PartialEq>(slot: &mut Option<T>, next: Option<T>) -> bool {
+    if *slot != next {
+        *slot = next;
+        true
     } else {
-        "Продажа"
-    };
+        false
+    }
+}
 
-    // Фильтруем записи P903 по типу операции (Продажа / Возврат)
-    let sales_entries: Vec<_> = p903_entries
+fn clear_fact_fields(document: &mut WbSales) -> bool {
+    let mut changed = false;
+    changed |= set_if_changed(&mut document.line.is_fact, Some(false));
+    changed |= set_if_changed(&mut document.line.sell_out_fact, None);
+    changed |= set_if_changed(&mut document.line.acquiring_fee_fact, None);
+    changed |= set_if_changed(&mut document.line.other_fee_fact, None);
+    changed |= set_if_changed(&mut document.line.supplier_payout_fact, None);
+    changed |= set_if_changed(&mut document.line.profit_fact, None);
+    changed |= set_if_changed(&mut document.line.commission_fact, None);
+    changed
+}
+
+fn valid_ref(value: Option<String>, current_ref: &str) -> Option<String> {
+    value.filter(|raw| {
+        let trimmed = raw.trim();
+        !trimmed.is_empty() && trimmed != ZERO_UUID && trimmed != current_ref
+    })
+}
+
+pub async fn preload_prod_cost_context_for_documents(
+    cache: &mut PostingPreparationCache,
+    documents: &[WbSales],
+) -> Result<()> {
+    if documents.is_empty() {
+        return Ok(());
+    }
+
+    let sale_date = documents[0].state.sale_dt.format("%Y-%m-%d").to_string();
+    let document_nom_refs: BTreeSet<String> = documents
         .iter()
-        .filter(|entry| entry.supplier_oper_name.as_deref() == Some(target_oper_name))
+        .filter_map(|document| document.nomenclature_ref.clone())
+        .filter(|value| !value.trim().is_empty())
         .collect();
 
-    // Проверяем наличие фактических данных в P903
-    let has_fact_data = !sales_entries.is_empty()
-        && sales_entries
-            .iter()
-            .any(|e| e.retail_amount.unwrap_or(0.0) != 0.0);
+    if document_nom_refs.is_empty() {
+        return Ok(());
+    }
 
-    // Устанавливаем флаг is_fact
-    document.line.is_fact = Some(has_fact_data);
+    let document_nom_refs_vec = document_nom_refs.iter().cloned().collect::<Vec<_>>();
+    for nomenclature in
+        crate::domain::a004_nomenclature::repository::list_by_ids(&document_nom_refs_vec).await?
+    {
+        cache
+            .nomenclature_by_id
+            .insert(nomenclature.base.id.as_string(), Some(nomenclature));
+    }
 
-    // ПЛАН: заполняем ВСЕГДА (и в режиме план, и в режиме факт)
-    let acquiring_fee_plan = acquiring_fee_pro * finished_price / 100.0;
-    let commission_plan = finished_price - amount_line;
-    let other_fee_plan = 0.0;
+    let owner_refs = document_nom_refs
+        .iter()
+        .filter(|owner_ref| {
+            cache
+                .nomenclature_by_id
+                .get(owner_ref.as_str())
+                .and_then(|item| item.as_ref())
+                .is_some_and(|nomenclature| nomenclature.is_assembly)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
 
-    document.line.sell_out_plan = Some(finished_price);
-    document.line.acquiring_fee_plan = Some(acquiring_fee_plan);
-    document.line.other_fee_plan = Some(other_fee_plan);
-    document.line.commission_plan = Some(commission_plan);
-    document.line.supplier_payout_plan = Some(amount_line - acquiring_fee_plan);
-    document.line.profit_plan = Some(
-        finished_price - acquiring_fee_plan - commission_plan - other_fee_plan - cost_of_production,
-    );
+    if !owner_refs.is_empty() {
+        let variants =
+            crate::domain::a022_kit_variant::repository::list_main_by_owner_refs(&owner_refs)
+                .await?;
+        for owner_ref in &owner_refs {
+            cache
+                .kit_variant_by_owner_ref
+                .insert(owner_ref.clone(), variants.get(owner_ref).cloned());
+        }
+    }
 
-    // ФАКТ: заполняем только если есть данные P903
-    if has_fact_data {
-        // Агрегируем сырые значения из P903
-        let retail_amount_raw: f64 = sales_entries.iter().filter_map(|e| e.retail_amount).sum();
-        let acquiring_fee_raw: f64 = sales_entries.iter().filter_map(|e| e.acquiring_fee).sum();
-        let rebill_logistic_cost_raw: f64 = sales_entries
-            .iter()
-            .filter_map(|e| e.rebill_logistic_cost)
-            .sum();
-        let ppvz_vw_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw).sum();
-        let ppvz_vw_nds_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_vw_nds).sum();
-        let ppvz_for_pay_raw: f64 = sales_entries.iter().filter_map(|e| e.ppvz_for_pay).sum();
+    let component_refs: BTreeSet<String> = owner_refs
+        .iter()
+        .filter_map(|owner_ref| cache.kit_variant_by_owner_ref.get(owner_ref))
+        .filter_map(|variant| variant.as_ref())
+        .flat_map(|variant| variant.parse_goods().into_iter())
+        .map(|item| item.nomenclature_ref)
+        .filter(|value| !value.trim().is_empty())
+        .collect();
 
-        // Применяем sign: для возвратов все значения P903 инвертируются
-        let retail_amount = retail_amount_raw * sign;
-        let acquiring_fee = acquiring_fee_raw * sign;
-        let rebill_logistic_cost = rebill_logistic_cost_raw * sign;
-        let commission_fact = (ppvz_vw_raw + ppvz_vw_nds_raw) * sign;
-        let supplier_payout = ppvz_for_pay_raw * sign;
+    if !component_refs.is_empty() {
+        let component_refs_vec = component_refs.iter().cloned().collect::<Vec<_>>();
+        for nomenclature in
+            crate::domain::a004_nomenclature::repository::list_by_ids(&component_refs_vec).await?
+        {
+            cache
+                .nomenclature_by_id
+                .insert(nomenclature.base.id.as_string(), Some(nomenclature));
+        }
+    }
 
-        document.line.sell_out_fact = Some(retail_amount);
-        document.line.acquiring_fee_fact = Some(acquiring_fee);
-        document.line.other_fee_fact = Some(rebill_logistic_cost);
-        document.line.commission_fact = Some(commission_fact);
-        document.line.supplier_payout_fact = Some(supplier_payout);
-        document.line.profit_fact = Some(
-            retail_amount
-                - acquiring_fee
-                - commission_fact
-                - rebill_logistic_cost
-                - cost_of_production,
-        );
+    let mut refs_to_resolve = BTreeSet::new();
+    for nomenclature_ref in document_nom_refs.iter().chain(component_refs.iter()) {
+        refs_to_resolve.insert(nomenclature_ref.clone());
+        if let Some(base_ref) = cache
+            .nomenclature_by_id
+            .get(nomenclature_ref)
+            .and_then(|item| item.as_ref())
+            .and_then(|nomenclature| {
+                valid_ref(nomenclature.base_nomenclature_ref.clone(), nomenclature_ref)
+            })
+        {
+            refs_to_resolve.insert(base_ref);
+        }
+    }
 
-        let doc_type = if is_return { "return" } else { "sale" };
-        tracing::info!(
-            "Calculated PLAN and FACT fields for document {} (srid: {}, type: {})",
-            document.base.id.as_string(),
-            srid,
-            doc_type
-        );
-    } else {
-        let doc_type = if is_return { "return" } else { "sale" };
-        tracing::info!(
-            "Calculated PLAN fields only for document {} (srid: {}, type: {}) - no P903 data",
-            document.base.id.as_string(),
-            srid,
-            doc_type
-        );
+    if refs_to_resolve.is_empty() {
+        return Ok(());
+    }
+
+    let direct_costs =
+        crate::projections::p912_nomenclature_costs::service::resolve_latest_costs_before_date(
+            &refs_to_resolve.iter().cloned().collect::<Vec<_>>(),
+            &sale_date,
+        )
+        .await?;
+
+    for nomenclature_ref in &refs_to_resolve {
+        let cache_key = (nomenclature_ref.clone(), sale_date.clone());
+        let direct_cost = direct_costs
+            .get(nomenclature_ref)
+            .map(|record| record.cost)
+            .filter(|cost| *cost > 0.0);
+        cache
+            .direct_cost_by_nom_and_date
+            .insert(cache_key.clone(), direct_cost);
+        if let Some(cost) = direct_cost {
+            cache
+                .resolved_prod_unit_cost_by_nom_and_date
+                .insert(cache_key, Some(cost));
+        }
+    }
+
+    for nomenclature_ref in document_nom_refs.iter().chain(component_refs.iter()) {
+        let cache_key = (nomenclature_ref.clone(), sale_date.clone());
+        if cache
+            .resolved_prod_unit_cost_by_nom_and_date
+            .contains_key(&cache_key)
+        {
+            continue;
+        }
+
+        let direct_cost = cache
+            .direct_cost_by_nom_and_date
+            .get(&cache_key)
+            .copied()
+            .flatten();
+        let resolved = direct_cost.or_else(|| {
+            cache
+                .nomenclature_by_id
+                .get(nomenclature_ref)
+                .and_then(|item| item.as_ref())
+                .and_then(|nomenclature| {
+                    valid_ref(nomenclature.base_nomenclature_ref.clone(), nomenclature_ref)
+                })
+                .and_then(|base_ref| {
+                    cache
+                        .direct_cost_by_nom_and_date
+                        .get(&(base_ref, sale_date.clone()))
+                        .copied()
+                        .flatten()
+                })
+        });
+        cache
+            .resolved_prod_unit_cost_by_nom_and_date
+            .insert(cache_key, resolved);
     }
 
     Ok(())
 }
 
-/// Автозаполнение marketplace_product_ref и nomenclature_ref
-pub async fn auto_fill_references(document: &mut WbSales) -> Result<()> {
-    // Автозаполнение marketplace_product_ref если пустой
+pub async fn resolve_prod_item_cost_total_cached(
+    document: &WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<Option<f64>> {
+    let Some(nomenclature_ref) = document.nomenclature_ref.as_deref() else {
+        return Ok(None);
+    };
+    if nomenclature_ref.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+    let Some(nomenclature) = cache.get_nomenclature(nomenclature_ref).await? else {
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: nomenclature not found {}",
+            document.base.id.as_string(),
+            nomenclature_ref
+        );
+        return Ok(None);
+    };
+
+    if !nomenclature.is_assembly {
+        let resolved = cache
+            .resolve_simple_prod_unit_cost(nomenclature_ref, &sale_date)
+            .await?;
+        if resolved.is_none() {
+            tracing::warn!(
+                "Skip prod item_cost for WB Sales {}: no p912 cost for nomenclature {} on {}",
+                document.base.id.as_string(),
+                nomenclature_ref,
+                sale_date
+            );
+        }
+        return Ok(resolved.map(|unit_cost| unit_cost * document.line.qty.abs()));
+    }
+
+    let Some(kit_variant) = cache.get_kit_variant_by_owner_ref(nomenclature_ref).await? else {
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: kit variant not found for owner_ref {}",
+            document.base.id.as_string(),
+            nomenclature_ref
+        );
+        return Ok(None);
+    };
+
+    let goods = kit_variant.parse_goods();
+    if goods.is_empty() {
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: empty kit composition for owner_ref {}",
+            document.base.id.as_string(),
+            nomenclature_ref
+        );
+        return Ok(None);
+    }
+
+    let mut unit_cost = 0.0;
+    let mut missing_components = Vec::new();
+    for component in goods {
+        match cache
+            .resolve_simple_prod_unit_cost(&component.nomenclature_ref, &sale_date)
+            .await?
+        {
+            Some(component_cost) => unit_cost += component_cost * component.quantity,
+            None => missing_components.push(component.nomenclature_ref),
+        }
+    }
+
+    if !missing_components.is_empty() {
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: missing p912 cost for kit {} components {:?} on {}",
+            document.base.id.as_string(),
+            nomenclature_ref,
+            missing_components,
+            sale_date
+        );
+        return Ok(None);
+    }
+
+    Ok(Some(unit_cost * document.line.qty.abs()))
+}
+
+pub async fn sync_organization_from_connection_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    let should_sync = document.header.organization_id.trim().is_empty()
+        || match cache.get_connection(&document.header.connection_id).await? {
+            Some(connection) => {
+                let organization_ref = connection.organization_ref.trim().trim_matches('"');
+                organization_ref != document.header.organization_id
+            }
+            None => false,
+        };
+
+    if !should_sync {
+        return Ok(false);
+    }
+
+    let Some(connection) = cache.get_connection(&document.header.connection_id).await? else {
+        tracing::warn!(
+            "Skip organization sync for WB Sales {}: connection not found, connection_id={}",
+            document.base.id.value(),
+            document.header.connection_id
+        );
+        return Ok(false);
+    };
+
+    let organization_ref = connection.organization_ref.trim().trim_matches('"');
+    let organization_uuid = match Uuid::parse_str(organization_ref) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            tracing::warn!(
+                "Skip organization sync for WB Sales {}: invalid organization_ref={}",
+                document.base.id.value(),
+                connection.organization_ref
+            );
+            return Ok(false);
+        }
+    };
+
+    if crate::domain::a002_organization::service::get_by_id(organization_uuid)
+        .await?
+        .is_none()
+    {
+        tracing::warn!(
+            "Skip organization sync for WB Sales {}: organization_ref not found={}",
+            document.base.id.value(),
+            connection.organization_ref
+        );
+        return Ok(false);
+    }
+
+    let resolved_org_id = organization_uuid.to_string();
+    if document.header.organization_id != resolved_org_id {
+        document.header.organization_id = resolved_org_id;
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+pub async fn auto_fill_references_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    let mut changed = false;
+
     if document.marketplace_product_ref.is_none() {
-        // Ищем по connection_mp_ref и supplier_article (используем как marketplace_sku)
-        let marketplace_product =
-            crate::domain::a007_marketplace_product::service::get_by_connection_and_sku(
-                &document.header.connection_id,
-                &document.line.supplier_article,
+        if let Some(marketplace_sku) =
+            crate::domain::a007_marketplace_product::service::wb_marketplace_sku(
+                document.line.nm_id,
+            )
+        {
+            let title = if document.line.name.trim().is_empty() {
+                format!("Артикул: {}", document.line.supplier_article)
+            } else {
+                document.line.name.clone()
+            };
+
+            let mp_id = crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+                crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                    marketplace_ref: document.header.marketplace_id.clone(),
+                    connection_mp_ref: document.header.connection_id.clone(),
+                    marketplace_sku,
+                    article: Some(document.line.supplier_article.clone()),
+                    barcode: Some(document.line.barcode.clone()),
+                    title,
+                },
             )
             .await?;
 
-        let mp_id = if let Some(existing) = marketplace_product {
-            existing.base.id.as_string()
-        } else {
-            // Создаем новый a007_marketplace_product
-            let dto =
-                contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductDto {
-                    id: None,
-                    code: Some(format!("WB-AUTO-{}", uuid::Uuid::new_v4())),
-                    description: if document.line.name.trim().is_empty() {
-                        format!("Артикул: {}", document.line.supplier_article)
-                    } else {
-                        document.line.name.clone()
-                    },
-                    marketplace_ref: document.header.marketplace_id.clone(),
-                    connection_mp_ref: document.header.connection_id.clone(),
-                    marketplace_sku: document.line.supplier_article.clone(),
-                    barcode: Some(document.line.barcode.clone()),
-                    article: document.line.supplier_article.clone(),
-                    brand: None,
-                    category_id: None,
-                    category_name: None,
-                    last_update: Some(chrono::Utc::now()),
-                    nomenclature_ref: None,
-                    comment: Some(format!(
-                        "Автоматически создано при импорте WB Sales [{}]",
-                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-                    )),
-                };
-
-            let created_id = crate::domain::a007_marketplace_product::service::create(dto).await?;
-            tracing::info!("Created new marketplace_product with id: {}", created_id);
-            created_id.to_string()
-        };
-
-        document.marketplace_product_ref = Some(mp_id);
+            document.marketplace_product_ref = Some(mp_id.to_string());
+            changed = true;
+        }
     }
 
-    // Автозаполнение nomenclature_ref из marketplace_product
     if document.nomenclature_ref.is_none() {
-        if let Some(ref mp_ref) = document.marketplace_product_ref {
-            if let Ok(mp_uuid) = uuid::Uuid::parse_str(mp_ref) {
-                if let Ok(Some(mp)) =
-                    crate::domain::a007_marketplace_product::service::get_by_id(mp_uuid).await
-                {
-                    if let Some(nom_ref) = mp.nomenclature_ref {
-                        document.nomenclature_ref = Some(nom_ref);
-                    }
+        if let Some(mp_ref) = document.marketplace_product_ref.as_deref() {
+            if let Some(mp) = cache.get_marketplace_product(mp_ref).await? {
+                if let Some(nom_ref) = mp.nomenclature_ref {
+                    document.nomenclature_ref = Some(nom_ref);
+                    changed = true;
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(changed)
 }
 
-/// Автозаполнение dealer_price_ut из p906_nomenclature_prices
-/// Логика:
-/// 1. Ищем цену на дату по nomenclature_ref
-/// 2. Если не найдено и есть base_nomenclature_ref, ищем цену на дату по нему
-/// 3. Если не найдено, ищем самую первую ненулевую цену по nomenclature_ref
-/// 4. Если не найдено и есть base_nomenclature_ref, ищем самую первую ненулевую цену по нему
-pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
-    const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
-
-    // Проверяем наличие nomenclature_ref
-    let Some(ref nom_ref) = document.nomenclature_ref else {
-        document.line.dealer_price_ut = None;
-        return Ok(());
+pub async fn fill_dealer_price_resolved_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    let Some(nom_ref) = document.nomenclature_ref.as_deref() else {
+        let mut changed = false;
+        changed |= set_if_changed(&mut document.line.dealer_price_ut, None);
+        changed |= set_if_changed(&mut document.line.cost_of_production, None);
+        return Ok(changed);
     };
 
-    // Получаем дату продажи в формате строки
-    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
-
-    let mut price_source = String::new();
-
-    // 1. Пытаемся найти цену на дату по основной номенклатуре
-    let mut price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
-        nom_ref, &sale_date,
-    )
-    .await
-    .unwrap_or_else(|e| {
-        tracing::warn!("Failed to get dealer price for {}: {}", nom_ref, e);
-        None
-    });
-
-    // Проверяем что цена не только найдена, но и не равна 0
-    if price.is_some() && price.unwrap() > 0.0 {
-        price_source = format!("nomenclature {} on date {}", nom_ref, sale_date);
-    } else {
-        // Нулевая цена считается как "не найдена"
-        price = None;
+    if document.line.cost_of_production.unwrap_or(0.0) > 0.0
+        && document.line.dealer_price_ut.unwrap_or(0.0) > 0.0
+    {
+        return Ok(false);
     }
-
-    // 2. Если цена не найдена, пробуем найти по base_nomenclature_ref на дату
-    if price.is_none() {
-        // Получаем данные номенклатуры чтобы узнать base_nomenclature_ref
-        if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
-            if let Ok(Some(nomenclature)) =
-                crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
-            {
-                if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
-                    // Проверяем что base_ref не пустой и не zero uuid
-                    if !base_ref.is_empty() && base_ref != ZERO_UUID {
-                        price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
-                            base_ref,
-                            &sale_date,
-                        )
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Failed to get dealer price for base_nomenclature {}: {}", base_ref, e);
-                            None
-                        });
-
-                        // Проверяем что цена не только найдена, но и не равна 0
-                        if price.is_some() && price.unwrap() > 0.0 {
-                            price_source =
-                                format!("base_nomenclature {} on date {}", base_ref, sale_date);
-                        } else {
-                            // Нулевая цена считается как "не найдена"
-                            price = None;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Если цена всё ещё не найдена, пробуем найти самую первую ненулевую цену по основной номенклатуре
-    if price.is_none() {
-        price = crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
-            nom_ref,
-        )
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to get first nonzero price for {}: {}", nom_ref, e);
-            None
-        });
-
-        if price.is_some() {
-            price_source = format!("nomenclature {} (first nonzero price)", nom_ref);
-        }
-    }
-
-    // 4. Если цена всё ещё не найдена, пробуем найти самую первую ненулевую цену по base_nomenclature_ref
-    if price.is_none() {
-        if let Ok(nom_uuid) = Uuid::parse_str(nom_ref) {
-            if let Ok(Some(nomenclature)) =
-                crate::domain::a004_nomenclature::service::get_by_id(nom_uuid).await
-            {
-                if let Some(ref base_ref) = nomenclature.base_nomenclature_ref {
-                    // Проверяем что base_ref не пустой и не zero uuid
-                    if !base_ref.is_empty() && base_ref != ZERO_UUID {
-                        price = crate::projections::p906_nomenclature_prices::repository::get_first_nonzero_price(
-                            base_ref,
-                        )
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Failed to get first nonzero price for base_nomenclature {}: {}", base_ref, e);
-                            None
-                        });
-
-                        if price.is_some() {
-                            price_source =
-                                format!("base_nomenclature {} (first nonzero price)", base_ref);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Логируем результат
-    if price.is_some() {
-        tracing::info!(
-            "Filled dealer_price_ut = {:?} for document {} (from {})",
-            price,
-            document.base.id.as_string(),
-            price_source
-        );
-    } else {
-        tracing::warn!(
-            "Could not find dealer_price_ut for document {} (nomenclature: {})",
-            document.base.id.as_string(),
-            nom_ref
-        );
-    }
-
-    document.line.dealer_price_ut = price;
-
-    Ok(())
-}
-
-pub async fn fill_dealer_price_resolved(document: &mut WbSales) -> Result<()> {
-    let Some(ref nom_ref) = document.nomenclature_ref else {
-        document.line.dealer_price_ut = None;
-        document.line.cost_of_production = None;
-        return Ok(());
-    };
 
     let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
-    let resolved =
-        crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
-            nom_ref, &sale_date,
-        )
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to resolve dealer price for {}: {}", nom_ref, e);
-            None
-        });
+    let resolved = cache.resolve_price(nom_ref, &sale_date).await?;
 
     if let Some(ref resolved_price) = resolved {
         tracing::info!(
@@ -367,11 +597,91 @@ pub async fn fill_dealer_price_resolved(document: &mut WbSales) -> Result<()> {
         );
     }
 
-    let price = resolved.map(|resolved_price| resolved_price.price);
-    document.line.dealer_price_ut = price;
-    document.line.cost_of_production = price;
+    let resolved_price = resolved.map(|value| value.price);
+    let mut changed = false;
 
+    if document.line.dealer_price_ut.unwrap_or(0.0) <= 0.0 {
+        changed |= set_if_changed(&mut document.line.dealer_price_ut, resolved_price);
+    }
+    if document.line.cost_of_production.unwrap_or(0.0) <= 0.0 {
+        changed |= set_if_changed(&mut document.line.cost_of_production, resolved_price);
+    }
+
+    Ok(changed)
+}
+
+pub async fn calculate_plan_fields_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    let acquiring_fee_pro = cache
+        .get_acquiring_fee_rate(&document.header.marketplace_id)
+        .await?;
+
+    let finished_price = document.line.finished_price.unwrap_or(0.0);
+    let amount_line = document.line.amount_line.unwrap_or(0.0);
+    let cost_of_production = document.line.cost_of_production.unwrap_or(0.0);
+
+    let acquiring_fee_plan = acquiring_fee_pro * finished_price / 100.0;
+    let commission_plan = finished_price - amount_line;
+    let other_fee_plan = 0.0;
+    let supplier_payout_plan = amount_line - acquiring_fee_plan;
+    let profit_plan =
+        finished_price - acquiring_fee_plan - commission_plan - other_fee_plan - cost_of_production;
+
+    let mut changed = clear_fact_fields(document);
+    changed |= set_if_changed(&mut document.line.sell_out_plan, Some(finished_price));
+    changed |= set_if_changed(
+        &mut document.line.acquiring_fee_plan,
+        Some(acquiring_fee_plan),
+    );
+    changed |= set_if_changed(&mut document.line.other_fee_plan, Some(other_fee_plan));
+    changed |= set_if_changed(
+        &mut document.line.supplier_payout_plan,
+        Some(supplier_payout_plan),
+    );
+    changed |= set_if_changed(&mut document.line.commission_plan, Some(commission_plan));
+    changed |= set_if_changed(&mut document.line.profit_plan, Some(profit_plan));
+    Ok(changed)
+}
+
+pub async fn prepare_document_for_posting_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    let mut changed = false;
+    changed |= sync_organization_from_connection_cached(document, cache).await?;
+    changed |= auto_fill_references_cached(document, cache).await?;
+    changed |= fill_dealer_price_resolved_cached(document, cache).await?;
+    changed |= calculate_plan_fields_cached(document, cache).await?;
+    Ok(changed)
+}
+
+pub async fn calculate_plan_fields(document: &mut WbSales) -> Result<()> {
+    let mut cache = PostingPreparationCache::default();
+    calculate_plan_fields_cached(document, &mut cache).await?;
     Ok(())
+}
+
+pub async fn auto_fill_references(document: &mut WbSales) -> Result<()> {
+    let mut cache = PostingPreparationCache::default();
+    auto_fill_references_cached(document, &mut cache).await?;
+    Ok(())
+}
+
+pub async fn fill_dealer_price(document: &mut WbSales) -> Result<()> {
+    fill_dealer_price_resolved(document).await
+}
+
+pub async fn fill_dealer_price_resolved(document: &mut WbSales) -> Result<()> {
+    let mut cache = PostingPreparationCache::default();
+    fill_dealer_price_resolved_cached(document, &mut cache).await?;
+    Ok(())
+}
+
+pub async fn prepare_document_for_posting(document: &mut WbSales) -> Result<bool> {
+    let mut cache = PostingPreparationCache::default();
+    prepare_document_for_posting_cached(document, &mut cache).await
 }
 
 pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> Result<Uuid> {
@@ -385,12 +695,7 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
     .await?;
 
     document.source_meta.raw_payload_ref = raw_ref;
-
-    // Автозаполнение ссылок
-    auto_fill_references(&mut document).await?;
-
-    // Заполнение dealer_price_ut
-    fill_dealer_price_resolved(&mut document).await?;
+    prepare_document_for_posting(&mut document).await?;
 
     document
         .validate()
@@ -399,14 +704,11 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
 
     let id = repository::upsert_document(&document).await?;
 
-    // Проводим документ если is_posted = true
     if document.is_posted {
         if let Err(e) = super::posting::post_document(id).await {
             tracing::error!("Failed to post WB Sales document: {}", e);
-            // Не останавливаем выполнение, т.к. документ уже сохранен
         }
     } else {
-        // Если is_posted = false, удаляем проекции (если были)
         if let Err(e) = crate::projections::p900_mp_sales_register::service::delete_by_registrator(
             &id.to_string(),
         )
@@ -436,7 +738,6 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<WbSales>> {
     repository::get_by_document_no(document_no).await
 }
 
-/// Get by sale_id (saleID from WB API) - used for deduplication
 pub async fn get_by_sale_id(sale_id: &str) -> Result<Option<WbSales>> {
     repository::get_by_sale_id(sale_id).await
 }
@@ -456,17 +757,15 @@ pub async fn delete(id: Uuid) -> Result<bool> {
     repository::soft_delete(id).await
 }
 
-/// Обновить dealer_price_ut для существующего документа
 pub async fn refresh_dealer_price(id: Uuid) -> Result<()> {
-    // Получаем документ
     let mut document = get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
-    // Обновляем dealer_price_ut
+    document.line.dealer_price_ut = None;
+    document.line.cost_of_production = None;
     fill_dealer_price_resolved(&mut document).await?;
-
-    // Сохраняем обратно в базу
+    calculate_plan_fields(&mut document).await?;
     repository::upsert_document(&document).await?;
 
     tracing::info!(

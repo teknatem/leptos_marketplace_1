@@ -301,9 +301,8 @@ pub async fn unpost_document(
 pub async fn get_projections(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let registrator_ref = format!("a026:{}", id);
     let p911_items = crate::projections::p911_wb_advert_by_items::service::list_by_registrator_ref(
-        &registrator_ref,
+        &format!("a026:{}", id),
     )
     .await
     .map_err(|e| {
@@ -319,31 +318,16 @@ pub async fn get_projections(
 pub async fn get_general_ledger_entries(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let registrator_ref = format!("a026:{}", id);
-    let rows = crate::general_ledger::repository::list_with_filters(
-        None,
-        None,
-        Some(registrator_ref),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-        None,
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(
-            "Failed to get general ledger entries for a026 {}: {}",
-            id,
-            e
-        );
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let rows = crate::general_ledger::repository::list_by_registrator("a026_wb_advert_daily", &id)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                "Failed to get general ledger entries for a026 {}: {}",
+                id,
+                e
+            );
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let general_ledger_entries = rows.into_iter().map(to_journal_dto).collect::<Vec<_>>();
 
@@ -352,21 +336,19 @@ pub async fn get_general_ledger_entries(
     ))
 }
 
-fn to_journal_dto(
-    row: crate::general_ledger::repository::Model,
-) -> GeneralLedgerEntryDto {
-    let comment =
-        crate::general_ledger::turnover_registry::get_turnover_class(&row.turnover_code)
-            .map(|c| c.journal_comment.to_string())
-            .unwrap_or_default();
+fn to_journal_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
+    let comment = crate::general_ledger::turnover_registry::get_turnover_class(&row.turnover_code)
+        .map(|c| c.journal_comment.to_string())
+        .unwrap_or_default();
 
     GeneralLedgerEntryDto {
         id: row.id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        cabinet_mp: row.cabinet_mp,
+        connection_mp_ref: row.connection_mp_ref,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,
+        order_id: row.order_id,
         debit_account: row.debit_account,
         credit_account: row.credit_account,
         amount: row.amount,

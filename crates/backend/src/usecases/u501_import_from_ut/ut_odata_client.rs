@@ -1,5 +1,6 @@
 use anyhow::Result;
 use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
+use contracts::domain::common::AggregateId;
 use std::fs::OpenOptions;
 use std::io::Write;
 
@@ -29,6 +30,31 @@ impl UtODataClient {
             let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
             let _ = writeln!(file, "[{}] {}", timestamp, message);
         }
+    }
+
+    fn password_opt<'a>(&self, connection: &'a Connection1CDatabase) -> Option<&'a str> {
+        if connection.password.is_empty() {
+            None
+        } else {
+            Some(&connection.password)
+        }
+    }
+
+    fn auth_error_message(
+        &self,
+        connection: &Connection1CDatabase,
+        url: &str,
+        status: reqwest::StatusCode,
+    ) -> String {
+        format!(
+            "1C OData authorization failed with status {} for connection '{}' (id={}, login='{}', url='{}'). \
+Проверьте логин/пароль в a001_connection_1c и доступ пользователя к OData в 1С.",
+            status,
+            connection.base.description,
+            connection.base.id.as_string(),
+            connection.login,
+            url
+        )
     }
 
     /// Получить данные из OData коллекции
@@ -100,6 +126,14 @@ impl UtODataClient {
         select: Option<&str>,
         orderby: Option<&str>,
     ) -> Result<T> {
+        if connection.login.trim().is_empty() {
+            anyhow::bail!(
+                "1C OData login is empty for connection '{}' (id={})",
+                connection.base.description,
+                connection.base.id.as_string()
+            );
+        }
+
         // Формируем полный OData URL: base_url + /odata/standard.odata/ + collection_name
         let base_url = connection.url.trim_end_matches('/');
         let odata_path = if base_url.contains("/odata/") {
@@ -171,7 +205,7 @@ impl UtODataClient {
         let response = match self
             .client
             .get(&url)
-            .basic_auth(&connection.login, Some(&connection.password))
+            .basic_auth(&connection.login, self.password_opt(connection))
             .header("Accept", "application/json")
             .send()
             .await
@@ -207,6 +241,15 @@ impl UtODataClient {
         );
 
         if !status.is_success() {
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                let message = self.auth_error_message(connection, &url, status);
+                self.log_to_file(&format!("ERROR: {}", message));
+                tracing::error!("{}", message);
+                anyhow::bail!("{}", message);
+            }
+
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("OData request failed: {}", body);
@@ -261,6 +304,14 @@ impl UtODataClient {
         collection_name: &str,
         filter: Option<&str>,
     ) -> Result<Option<i32>> {
+        if connection.login.trim().is_empty() {
+            anyhow::bail!(
+                "1C OData login is empty for connection '{}' (id={})",
+                connection.base.description,
+                connection.base.id.as_string()
+            );
+        }
+
         // Формируем полный OData URL
         let base_url = connection.url.trim_end_matches('/');
         let odata_path = if base_url.contains("/odata/") {
@@ -281,14 +332,31 @@ impl UtODataClient {
         let response = self
             .client
             .get(&url)
-            .basic_auth(&connection.login, Some(&connection.password))
+            .basic_auth(&connection.login, self.password_opt(connection))
             .send()
             .await?;
 
         if !response.status().is_success() {
+            if response.status() == reqwest::StatusCode::UNAUTHORIZED
+                || response.status() == reqwest::StatusCode::FORBIDDEN
+            {
+                let message = self.auth_error_message(connection, &url, response.status());
+                self.log_to_file(&format!("ERROR: {}", message));
+                tracing::warn!("{}", message);
+                anyhow::bail!("{}", message);
+            }
+
             // Некоторые конфигурации УТ не поддерживают $count
-            tracing::warn!("Failed to get collection count, continuing without it");
-            self.log_to_file("Count request failed (not supported)");
+            tracing::warn!(
+                "Failed to get collection count for '{}' (status {}), continuing without it",
+                collection_name,
+                response.status()
+            );
+            self.log_to_file(&format!(
+                "Count request failed for '{}' with status {} (continuing without count)",
+                collection_name,
+                response.status()
+            ));
             return Ok(None);
         }
 
