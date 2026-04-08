@@ -10,6 +10,7 @@ use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, highlight_matches};
 use crate::shared::page_frame::PageFrame;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use contracts::domain::common::AggregateId;
 use gloo_net::http::Request;
@@ -60,6 +61,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
+    let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
 
     // Filter panel expansion state
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
@@ -73,6 +75,14 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .clone()
             .unwrap_or_default(),
     );
+    let filter_connection = RwSignal::new(
+        state
+            .get_untracked()
+            .connection_mp_ref
+            .clone()
+            .unwrap_or_default(),
+    );
+    let filter_problems_only = RwSignal::new(state.get_untracked().problems_only);
 
     // Обновление state при изменении RwSignal
     Effect::new(move || {
@@ -95,6 +105,30 @@ pub fn MarketplaceProductList() -> impl IntoView {
         });
     });
 
+    Effect::new(move || {
+        let connection = filter_connection.get();
+        untrack(move || {
+            state.update(|s| {
+                s.connection_mp_ref = if connection.is_empty() {
+                    None
+                } else {
+                    Some(connection)
+                };
+                s.page = 0;
+            });
+        });
+    });
+
+    Effect::new(move || {
+        let problems_only = filter_problems_only.get();
+        untrack(move || {
+            state.update(|s| {
+                s.problems_only = problems_only;
+                s.page = 0;
+            });
+        });
+    });
+
     let load_data = move || {
         let current_state = state.get_untracked();
         set_loading.set(true);
@@ -112,10 +146,22 @@ pub fn MarketplaceProductList() -> impl IntoView {
             );
 
             if let Some(ref mp) = current_state.marketplace_ref {
-                url.push_str(&format!("&marketplace_ref={}", mp));
+                url.push_str(&format!("&marketplace_ref={}", urlencoding::encode(mp)));
+            }
+            if let Some(ref connection) = current_state.connection_mp_ref {
+                url.push_str(&format!(
+                    "&connection_mp_ref={}",
+                    urlencoding::encode(connection)
+                ));
+            }
+            if current_state.problems_only {
+                url.push_str("&problems_only=true");
             }
             if !current_state.search.is_empty() {
-                url.push_str(&format!("&search={}", current_state.search));
+                url.push_str(&format!(
+                    "&search={}",
+                    urlencoding::encode(&current_state.search)
+                ));
             }
 
             match Request::get(&url).send().await {
@@ -167,10 +213,27 @@ pub fn MarketplaceProductList() -> impl IntoView {
         });
     };
 
+    let fetch_connections = move || {
+        spawn_local(async move {
+            match Request::get(&format!("{}/api/connection_mp", api_base()))
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    if let Ok(v) = resp.json::<Vec<ConnectionMP>>().await {
+                        set_connections.set(v);
+                    }
+                }
+                Err(e) => log!("Error fetching connections: {:?}", e),
+            }
+        });
+    };
+
     // Initial load
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
             fetch_marketplaces();
+            fetch_connections();
             load_data();
         }
     });
@@ -193,6 +256,26 @@ pub fn MarketplaceProductList() -> impl IntoView {
             load_data();
         } else {
             mp_first_run.set_value(false);
+        }
+    });
+
+    let connection_first_run = StoredValue::new(true);
+    Effect::new(move || {
+        let _ = filter_connection.get();
+        if !connection_first_run.get_value() {
+            load_data();
+        } else {
+            connection_first_run.set_value(false);
+        }
+    });
+
+    let problems_first_run = StoredValue::new(true);
+    Effect::new(move || {
+        let _ = filter_problems_only.get();
+        if !problems_first_run.get_value() {
+            load_data();
+        } else {
+            problems_first_run.set_value(false);
         }
     });
 
@@ -268,6 +351,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
         global_ctx.open_tab("a007_marketplace_product_new", "New MP Product");
     };
 
+    let open_matching_usecase = move |_| {
+        global_ctx.open_tab(
+            "u505_match_nomenclature",
+            crate::layout::tabs::tab_label_for_key("u505_match_nomenclature"),
+        );
+    };
+
     let delete_selected = move |_| {
         let ids = state.get().selected_ids.clone();
         if ids.is_empty() {
@@ -306,6 +396,12 @@ pub fn MarketplaceProductList() -> impl IntoView {
         if s.marketplace_ref.is_some() {
             count += 1;
         }
+        if s.connection_mp_ref.is_some() {
+            count += 1;
+        }
+        if s.problems_only {
+            count += 1;
+        }
         count
     });
 
@@ -313,10 +409,14 @@ pub fn MarketplaceProductList() -> impl IntoView {
         state.update(|s| {
             s.search = String::new();
             s.marketplace_ref = None;
+            s.connection_mp_ref = None;
+            s.problems_only = false;
             s.page = 0;
         });
         search_text.set(String::new());
         filter_marketplace.set(String::new());
+        filter_connection.set(String::new());
+        filter_problems_only.set(false);
         load_data();
     };
 
@@ -344,6 +444,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     >
                         {icon("plus")}
                         " Создать"
+                    </thaw::Button>
+                    <thaw::Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| open_matching_usecase(())
+                    >
+                        {icon("link")}
+                        " 1С matching"
                     </thaw::Button>
                     <thaw::Button
                         appearance=ButtonAppearance::Secondary
@@ -460,6 +567,29 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                     </Select>
                                 </Flex>
                             </div>
+                            <div style="width: 240px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Кабинет:"</Label>
+                                    <Select value=filter_connection>
+                                        <option value="">"Все"</option>
+                                        {move || connections.get().into_iter().map(|conn| {
+                                            let id = conn.base.id.as_string();
+                                            view! { <option value=id>{conn.base.description}</option> }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
+                            </div>
+                            <div style="width: 180px;">
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Проблемы:"</Label>
+                                    <Field>
+                                        <Checkbox
+                                            checked=filter_problems_only
+                                            label="Только проблемные"
+                                        />
+                                    </Field>
+                                </Flex>
+                            </div>
                             <thaw::Button
                                 appearance=ButtonAppearance::Subtle
                                 on_click=move |_| clear_all_filters(())
@@ -474,11 +604,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
             {move || error.get().map(|e| view! { <div class="warning-box" style="margin: 10px;">{e}</div> })}
 
             <div class="page__content">
-                <div class="list-container">
+                <div class="list-container a007-mp-list__table-shell">
                     <table class="table__data table--striped">
-                        <thead class="table__head">
+                        <thead class="table__head a007-mp-list__sticky-head">
                             <tr>
-                                <th class="table__header-cell table__header-cell--checkbox">
+                                <th
+                                    class="table__header-cell table__header-cell--checkbox a007-mp-list__sticky-cell a007-mp-list__sticky-cell--checkbox"
+                                >
                                     <input
                                         type="checkbox"
                                         on:change=toggle_select_all
@@ -489,27 +621,42 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                         }
                                     />
                                 </th>
-                                <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("code")>
+                                <th
+                                    class="table__header-cell table__header-cell--sortable a007-mp-list__sticky-cell"
+                                    on:click=toggle_sort("code")
+                                >
                                     "Код"
                                     <span class={move || get_sort_class("code", &state.get().sort_field)}>{move || get_sort_indicator("code", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("description")>
+                                <th
+                                    class="table__header-cell table__header-cell--sortable a007-mp-list__sticky-cell"
+                                    on:click=toggle_sort("description")
+                                >
                                     "Описание"
                                     <span class={move || get_sort_class("description", &state.get().sort_field)}>{move || get_sort_indicator("description", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("article")>
+                                <th
+                                    class="table__header-cell table__header-cell--sortable a007-mp-list__sticky-cell"
+                                    on:click=toggle_sort("article")
+                                >
                                     "Артикул"
                                     <span class={move || get_sort_class("article", &state.get().sort_field)}>{move || get_sort_indicator("article", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("marketplace_sku")>
+                                <th
+                                    class="table__header-cell table__header-cell--sortable a007-mp-list__sticky-cell"
+                                    on:click=toggle_sort("marketplace_sku")
+                                >
                                     "SKU"
                                     <span class={move || get_sort_class("marketplace_sku", &state.get().sort_field)}>{move || get_sort_indicator("marketplace_sku", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--sortable" on:click=toggle_sort("barcode")>
+                                <th
+                                    class="table__header-cell table__header-cell--sortable a007-mp-list__sticky-cell"
+                                    on:click=toggle_sort("barcode")
+                                >
                                     "Штрихкод"
                                     <span class={move || get_sort_class("barcode", &state.get().sort_field)}>{move || get_sort_indicator("barcode", &state.get().sort_field, state.get().sort_ascending)}</span>
                                 </th>
-                                <th class="table__header-cell table__header-cell--center">"1С"</th>
+                                <th class="table__header-cell table__header-cell--center a007-mp-list__sticky-cell">"1С"</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -539,7 +686,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                                     }
                                                 />
                                             </td>
-                                            <td class="table__cell" style="cursor: pointer; color: var(--color-primary); font-weight: 600;" on:click={
+                                            <td class="table__cell a007-mp-list__code-cell" on:click={
                                                 let id = id_for_click.clone();
                                                 move |_| open_detail(id.clone(), article_for_tab.clone(), description_for_tab.clone())
                                             }>

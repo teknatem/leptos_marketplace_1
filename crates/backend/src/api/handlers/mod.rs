@@ -25,6 +25,7 @@ pub mod a023_purchase_of_goods;
 pub mod a024_bi_indicator;
 pub mod a025_bi_dashboard;
 pub mod a026_wb_advert_daily;
+pub mod a027_wb_documents;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -39,6 +40,7 @@ pub mod p908_wb_goods_prices;
 pub mod p909_mp_order_line_turnovers;
 pub mod p910_mp_unlinked_turnovers;
 pub mod p911_wb_advert_by_items;
+pub mod p912_nomenclature_costs;
 
 // DataView semantic layer handlers
 pub mod data_view;

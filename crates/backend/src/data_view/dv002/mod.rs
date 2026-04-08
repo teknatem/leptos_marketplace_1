@@ -533,6 +533,7 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
         change_percent: change,
         status: status_by_change(change),
         subtitle: None,
+        details: vec![],
         spark_points,
     })
 }

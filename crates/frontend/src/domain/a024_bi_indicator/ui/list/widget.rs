@@ -16,6 +16,7 @@ struct BiIndicatorRow {
     pub id: String,
     pub code: String,
     pub description: String,
+    pub chip: String,
     pub status: String,
     pub is_public: bool,
     pub owner_user_id: String,
@@ -91,6 +92,10 @@ async fn fetch_paginated(
             let id = v["id"].as_str()?.to_string();
             let code = v["code"].as_str().unwrap_or("").to_string();
             let description = v["description"].as_str().unwrap_or("").to_string();
+            let chip = v["view_spec"]["preview_values"]["chip"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
             let status = v["status"].as_str().unwrap_or("draft").to_string();
             let is_public = v["is_public"].as_bool().unwrap_or(false);
             let owner_user_id = v["owner_user_id"].as_str().unwrap_or("").to_string();
@@ -101,6 +106,7 @@ async fn fetch_paginated(
                 id,
                 code,
                 description,
+                chip,
                 status,
                 is_public,
                 owner_user_id,
@@ -384,7 +390,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                     <Label>"Поиск:"</Label>
                                     <Input
                                         value=q
-                                        placeholder="Код, наименование… (мин. 2 символа)"
+                                        placeholder="Код, название индикатора… (мин. 2 символа)"
                                     />
                                 </Flex>
                             </div>
@@ -423,7 +429,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                 </TableHeaderCell>
 
                                 <TableHeaderCell resizable=true min_width=240.0>
-                                    "Наименование"
+                                    "Название индикатора"
                                     <span
                                         class={move || format!("table__header-sort-indicator {}", get_sort_class("description", &sort_field.get()))}
                                         on:click=move |e| {
@@ -451,6 +457,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                 <TableHeaderCell resizable=true min_width=140.0>"Владелец"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=100.0>"Создан"</TableHeaderCell>
                                 <TableHeaderCell resizable=false min_width=80.0>"Действия"</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=120.0>"Chip"</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
@@ -460,7 +467,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                 if data.is_empty() && !is_loading.get() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="7">
+                                            <TableCell attr:colspan="8">
                                                 <TableCellLayout>
                                                     <span class="table__cell--muted">"Нет данных"</span>
                                                 </TableCellLayout>
@@ -477,6 +484,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                     let desc_for_open = row.description.clone();
                                     let code_display = row.code.clone();
                                     let desc_display = row.description.clone();
+                                    let chip_display = row.chip.clone();
                                     let status_str = row.status.clone();
                                     let owner = row.owner_user_id.clone();
                                     let created_at = row.created_at.clone().unwrap_or_default();
@@ -555,6 +563,22 @@ pub fn BiIndicatorList() -> impl IntoView {
                                                     >
                                                         {icon("trash-2")}
                                                     </Button>
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {if chip_display.trim().is_empty() {
+                                                        view! {
+                                                            <span class="table__cell--muted">"—"</span>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! {
+                                                            <Badge appearance=BadgeAppearance::Outline color=BadgeColor::Brand>
+                                                                {chip_display}
+                                                            </Badge>
+                                                        }.into_any()
+                                                    }}
                                                 </TableCellLayout>
                                             </TableCell>
                                         </TableRow>

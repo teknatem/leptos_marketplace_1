@@ -231,6 +231,7 @@ pub enum TurnoverLayer {
     Plan,
     Oper,
     Fact,
+    Prod,
 }
 
 impl TurnoverLayer {
@@ -239,6 +240,7 @@ impl TurnoverLayer {
             Self::Plan => "plan",
             Self::Oper => "oper",
             Self::Fact => "fact",
+            Self::Prod => "prod",
         }
     }
 
@@ -247,6 +249,7 @@ impl TurnoverLayer {
             "plan" => Some(Self::Plan),
             "oper" => Some(Self::Oper),
             "fact" => Some(Self::Fact),
+            "prod" => Some(Self::Prod),
             _ => None,
         }
     }
@@ -360,6 +363,9 @@ pub struct TurnoverClassDef {
     pub selection_rule: SelectionRule,
     pub sign_policy: SignPolicy,
     pub report_group: ReportGroup,
+    /// Явный список доступных измерений GL-drilldown для данного оборота.
+    /// IDs должны совпадать с contracts::general_ledger::GlDimensionDef.id.
+    pub available_dimensions: &'static [&'static str],
     pub aliases: &'static [&'static str],
     pub source_examples: &'static [&'static str],
     pub formula_hint: &'static str,

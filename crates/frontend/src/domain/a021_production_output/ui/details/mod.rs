@@ -4,6 +4,9 @@ use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use contracts::domain::a021_production_output::aggregate::ProductionOutput;
+use contracts::projections::p912_nomenclature_costs::dto::{
+    NomenclatureCostDto, NomenclatureCostListResponse,
+};
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -38,6 +41,10 @@ fn format_money(v: f64) -> String {
     format!("{:.2}", v)
 }
 
+fn format_optional_money(v: Option<f64>) -> String {
+    v.map(format_money).unwrap_or_else(|| "—".to_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct NomInfo {
     pub id: String,
@@ -54,6 +61,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
 
     let (doc, set_doc) = signal(None::<ProductionOutput>);
     let (nom_info, set_nom_info) = signal(None::<NomInfo>);
+    let (projection_rows, set_projection_rows) = signal(Vec::<NomenclatureCostDto>::new());
+    let (projection_error, set_projection_error) = signal(None::<String>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
     let (posting, set_posting) = signal(false);
@@ -66,6 +75,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
             set_loading.set(true);
             set_error.set(None);
             set_nom_info.set(None);
+            set_projection_rows.set(Vec::new());
+            set_projection_error.set(None);
             spawn_local(async move {
                 let url = format!("{}/api/a021/production-output/{}", api_base(), id_val);
                 match Request::get(&url).send().await {
@@ -76,7 +87,6 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                 let tab_title = format!("Выпуск {}", data.document_no);
                                 tabs_store.update_tab_title(&tab_key, &tab_title);
 
-                                // Загружаем номенклатуру, если есть ссылка
                                 if let Some(ref nom_id) = data.nomenclature_ref {
                                     let nom_url =
                                         format!("{}/api/nomenclature/{}", api_base(), nom_id);
@@ -99,6 +109,27 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                             }
                                         }
                                     }
+                                }
+
+                                let projection_url = format!(
+                                "{}/api/p912/nomenclature-costs?registrator_type=a021_production_output&registrator_ref={}&limit=200",
+                                api_base(),
+                                id_val
+                            );
+                                match Request::get(&projection_url).send().await {
+                                    Ok(resp) if resp.ok() => {
+                                        match resp.json::<NomenclatureCostListResponse>().await {
+                                            Ok(payload) => set_projection_rows.set(payload.items),
+                                            Err(e) => set_projection_error
+                                                .set(Some(format!("Ошибка загрузки p912: {}", e))),
+                                        }
+                                    }
+                                    Ok(resp) => set_projection_error.set(Some(format!(
+                                        "Ошибка загрузки p912: HTTP {}",
+                                        resp.status()
+                                    ))),
+                                    Err(e) => set_projection_error
+                                        .set(Some(format!("Ошибка сети p912: {}", e))),
                                 }
 
                                 set_doc.set(Some(data));
@@ -169,7 +200,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
     view! {
         <PageFrame page_id="a021_production_output--detail" category="detail">
             {move || {
-                let doc_title = doc.get()
+                let doc_title = doc
+                    .get()
                     .map(|d| format!("Выпуск {} от {}", d.document_no, format_date(&d.document_date)))
                     .unwrap_or_else(|| "Выпуск продукции".to_string());
                 let is_posted = doc.get().map(|d| d.base.metadata.is_posted).unwrap_or(false);
@@ -182,13 +214,9 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                             <h1 class="page__title">{doc_title}</h1>
                             {if doc_loaded {
                                 if is_posted {
-                                    view! {
-                                        <span class="badge badge--success">"Проведён"</span>
-                                    }.into_any()
+                                    view! { <span class="badge badge--success">"Проведён"</span> }.into_any()
                                 } else {
-                                    view! {
-                                        <span class="badge badge--secondary">"Не проведён"</span>
-                                    }.into_any()
+                                    view! { <span class="badge badge--secondary">"Не проведён"</span> }.into_any()
                                 }
                             } else {
                                 view! { <span></span> }.into_any()
@@ -206,7 +234,8 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                             {icon("x-circle")}
                                             " Отменить проведение"
                                         </Button>
-                                    }.into_any()
+                                    }
+                                    .into_any()
                                 } else {
                                     view! {
                                         <Button
@@ -217,15 +246,13 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                             {icon("check-circle")}
                                             " Провести"
                                         </Button>
-                                    }.into_any()
+                                    }
+                                    .into_any()
                                 }
                             } else {
                                 view! { <span></span> }.into_any()
                             }}
-                            <Button
-                                appearance=ButtonAppearance::Subtle
-                                on_click=move |_| on_close.run(())
-                            >
+                            <Button appearance=ButtonAppearance::Subtle on_click=move |_| on_close.run(())>
                                 "✕ Закрыть"
                             </Button>
                         </div>
@@ -241,14 +268,16 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                                 <Spinner />
                                 <span>"Загрузка..."</span>
                             </Flex>
-                        }.into_any();
+                        }
+                        .into_any();
                     }
                     if let Some(err) = error.get() {
                         return view! {
                             <div style="padding:var(--spacing-lg);background:var(--color-error-50);border:1px solid var(--color-error-100);border-radius:var(--radius-sm);color:var(--color-error);margin:var(--spacing-lg);">
                                 <strong>"Ошибка: "</strong>{err}
                             </div>
-                        }.into_any();
+                        }
+                        .into_any();
                     }
                     if let Some(d) = doc.get() {
                         let nom_status = if d.nomenclature_ref.is_some() {
@@ -264,95 +293,188 @@ pub fn ProductionOutputDetail(id: String, #[prop(into)] on_close: Callback<()>) 
                             <div class="detail-grid">
                                 <div class="detail-grid__col">
                                     <CardAnimated delay_ms=0 nav_id="a021_production_output_details_document">
-                                    <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
-                                        <span class="form__label">"Номер документа:"</span>
-                                        <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
+                                        <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
+                                            <span class="form__label">"Номер документа:"</span>
+                                            <strong style="font-size:var(--font-size-lg);">{d.document_no.clone()}</strong>
 
-                                        <span class="form__label">"Дата производства:"</span>
-                                        <span>{format_date(&d.document_date)}</span>
+                                            <span class="form__label">"Дата производства:"</span>
+                                            <span>{format_date(&d.document_date)}</span>
 
-                                        <span class="form__label">"Наименование:"</span>
-                                        <span>{d.base.description.clone()}</span>
+                                            <span class="form__label">"Наименование:"</span>
+                                            <span>{d.base.description.clone()}</span>
 
-                                        <span class="form__label">"Артикул:"</span>
-                                        <code style="font-family:monospace;">{d.article.clone()}</code>
+                                            <span class="form__label">"Артикул:"</span>
+                                            <code style="font-family:monospace;">{d.article.clone()}</code>
 
-                                        <span class="form__label">"Количество:"</span>
-                                        <strong>{d.count}</strong>
+                                            <span class="form__label">"Количество:"</span>
+                                            <strong>{d.count}</strong>
 
-                                        <span class="form__label">"Сумма себестоимости:"</span>
-                                        <span>{format_money(d.amount)}</span>
+                                            <span class="form__label">"Сумма себестоимости:"</span>
+                                            <span>{format_money(d.amount)}</span>
 
-                                        <span class="form__label">"С/с на 1 шт:"</span>
-                                        <span>
-                                            {d.cost_of_production.map(format_money).unwrap_or_else(|| "—".to_string())}
-                                        </span>
-                                    </div>
+                                            <span class="form__label">"С/с на 1 шт:"</span>
+                                            <span>{format_optional_money(d.cost_of_production)}</span>
+                                        </div>
                                     </CardAnimated>
                                 </div>
 
                                 <div class="detail-grid__col">
                                     <CardAnimated delay_ms=40 nav_id="a021_production_output_details_nomenclature">
-                                    <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
-                                        <span class="form__label">"Номенклатура 1С:"</span>
-                                        <span style="display:flex;align-items:center;gap:var(--spacing-sm);flex-wrap:wrap;">
-                                            <span class=nom_status.0>{nom_status.1}</span>
+                                        <div style="padding:var(--spacing-md);display:grid;grid-template-columns:max-content 1fr;gap:var(--spacing-sm) var(--spacing-xl);align-items:baseline;">
+                                            <span class="form__label">"Номенклатура 1С:"</span>
+                                            <span style="display:flex;align-items:center;gap:var(--spacing-sm);flex-wrap:wrap;">
+                                                <span class=nom_status.0>{nom_status.1}</span>
+                                                {move || {
+                                                    let nom = nom_info.get();
+                                                    let nom_ref = nom_ref_clone.clone();
+                                                    if let Some(n) = nom {
+                                                        let nom_id = n.id.clone();
+                                                        let nom_title = format!("{} ({})", n.description.clone(), n.article.clone());
+                                                        let nom_title_open = nom_title.clone();
+                                                        let tabs_store = tabs_store_nom.clone();
+                                                        view! {
+                                                            <a
+                                                                href="#"
+                                                                style="color:var(--color-primary);text-decoration:none;font-weight:500;"
+                                                                on:click=move |e| {
+                                                                    e.prevent_default();
+                                                                    tabs_store.open_tab(
+                                                                        &format!("a004_nomenclature_details_{}", nom_id),
+                                                                        &nom_title_open,
+                                                                    );
+                                                                }
+                                                            >
+                                                                {nom_title}
+                                                            </a>
+                                                            {if !n.code.is_empty() {
+                                                                view! {
+                                                                    <span style="font-family:monospace;font-size:var(--font-size-xs);color:var(--color-text-tertiary);">
+                                                                        {format!("(код: {})", n.code)}
+                                                                    </span>
+                                                                }
+                                                                .into_any()
+                                                            } else {
+                                                                view! { <></> }.into_any()
+                                                            }}
+                                                        }
+                                                        .into_any()
+                                                    } else if let Some(ref_id) = nom_ref {
+                                                        view! {
+                                                            <span style="font-family:monospace;font-size:var(--font-size-xs);color:var(--color-text-tertiary);">
+                                                                {ref_id}
+                                                            </span>
+                                                        }
+                                                        .into_any()
+                                                    } else {
+                                                        view! { <></> }.into_any()
+                                                    }
+                                                }}
+                                            </span>
+
+                                            <span class="form__label">"Подключение 1С:"</span>
+                                            <span style="font-family:monospace;font-size:var(--font-size-sm);">
+                                                {d.connection_id.clone()}
+                                            </span>
+
+                                            <span class="form__label">"Загружено:"</span>
+                                            <span>{format_datetime(&d.fetched_at.to_rfc3339())}</span>
+                                        </div>
+                                    </CardAnimated>
+                                </div>
+
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=80 nav_id="a021_production_output_details_projection">
+                                        <div style="padding:var(--spacing-md);display:flex;flex-direction:column;gap:var(--spacing-md);">
+                                            <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--spacing-md);flex-wrap:wrap;">
+                                                <h3 style="margin:0;font-size:var(--font-size-md);">"Проекция себестоимости p912"</h3>
+                                                <span class="badge badge--secondary">
+                                                    {format!("Строк: {}", projection_rows.get().len())}
+                                                </span>
+                                            </div>
+
                                             {move || {
-                                                let nom = nom_info.get();
-                                                let nom_ref = nom_ref_clone.clone();
-                                                if let Some(n) = nom {
-                                                    let nom_id = n.id.clone();
-                                                    let nom_title = format!("{} ({})", n.description.clone(), n.article.clone());
-                                                    let nom_title_open = nom_title.clone();
-                                                    let tabs_store = tabs_store_nom.clone();
+                                                if let Some(err) = projection_error.get() {
                                                     view! {
-                                                        <a
-                                                            href="#"
-                                                            style="color:var(--color-primary);text-decoration:none;font-weight:500;"
-                                                            on:click=move |e| {
-                                                                e.prevent_default();
-                                                                tabs_store.open_tab(
-                                                                    &format!("a004_nomenclature_details_{}", nom_id),
-                                                                    &nom_title_open,
-                                                                );
-                                                            }
-                                                        >
-                                                            {nom_title}
-                                                        </a>
-                                                        {if !n.code.is_empty() {
-                                                            view! {
-                                                                <span style="font-family:monospace;font-size:var(--font-size-xs);color:var(--color-text-tertiary);">
-                                                                    {format!("(код: {})", n.code)}
-                                                                </span>
-                                                            }.into_any()
-                                                        } else {
-                                                            view! { <></> }.into_any()
-                                                        }}
-                                                    }.into_any()
-                                                } else if let Some(ref_id) = nom_ref {
+                                                        <div style="padding:var(--spacing-sm);background:var(--color-error-50);border:1px solid var(--color-error-100);border-radius:var(--radius-sm);color:var(--color-error);">
+                                                            {err}
+                                                        </div>
+                                                    }
+                                                    .into_any()
+                                                } else if projection_rows.get().is_empty() {
                                                     view! {
-                                                        <span style="font-family:monospace;font-size:var(--font-size-xs);color:var(--color-text-tertiary);">
-                                                            {ref_id}
-                                                        </span>
-                                                    }.into_any()
+                                                        <div style="color:var(--color-text-secondary);">
+                                                            "Для документа строки p912 пока не сформированы"
+                                                        </div>
+                                                    }
+                                                    .into_any()
                                                 } else {
-                                                    view! { <></> }.into_any()
+                                                    view! {
+                                                        <div class="table-wrapper">
+                                                            <Table attr:style="width:100%;">
+                                                                <TableHeader>
+                                                                    <TableRow>
+                                                                        <TableHeaderCell>"Номенклатура"</TableHeaderCell>
+                                                                        <TableHeaderCell>"Период"</TableHeaderCell>
+                                                                        <TableHeaderCell>"С/с"</TableHeaderCell>
+                                                                        <TableHeaderCell>"Кол-во"</TableHeaderCell>
+                                                                        <TableHeaderCell>"Сумма"</TableHeaderCell>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    <For
+                                                                        each=move || projection_rows.get()
+                                                                        key=|row| row.id.clone()
+                                                                        children=move |row| {
+                                                                            let nomenclature_label = row
+                                                                                .nomenclature_name
+                                                                                .clone()
+                                                                                .unwrap_or_else(|| row.nomenclature_ref.clone());
+                                                                            let article = row.nomenclature_article.clone().unwrap_or_default();
+                                                                            view! {
+                                                                                <TableRow>
+                                                                                    <TableCell>
+                                                                                        <TableCellLayout truncate=true>
+                                                                                            <div style="display:flex;flex-direction:column;gap:2px;">
+                                                                                                <span>{nomenclature_label}</span>
+                                                                                                <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);font-family:monospace;">
+                                                                                                    {if article.is_empty() {
+                                                                                                        row.nomenclature_ref.clone()
+                                                                                                    } else {
+                                                                                                        format!("{} | {}", article, row.nomenclature_ref.clone())
+                                                                                                    }}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </TableCellLayout>
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        <TableCellLayout>{format_date(&row.period)}</TableCellLayout>
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        <TableCellLayout>{format_money(row.cost)}</TableCellLayout>
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        <TableCellLayout>{format_optional_money(row.quantity)}</TableCellLayout>
+                                                                                    </TableCell>
+                                                                                    <TableCell>
+                                                                                        <TableCellLayout>{format_optional_money(row.amount)}</TableCellLayout>
+                                                                                    </TableCell>
+                                                                                </TableRow>
+                                                                            }
+                                                                        }
+                                                                    />
+                                                                </TableBody>
+                                                            </Table>
+                                                        </div>
+                                                    }
+                                                    .into_any()
                                                 }
                                             }}
-                                        </span>
-
-                                        <span class="form__label">"Подключение 1С:"</span>
-                                        <span style="font-family:monospace;font-size:var(--font-size-sm);">
-                                            {d.connection_id.clone()}
-                                        </span>
-
-                                        <span class="form__label">"Загружено:"</span>
-                                        <span>{format_datetime(&d.fetched_at.to_rfc3339())}</span>
-                                    </div>
+                                        </div>
                                     </CardAnimated>
                                 </div>
                             </div>
-                        }.into_any()
+                        }
+                        .into_any()
                     } else {
                         view! { <div>"Нет данных"</div> }.into_any()
                     }

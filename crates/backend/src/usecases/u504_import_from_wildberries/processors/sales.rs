@@ -11,6 +11,7 @@ pub async fn process_sale_row(
     connection: &ConnectionMP,
     organization_id: &str,
     sale_row: &WbSaleRow,
+    raw_json: &str,
 ) -> Result<bool> {
     // SRID - уникальный идентификатор строки продажи
     let document_no = sale_row
@@ -161,8 +162,6 @@ pub async fn process_sale_row(
         true,
     );
 
-    let raw_json = serde_json::to_string(sale_row)?;
-
     // Диагностика перед сохранением
     tracing::debug!(
         "Processing WB sale: sale_id={}, document_no={}, event_type={}, supplier_article={}",
@@ -172,7 +171,7 @@ pub async fn process_sale_row(
         supplier_article
     );
 
-    match a012_wb_sales::service::store_document_with_raw(document, &raw_json).await {
+    match a012_wb_sales::service::store_document_with_raw(document, raw_json).await {
         Ok(_) => {
             if is_new {
                 tracing::debug!("Created new WB sale: sale_id={}", sale_id);

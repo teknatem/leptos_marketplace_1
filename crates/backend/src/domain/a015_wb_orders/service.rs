@@ -9,23 +9,19 @@ use uuid::Uuid;
 pub async fn auto_fill_references(document: &mut WbOrders) -> Result<()> {
     // Автозаполнение marketplace_product_ref если пустой
     if document.marketplace_product_ref.is_none() {
-        // Ищем по connection_mp_ref и supplier_article (используем как marketplace_sku)
-        let marketplace_product =
-            crate::domain::a007_marketplace_product::service::get_by_connection_and_sku(
-                &document.header.connection_id,
-                &document.line.supplier_article,
+        if let Some(marketplace_sku) =
+            crate::domain::a007_marketplace_product::service::wb_marketplace_sku(
+                document.line.nm_id,
             )
-            .await?;
-
-        let mp_id = if let Some(existing) = marketplace_product {
-            existing.base.id.as_string()
-        } else {
-            // Создаем новый a007_marketplace_product
-            let dto =
-                contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductDto {
-                    id: None,
-                    code: Some(format!("WB-AUTO-{}", uuid::Uuid::new_v4())),
-                    description: if let Some(ref brand) = document.line.brand {
+        {
+            let mp_id = crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+                crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                    marketplace_ref: document.header.marketplace_id.clone(),
+                    connection_mp_ref: document.header.connection_id.clone(),
+                    marketplace_sku,
+                    article: Some(document.line.supplier_article.clone()),
+                    barcode: Some(document.line.barcode.clone()),
+                    title: if let Some(ref brand) = document.line.brand {
                         if !brand.trim().is_empty() {
                             brand.clone()
                         } else {
@@ -34,28 +30,12 @@ pub async fn auto_fill_references(document: &mut WbOrders) -> Result<()> {
                     } else {
                         format!("Артикул: {}", document.line.supplier_article)
                     },
-                    marketplace_ref: document.header.marketplace_id.clone(),
-                    connection_mp_ref: document.header.connection_id.clone(),
-                    marketplace_sku: document.line.supplier_article.clone(),
-                    barcode: Some(document.line.barcode.clone()),
-                    article: document.line.supplier_article.clone(),
-                    brand: document.line.brand.clone(),
-                    category_id: None,
-                    category_name: document.line.category.clone(),
-                    last_update: Some(chrono::Utc::now()),
-                    nomenclature_ref: None,
-                    comment: Some(format!(
-                        "Автоматически создано при импорте WB Orders [{}]",
-                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-                    )),
-                };
+                },
+            )
+            .await?;
 
-            let created_id = crate::domain::a007_marketplace_product::service::create(dto).await?;
-            tracing::info!("Created new marketplace_product with id: {}", created_id);
-            created_id.to_string()
-        };
-
-        document.marketplace_product_ref = Some(mp_id);
+            document.marketplace_product_ref = Some(mp_id.to_string());
+        }
     }
 
     // Автозаполнение nomenclature_ref из marketplace_product

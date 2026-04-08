@@ -126,6 +126,15 @@ pub const FIELDS: &[FieldMetadata] = &[
         Some("Связь со сводной записью general_ledger."),
         None,
     ),
+    field(
+        "is_problem",
+        "bool",
+        "Problem",
+        true,
+        true,
+        Some("Проблемная строка детализации: сохранена в p911, но требует разбора, например из-за пустого nomenclature_ref."),
+        None,
+    ),
 ];
 
 const fn field(

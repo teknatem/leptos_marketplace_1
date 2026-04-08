@@ -116,3 +116,35 @@ pub async fn get_by_id(
         }
     }
 }
+
+/// POST /api/a023/purchase-of-goods/:id/post
+pub async fn post_purchase_of_goods(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    a023_purchase_of_goods::service::post_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to post purchase of goods {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document posted"}),
+    ))
+}
+
+/// POST /api/a023/purchase-of-goods/:id/unpost
+pub async fn unpost_purchase_of_goods(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    a023_purchase_of_goods::service::unpost_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to unpost purchase of goods {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document unposted"}),
+    ))
+}

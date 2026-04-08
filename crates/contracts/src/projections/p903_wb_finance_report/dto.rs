@@ -23,6 +23,7 @@ pub struct WbFinanceReportDto {
     pub delivery_amount: Option<f64>,
     pub delivery_rub: Option<f64>,
     pub nm_id: Option<i64>,
+    pub a004_nomenclature_ref: Option<String>,
     pub penalty: Option<f64>,
     pub ppvz_vw: Option<f64>,
     pub ppvz_vw_nds: Option<f64>,

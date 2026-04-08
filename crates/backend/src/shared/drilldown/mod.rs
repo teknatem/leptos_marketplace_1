@@ -42,18 +42,7 @@ fn pct_change(cur: f64, prev: f64) -> Option<f64> {
 
 fn period_label(date_from: &str, date_to: &str) -> String {
     let months = [
-        "РЎРЏР Р…Р Р†",
-        "РЎвЂћР ВµР Р†",
-        "Р СР В°РЎР‚",
-        "Р В°Р С—РЎР‚",
-        "Р СР В°Р в„–",
-        "Р С‘РЎР‹Р Р…",
-        "Р С‘РЎР‹Р В»",
-        "Р В°Р Р†Р С–",
-        "РЎРѓР ВµР Р…",
-        "Р С•Р С”РЎвЂљ",
-        "Р Р…Р С•РЎРЏ",
-        "Р Т‘Р ВµР С”",
+        "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
     ];
     let parts: Vec<&str> = date_from.split('-').collect();
     if parts.len() >= 2 {
@@ -64,10 +53,10 @@ fn period_label(date_from: &str, date_to: &str) -> String {
         if to_parts.get(1) == Some(&parts[1]) && to_parts.get(0) == Some(&parts[0]) {
             format!("{} {}", month_name, y)
         } else {
-            format!("{} РІР‚вЂњ {}", date_from, date_to)
+            format!("{} – {}", date_from, date_to)
         }
     } else {
-        format!("{} РІР‚вЂњ {}", date_from, date_to)
+        format!("{} – {}", date_from, date_to)
     }
 }
 

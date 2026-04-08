@@ -162,7 +162,14 @@ pub async fn test_connection(dto: Connection1CDatabaseDto) -> anyhow::Result<Con
 
     let response = client
         .get(&dto.url)
-        .basic_auth(&dto.login, Some(&dto.password))
+        .basic_auth(
+            &dto.login,
+            if dto.password.is_empty() {
+                None
+            } else {
+                Some(&dto.password)
+            },
+        )
         .send()
         .await;
 
@@ -171,12 +178,12 @@ pub async fn test_connection(dto: Connection1CDatabaseDto) -> anyhow::Result<Con
     match response {
         Ok(resp) => {
             let status = resp.status();
-            let success = status.is_success() || status.as_u16() == 401; // 401 означает что сервер ответил, но нужна аутентификация
+            let success = status.is_success();
 
             let message = if status.is_success() {
                 "Подключение успешно".into()
             } else if status.as_u16() == 401 {
-                "Сервер доступен, но требуется проверка учетных данных".into()
+                "Сервер доступен, но логин или пароль неверны, либо у пользователя нет доступа к OData".into()
             } else {
                 format!("Сервер вернул статус: {}", status)
             };

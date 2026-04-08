@@ -159,6 +159,36 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
     save_entry(entry).await
 }
 
+/// Прямой INSERT одной записи без SELECT-проверки и без обновления статуса группы.
+/// Используется в batch-контексте перепроведения. После вставки всех строк
+/// вызывающий код должен вызвать refresh_group_link_status для затронутых групп.
+pub async fn insert_entry_raw(entry: &Model) -> Result<()> {
+    let active = ActiveModel {
+        id: Set(entry.id.clone()),
+        connection_mp_ref: Set(entry.connection_mp_ref.clone()),
+        order_key: Set(entry.order_key.clone()),
+        line_key: Set(entry.line_key.clone()),
+        line_event_key: Set(entry.line_event_key.clone()),
+        event_kind: Set(entry.event_kind.clone()),
+        entry_date: Set(entry.entry_date.clone()),
+        layer: Set(entry.layer.clone()),
+        turnover_code: Set(entry.turnover_code.clone()),
+        value_kind: Set(entry.value_kind.clone()),
+        agg_kind: Set(entry.agg_kind.clone()),
+        amount: Set(entry.amount),
+        nomenclature_ref: Set(entry.nomenclature_ref.clone()),
+        marketplace_product_ref: Set(entry.marketplace_product_ref.clone()),
+        registrator_type: Set(entry.registrator_type.clone()),
+        registrator_ref: Set(entry.registrator_ref.clone()),
+        link_status: Set(entry.link_status.clone()),
+        general_ledger_ref: Set(entry.general_ledger_ref.clone()),
+        created_at: Set(entry.created_at.clone()),
+        updated_at: Set(entry.updated_at.clone()),
+    };
+    active.insert(conn()).await?;
+    Ok(())
+}
+
 pub async fn delete_by_id(id: &str) -> Result<()> {
     if let Some(current) = get_by_id(id).await? {
         Entity::delete_by_id(id.to_string()).exec(conn()).await?;

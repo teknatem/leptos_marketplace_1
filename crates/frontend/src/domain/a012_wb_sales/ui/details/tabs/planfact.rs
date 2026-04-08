@@ -1,10 +1,7 @@
-//! Plan/Fact tab - comparison table for financial metrics
-
 use super::super::view_model::WbSalesDetailsVm;
 use leptos::prelude::*;
 use thaw::*;
 
-/// Plan/Fact tab component - displays comparison of planned vs actual financial metrics
 #[component]
 pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
     view! {
@@ -14,55 +11,120 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
             };
 
             let line = sale_data.line.clone();
+            let reports = vm.finance_reports.get();
+            let target_oper_name =
+                if sale_data.is_customer_return || line.finished_price.unwrap_or(0.0) < 0.0 {
+                    "Возврат"
+                } else {
+                    "Продажа"
+                };
+            let sign = if target_oper_name == "Возврат" {
+                -1.0
+            } else {
+                1.0
+            };
 
-            // Helper function to format optional f64 values
+            let relevant_reports: Vec<_> = reports
+                .into_iter()
+                .filter(|item| item.supplier_oper_name.as_deref() == Some(target_oper_name))
+                .collect();
+            let has_fact_data = relevant_reports
+                .iter()
+                .any(|item| item.retail_amount.unwrap_or(0.0) != 0.0);
+
+            let sell_out_fact = has_fact_data.then(|| {
+                relevant_reports
+                    .iter()
+                    .filter_map(|item| item.retail_amount)
+                    .sum::<f64>()
+                    * sign
+            });
+            let acquiring_fee_fact = has_fact_data.then(|| {
+                relevant_reports
+                    .iter()
+                    .filter_map(|item| item.acquiring_fee)
+                    .sum::<f64>()
+                    * sign
+            });
+            let other_fee_fact = has_fact_data.then(|| {
+                relevant_reports
+                    .iter()
+                    .filter_map(|item| item.rebill_logistic_cost)
+                    .sum::<f64>()
+                    * sign
+            });
+            let commission_fact = has_fact_data.then(|| {
+                relevant_reports
+                    .iter()
+                    .map(|item| item.ppvz_vw.unwrap_or(0.0) + item.ppvz_vw_nds.unwrap_or(0.0))
+                    .sum::<f64>()
+                    * sign
+            });
+            let supplier_payout_fact = has_fact_data.then(|| {
+                relevant_reports
+                    .iter()
+                    .filter_map(|item| item.ppvz_for_pay)
+                    .sum::<f64>()
+                    * sign
+            });
+            let profit_fact = match (
+                sell_out_fact,
+                acquiring_fee_fact,
+                other_fee_fact,
+                commission_fact,
+                line.cost_of_production,
+            ) {
+                (Some(sell_out), Some(acquiring), Some(other), Some(commission), Some(cost)) => {
+                    Some(sell_out - acquiring - other - commission - cost)
+                }
+                _ => None,
+            };
+
             let fmt = |val: Option<f64>| {
                 val.map(|v| format!("{:.2}", v))
                     .unwrap_or_else(|| "—".to_string())
             };
 
-            // Calculate differences
-            let diff_sell_out = match (line.sell_out_fact, line.sell_out_plan) {
+            let diff_sell_out = match (sell_out_fact, line.sell_out_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
-            let diff_acquiring = match (line.acquiring_fee_fact, line.acquiring_fee_plan) {
+            let diff_acquiring = match (acquiring_fee_fact, line.acquiring_fee_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
-            let diff_other = match (line.other_fee_fact, line.other_fee_plan) {
+            let diff_other = match (other_fee_fact, line.other_fee_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
-            let diff_commission = match (line.commission_fact, line.commission_plan) {
+            let diff_commission = match (commission_fact, line.commission_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
-            let diff_payout = match (line.supplier_payout_fact, line.supplier_payout_plan) {
+            let diff_payout = match (supplier_payout_fact, line.supplier_payout_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
-            let diff_profit = match (line.profit_fact, line.profit_plan) {
+            let diff_profit = match (profit_fact, line.profit_plan) {
                 (Some(f), Some(p)) => Some(f - p),
                 _ => None,
             };
 
-            // Build table rows with all 6 columns
             let rows: Vec<(&str, &str, &str, String, String, String)> = vec![
                 (
                     "Выручка",
                     "finished_price",
                     "retail_amount (P903)",
                     fmt(line.sell_out_plan),
-                    fmt(line.sell_out_fact),
+                    fmt(sell_out_fact),
                     fmt(diff_sell_out),
                 ),
                 (
                     "Эквайринг",
-                    "acquiring_fee_pro × finished_price",
+                    "acquiring_fee_pro * finished_price",
                     "acquiring_fee (P903)",
                     fmt(line.acquiring_fee_plan),
-                    fmt(line.acquiring_fee_fact),
+                    fmt(acquiring_fee_fact),
                     fmt(diff_acquiring),
                 ),
                 (
@@ -70,7 +132,7 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     "0",
                     "rebill_logistic_cost (P903)",
                     fmt(line.other_fee_plan),
-                    fmt(line.other_fee_fact),
+                    fmt(other_fee_fact),
                     fmt(diff_other),
                 ),
                 (
@@ -78,15 +140,15 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     "finished_price - amount_line",
                     "ppvz_vw + ppvz_vw_nds (P903)",
                     fmt(line.commission_plan),
-                    fmt(line.commission_fact),
+                    fmt(commission_fact),
                     fmt(diff_commission),
                 ),
                 (
                     "Выплата поставщику",
-                    "finished_price - acquiring_fee_plan",
+                    "amount_line - acquiring_fee_plan",
                     "ppvz_for_pay (P903)",
                     fmt(line.supplier_payout_plan),
-                    fmt(line.supplier_payout_fact),
+                    fmt(supplier_payout_fact),
                     fmt(diff_payout),
                 ),
                 (
@@ -99,10 +161,10 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 ),
                 (
                     "Прибыль",
-                    "выручка - эквайринг - комиссия - прочие - себестоимость",
+                    "sell_out - acquiring - commission - other - cost",
                     "retail - acquiring - commission - other - cost",
                     fmt(line.profit_plan),
-                    fmt(line.profit_fact),
+                    fmt(profit_fact),
                     fmt(diff_profit),
                 ),
             ];
@@ -113,21 +175,20 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                         <h4 class="details-section__title">"План/Факт сравнение"</h4>
 
                         <div style="margin-bottom: var(--spacing-md);">
-                            {move || {
-                                let is_fact = line.is_fact.unwrap_or(false);
-                                view! {
-                                    <Badge
-                                        appearance=BadgeAppearance::Filled
-                                        color=if is_fact { BadgeColor::Success } else { BadgeColor::Informative }
-                                    >
-                                        {if is_fact {
-                                            "Документ содержит фактические данные (есть P903)"
-                                        } else {
-                                            "Документ содержит плановые данные (нет P903)"
-                                        }}
-                                    </Badge>
+                            <Badge
+                                appearance=BadgeAppearance::Filled
+                                color=if has_fact_data {
+                                    BadgeColor::Success
+                                } else {
+                                    BadgeColor::Informative
                                 }
-                            }}
+                            >
+                                {if has_fact_data {
+                                    "Факт подтянут lazy из P903"
+                                } else {
+                                    "Доступен только план"
+                                }}
+                            </Badge>
                         </div>
 
                         <div style="overflow-x: auto;">
@@ -135,50 +196,26 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHeaderCell>"Наименование"</TableHeaderCell>
-                                        <TableHeaderCell attr:style="color: var(--colorBrandForeground2);">"Формула (План)"</TableHeaderCell>
+                                        <TableHeaderCell>"Формула (План)"</TableHeaderCell>
                                         <TableHeaderCell>"Формула (Факт)"</TableHeaderCell>
-                                        <TableHeaderCell max_width=100 attr:style="color: var(--colorBrandForeground2);">"План"</TableHeaderCell>
-                                        <TableHeaderCell max_width=100>"Факт"</TableHeaderCell>
-                                        <TableHeaderCell max_width=100>"Разница"</TableHeaderCell>
+                                        <TableHeaderCell>"План"</TableHeaderCell>
+                                        <TableHeaderCell>"Факт"</TableHeaderCell>
+                                        <TableHeaderCell>"Разница"</TableHeaderCell>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     <For
                                         each=move || rows.clone()
-                                        key=|r| r.0.to_string()
+                                        key=|row| row.0.to_string()
                                         children=move |(name, formula_plan, formula_fact, plan, fact, diff)| {
                                             view! {
                                                 <TableRow>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            <strong>{name}</strong>
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            <code style="font-size: 1em; color: var(--colorBrandForeground2);">{formula_plan}</code>
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            <code style="font-size: 1em;">{formula_fact}</code>
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout attr:style="justify-content: flex-end;">
-                                                            <span style="color: var(--colorBrandForeground2);">{plan}</span>
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout attr:style="justify-content: flex-end;">
-                                                            {fact}
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout attr:style="justify-content: flex-end;">
-                                                            {diff}
-                                                        </TableCellLayout>
-                                                    </TableCell>
+                                                    <TableCell><TableCellLayout><strong>{name}</strong></TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout><code>{formula_plan}</code></TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout><code>{formula_fact}</code></TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{plan}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{fact}</TableCellLayout></TableCell>
+                                                    <TableCell><TableCellLayout>{diff}</TableCellLayout></TableCell>
                                                 </TableRow>
                                             }
                                         }
@@ -186,37 +223,10 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 </TableBody>
                             </Table>
                         </div>
-
-                        <div>
-                            <h5 style="margin: var(--spacing-sm);">"Как рассчитываются показатели"</h5>
-                            <Flex vertical=false gap=FlexGap::Large justify=FlexJustify::Start align=FlexAlign::FlexStart>
-                            <div style = "display: block;">
-                                <p><strong>"План"</strong>" (когда нет данных P903, is_fact = false):"</p>
-                                <ul style="margin-left: var(--spacing-lg);">
-                                    <li>"sell_out_plan = finished_price"</li>
-                                    <li>"acquiring_fee_plan = acquiring_fee_pro × finished_price"</li>
-                                    <li>"other_fee_plan = 0"</li>
-                                    <li>"commission_plan = finished_price - amount_line"</li>
-                                    <li>"supplier_payout_plan = finished_price - acquiring_fee_plan"</li>
-                                    <li>"profit_plan = finished_price - acquiring_fee_plan - commission_plan - other_fee_plan - cost_of_production"</li>
-                                </ul>
-                            </div>
-                            <div style = "display: block;">
-                                <p><strong>"Факт"</strong>" (когда есть данные P903, is_fact = true):"</p>
-                                <ul style="margin-left: var(--spacing-lg);">
-                                    <li>"sell_out_fact = retail_amount (из P903)"</li>
-                                    <li>"acquiring_fee_fact = acquiring_fee (из P903)"</li>
-                                    <li>"other_fee_fact = rebill_logistic_cost (из P903)"</li>
-                                    <li>"commission_fact = ppvz_vw + ppvz_vw_nds (из P903)"</li>
-                                    <li>"supplier_payout_fact = ppvz_for_pay (из P903)"</li>
-                                    <li>"profit_fact = retail_amount - acquiring_fee - commission - other_fee - cost_of_production"</li>
-                                </ul>
-                            </div>
-                            </Flex>
-                        </div>
                     </Card>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }}
     }
 }

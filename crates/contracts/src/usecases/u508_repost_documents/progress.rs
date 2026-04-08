@@ -13,6 +13,11 @@ pub struct RepostProgress {
     pub reposted: i32,
     pub errors: i32,
     pub current_item: Option<String>,
+    pub current_chunk_date: Option<String>,
+    pub current_chunk_connection_mp_ref: Option<String>,
+    pub current_chunk_label: Option<String>,
+    pub chunks_processed: i32,
+    pub chunks_total: Option<i32>,
     pub error_messages: Vec<String>,
 }
 
@@ -38,6 +43,11 @@ impl RepostProgress {
             reposted: 0,
             errors: 0,
             current_item: None,
+            current_chunk_date: None,
+            current_chunk_connection_mp_ref: None,
+            current_chunk_label: None,
+            chunks_processed: 0,
+            chunks_total: None,
             error_messages: Vec::new(),
         }
     }

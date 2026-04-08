@@ -1504,7 +1504,7 @@ impl WildberriesApiClient {
         connection: &ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
-    ) -> Result<Vec<WbSaleRow>> {
+    ) -> Result<Vec<(WbSaleRow, String)>> {
         let url = "https://statistics-api.wildberries.ru/api/v1/supplier/sales";
 
         if connection.api_key.trim().is_empty() {
@@ -1519,7 +1519,7 @@ impl WildberriesApiClient {
         // Согласно документации: если записей больше, то нужно делать повторные запросы
         // используя параметр flag=1 для получения следующих страниц
 
-        let mut all_sales = Vec::new();
+        let mut all_sales: Vec<(WbSaleRow, String)> = Vec::new();
         let mut page_flag = 0; // 0 = первая страница, 1 = следующие страницы
 
         self.log_to_file(&format!(
@@ -1620,8 +1620,23 @@ impl WildberriesApiClient {
                         break;
                     }
 
+                    // Парсим тело как массив serde_json::Value для сохранения оригинального JSON
+                    // Если не получается — используем пустой объект как fallback
+                    let raw_values: Vec<serde_json::Value> =
+                        serde_json::from_str(&body).unwrap_or_default();
+
+                    let page_pairs: Vec<(WbSaleRow, String)> = page_data
+                        .into_iter()
+                        .zip(raw_values.into_iter())
+                        .map(|(row, raw_val)| {
+                            let raw_str = serde_json::to_string(&raw_val)
+                                .unwrap_or_else(|_| "{}".to_string());
+                            (row, raw_str)
+                        })
+                        .collect();
+
                     // Добавляем полученные данные
-                    all_sales.extend(page_data);
+                    all_sales.extend(page_pairs);
 
                     // API WB Statistics возвращает максимум 100,000 записей за запрос
                     // Если получили меньше, значит это последняя страница
@@ -1664,6 +1679,7 @@ impl WildberriesApiClient {
             "║ COMPLETED: Loaded {} total sale records",
             all_sales.len()
         ));
+        // all_sales содержит пары (WbSaleRow, raw_json_string)
         self.log_to_file(&format!(
             "╚════════════════════════════════════════════════════════════════╝\n"
         ));
@@ -1712,6 +1728,7 @@ impl WildberriesApiClient {
             "╚════════════════════════════════════════════════════════════════╝"
         ));
 
+        let period = "daily";
         let mut all_daily_reports: Vec<WbFinanceReportRow> = Vec::new();
         let mut rrdid: i64 = 0; // Начинаем с 0 для первой страницы
         let limit = 100000; // Максимальный лимит записей
@@ -1730,8 +1747,8 @@ impl WildberriesApiClient {
             ));
 
             self.log_to_file(&format!(
-                "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}&rrdid={}&limit={}\nAuthorization: ****",
-                url, date_from_str, date_to_str, rrdid, limit
+                "=== REQUEST ===\nGET {}?dateFrom={}&dateTo={}&rrdid={}&limit={}&period={}\nAuthorization: ****",
+                url, date_from_str, date_to_str, rrdid, limit, period
             ));
 
             let response = match self
@@ -1743,6 +1760,7 @@ impl WildberriesApiClient {
                     ("dateTo", date_to_str.as_str()),
                     ("rrdid", &rrdid.to_string()),
                     ("limit", &limit.to_string()),
+                    ("period", period),
                 ])
                 .send()
                 .await
@@ -2215,6 +2233,109 @@ impl WildberriesApiClient {
         );
 
         Ok(all_orders)
+    }
+
+    pub async fn fetch_documents_list(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<Vec<WbDocumentListItem>> {
+        let url = "https://documents-api.wildberries.ru/api/v1/documents/list";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries API");
+        }
+
+        let begin_time = date_from.format("%Y-%m-%d").to_string();
+        let end_time = date_to.format("%Y-%m-%d").to_string();
+        let limit = 50usize;
+        let mut offset = 0usize;
+        let mut all_documents = Vec::new();
+
+        loop {
+            let response = self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[
+                    ("locale", "ru"),
+                    ("beginTime", begin_time.as_str()),
+                    ("endTime", end_time.as_str()),
+                    ("sort", "date"),
+                    ("order", "desc"),
+                    ("limit", &limit.to_string()),
+                    ("offset", &offset.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to fetch WB documents list: {}", e))?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                anyhow::bail!(
+                    "Wildberries documents list failed with status {}: {}",
+                    status,
+                    body
+                );
+            }
+
+            let body = response.text().await?;
+            let parsed: WbDocumentsListResponse = serde_json::from_str(&body).map_err(|e| {
+                anyhow::anyhow!("Failed to parse WB documents list response: {}", e)
+            })?;
+
+            let batch = parsed.data.documents;
+            let batch_len = batch.len();
+            all_documents.extend(batch);
+
+            if batch_len < limit {
+                break;
+            }
+
+            offset += limit;
+        }
+
+        Ok(all_documents)
+    }
+
+    pub async fn download_document(
+        &self,
+        connection: &ConnectionMP,
+        service_name: &str,
+        extension: &str,
+    ) -> Result<WbDocumentDownloadFile> {
+        let url = "https://documents-api.wildberries.ru/api/v1/documents/download";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries API");
+        }
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .query(&[("serviceName", service_name), ("extension", extension)])
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download WB document: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "Wildberries document download failed with status {}: {}",
+                status,
+                body
+            );
+        }
+
+        let body = response.text().await?;
+        let parsed: WbDocumentDownloadResponse = serde_json::from_str(&body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse WB document download response: {}", e))?;
+
+        Ok(parsed.data)
     }
 
     /// Получить тарифы комиссий по категориям
@@ -3372,6 +3493,40 @@ pub struct WbOrderRow {
     /// SRID - уникальный идентификатор заказа
     #[serde(default)]
     pub srid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WbDocumentListItem {
+    pub service_name: String,
+    pub name: String,
+    pub category: String,
+    pub extensions: Vec<String>,
+    pub creation_time: String,
+    pub viewed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbDocumentsListData {
+    pub documents: Vec<WbDocumentListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbDocumentsListResponse {
+    pub data: WbDocumentsListData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WbDocumentDownloadFile {
+    pub file_name: String,
+    pub extension: String,
+    pub document: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbDocumentDownloadResponse {
+    pub data: WbDocumentDownloadFile,
 }
 
 // ============================================================================

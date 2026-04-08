@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "WbDocument",
+  "entity_index": "a027",
+  "collection_name": "wb_documents",
+  "table_name": "a027_wb_documents",
+  "ui": {
+    "element_name": "Документ WB",
+    "element_name_en": "WB Document",
+    "list_name": "Документы WB",
+    "list_name_en": "WB Documents",
+    "icon": "file-text"
+  },
+  "ai": {
+    "description": "Заголовки отчетных документов Wildberries из API documents/list. Содержит serviceName, категорию, доступные форматы, время создания и признаки просмотра.",
+    "questions": [
+      "Какие документы WB доступны за период?",
+      "Какие форматы доступны для документа?",
+      "Есть ли непросмотренные документы WB?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a005_marketplace"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbDocumentId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "service_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Service Name", "visible_in_list": true, "visible_in_form": true, "column_width": 260 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Category ID", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "category",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Категория", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "creation_time",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Дата создания", "visible_in_list": true, "visible_in_form": true, "column_width": 170, "widget": "datetime" },
+      "validation": { "required": true }
+    },
+    {
+      "name": "viewed",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Просмотрен", "visible_in_list": true, "visible_in_form": true, "column_width": 90, "widget": "checkbox" },
+      "validation": { "required": false }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": { "label": "Подключение", "visible_in_list": true, "visible_in_form": false, "column_width": 200 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": { "label": "Организация", "visible_in_list": true, "visible_in_form": false, "column_width": 200 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": { "label": "Маркетплейс", "visible_in_list": false, "visible_in_form": false, "column_width": 180 },
+      "validation": { "required": true }
+    }
+  ],
+  "access": {
+    "scope_id": "a027_wb_documents",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get", "required_mode": "read" }
+    ]
+  }
+}

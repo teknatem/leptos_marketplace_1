@@ -7,13 +7,21 @@ use contracts::domain::common::AggregateId;
 
 /// Обработать один товар (upsert)
 pub async fn process_product(connection: &ConnectionMP, card: &WildberriesCard) -> Result<bool> {
-    // Используем nm_id как marketplace_sku
+    // Для WB marketplace_sku = nm_id, article = vendor_code.
     let marketplace_sku = card.nm_id.to_string();
-    let existing = a007_marketplace_product::repository::get_by_connection_and_sku(
+    let mut existing = a007_marketplace_product::repository::get_by_connection_and_sku(
         &connection.base.id.as_string(),
         &marketplace_sku,
     )
     .await?;
+
+    if existing.is_none() {
+        existing = a007_marketplace_product::repository::get_unique_by_connection_and_article(
+            &connection.base.id.as_string(),
+            &card.vendor_code,
+        )
+        .await?;
+    }
 
     // Берем первый barcode из списка sizes
     let barcode = card.sizes.first().and_then(|s| s.barcode.clone());

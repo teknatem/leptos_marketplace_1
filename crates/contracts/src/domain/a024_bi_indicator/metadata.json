@@ -68,9 +68,9 @@
       "field_type": "primitive",
       "source": "base",
       "ui": {
-        "label": "Наименование",
+        "label": "Название индикатора",
         "label_en": "Name",
-        "placeholder": "Выручка за период",
+        "placeholder": "Название индикатора",
         "hint": "Название индикатора",
         "visible_in_list": true,
         "visible_in_form": true,

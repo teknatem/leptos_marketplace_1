@@ -1,4 +1,4 @@
-//! Journal tab — записи журнала операций из sys_general_ledger
+//! Journal tab - записи журнала операций из sys_general_ledger
 
 use super::super::view_model::WbSalesDetailsVm;
 use crate::shared::components::card_animated::CardAnimated;
@@ -17,7 +17,11 @@ fn short_id(id: &str) -> &str {
     }
 }
 
-/// Journal tab — бухгалтерские проводки по документу
+fn format_layer(layer: contracts::shared::analytics::TurnoverLayer) -> &'static str {
+    layer.as_str()
+}
+
+/// Journal tab - бухгалтерские проводки по документу
 #[component]
 pub fn JournalTab(vm: WbSalesDetailsVm) -> impl IntoView {
     view! {
@@ -59,14 +63,12 @@ pub fn JournalTab(vm: WbSalesDetailsVm) -> impl IntoView {
 
             let total_amount: f64 = entries.iter().map(|e| e.amount).sum();
             let entries_count = entries.len();
-
             let posting_id = entries.first().map(|e| e.id.clone()).unwrap_or_default();
 
             view! {
                 <CardAnimated delay_ms=0 nav_id="a012_wb_sales_details_journal_table">
                     <h4 class="details-section__title">"Журнал операций"</h4>
 
-                    // Meta row
                     <Flex gap=FlexGap::Medium style="margin-bottom: var(--spacing-md); flex-wrap: wrap;">
                         <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
                             {format!("Проводок: {}", entries_count)}
@@ -79,12 +81,12 @@ pub fn JournalTab(vm: WbSalesDetailsVm) -> impl IntoView {
                         </Badge>
                     </Flex>
 
-                    // Table
                     <div style="overflow-x: auto;">
                         <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: var(--font-size-sm);">
                             <thead>
                                 <tr class="data-table__header-row">
                                     <th class="data-table__header-cell" style="text-align: left; padding: var(--spacing-sm) var(--spacing-md);">"Дата"</th>
+                                    <th class="data-table__header-cell" style="text-align: left; padding: var(--spacing-sm) var(--spacing-md);">"Слой"</th>
                                     <th class="data-table__header-cell" style="text-align: center; padding: var(--spacing-sm) var(--spacing-md);">"Дт"</th>
                                     <th class="data-table__header-cell" style="text-align: center; padding: var(--spacing-sm) var(--spacing-md);">"Кт"</th>
                                     <th class="data-table__header-cell" style="text-align: right; padding: var(--spacing-sm) var(--spacing-md);">"Сумма, ₽"</th>
@@ -101,6 +103,11 @@ pub fn JournalTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                             <tr class="data-table__row">
                                                 <td class="data-table__cell" style="padding: var(--spacing-sm) var(--spacing-md); white-space: nowrap;">
                                                     {entry.entry_date.clone()}
+                                                </td>
+                                                <td class="data-table__cell" style="padding: var(--spacing-sm) var(--spacing-md); white-space: nowrap;">
+                                                    <Badge appearance=BadgeAppearance::Outline color=BadgeColor::Subtle>
+                                                        {format_layer(entry.layer)}
+                                                    </Badge>
                                                 </td>
                                                 <td class="data-table__cell" style="padding: var(--spacing-sm) var(--spacing-md); text-align: center;">
                                                     <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>

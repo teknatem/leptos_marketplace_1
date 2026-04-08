@@ -103,6 +103,7 @@ pub async fn enrich_items_from_posting(transaction: &mut OzonTransactions) -> an
                     marketplace_ref: marketplace_ref.clone(),
                     connection_mp_ref: connection_mp_ref.clone(),
                     marketplace_sku: marketplace_sku.clone(),
+                    article: None,
                     barcode: line_data.barcode.clone(),
                     title: line_data.name.clone(),
                 },

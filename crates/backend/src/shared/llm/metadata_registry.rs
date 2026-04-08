@@ -23,13 +23,13 @@ use contracts::domain::a019_llm_artifact::{ENTITY_METADATA as A019_META, FIELDS 
 use contracts::domain::a020_wb_promotion::{ENTITY_METADATA as A020_META, FIELDS as A020_FIELDS};
 use contracts::domain::a024_bi_indicator::{ENTITY_METADATA as A024_META, FIELDS as A024_FIELDS};
 use contracts::domain::a025_bi_dashboard::{ENTITY_METADATA as A025_META, FIELDS as A025_FIELDS};
+use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 use contracts::projections::p909_mp_order_line_turnovers::{
     ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
 };
 use contracts::projections::p910_mp_unlinked_turnovers::{
     ENTITY_METADATA as P910_META, FIELDS as P910_FIELDS,
 };
-use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 
 // ─── Структуры ──────────────────────────────────────────────────────────────
 

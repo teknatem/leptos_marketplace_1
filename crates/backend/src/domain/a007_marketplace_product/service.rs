@@ -215,11 +215,18 @@ pub async fn list_by_marketplace_ref(
     repository::list_by_marketplace_ref(marketplace_ref).await
 }
 
+/// Для Wildberries canonical marketplace_sku = nm_id.
+/// Если nm_id отсутствует, не подменяем его артикулом.
+pub fn wb_marketplace_sku(nm_id: i64) -> Option<String> {
+    (nm_id > 0).then(|| nm_id.to_string())
+}
+
 /// Параметры для поиска/создания товара при импорте продаж
 pub struct FindOrCreateParams {
     pub marketplace_ref: String,
     pub connection_mp_ref: String,
     pub marketplace_sku: String,
+    pub article: Option<String>,
     pub barcode: Option<String>,
     pub title: String,
 }
@@ -229,6 +236,7 @@ pub struct FindOrCreateParams {
 /// Алгоритм поиска:
 /// 1. Поиск по (connection_mp_ref, marketplace_sku)
 /// 2. Если не найден и есть barcode - поиск через p901 по штрихкоду маркетплейса
+///    (в основном используется для Yandex)
 /// 3. Если не найден - создание нового a007 с комментарием
 ///
 /// Возвращает UUID найденного или созданного товара
@@ -239,6 +247,41 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
             .await?
     {
         return Ok(existing.base.id.value());
+    }
+
+    let fallback_article = params
+        .article
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != params.marketplace_sku);
+
+    if let Some(article) = fallback_article {
+        if let Some(mut existing) =
+            repository::get_unique_by_connection_and_article(&params.connection_mp_ref, article)
+                .await?
+        {
+            let mut changed = false;
+
+            if existing.marketplace_sku != params.marketplace_sku {
+                existing.marketplace_sku = params.marketplace_sku.clone();
+                changed = true;
+            }
+            if existing.article != article {
+                existing.article = article.to_string();
+                changed = true;
+            }
+            if existing.barcode.is_none() && params.barcode.is_some() {
+                existing.barcode = params.barcode.clone();
+                changed = true;
+            }
+
+            if changed {
+                existing.before_write();
+                repository::update(&existing).await?;
+            }
+
+            return Ok(existing.base.id.value());
+        }
     }
 
     // Шаг 2: Если есть barcode - поиск через p901
@@ -288,7 +331,7 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
         connection_mp_ref: params.connection_mp_ref,
         marketplace_sku: params.marketplace_sku.clone(),
         barcode: params.barcode,
-        article: params.marketplace_sku, // Используем marketplace_sku как артикул
+        article: params.article.unwrap_or(params.marketplace_sku),
         brand: None,
         category_id: None,
         category_name: None,

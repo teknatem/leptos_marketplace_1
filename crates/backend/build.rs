@@ -27,15 +27,14 @@ fn main() {
     let source_config = workspace_root.join("config.toml");
     let dest_config = target_dir.join("config.toml");
 
-    // Copy config.toml if it exists
-    if source_config.exists() {
-        fs::copy(&source_config, &dest_config)
-            .unwrap_or_else(|e| panic!("Failed to copy config.toml: {}", e));
-        println!("cargo:warning=Copied config.toml to {:?}", dest_config);
-    } else {
-        println!(
-            "cargo:warning=config.toml not found at {:?}, using default config",
+    if !source_config.exists() {
+        panic!(
+            "Required config.toml not found at {:?}. Create it from config.example.toml and set an absolute [database].path.",
             source_config
         );
     }
+
+    fs::copy(&source_config, &dest_config)
+        .unwrap_or_else(|e| panic!("Failed to copy config.toml: {}", e));
+    println!("cargo:warning=Copied config.toml to {:?}", dest_config);
 }

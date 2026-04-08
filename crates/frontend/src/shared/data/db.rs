@@ -93,21 +93,19 @@ async fn ensure_columns(conn: &DatabaseConnection, table: &TableDefinition) -> a
 #[cfg(feature = "server")]
 pub async fn initialize_database(db_path: Option<&str>) -> anyhow::Result<()> {
     // Determine the absolute path for the database file
-    let path_buf = match db_path {
-        Some(path) => {
-            let p = std::path::Path::new(path);
-            if p.is_absolute() {
-                p.to_path_buf()
-            } else {
-                let cwd = std::env::current_dir()?;
-                cwd.join(p)
-            }
-        }
-        None => {
-            let cwd = std::env::current_dir()?;
-            cwd.join("app.db")
-        }
-    };
+    let db_path = db_path.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Database path must be provided explicitly; fallback to cwd/app.db is disabled"
+        )
+    })?;
+    let path_buf = std::path::Path::new(db_path).to_path_buf();
+
+    if !path_buf.is_absolute() {
+        return Err(anyhow::anyhow!(
+            "Database path must be absolute, got '{}'",
+            db_path
+        ));
+    }
 
     let final_db_path_str = path_buf
         .to_str()

@@ -1,0 +1,29 @@
+{
+  "id": "dv006_indicator_ratio_percent",
+  "name": "Индикатор / индикатор",
+  "category": "general_ledger",
+  "version": 1,
+  "description": "DataView для индикаторов-отношений между двумя готовыми BI-индикаторами.",
+  "ai_description": "DataView для производных BI-индикаторов, которые считаются как отношение двух существующих BI-индикаторов по их code. Обязательные параметры: numerator_indicator_code и denominator_indicator_code. Поддерживает 2 метрики: ratio = numerator / denominator и ratio_percent = numerator / denominator * 100. Для периода 2 используется previous_value обоих дочерних индикаторов, а change_percent считается как изменение уже готового отношения между периодами. Sparkline строится как попарное дневное отношение точек numerator и denominator. Это позволяет собирать KPI вида REVENUE / IND-MP-REV-PRICE, IND-MP-REV-PRICE / IND-ORDERS или IND-GL-7609-MAIN-BALANCE / IND-MP-REV-PRICE без дублирования формул.",
+  "data_sources": ["a024_bi_indicator", "nested_data_views"],
+  "available_resources": [
+    {
+      "id": "ratio",
+      "label": "Отношение",
+      "description": "numerator / denominator",
+      "unit": "number"
+    },
+    {
+      "id": "ratio_percent",
+      "label": "Отношение, %",
+      "description": "numerator / denominator * 100",
+      "unit": "percent"
+    }
+  ],
+  "available_dimensions": [],
+  "filters": [
+    { "filter_id": "date_range_1", "required": true, "order": 1 },
+    { "filter_id": "date_range_2", "required": false, "order": 2 },
+    { "filter_id": "connection_mp_refs", "required": false, "order": 3 }
+  ]
+}

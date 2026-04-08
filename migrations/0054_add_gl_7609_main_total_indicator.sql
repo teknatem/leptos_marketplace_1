@@ -1,0 +1,41 @@
+-- Ready-to-use BI indicator for dv005_gl_account_view_total.
+
+INSERT OR IGNORE INTO a024_bi_indicator (
+    id,
+    code,
+    description,
+    comment,
+    data_spec_json,
+    params_json,
+    view_spec_json,
+    drill_spec_json,
+    status,
+    owner_user_id,
+    is_public,
+    created_by,
+    updated_by,
+    is_deleted,
+    is_posted,
+    created_at,
+    updated_at,
+    version
+) VALUES (
+    'a024a024-0019-4001-a001-000000000019',
+    'IND-GL-7609-MAIN-BALANCE',
+    'Итог 7609 (основные обороты)',
+    'Ready-to-use BI indicator on DataView dv005_gl_account_view_total with account=7609, section=main, metric=balance.',
+    '{"view_id":"dv005_gl_account_view_total","metric_id":"balance"}',
+    '[{"key":"account","param_type":"string","label":"Account","default_value":"7609","required":true,"global_filter_key":null},{"key":"section","param_type":"string","label":"Section","default_value":"main","required":true,"global_filter_key":null}]',
+    '{"style_name":"classic","custom_html":null,"custom_css":null,"format":{"kind":"Money","currency":"RUB"},"thresholds":[],"preview_values":{}}',
+    NULL,
+    'active',
+    'f2fc6986-855d-492b-acff-70c7cd8cdd34',
+    1,
+    'system',
+    'system',
+    0,
+    1,
+    datetime('now'),
+    datetime('now'),
+    1
+);

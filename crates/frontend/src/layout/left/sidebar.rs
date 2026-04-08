@@ -159,6 +159,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "activity",
                 ),
                 SidebarItem::with_scope(
+                    "a027_wb_documents",
+                    tab_label_for_key("a027_wb_documents"),
+                    "file-text",
+                ),
+                SidebarItem::with_scope(
                     "a021_production_output",
                     tab_label_for_key("a021_production_output"),
                     "package",
@@ -298,6 +303,29 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a018_llm_chat",
                     tab_label_for_key("a018_llm_chat"),
                     "message-square",
+                ),
+            ],
+            admin_only: true,
+        },
+        MenuGroup {
+            id: "reports",
+            label: "Отчеты",
+            icon: "table",
+            items: vec![
+                SidebarItem::new(
+                    "general_ledger_report",
+                    tab_label_for_key("general_ledger_report"),
+                    "file-text",
+                ),
+                SidebarItem::new(
+                    "gl_account_view__7609",
+                    tab_label_for_key("gl_account_view__7609"),
+                    "trending-up",
+                ),
+                SidebarItem::new(
+                    "wb_weekly_reconciliation",
+                    tab_label_for_key("wb_weekly_reconciliation"),
+                    "table",
                 ),
             ],
             admin_only: true,

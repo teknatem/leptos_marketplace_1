@@ -4,6 +4,8 @@ use leptos::prelude::*;
 pub struct MarketplaceProductListState {
     // Фильтры
     pub marketplace_ref: Option<String>,
+    pub connection_mp_ref: Option<String>,
+    pub problems_only: bool,
     pub search: String,
 
     // Сортировка
@@ -27,6 +29,8 @@ impl Default for MarketplaceProductListState {
     fn default() -> Self {
         Self {
             marketplace_ref: None,
+            connection_mp_ref: None,
+            problems_only: false,
             search: String::new(),
             sort_field: "code".to_string(),
             sort_ascending: true,

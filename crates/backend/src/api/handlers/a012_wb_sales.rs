@@ -4,7 +4,6 @@ use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
 use contracts::shared::analytics::TurnoverLayer;
 use serde::{Deserialize, Serialize};
-use tokio::join;
 use uuid::Uuid;
 
 use crate::domain::a002_organization;
@@ -309,14 +308,7 @@ pub async fn list_sales(
     };
 
     // Load reference data in parallel (still use caching for these)
-    let (org_map, mp_map, nom_map, operation_dates) = join!(
-        get_org_map(),
-        get_mp_map(),
-        get_nom_map(),
-        get_operation_dates_from_p903()
-    );
-
-    let (sales_dates, return_dates) = operation_dates.unwrap_or_default();
+    let (org_map, mp_map, nom_map) = tokio::join!(get_org_map(), get_mp_map(), get_nom_map());
 
     // Build response DTOs with reference data
     let items: Vec<WbSalesListItemDto> = result
@@ -347,11 +339,7 @@ pub async fn list_sales(
                 .unwrap_or((String::new(), String::new()));
 
             // Get operation date from P903
-            let operation_date = match row.finished_price {
-                Some(price) if price > 0.0 => sales_dates.get(&row.document_no).cloned(),
-                Some(price) if price < 0.0 => return_dates.get(&row.document_no).cloned(),
-                _ => None,
-            };
+            let operation_date = None;
 
             WbSalesListItemDto {
                 id: row.id,
@@ -722,28 +710,12 @@ pub async fn get_general_ledger_entries(
     use crate::general_ledger::turnover_registry::get_turnover_class;
     use contracts::general_ledger::GeneralLedgerEntryDto;
 
-    let registrator_ref = format!("a012:{}", id);
-
-    let rows = crate::general_ledger::repository::list_with_filters(
-        None,
-        None,
-        Some(registrator_ref),
-        None, // registrator_type
-        None, // layer
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-        None,
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to get journal entries: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let rows = crate::general_ledger::repository::list_by_registrator("a012_wb_sales", &id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get journal entries: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     // Обогащаем каждую запись комментарием из реестра оборотов.
     let entries: Vec<GeneralLedgerEntryDto> = rows
@@ -756,9 +728,10 @@ pub async fn get_general_ledger_entries(
                 id: r.id,
                 entry_date: r.entry_date,
                 layer: TurnoverLayer::from_str(&r.layer).unwrap_or(TurnoverLayer::Oper),
-                cabinet_mp: r.cabinet_mp,
+                connection_mp_ref: r.connection_mp_ref,
                 registrator_type: r.registrator_type,
                 registrator_ref: r.registrator_ref,
+                order_id: r.order_id,
                 debit_account: r.debit_account,
                 credit_account: r.credit_account,
                 amount: r.amount,
@@ -791,5 +764,3 @@ pub async fn refresh_dealer_price(
 
     Ok(Json(serde_json::json!({"success": true})))
 }
-
-

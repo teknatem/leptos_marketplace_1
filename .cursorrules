@@ -36,15 +36,7 @@ This project uses indexed naming for features:
 
 ### Aggregates: `a001-a499` (Domain entities)
 
-- `a001_connection_1c` - 1C connections
-- `a002_organization` - Organizations
-- `a003_counterparty` - Counterparties
-- `a004_nomenclature` - Nomenclature
-- `a014_ozon_transactions` - Ozon transactions
-- `a015_wb_orders` - Wildberries orders
-- `a017_llm_agent` - LLM agents
-- `a018_llm_chat` - LLM chats
-- `a020_wb_promotion` - WB promotions
+Реализованы: a001–a026 (все в `crates/*/src/domain/aNNN_xxx/`)
 
 ### UseCases: `u501-u999` (Operations)
 
@@ -55,12 +47,9 @@ This project uses indexed naming for features:
 - `u505_match_nomenclature` - Nomenclature matching
 - `u506_import_from_lemanapro` - LemanaPro integration
 
-### Projections: `p901-p999` (Read models/analytics)
+### Projections: `p900-p999` (Read models/analytics)
 
-- `p902_sales_register` - Sales register
-- `p903_wb_finance_report` - WB finance report
-- `p904_sales_data` - Sales analytics
-- `p905_wb_commission_history` - WB commissions
+Реализованы: p900–p911 (все в `crates/*/src/projections/pNNN_xxx/`)
 
 ### System Tables: `sys_*` (System infrastructure)
 
@@ -111,6 +100,28 @@ crates/frontend/src/system/         # System UI (login, user management)
 └── pages/
     └── login.rs
 ```
+
+## ⚠️ General Ledger — Отдельная независимая система
+
+**General Ledger — это НЕ domain-агрегат.** Это независимая подсистема бухгалтерского учёта.
+
+**Правило:** весь код General Ledger находится в `src/general_ledger/` во всех крейтах:
+
+```
+crates/contracts/src/general_ledger/    ← типы, DTOs, plan счетов, виды оборотов
+crates/backend/src/general_ledger/      ← repository, service, account_registry, turnover_registry
+crates/frontend/src/general_ledger/     ← api.rs (API-клиент), ui/ (list, details, turnovers)
+```
+
+**НЕ делать:**
+- ❌ `crates/frontend/src/domain/general_ledger/` — неправильно
+- ❌ Любое размещение в `domain/` — неправильно
+
+**Импорт в frontend:**
+- `lib.rs` → `pub mod general_ledger;` (на верхнем уровне, рядом с domain, projections)
+- `registry.rs` → `use crate::general_ledger::ui::{GeneralLedgerPage, ...};`
+
+---
 
 ## 🔑 Critical Patterns
 
@@ -189,17 +200,6 @@ trunk build --release
 - Projections: `p904_sales_data`
 - System: `sys_users`, `sys_tasks`, `sys_settings`
 
-### Common Fields
-
-```sql
-id TEXT PRIMARY KEY,           -- UUID or auto-increment
-code TEXT,                     -- Business key
-description TEXT,              -- Display name
-created_at TEXT,               -- ISO timestamp
-updated_at TEXT,               -- ISO timestamp
-is_deleted INTEGER DEFAULT 0   -- Soft delete flag
-```
-
 ### Migration System (CRITICAL)
 
 Изменения схемы ТОЛЬКО через `migrations/NNNN_description.sql`. Никогда не добавлять SQL в `db.rs`.
@@ -275,6 +275,10 @@ domain/{feature}/ui/
 - `memory-bank/architecture/list-standard.md` - List component standard (пагинация, resize, чекбоксы)
 - `memory-bank/architecture/modal-ui-standard.md` - Modal & Forms UI standard (кнопки вверху, glassmorphism)
 
+### Tab Registry
+
+- `memory-bank/architecture/tab-registry-reference.md` - **Все tab-ключи + инструкция добавления нового таба**
+
 ### Templates & Runbooks
 
 - `memory-bank/templates/page-templates.md` - Ready-to-use page templates
@@ -284,28 +288,6 @@ domain/{feature}/ui/
 
 - `memory-bank/activeContext.md` - Current focus & recent changes
 - `memory-bank/progress.md` - What works, what's left
-
-## 💡 Project Intelligence
-
-### Code Quality Rules
-
-- Max 2-3 levels of nesting
-- Early return instead of deep conditionals
-- Extract nested logic into separate functions
-- Use `match` and combinators (`map`, `and_then`) over nested if-else
-
-### Common Gotchas
-
-1. **Aggregates vs Projections**: Aggregates are write models (transactional), Projections are read models (analytics)
-2. **Service vs UseCase**: Service handles single aggregate, UseCase coordinates multiple aggregates
-3. **Repository simplicity**: Keep it dumb - just CRUD, no business rules
-4. **Soft deletes**: Use `is_deleted` flag, don't hard delete aggregates
-
-### Integration Notes
-
-- **Wildberries API**: Token-based, stored in connection settings
-- **Ozon API**: Client ID + API Key
-- **1C OData**: Basic auth, standard OData v4 protocol
 
 ## 📝 Documentation Updates
 
@@ -317,33 +299,7 @@ When updating memory bank (user command: "update memory bank"):
 4. Update this `.cursorrules` if discovering new patterns
 5. Update architecture docs only if patterns changed
 
-## 🎯 Current Project Status (2026-02-18)
-
-**Working Features:**
-
-- ✅ Formal DB Migration System (sqlx migrate, `migrations/`, `_sqlx_migrations` tracking)
-- ✅ Field Metadata System (POC on a001_connection_1c)
-- ✅ Scheduled Tasks System (sys_scheduled_task)
-- ✅ 1C integration (u501)
-- ✅ Wildberries integration (u504)
-- ✅ Ozon integration (u505)
-- ✅ Yandex Market integration (u503)
-- ✅ Sales analytics (p904)
-- ✅ WB commission history (p905)
-- ✅ Ozon transactions (a014)
-- ✅ LLM Agents (a017), Chat (a018), Artifacts (a019), WB Promotion (a020)
-- ✅ Auth system (sys_users, JWT, refresh tokens)
-
-**In Progress:**
-
-- 🔄 Extending metadata to all aggregates (a002-a016)
-- 🔄 LLM chat integration with metadata
-
-**Known Issues:**
-
-- Check `memory-bank/progress.md` for active issues
-
 ---
 
 **Memory Bank Location**: `memory-bank/`
-**For detailed context**: Always start with 5 core files in memory-bank/
+**For detailed context**: Always start with 5 core files in memory-bank/ + check `progress.md` for current status.

@@ -69,6 +69,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     doc.base.metadata.is_posted = true;
     repository::upsert_document(&doc).await?;
+    crate::projections::p912_nomenclature_costs::service::project_production_output(&doc).await?;
     tracing::info!("Posted production output document: {}", id);
     Ok(())
 }
@@ -81,6 +82,11 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     doc.base.metadata.is_posted = false;
     repository::upsert_document(&doc).await?;
+    crate::projections::p912_nomenclature_costs::service::remove_by_registrator(
+        "a021_production_output",
+        &id.to_string(),
+    )
+    .await?;
     tracing::info!("Unposted production output document: {}", id);
     Ok(())
 }

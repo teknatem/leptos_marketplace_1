@@ -349,14 +349,14 @@ fn render_rows_with_lookup(
                 icon("chevron-right")
             }
         };
-        view! { 
-            <button 
-                class="tree-toggle" 
+        view! {
+            <button
+                class="tree-toggle"
                 style="background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; color: #666;"
                 on:click=move |_| expanded.update(|v| *v = !*v)
             >
                 {chevron_icon}
-            </button> 
+            </button>
         }.into_any()
     } else {
         view! { <span style="display:inline-block; width: 16px;">{""}</span> }.into_any()

@@ -99,27 +99,42 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
     let marketplace_id = format!("marketplace-{}-id", record.marketplace.to_lowercase());
 
     // Поиск или создание a007
-    let marketplace_product_ref = match find_or_create_for_sale(FindOrCreateParams {
-        marketplace_ref: marketplace_id,
-        connection_mp_ref: record.connection_mp_ref.clone(),
-        marketplace_sku: seller_sku.clone(),
-        barcode: record.barcode.clone(),
-        title: title.clone(),
-    })
-    .await
-    {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            tracing::error!(
-                "Failed to find/create a007 for record {}/{}/{}: {}",
-                record.marketplace,
-                record.document_no,
-                record.line_id,
-                e
-            );
-            return Err(e);
-        }
-    };
+    let marketplace_product_ref =
+        if record.marketplace.eq_ignore_ascii_case("WB") && record.mp_item_id.trim().is_empty() {
+            None
+        } else {
+            let marketplace_sku = if record.marketplace.eq_ignore_ascii_case("WB") {
+                record.mp_item_id.clone()
+            } else {
+                seller_sku.clone()
+            };
+
+            match find_or_create_for_sale(FindOrCreateParams {
+                marketplace_ref: marketplace_id,
+                connection_mp_ref: record.connection_mp_ref.clone(),
+                marketplace_sku,
+                article: record
+                    .marketplace
+                    .eq_ignore_ascii_case("WB")
+                    .then(|| seller_sku.clone()),
+                barcode: record.barcode.clone(),
+                title: title.clone(),
+            })
+            .await
+            {
+                Ok(uuid) => Some(uuid),
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to find/create a007 for record {}/{}/{}: {}",
+                        record.marketplace,
+                        record.document_no,
+                        record.line_id,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        };
 
     // Создаём обновлённую запись
     let updated_entry = SalesRegisterEntry {
@@ -136,7 +151,7 @@ async fn backfill_single_record(record: &repository::Model) -> Result<Option<Sal
         // References to aggregates
         connection_mp_ref: record.connection_mp_ref.clone(),
         organization_ref: record.organization_ref.clone(),
-        marketplace_product_ref: Some(marketplace_product_ref.to_string()), // ОБНОВЛЕНО
+        marketplace_product_ref: marketplace_product_ref.map(|value| value.to_string()),
         nomenclature_ref: record.nomenclature_ref.clone(), // Сохраняем существующее значение
         registrator_ref: record.registrator_ref.clone(),
 

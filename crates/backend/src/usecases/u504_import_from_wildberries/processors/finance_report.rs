@@ -4,7 +4,7 @@ use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 
-pub fn map_finance_report_row(
+pub async fn map_finance_report_row(
     connection: &ConnectionMP,
     organization_id: &str,
     row: &WbFinanceReportRow,
@@ -17,6 +17,17 @@ pub fn map_finance_report_row(
     let rr_dt_str = row.rr_dt.clone().unwrap();
     let rr_dt = chrono::NaiveDate::parse_from_str(&rr_dt_str, "%Y-%m-%d")?;
     let extra_json = serde_json::to_string(row).ok();
+    let a004_nomenclature_ref = match row.nm_id {
+        Some(nm_id) => {
+            super::wb_nomenclature::resolve_wb_nomenclature_ref(
+                &connection.base.id.as_string(),
+                nm_id,
+                row.sa_name.as_deref(),
+            )
+            .await?
+        }
+        None => None,
+    };
 
     Ok(WbFinanceReportEntry {
         rr_dt,
@@ -32,6 +43,7 @@ pub fn map_finance_report_row(
         delivery_amount: row.delivery_amount,
         delivery_rub: row.delivery_rub,
         nm_id: row.nm_id,
+        a004_nomenclature_ref,
         penalty: row.penalty,
         ppvz_vw: row.ppvz_vw,
         ppvz_vw_nds: row.ppvz_vw_nds,
@@ -62,7 +74,7 @@ pub async fn process_finance_report_row(
     organization_id: &str,
     row: &WbFinanceReportRow,
 ) -> Result<bool> {
-    let entry = map_finance_report_row(connection, organization_id, row)?;
+    let entry = map_finance_report_row(connection, organization_id, row).await?;
     repository::upsert_entry(&entry).await?;
 
     Ok(true)

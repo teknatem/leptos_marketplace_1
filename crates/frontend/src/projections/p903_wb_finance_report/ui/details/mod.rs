@@ -1,5 +1,6 @@
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::shared::icons::icon;
+use crate::shared::json_viewer::widget::JsonViewer;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
 use contracts::general_ledger::GeneralLedgerEntryDto;
@@ -10,6 +11,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thaw::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -19,6 +21,227 @@ struct FieldRow {
     description: String,
     field_id: String,
     value: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GlFieldRole {
+    Condition,
+    Resource,
+    ResourceAndCondition,
+}
+
+const EXCLUDED_PAYMENT_PROCESSING_VALUE: &str = "Комиссия за организацию платежа с НДС";
+
+fn extra_string_field(item: &WbFinanceReportDto, field: &str) -> Option<String> {
+    item.extra
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|json| {
+            json.get(field)
+                .and_then(|value| value.as_str())
+                .map(|value| value.trim().to_string())
+        })
+        .filter(|value| !value.is_empty())
+}
+
+fn extra_f64_field(item: &WbFinanceReportDto, field: &str) -> Option<f64> {
+    item.extra
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|json| {
+            json.get(field).and_then(|value| {
+                value.as_f64().or_else(|| {
+                    value
+                        .as_str()
+                        .and_then(|raw| raw.trim().parse::<f64>().ok())
+                })
+            })
+        })
+}
+
+fn field_note(field_id: &str) -> Option<&'static str> {
+    match field_id {
+        "supplier_oper_name" => Some(
+            "Правило GL: поле выбирает ветку posting для customer_revenue/customer_return, mp_commission/mp_commission_adjustment, mp_storage, mp_penalty/mp_penalty_storno, voluntary_return_compensation и mp_ppvz_reward.",
+        ),
+        "srid" => Some(
+            "Правило GL: непустой SRID делает строку linked. Это влияет на customer_revenue/customer_return, знаки расходов и posting acceptance только для строк без SRID.",
+        ),
+        "retail_amount" => Some(
+            "Правило GL: ресурс для customer_revenue по linked sale-строке; если у возврата пустой return_amount, retail_amount используется как fallback для customer_return. Также участвует в определении sale-строки.",
+        ),
+        "return_amount" => Some(
+            "Правило GL: ресурс для customer_return, если поле заполнено. Также участвует в определении return-строки и знака для mp_acquiring, mp_commission и mp_ppvz_reward.",
+        ),
+        "ppvz_vw" => Some(
+            "Правило GL: часть комиссии WB. Для sale/return используется сумма ppvz_vw + ppvz_vw_nds в turnover mp_commission; для прочих операций вместе с ppvz_sales_commission формирует mp_commission_adjustment.",
+        ),
+        "ppvz_vw_nds" => Some(
+            "Правило GL: часть комиссии WB. Для sale/return используется сумма ppvz_vw + ppvz_vw_nds в turnover mp_commission; для прочих операций вместе с ppvz_sales_commission формирует mp_commission_adjustment.",
+        ),
+        "ppvz_sales_commission" => Some(
+            "Правило GL: участвует только в turnover mp_commission_adjustment для не sale/non-return операций; в sale/return ветке это поле в ресурс не входит.",
+        ),
+        "acquiring_fee" => Some(
+            "Правило GL: ресурс для mp_acquiring. Для linked-возвратов сумма разворачивается в минус; строки с payment_processing = 'Комиссия за организацию платежа с НДС' исключаются.",
+        ),
+        "rebill_logistic_cost" => Some(
+            "Правило GL: проводка формируется только по rebill_logistic_cost в turnover mp_rebill_logistic_cost.",
+        ),
+        "ppvz_reward" => Some(
+            "Правило GL: источник — raw WB JSON field extra.ppvz_reward. Знак: Продажа = плюс, Возврат = минус, операция 'Возмещение за выдачу и возврат товаров на ПВЗ' = плюс. Turnover: mp_ppvz_reward.",
+        ),
+        "storage_fee" => Some(
+            "Правило GL: ресурс для mp_storage только при supplier_oper_name = 'Хранение'. Знак зависит от linked/unlinked ветки.",
+        ),
+        "penalty" => Some(
+            "Правило GL: ресурс для mp_penalty / mp_penalty_storno только при supplier_oper_name = 'Штраф'. Положительная сумма идет в mp_penalty, отрицательная — в mp_penalty_storno.",
+        ),
+        "ppvz_for_pay" => Some(
+            "Правило GL: ресурс для voluntary_return_compensation только при supplier_oper_name = 'Добровольная компенсация при возврате'.",
+        ),
+        "delivery_amount" => {
+            Some("Правило GL: ресурс для acceptance только для unlinked-строк без SRID.")
+        }
+        "payment_processing" => Some(
+            "Значение показывается из raw WB JSON. Для GL mp_acquiring значение 'Комиссия за организацию платежа с НДС' исключается.",
+        ),
+        _ => None,
+    }
+}
+
+fn is_emphasized_string_field(field_id: &str) -> bool {
+    matches!(field_id, "payment_processing")
+}
+
+fn display_field_note(field_id: &str) -> Option<&'static str> {
+    match field_id {
+        _ => field_note(field_id),
+    }
+}
+
+fn display_field_description(row: &FieldRow) -> String {
+    match row.field_id.as_str() {
+        "payment_processing" => "Тип обработки платежа".to_string(),
+        "ppvz_reward" => "Возмещение за выдачу и возврат товаров на ПВЗ".to_string(),
+        _ => row.description.clone(),
+    }
+}
+
+fn gl_resource_turnovers(field_id: &str) -> &'static [&'static str] {
+    match field_id {
+        "retail_amount" => &["customer_revenue"],
+        "return_amount" => &["customer_return"],
+        "ppvz_vw" | "ppvz_vw_nds" => &["mp_commission", "mp_commission_adjustment"],
+        "ppvz_sales_commission" => &["mp_commission_adjustment"],
+        "acquiring_fee" => &["mp_acquiring"],
+        "rebill_logistic_cost" => &["mp_rebill_logistic_cost"],
+        "ppvz_reward" => &["mp_ppvz_reward"],
+        "storage_fee" => &["mp_storage"],
+        "penalty" => &["mp_penalty", "mp_penalty_storno"],
+        "ppvz_for_pay" => &["voluntary_return_compensation"],
+        "delivery_amount" => &["acceptance"],
+        _ => &[],
+    }
+}
+
+fn gl_condition_turnovers(field_id: &str) -> &'static [&'static str] {
+    match field_id {
+        "supplier_oper_name" => &[
+            "customer_revenue",
+            "customer_return",
+            "mp_commission",
+            "mp_commission_adjustment",
+            "mp_acquiring",
+            "mp_storage",
+            "mp_penalty",
+            "mp_penalty_storno",
+            "voluntary_return_compensation",
+            "mp_ppvz_reward",
+        ],
+        "srid" => &[
+            "customer_revenue",
+            "customer_return",
+            "mp_commission",
+            "mp_commission_adjustment",
+            "mp_acquiring",
+            "mp_rebill_logistic_cost",
+            "mp_storage",
+            "acceptance",
+        ],
+        "payment_processing" => &["mp_acquiring"],
+        "retail_amount" => &[
+            "customer_revenue",
+            "customer_return",
+            "mp_commission",
+            "mp_ppvz_reward",
+        ],
+        "return_amount" => &[
+            "customer_return",
+            "mp_acquiring",
+            "mp_commission",
+            "mp_ppvz_reward",
+        ],
+        _ => &[],
+    }
+}
+
+fn has_turnover(entries: &[GeneralLedgerEntryDto], turnover_code: &str) -> bool {
+    entries
+        .iter()
+        .any(|entry| entry.turnover_code == turnover_code)
+}
+
+fn field_gl_role(field_id: &str, entries: &[GeneralLedgerEntryDto]) -> Option<GlFieldRole> {
+    let is_resource = gl_resource_turnovers(field_id)
+        .iter()
+        .any(|turnover_code| has_turnover(entries, turnover_code));
+    let is_condition = gl_condition_turnovers(field_id)
+        .iter()
+        .any(|turnover_code| has_turnover(entries, turnover_code));
+
+    match (is_resource, is_condition) {
+        (true, true) => Some(GlFieldRole::ResourceAndCondition),
+        (true, false) => Some(GlFieldRole::Resource),
+        (false, true) => Some(GlFieldRole::Condition),
+        (false, false) => None,
+    }
+}
+
+fn gl_role_badge_label(role: GlFieldRole) -> &'static str {
+    match role {
+        GlFieldRole::Condition => "Условие",
+        GlFieldRole::Resource => "Ресурс",
+        GlFieldRole::ResourceAndCondition => "Ресурс + условие",
+    }
+}
+
+fn gl_role_badge_style(role: GlFieldRole) -> &'static str {
+    match role {
+        GlFieldRole::Condition => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #0f766e; color: #f0fdfa; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+        GlFieldRole::Resource => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #9a3412; color: #fff7ed; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+        GlFieldRole::ResourceAndCondition => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #1d4ed8; color: #eff6ff; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+    }
+}
+
+fn gl_role_row_style(role: GlFieldRole) -> &'static str {
+    match role {
+        GlFieldRole::Condition => {
+            "background: rgba(15, 118, 110, 0.08); box-shadow: inset 3px 0 0 #0f766e;"
+        }
+        GlFieldRole::Resource => {
+            "background: rgba(154, 52, 18, 0.08); box-shadow: inset 3px 0 0 #9a3412;"
+        }
+        GlFieldRole::ResourceAndCondition => {
+            "background: rgba(29, 78, 216, 0.08); box-shadow: inset 3px 0 0 #1d4ed8;"
+        }
+    }
 }
 
 // Simplified WbSales structure for links display
@@ -54,10 +277,7 @@ pub struct WbSalesStateLink {
 }
 
 #[component]
-pub fn WbFinanceReportDetail(
-    id: String,
-    #[prop(into)] on_close: Callback<()>,
-) -> impl IntoView {
+pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (data, set_data) = signal::<Option<WbFinanceReportDto>>(None);
     let (general_ledger_entries, set_general_ledger_entries) =
         signal::<Vec<GeneralLedgerEntryDto>>(Vec::new());
@@ -232,6 +452,13 @@ pub fn WbFinanceReportDetail(
                     .unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
+                description: "Возмещение за выдачу и возврат товаров на ПВЗ (raw JSON)".to_string(),
+                field_id: "ppvz_reward".to_string(),
+                value: extra_f64_field(&item, "ppvz_reward")
+                    .map(|v| format!("{:.2}", v))
+                    .unwrap_or_else(|| "-".to_string()),
+            },
+            FieldRow {
                 description: "Количество".to_string(),
                 field_id: "quantity".to_string(),
                 value: item
@@ -381,6 +608,16 @@ pub fn WbFinanceReportDetail(
         ];
 
         // Сортировка
+        rows.push(FieldRow {
+            description: format!(
+                "Тип обработки платежа. Примечание: значение '{}' исключается из GL-проводки mp_acquiring.",
+                EXCLUDED_PAYMENT_PROCESSING_VALUE
+            ),
+            field_id: "payment_processing".to_string(),
+            value: extra_string_field(&item, "payment_processing")
+                .unwrap_or_else(|| "-".to_string()),
+        });
+
         let sort_field = sort_by.get();
         let is_desc = sort_desc.get();
 
@@ -593,12 +830,13 @@ pub fn WbFinanceReportDetail(
                             {move || {
                                 if active_tab.get() == "fields" {
                                     let field_rows = get_field_rows();
+                                    let gl_entries = general_ledger_entries.get();
                                     view! {
-                                        <div style="width: 100%; overflow-x: auto;">
-                                            <Table attr:style="width: 100%;">
+                                        <div style="width: 100%; overflow-x: hidden;">
+                                            <Table attr:style="width: 100%; table-layout: fixed;">
                                                 <TableHeader>
                                                     <TableRow>
-                                                        <TableHeaderCell resizable=true min_width=300.0>
+                                                        <TableHeaderCell resizable=true min_width=240.0>
                                                             "Описание"
                                                             <span
                                                                 class={move || get_sort_class("description", &sort_by.get())}
@@ -607,7 +845,10 @@ pub fn WbFinanceReportDetail(
                                                                 {move || get_sort_indicator("description", &sort_by.get(), !sort_desc.get())}
                                                             </span>
                                                         </TableHeaderCell>
-                                                        <TableHeaderCell resizable=true min_width=200.0>
+                                                        <TableHeaderCell resizable=true min_width=120.0>
+                                                            "Роль"
+                                                        </TableHeaderCell>
+                                                        <TableHeaderCell resizable=true min_width=150.0>
                                                             "Идентификатор"
                                                             <span
                                                                 class={move || get_sort_class("field_id", &sort_by.get())}
@@ -616,7 +857,7 @@ pub fn WbFinanceReportDetail(
                                                                 {move || get_sort_indicator("field_id", &sort_by.get(), !sort_desc.get())}
                                                             </span>
                                                         </TableHeaderCell>
-                                                        <TableHeaderCell resizable=true min_width=200.0>
+                                                        <TableHeaderCell resizable=true min_width=160.0>
                                                             "Значение"
                                                             <span
                                                                 class={move || get_sort_class("value", &sort_by.get())}
@@ -631,11 +872,68 @@ pub fn WbFinanceReportDetail(
                                                     {field_rows
                                                         .into_iter()
                                                         .map(|row| {
+                                                            let description = display_field_description(&row);
+                                                            let note = display_field_note(&row.field_id).map(str::to_string);
+                                                            let gl_role = field_gl_role(&row.field_id, &gl_entries);
+                                                            let emphasized_value =
+                                                                is_emphasized_string_field(&row.field_id);
                                                             view! {
-                                                                <TableRow>
-                                                                    <TableCell><TableCellLayout>{row.description}</TableCellLayout></TableCell>
-                                                                    <TableCell><TableCellLayout>{row.field_id}</TableCellLayout></TableCell>
-                                                                    <TableCell><TableCellLayout>{row.value}</TableCellLayout></TableCell>
+                                                                <TableRow attr:style={gl_role.map(gl_role_row_style).unwrap_or("")}>
+                                                                    <TableCell>
+                                                                        <TableCellLayout>
+                                                                            <div style="color: var(--color-text-primary); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;">
+                                                                                {description}
+                                                                            </div>
+                                                                            {note.clone().map(|note_text| view! {
+                                                                                <div style="margin-top: 6px; font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.4; overflow-wrap: anywhere;">
+                                                                                    {note_text}
+                                                                                </div>
+                                                                            })}
+                                                                        </TableCellLayout>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <TableCellLayout>
+                                                                            <div style="display: flex; justify-content: center; align-items: center; min-height: 100%;">
+                                                                                {if let Some(role) = gl_role {
+                                                                                    view! {
+                                                                                        <span style={gl_role_badge_style(role)}>
+                                                                                            {gl_role_badge_label(role)}
+                                                                                        </span>
+                                                                                    }.into_any()
+                                                                                } else {
+                                                                                    view! {
+                                                                                        <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); font-weight: 600;">
+                                                                                            "—"
+                                                                                        </span>
+                                                                                    }.into_any()
+                                                                                }}
+                                                                            </div>
+                                                                        </TableCellLayout>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <TableCellLayout>
+                                                                            <span style="font-size: var(--font-size-sm); color: var(--color-text-primary); font-weight: 600; overflow-wrap: anywhere; word-break: break-word;">
+                                                                                {row.field_id.clone()}
+                                                                            </span>
+                                                                        </TableCellLayout>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <TableCellLayout>
+                                                                            {if emphasized_value {
+                                                                                view! {
+                                                                                    <code style="display: inline-block; padding: 2px 6px; border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text-primary); border: 1px solid var(--color-border); font-size: var(--font-size-sm); white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
+                                                                                        {row.value.clone()}
+                                                                                    </code>
+                                                                                }.into_any()
+                                                                            } else {
+                                                                                view! {
+                                                                                    <span style="color: var(--color-text-primary); font-weight: 600; white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
+                                                                                        {row.value.clone()}
+                                                                                    </span>
+                                                                                }.into_any()
+                                                                            }}
+                                                                        </TableCellLayout>
+                                                                    </TableCell>
                                                                 </TableRow>
                                                             }
                                                             .into_view()
@@ -647,22 +945,15 @@ pub fn WbFinanceReportDetail(
                                     }
                                         .into_any()
                                 } else if active_tab.get() == "json" {
-                                    let json_text = data
+                                    let json_content = data
                                         .get()
                                         .and_then(|d| d.extra)
-                                        .map(|json_str| {
-                                            serde_json::from_str::<serde_json::Value>(&json_str)
-                                                .ok()
-                                                .and_then(|v| serde_json::to_string_pretty(&v).ok())
-                                                .unwrap_or(json_str)
-                                        })
-                                        .unwrap_or_else(|| "No JSON data available".to_string());
+                                        .unwrap_or_else(|| "{}".to_string());
                                     view! {
-                                        <div>
-                                            <pre class="json-viewer__content">
-                                                {json_text}
-                                            </pre>
-                                        </div>
+                                        <JsonViewer
+                                            json_content=json_content
+                                            title="Raw JSON from WB".to_string()
+                                        />
                                     }
                                         .into_any()
                                 } else if active_tab.get() == "general_ledger" {

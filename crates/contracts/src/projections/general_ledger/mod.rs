@@ -1,3 +1,4 @@
+use crate::general_ledger::GlDimensionDef;
 use crate::shared::analytics::{
     AggKind, ReportGroup, SelectionRule, SignPolicy, TurnoverLayer, TurnoverScope, ValueKind,
 };
@@ -9,9 +10,11 @@ pub struct GeneralLedgerEntryDto {
     pub entry_date: String,
     pub layer: TurnoverLayer,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cabinet_mp: Option<String>,
+    pub connection_mp_ref: Option<String>,
     pub registrator_type: String,
     pub registrator_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_id: Option<String>,
     pub debit_account: String,
     pub credit_account: String,
     pub amount: f64,
@@ -62,4 +65,6 @@ pub struct GeneralLedgerTurnoverDto {
     pub journal_comment: String,
     #[serde(default)]
     pub gl_entries_count: usize,
+    #[serde(default)]
+    pub available_dimensions: Vec<GlDimensionDef>,
 }

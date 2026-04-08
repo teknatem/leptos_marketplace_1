@@ -9,6 +9,8 @@ use crate::shared::indicator_format::format_money_with_format_spec;
 use contracts::shared::data_view::ViewContext;
 use leptos::prelude::*;
 
+pub const GL_TURNOVER_DATA_VIEW_ID: &str = "dv004_general_ledger_turnovers";
+
 /// Read the current app theme from localStorage (key "app_theme").
 /// Falls back to "dark". Maps "forest" → "dark" since it is a dark-based theme.
 fn get_app_theme() -> String {
@@ -520,7 +522,17 @@ impl BiIndicatorDetailsVm {
 
     pub fn is_valid(&self) -> Signal<bool> {
         let description = self.description;
-        Signal::derive(move || !description.get().trim().is_empty())
+        let preview_title = self.preview_title;
+        Signal::derive(move || {
+            let preview_title = preview_title.get();
+            let description = description.get();
+            let value = if preview_title.trim().is_empty() {
+                description
+            } else {
+                preview_title
+            };
+            !value.trim().is_empty()
+        })
     }
 
     pub fn is_save_disabled(&self) -> Signal<bool> {
@@ -545,6 +557,79 @@ impl BiIndicatorDetailsVm {
         if self.test_result.get().is_some() {
             self.apply_test_to_preview();
         }
+    }
+
+    pub fn get_param_default_value(&self, key: &str) -> String {
+        let params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
+            .unwrap_or_else(|_| serde_json::json!([]));
+        params
+            .as_array()
+            .and_then(|items| {
+                items.iter().find_map(|item| {
+                    let item_key = item.get("key")?.as_str()?;
+                    if item_key == key {
+                        item.get("default_value")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn set_param_default_value(
+        &self,
+        key: &str,
+        param_type: &str,
+        label: &str,
+        default_value: &str,
+    ) {
+        let mut params = serde_json::from_str::<serde_json::Value>(&self.params_json.get())
+            .unwrap_or_else(|_| serde_json::json!([]));
+        let Some(items) = params.as_array_mut() else {
+            self.params_json.set("[]".to_string());
+            return;
+        };
+
+        let mut replaced = false;
+        for item in items.iter_mut() {
+            if item.get("key").and_then(|value| value.as_str()) == Some(key) {
+                *item = serde_json::json!({
+                    "key": key,
+                    "param_type": param_type,
+                    "label": label,
+                    "default_value": if default_value.trim().is_empty() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String(default_value.to_string())
+                    },
+                    "required": true,
+                    "global_filter_key": serde_json::Value::Null
+                });
+                replaced = true;
+                break;
+            }
+        }
+
+        if !replaced {
+            items.push(serde_json::json!({
+                "key": key,
+                "param_type": param_type,
+                "label": label,
+                "default_value": if default_value.trim().is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(default_value.to_string())
+                },
+                "required": true,
+                "global_filter_key": serde_json::Value::Null
+            }));
+        }
+
+        self.params_json
+            .set(serde_json::to_string_pretty(&params).unwrap_or_else(|_| "[]".to_string()));
     }
 
     /// Build the iframe srcdoc from current ViewSpec + preview field values
@@ -642,8 +727,8 @@ impl BiIndicatorDetailsVm {
     // === Validation ===
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.description.get().trim().is_empty() {
-            return Err("Наименование обязательно для заполнения".into());
+        if self.resolved_description().trim().is_empty() {
+            return Err("Название индикатора обязательно для заполнения".into());
         }
         Ok(())
     }
@@ -680,6 +765,10 @@ impl BiIndicatorDetailsVm {
         let this = self.clone();
         this.saving.set(true);
         this.error.set(None);
+        let resolved_description = this.resolved_description();
+        if this.description.get() != resolved_description {
+            this.description.set(resolved_description);
+        }
 
         let dto = this.to_dto();
 
@@ -796,6 +885,7 @@ impl BiIndicatorDetailsVm {
                 ctx.period2_from.as_deref(),
                 ctx.period2_to.as_deref(),
                 ctx.connection_mp_refs,
+                ctx.params,
             )
             .await
             {
@@ -894,6 +984,15 @@ impl BiIndicatorDetailsVm {
 
     // === Private helpers ===
 
+    fn resolved_description(&self) -> String {
+        let preview_title = self.preview_title.get();
+        if preview_title.trim().is_empty() {
+            self.description.get()
+        } else {
+            preview_title
+        }
+    }
+
     fn to_dto(&self) -> BiIndicatorSaveDto {
         let view_id = self.dsc_view_id.get();
         let metric_id = self.dsc_metric_id.get();
@@ -976,7 +1075,7 @@ impl BiIndicatorDetailsVm {
         BiIndicatorSaveDto {
             id: self.id.get(),
             code: self.code.get(),
-            description: self.description.get(),
+            description: self.resolved_description(),
             comment: {
                 let c = self.comment.get();
                 if c.trim().is_empty() {

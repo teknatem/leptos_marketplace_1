@@ -1,6 +1,8 @@
 use anyhow::Result;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -23,6 +25,7 @@ pub struct Model {
     pub registrator_ref: String,
     #[sea_orm(nullable)]
     pub general_ledger_ref: Option<String>,
+    pub is_problem: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -41,6 +44,10 @@ pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
 }
 
 pub async fn save_entry(entry: &Model) -> Result<()> {
+    save_entry_with_conn(conn(), entry).await
+}
+
+pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
     let active = ActiveModel {
         id: Set(entry.id.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
@@ -54,18 +61,19 @@ pub async fn save_entry(entry: &Model) -> Result<()> {
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
         general_ledger_ref: Set(entry.general_ledger_ref.clone()),
+        is_problem: Set(entry.is_problem),
         created_at: Set(entry.created_at.clone()),
         updated_at: Set(entry.updated_at.clone()),
     };
 
     if Entity::find_by_id(entry.id.clone())
-        .one(conn())
+        .one(db)
         .await?
         .is_some()
     {
-        active.update(conn()).await?;
+        active.update(db).await?;
     } else {
-        active.insert(conn()).await?;
+        active.insert(db).await?;
     }
 
     Ok(())
@@ -76,9 +84,16 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
 }
 
 pub async fn delete_by_registrator_ref(registrator_ref: &str) -> Result<u64> {
+    delete_by_registrator_ref_with_conn(conn(), registrator_ref).await
+}
+
+pub async fn delete_by_registrator_ref_with_conn<C: ConnectionTrait>(
+    db: &C,
+    registrator_ref: &str,
+) -> Result<u64> {
     let result = Entity::delete_many()
         .filter(Column::RegistratorRef.eq(registrator_ref))
-        .exec(conn())
+        .exec(db)
         .await?;
     Ok(result.rows_affected)
 }

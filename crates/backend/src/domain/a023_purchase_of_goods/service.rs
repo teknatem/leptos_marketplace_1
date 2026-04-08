@@ -16,6 +16,32 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<PurchaseOfGoods>> {
     repository::get_by_id(id).await
 }
 
+pub async fn post_document(id: Uuid) -> Result<()> {
+    let mut doc = repository::get_by_id(id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    doc.base.metadata.is_posted = true;
+    repository::upsert_document(&doc).await?;
+    crate::projections::p912_nomenclature_costs::service::project_purchase_of_goods(&doc).await?;
+    Ok(())
+}
+
+pub async fn unpost_document(id: Uuid) -> Result<()> {
+    let mut doc = repository::get_by_id(id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    doc.base.metadata.is_posted = false;
+    repository::upsert_document(&doc).await?;
+    crate::projections::p912_nomenclature_costs::service::remove_by_registrator(
+        "a023_purchase_of_goods",
+        &id.to_string(),
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn list_paginated(query: PurchaseOfGoodsListQuery) -> Result<PurchaseOfGoodsListResult> {
     repository::list_sql(query).await
 }

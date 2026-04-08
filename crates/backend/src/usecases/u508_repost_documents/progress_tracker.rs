@@ -31,6 +31,14 @@ impl ProgressTracker {
         }
     }
 
+    pub fn set_chunks_total(&self, session_id: &str, total: i32) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.chunks_total = Some(total);
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
     pub fn update_progress(
         &self,
         session_id: &str,
@@ -43,6 +51,24 @@ impl ProgressTracker {
             progress.processed = processed;
             progress.reposted = reposted;
             progress.current_item = current_item;
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
+    pub fn update_chunk_progress(
+        &self,
+        session_id: &str,
+        chunks_processed: i32,
+        chunk_date: Option<String>,
+        chunk_connection_mp_ref: Option<String>,
+        chunk_label: Option<String>,
+    ) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.chunks_processed = chunks_processed;
+            progress.current_chunk_date = chunk_date;
+            progress.current_chunk_connection_mp_ref = chunk_connection_mp_ref;
+            progress.current_chunk_label = chunk_label;
             progress.updated_at = chrono::Utc::now();
         }
     }
@@ -63,6 +89,9 @@ impl ProgressTracker {
             progress.completed_at = Some(chrono::Utc::now());
             progress.updated_at = chrono::Utc::now();
             progress.current_item = None;
+            progress.current_chunk_date = None;
+            progress.current_chunk_connection_mp_ref = None;
+            progress.current_chunk_label = None;
         }
     }
 }

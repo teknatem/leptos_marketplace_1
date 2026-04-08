@@ -40,6 +40,8 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub nm_id: Option<i64>,
     #[sea_orm(nullable)]
+    pub a004_nomenclature_ref: Option<String>,
+    #[sea_orm(nullable)]
     pub penalty: Option<f64>,
     #[sea_orm(nullable)]
     pub ppvz_vw: Option<f64>,
@@ -121,6 +123,7 @@ pub struct WbFinanceReportEntry {
     pub delivery_amount: Option<f64>,
     pub delivery_rub: Option<f64>,
     pub nm_id: Option<i64>,
+    pub a004_nomenclature_ref: Option<String>,
     pub penalty: Option<f64>,
     pub ppvz_vw: Option<f64>,
     pub ppvz_vw_nds: Option<f64>,
@@ -192,6 +195,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
         active_model.delivery_amount = Set(entry.delivery_amount);
         active_model.delivery_rub = Set(entry.delivery_rub);
         active_model.nm_id = Set(entry.nm_id);
+        active_model.a004_nomenclature_ref = Set(entry.a004_nomenclature_ref.clone());
         active_model.penalty = Set(entry.penalty);
         active_model.ppvz_vw = Set(entry.ppvz_vw);
         active_model.ppvz_vw_nds = Set(entry.ppvz_vw_nds);
@@ -234,6 +238,7 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
             delivery_amount: Set(entry.delivery_amount),
             delivery_rub: Set(entry.delivery_rub),
             nm_id: Set(entry.nm_id),
+            a004_nomenclature_ref: Set(entry.a004_nomenclature_ref.clone()),
             penalty: Set(entry.penalty),
             ppvz_vw: Set(entry.ppvz_vw),
             ppvz_vw_nds: Set(entry.ppvz_vw_nds),
@@ -288,68 +293,131 @@ pub async fn list_with_filters(
     let safe_limit = limit.max(1).min(MAX_LIMIT);
     let safe_offset = offset.max(0);
 
-    // Helper function to apply filters to a query
-    let apply_filters = |mut q: sea_orm::Select<Entity>| -> sea_orm::Select<Entity> {
-        // Фильтр по дате
-        q = q
-            .filter(Column::RrDt.gte(date_from))
-            .filter(Column::RrDt.lte(date_to));
-
-        // Фильтр по nm_id
-        if let Some(nm) = nm_id {
-            q = q.filter(Column::NmId.eq(nm));
-        }
-
-        // Фильтр по sa_name (артикул продавца)
-        if let Some(ref sa) = sa_name {
-            if !sa.is_empty() {
-                q = q.filter(Column::SaName.contains(sa));
-            }
-        }
-
-        // Фильтр по connection_mp_ref
-        if let Some(ref conn) = connection_mp_ref {
-            q = q.filter(Column::ConnectionMpRef.eq(conn));
-        }
-
-        // Фильтр по organization_ref
-        if let Some(ref org) = organization_ref {
-            q = q.filter(Column::OrganizationRef.eq(org));
-        }
-
-        // Фильтр по supplier_oper_name (тип операции)
-        if let Some(ref oper) = supplier_oper_name {
-            if !oper.is_empty() {
-                q = q.filter(Column::SupplierOperName.eq(oper));
-            }
-        }
-
-        // Фильтр по srid (точное совпадение)
-        if let Some(ref srid_val) = srid {
-            if !srid_val.is_empty() {
-                q = q.filter(Column::Srid.eq(srid_val));
-            }
-        }
-
-        q
-    };
-
     // Оптимизированный COUNT: считаем только до 10001 строк и обрезаем до 10000.
     // Это сильно снижает стоимость подсчета на больших диапазонах.
-    let total_count = apply_filters(Entity::find())
-        .select_only()
-        .column(Column::RrdId)
-        .limit(COUNT_SCAN_LIMIT)
-        .into_tuple::<i64>()
-        .all(db)
-        .await?
-        .len() as i32;
+    let total_count = apply_filters(
+        Entity::find(),
+        date_from,
+        date_to,
+        nm_id,
+        sa_name.as_deref(),
+        connection_mp_ref.as_deref(),
+        organization_ref.as_deref(),
+        supplier_oper_name.as_deref(),
+        srid.as_deref(),
+    )
+    .select_only()
+    .column(Column::RrdId)
+    .limit(COUNT_SCAN_LIMIT)
+    .into_tuple::<i64>()
+    .all(db)
+    .await?
+    .len() as i32;
     let total_count = total_count.min(MAX_TOTAL_COUNT);
 
     // Построить основной запрос с фильтрами
-    let mut query = apply_filters(Entity::find());
+    let query = apply_sort(
+        apply_filters(
+            Entity::find(),
+            date_from,
+            date_to,
+            nm_id,
+            sa_name.as_deref(),
+            connection_mp_ref.as_deref(),
+            organization_ref.as_deref(),
+            supplier_oper_name.as_deref(),
+            srid.as_deref(),
+        ),
+        sort_by,
+        sort_desc,
+    );
 
-    // Сортировка
+    // Пагинация
+    let items = query
+        .limit(safe_limit as u64)
+        .offset(safe_offset as u64)
+        .all(db)
+        .await?;
+
+    Ok((items, total_count))
+}
+
+pub async fn list_all_with_filters(
+    date_from: &str,
+    date_to: &str,
+    nm_id: Option<i64>,
+    sa_name: Option<String>,
+    connection_mp_ref: Option<String>,
+    organization_ref: Option<String>,
+    supplier_oper_name: Option<String>,
+    srid: Option<String>,
+    sort_by: &str,
+    sort_desc: bool,
+) -> Result<Vec<Model>> {
+    let db = get_connection();
+    let items = apply_sort(
+        apply_filters(
+            Entity::find(),
+            date_from,
+            date_to,
+            nm_id,
+            sa_name.as_deref(),
+            connection_mp_ref.as_deref(),
+            organization_ref.as_deref(),
+            supplier_oper_name.as_deref(),
+            srid.as_deref(),
+        ),
+        sort_by,
+        sort_desc,
+    )
+    .all(db)
+    .await?;
+
+    Ok(items)
+}
+
+fn apply_filters(
+    mut q: sea_orm::Select<Entity>,
+    date_from: &str,
+    date_to: &str,
+    nm_id: Option<i64>,
+    sa_name: Option<&str>,
+    connection_mp_ref: Option<&str>,
+    organization_ref: Option<&str>,
+    supplier_oper_name: Option<&str>,
+    srid: Option<&str>,
+) -> sea_orm::Select<Entity> {
+    q = q
+        .filter(Column::RrDt.gte(date_from))
+        .filter(Column::RrDt.lte(date_to));
+
+    if let Some(nm) = nm_id {
+        q = q.filter(Column::NmId.eq(nm));
+    }
+    if let Some(sa) = sa_name.filter(|value| !value.is_empty()) {
+        q = q.filter(Column::SaName.contains(sa));
+    }
+    if let Some(conn) = connection_mp_ref.filter(|value| !value.is_empty()) {
+        q = q.filter(Column::ConnectionMpRef.eq(conn));
+    }
+    if let Some(org) = organization_ref.filter(|value| !value.is_empty()) {
+        q = q.filter(Column::OrganizationRef.eq(org));
+    }
+    if let Some(oper) = supplier_oper_name.filter(|value| !value.is_empty()) {
+        q = q.filter(Column::SupplierOperName.eq(oper));
+    }
+    if let Some(srid_value) = srid.filter(|value| !value.is_empty()) {
+        q = q.filter(Column::Srid.eq(srid_value));
+    }
+
+    q
+}
+
+fn apply_sort(
+    mut query: sea_orm::Select<Entity>,
+    sort_by: &str,
+    sort_desc: bool,
+) -> sea_orm::Select<Entity> {
     query = match sort_by {
         "rr_dt" => {
             if sort_desc {
@@ -472,16 +540,8 @@ pub async fn list_with_filters(
         }
     };
 
-    // Пагинация
-    let items = query
-        .limit(safe_limit as u64)
-        .offset(safe_offset as u64)
-        .all(db)
-        .await?;
-
-    Ok((items, total_count))
+    query
 }
-
 
 /// Поиск записей по srid
 pub async fn search_by_srid(srid: &str) -> Result<Vec<Model>> {
@@ -499,7 +559,6 @@ pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
 
     Ok(item)
 }
-
 
 pub async fn list_distinct_supplier_oper_names(
     date_from: &str,
@@ -549,5 +608,3 @@ pub async fn list_by_date_range(date_from: &str, date_to: &str) -> Result<Vec<Mo
 
     Ok(items)
 }
-
-

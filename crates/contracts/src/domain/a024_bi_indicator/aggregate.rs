@@ -274,7 +274,7 @@ impl BiIndicator {
 
     pub fn validate(&self) -> Result<(), std::string::String> {
         if self.base.description.trim().is_empty() {
-            return Err("Наименование не может быть пустым".into());
+            return Err("Название индикатора не может быть пустым".into());
         }
         if self.base.code.trim().is_empty() {
             return Err("Код не может быть пустым".into());

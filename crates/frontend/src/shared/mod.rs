@@ -1,4 +1,5 @@
 pub mod api_utils;
+pub mod auth_download;
 pub mod bi_card;
 pub mod clipboard;
 pub mod code_format;

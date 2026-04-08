@@ -102,7 +102,20 @@ pub async fn replace_for_period(
     documents: &[WbAdvertDaily],
 ) -> Result<usize> {
     let db = get_connection();
+    let started_at = std::time::Instant::now();
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: acquiring transaction connection={}, period={}..{}, documents={}",
+        connection_id,
+        date_from,
+        date_to,
+        documents.len()
+    );
     let txn = db.begin().await?;
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: transaction started connection={}, elapsed_ms={}",
+        connection_id,
+        started_at.elapsed().as_millis()
+    );
 
     let existing_ids: Vec<String> = Entity::find()
         .filter(Column::ConnectionId.eq(connection_id))
@@ -114,11 +127,27 @@ pub async fn replace_for_period(
         .map(|item| item.id)
         .collect();
 
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: found existing documents connection={}, count={}",
+        connection_id,
+        existing_ids.len()
+    );
+
     for id in existing_ids {
-        let registrator_ref = format!("a026:{}", id);
-        crate::general_ledger::service::remove_by_registrator_ref(&registrator_ref)
-            .await?;
+        let registrator_ref = id.clone();
+        crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
+            &txn,
+            "a026_wb_advert_daily",
+            &registrator_ref,
+        )
+        .await?;
     }
+
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: GL cleanup completed connection={}, elapsed_ms={}",
+        connection_id,
+        started_at.elapsed().as_millis()
+    );
 
     Entity::delete_many()
         .filter(Column::ConnectionId.eq(connection_id))
@@ -127,11 +156,23 @@ pub async fn replace_for_period(
         .exec(&txn)
         .await?;
 
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: source rows deleted connection={}, elapsed_ms={}",
+        connection_id,
+        started_at.elapsed().as_millis()
+    );
+
     for document in documents {
         insert_with_conn(&txn, document).await?;
     }
 
     txn.commit().await?;
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: committed connection={}, inserted={}, elapsed_ms={}",
+        connection_id,
+        documents.len(),
+        started_at.elapsed().as_millis()
+    );
     Ok(documents.len())
 }
 

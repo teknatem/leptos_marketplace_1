@@ -18,6 +18,7 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     }
 
     let cfg = config::load_config()?;
+    let config_path = config::get_config_path()?;
     let absolute_path = config::get_database_path(&cfg)?;
 
     if let Some(parent) = absolute_path.parent() {
@@ -25,6 +26,8 @@ pub async fn initialize_database() -> anyhow::Result<()> {
     }
 
     let db_url = build_sqlite_url(&absolute_path);
+    println!("✓ Config path resolved to: {}", config_path.display());
+    println!("✓ Database path resolved to: {}", absolute_path.display());
     tracing::info!("Connecting to database: {}", db_url);
     let conn = Database::connect(&db_url).await?;
 

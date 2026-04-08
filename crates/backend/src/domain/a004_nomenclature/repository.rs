@@ -183,6 +183,21 @@ pub async fn get_by_id(id: Uuid) -> anyhow::Result<Option<Nomenclature>> {
     Ok(result.map(Into::into))
 }
 
+pub async fn list_by_ids(ids: &[String]) -> anyhow::Result<Vec<Nomenclature>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let items = Entity::find()
+        .filter(Column::Id.is_in(ids.iter().cloned()))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    Ok(items)
+}
+
 pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let active = ActiveModel {

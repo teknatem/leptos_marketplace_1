@@ -10,6 +10,10 @@
 pub mod dv001;
 pub mod dv002;
 pub mod dv003;
+pub mod dv004;
+pub mod dv005;
+pub mod dv006;
+pub mod dv007;
 pub mod filters;
 
 use std::collections::HashMap;
@@ -42,9 +46,21 @@ fn cache_key(view_id: &str, ctx: &ViewContext) -> String {
         r.sort();
         r.join(",")
     };
-    let metric = ctx.params.get("metric").map(|s| s.as_str()).unwrap_or("");
+    let params = {
+        let mut pairs: Vec<(String, String)> = ctx
+            .params
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        pairs.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+        pairs
+            .into_iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join("&")
+    };
     format!(
-        "{view_id}|{}|{}|{}|{}|{refs}|{metric}",
+        "{view_id}|{}|{}|{}|{}|{refs}|{params}",
         ctx.date_from,
         ctx.date_to,
         ctx.period2_from.as_deref().unwrap_or(""),
@@ -120,6 +136,26 @@ impl DataViewRegistry {
             dv003::meta(),
             |ctx| Box::pin(dv003::compute_scalar(ctx)),
             |ctx, g, ids| Box::pin(dv003::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv004::meta(),
+            |ctx| Box::pin(dv004::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv004::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv005::meta(),
+            |ctx| Box::pin(dv005::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv005::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv006::meta(),
+            |ctx| Box::pin(dv006::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv006::compute_drilldown_multi(ctx, g, ids)),
+        );
+        registry.register(
+            dv007::meta(),
+            |ctx| Box::pin(dv007::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv007::compute_drilldown_multi(ctx, g, ids)),
         );
 
         registry
