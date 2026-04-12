@@ -4,7 +4,7 @@ use crate::domain::common::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Нулевой UUID, который не считается корректной ссылкой
+// РќСѓР»РµРІРѕР№ UUID, РєРѕС‚РѕСЂС‹Р№ РЅРµ СЃС‡РёС‚Р°РµС‚СЃСЏ РєРѕСЂСЂРµРєС‚РЅРѕР№ СЃСЃС‹Р»РєРѕР№
 const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
 // ============================================================================
@@ -62,7 +62,7 @@ pub struct Nomenclature {
     #[serde(rename = "mpRefCount", default)]
     pub mp_ref_count: i32,
 
-    // Измерения (классификация)
+    // РР·РјРµСЂРµРЅРёСЏ (РєР»Р°СЃСЃРёС„РёРєР°С†РёСЏ)
     #[serde(rename = "dim1Category", default)]
     pub dim1_category: String,
 
@@ -87,12 +87,18 @@ pub struct Nomenclature {
     #[serde(rename = "baseNomenclatureRef")]
     pub base_nomenclature_ref: Option<String>,
 
+    #[serde(rename = "alternativeCostSourceRef")]
+    pub alternative_cost_source_ref: Option<String>,
+
+    #[serde(rename = "kitVariantRef")]
+    pub kit_variant_ref: Option<String>,
+
     #[serde(rename = "isDerivative", default)]
     pub is_derivative: bool,
 }
 
 impl Nomenclature {
-    /// Вычисление признака производной номенклатуры
+    /// Р’С‹С‡РёСЃР»РµРЅРёРµ РїСЂРёР·РЅР°РєР° РїСЂРѕРёР·РІРѕРґРЅРѕР№ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹
     pub fn compute_is_derivative(&self) -> bool {
         self.base_nomenclature_ref
             .as_ref()
@@ -126,6 +132,8 @@ impl Nomenclature {
             dim6_size: String::new(),
             is_assembly: false,
             base_nomenclature_ref: None,
+            alternative_cost_source_ref: None,
+            kit_variant_ref: None,
             is_derivative: false,
         }
     }
@@ -159,6 +167,8 @@ impl Nomenclature {
             dim6_size: String::new(),
             is_assembly: false,
             base_nomenclature_ref: None,
+            alternative_cost_source_ref: None,
+            kit_variant_ref: None,
             is_derivative: false,
         }
     }
@@ -179,9 +189,9 @@ impl Nomenclature {
         self.is_folder = dto.is_folder;
         self.parent_id = dto.parent_id.clone();
         self.article = dto.article.clone().unwrap_or_default();
-        // mp_ref_count обновляется только автоматически при сопоставлении
+        // mp_ref_count РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРё СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёРё
 
-        // Обновление измерений
+        // РћР±РЅРѕРІР»РµРЅРёРµ РёР·РјРµСЂРµРЅРёР№
         self.dim1_category = dto.dim1_category.clone().unwrap_or_default();
         self.dim2_line = dto.dim2_line.clone().unwrap_or_default();
         self.dim3_model = dto.dim3_model.clone().unwrap_or_default();
@@ -189,45 +199,64 @@ impl Nomenclature {
         self.dim5_sink = dto.dim5_sink.clone().unwrap_or_default();
         self.dim6_size = dto.dim6_size.clone().unwrap_or_default();
 
-        // Обновление новых полей
+        // РћР±РЅРѕРІР»РµРЅРёРµ РЅРѕРІС‹С… РїРѕР»РµР№
         if let Some(is_assembly) = dto.is_assembly {
             self.is_assembly = is_assembly;
         }
         if dto.base_nomenclature_ref.is_some() {
             self.base_nomenclature_ref = dto.base_nomenclature_ref.clone();
         }
+        if dto.alternative_cost_source_ref.is_some() {
+            self.alternative_cost_source_ref = dto.alternative_cost_source_ref.clone();
+        }
+        if dto.kit_variant_ref.is_some() {
+            self.kit_variant_ref = dto.kit_variant_ref.clone();
+        }
 
-        // Игнорируем dto.is_derivative - вычисляем автоматически на основе base_nomenclature_ref
-        // Автоматический пересчет признака производной номенклатуры
+        // РРіРЅРѕСЂРёСЂСѓРµРј dto.is_derivative - РІС‹С‡РёСЃР»СЏРµРј Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РЅР° РѕСЃРЅРѕРІРµ base_nomenclature_ref
+        // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРёР№ РїРµСЂРµСЃС‡РµС‚ РїСЂРёР·РЅР°РєР° РїСЂРѕРёР·РІРѕРґРЅРѕР№ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹
         self.is_derivative = self.compute_is_derivative();
     }
 
     pub fn validate(&self) -> Result<(), String> {
         if self.base.description.trim().is_empty() {
-            return Err("Описание не может быть пустым".into());
+            return Err("РћРїРёСЃР°РЅРёРµ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј".into());
         }
         if self.base.code.trim().is_empty() {
-            return Err("Код не может быть пустым".into());
+            return Err("РљРѕРґ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј".into());
         }
 
-        // Валидация длины измерений
+        // Р’Р°Р»РёРґР°С†РёСЏ РґР»РёРЅС‹ РёР·РјРµСЂРµРЅРёР№
         if self.dim1_category.len() > 40 {
-            return Err("Категория не должна превышать 40 символов".into());
+            return Err(
+                "РљР°С‚РµРіРѕСЂРёСЏ РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ"
+                    .into(),
+            );
         }
         if self.dim2_line.len() > 40 {
-            return Err("Линейка не должна превышать 40 символов".into());
+            return Err(
+                "Р›РёРЅРµР№РєР° РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ".into(),
+            );
         }
         if self.dim3_model.len() > 80 {
-            return Err("Модель не должна превышать 80 символов".into());
+            return Err(
+                "РњРѕРґРµР»СЊ РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 80 СЃРёРјРІРѕР»РѕРІ".into(),
+            );
         }
-        if self.dim4_format.len() > 20 {
-            return Err("Формат не должен превышать 20 символов".into());
+        if self.dim4_format.len() > 40 {
+            return Err(
+                "Р¤РѕСЂРјР°С‚ РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ".into(),
+            );
         }
         if self.dim5_sink.len() > 40 {
-            return Err("Раковина не должна превышать 40 символов".into());
+            return Err(
+                "Р Р°РєРѕРІРёРЅР° РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ".into(),
+            );
         }
         if self.dim6_size.len() > 20 {
-            return Err("Размер не должен превышать 20 символов".into());
+            return Err(
+                "Р Р°Р·РјРµСЂ РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ".into(),
+            );
         }
 
         Ok(())
@@ -278,11 +307,11 @@ impl AggregateRoot for Nomenclature {
     }
 
     fn element_name() -> &'static str {
-        "Номенклатура"
+        "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°"
     }
 
     fn list_name() -> &'static str {
-        "Номенклатура"
+        "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°"
     }
 
     fn origin() -> Origin {
@@ -311,7 +340,7 @@ pub struct NomenclatureDto {
     #[serde(rename = "mpRefCount", default)]
     pub mp_ref_count: i32,
 
-    // Измерения (классификация)
+    // РР·РјРµСЂРµРЅРёСЏ (РєР»Р°СЃСЃРёС„РёРєР°С†РёСЏ)
     #[serde(rename = "dim1Category")]
     pub dim1_category: Option<String>,
     #[serde(rename = "dim2Line")]
@@ -329,6 +358,10 @@ pub struct NomenclatureDto {
     pub is_assembly: Option<bool>,
     #[serde(rename = "baseNomenclatureRef")]
     pub base_nomenclature_ref: Option<String>,
+    #[serde(rename = "alternativeCostSourceRef")]
+    pub alternative_cost_source_ref: Option<String>,
+    #[serde(rename = "kitVariantRef")]
+    pub kit_variant_ref: Option<String>,
     #[serde(rename = "isDerivative", default)]
     pub is_derivative: Option<bool>,
 }

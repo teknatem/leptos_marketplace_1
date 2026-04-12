@@ -135,7 +135,11 @@ pub async fn upsert(
             }
             Err(e) => {
                 tracing::error!("Failed to update BI indicator: {}", e);
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                if e.to_string().contains("Version conflict") {
+                    Err(axum::http::StatusCode::CONFLICT)
+                } else {
+                    Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                }
             }
         }
     } else {
@@ -292,26 +296,11 @@ pub async fn compute_batch(
     );
 
     let indicator_ids = params.indicator_ids;
-    let mut tasks = tokio::task::JoinSet::new();
-    for (index, id) in indicator_ids.iter().cloned().enumerate() {
-        let ctx_clone = ctx.clone();
-        tasks.spawn(async move {
-            let result = a024_bi_indicator::service::compute_indicator(&id, &ctx_clone).await;
-            (index, id, result)
-        });
-    }
-
-    let mut ordered_values: Vec<Option<serde_json::Value>> = vec![None; indicator_ids.len()];
-    while let Some(joined) = tasks.join_next().await {
-        let (index, id, result) = joined.map_err(|e| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Batch compute task join error: {}", e),
-            )
-        })?;
-        match result {
+    let mut values = Vec::with_capacity(indicator_ids.len());
+    for id in indicator_ids {
+        match a024_bi_indicator::service::compute_indicator(&id, &ctx).await {
             Ok(val) => {
-                ordered_values[index] = Some(serde_json::json!({
+                values.push(serde_json::json!({
                     "id": id,
                     "value": val.value,
                     "previous_value": val.previous_value,
@@ -328,7 +317,6 @@ pub async fn compute_batch(
         }
     }
 
-    let values: Vec<serde_json::Value> = ordered_values.into_iter().flatten().collect();
     Ok(Json(serde_json::json!({ "values": values })))
 }
 

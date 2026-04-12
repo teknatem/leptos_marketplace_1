@@ -174,6 +174,34 @@ impl ImportExecutor {
             }
         }
 
+        let should_sync_kit_variant_links = request
+            .target_aggregates
+            .iter()
+            .any(|aggregate| aggregate == "a004_nomenclature" || aggregate == "a022_kit_variant");
+
+        if should_sync_kit_variant_links {
+            match a004_nomenclature::service::sync_kit_variant_links().await {
+                Ok(stats) => {
+                    tracing::info!(
+                        "Kit variant links synchronized after u501 import: linked={}, cleared={}, unchanged={}, ambiguous_owner_refs={}",
+                        stats.linked,
+                        stats.cleared,
+                        stats.unchanged,
+                        stats.ambiguous_owner_refs
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Failed to sync a004 -> a022 links after u501 import: {}", e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some("a004_nomenclature".to_string()),
+                        "Failed to synchronize kit variant links".to_string(),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+        }
+
         // Завершить импорт
         let final_status = if self
             .progress_tracker
@@ -1466,6 +1494,7 @@ impl ImportExecutor {
         // Исключаемые контрагенты
         const EXCLUDED_COUNTERPARTY_1: &str = "491fc071-4a1d-11e8-a402-b06ebfcee9c3";
         const EXCLUDED_COUNTERPARTY_2: &str = "18696a6b-c59b-11ea-82d7-ac1f6b446ea1";
+        const SPECIAL_DOC_NUMBER: &str = "00ЦБ-000041";
 
         // Склад_Key в ПриобретениеТоваровУслуг не поддерживает сравнение guid через OData $filter
         // (составной тип или несовместимый тип поля), поэтому фильтруем по складу в Rust после получения.
@@ -1487,6 +1516,7 @@ impl ImportExecutor {
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
+        let mut special_doc_processed_in_main = false;
 
         loop {
             // Табличная часть Товары возвращается автоматически в теле ответа 1С OData.
@@ -1528,6 +1558,10 @@ impl ImportExecutor {
                         WAREHOUSE_KEY
                     );
                     continue;
+                }
+
+                if odata_item.number == SPECIAL_DOC_NUMBER {
+                    special_doc_processed_in_main = true;
                 }
 
                 self.progress_tracker.set_current_item(
@@ -1594,6 +1628,32 @@ impl ImportExecutor {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
+        if !special_doc_processed_in_main {
+            let (processed, inserted, updated) = self
+                .try_import_special_purchase_of_goods(
+                    session_id,
+                    aggregate_index,
+                    connection,
+                    period_from,
+                    period_to,
+                    SPECIAL_DOC_NUMBER,
+                )
+                .await?;
+
+            total_processed += processed;
+            total_inserted += inserted;
+            total_updated += updated;
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+        }
+
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
 
@@ -1615,8 +1675,115 @@ impl ImportExecutor {
         let doc = odata
             .to_aggregate(connection_id)
             .map_err(|e| anyhow::anyhow!(e))?;
+        let document_id = doc.base.id.value();
+        let is_new = a023_purchase_of_goods::repository::upsert_document(&doc).await?;
 
-        a023_purchase_of_goods::repository::upsert_document(&doc).await
+        a023_purchase_of_goods::service::post_document(document_id).await?;
+
+        Ok(is_new)
+    }
+
+    async fn try_import_special_purchase_of_goods(
+        &self,
+        session_id: &str,
+        aggregate_index: &str,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+        period_from: &str,
+        period_to: &str,
+        document_number: &str,
+    ) -> Result<(i32, i32, i32)> {
+        tracing::info!(
+            "Trying special import rule for purchase of goods number {} in period {} - {}",
+            document_number,
+            period_from,
+            period_to
+        );
+
+        let filter = format!(
+            "Posted eq true \
+             and DeletionMark eq false \
+             and Date ge datetime'{period_from}T00:00:00' \
+             and Date le datetime'{period_to}T23:59:59' \
+             and Number eq '{document_number}'",
+            period_from = period_from,
+            period_to = period_to,
+            document_number = document_number,
+        );
+
+        let response: UtPurchaseOfGoodsListResponse = self
+            .odata_client
+            .fetch_collection_full(
+                connection,
+                "Document_ПриобретениеТоваровУслуг",
+                Some(10),
+                Some(0),
+                Some(&filter),
+                None,
+                None,
+                Some("Ref_Key asc"),
+            )
+            .await?;
+
+        if response.value.is_empty() {
+            tracing::info!(
+                "Special import rule did not find purchase of goods {} in the requested period",
+                document_number
+            );
+            return Ok((0, 0, 0));
+        }
+
+        let connection_id = connection.base.id.as_string();
+        let mut processed = 0i32;
+        let mut inserted = 0i32;
+        let mut updated = 0i32;
+
+        for odata_item in response.value {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "{} от {} (special rule)",
+                    odata_item.number,
+                    odata_item.document_date()
+                )),
+            );
+
+            match self
+                .process_purchase_of_goods(&odata_item, &connection_id)
+                .await
+            {
+                Ok(is_new) => {
+                    processed += 1;
+                    if is_new {
+                        inserted += 1;
+                    } else {
+                        updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to process special-rule purchase {} {}: {}",
+                        odata_item.number,
+                        odata_item.ref_key,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!(
+                            "Failed to process purchase by special rule {} {}",
+                            odata_item.number, odata_item.ref_key
+                        ),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+        }
+
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+
+        Ok((processed, inserted, updated))
     }
 }
 

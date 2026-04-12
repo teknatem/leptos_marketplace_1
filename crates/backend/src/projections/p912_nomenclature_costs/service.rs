@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a021_production_output::aggregate::ProductionOutput;
 use contracts::domain::a023_purchase_of_goods::aggregate::PurchaseOfGoods;
+use contracts::domain::a028_missing_cost_registry::aggregate::MissingCostRegistry;
 use contracts::projections::p912_nomenclature_costs::dto::NomenclatureCostDto;
 use std::collections::HashMap;
 
@@ -9,6 +10,7 @@ use super::repository::{self, NomenclatureCostEntry, ResolvedCostRecord};
 
 const A021_REGISTRATOR_TYPE: &str = "a021_production_output";
 const A023_REGISTRATOR_TYPE: &str = "a023_purchase_of_goods";
+const A028_REGISTRATOR_TYPE: &str = "a028_missing_cost_registry";
 
 fn make_entry_id(registrator_type: &str, registrator_ref: &str, line_no: i32) -> String {
     format!("{registrator_type}:{registrator_ref}:{line_no}")
@@ -68,6 +70,36 @@ fn purchase_entries(document: &PurchaseOfGoods) -> Vec<NomenclatureCostEntry> {
         .collect()
 }
 
+fn missing_cost_registry_entries(document: &MissingCostRegistry) -> Vec<NomenclatureCostEntry> {
+    let registrator_ref = document.to_string_id();
+    let now = Utc::now();
+
+    document
+        .parse_lines()
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let cost = line.cost.filter(|value| *value > 0.0)?;
+            if line.nomenclature_ref.trim().is_empty() {
+                return None;
+            }
+            Some(NomenclatureCostEntry {
+                id: make_entry_id(A028_REGISTRATOR_TYPE, &registrator_ref, idx as i32),
+                period: document.document_date.clone(),
+                nomenclature_ref: line.nomenclature_ref,
+                cost,
+                quantity: None,
+                amount: None,
+                registrator_type: A028_REGISTRATOR_TYPE.to_string(),
+                registrator_ref: registrator_ref.clone(),
+                line_no: idx as i32,
+                created_at: now,
+                updated_at: now,
+            })
+        })
+        .collect()
+}
+
 pub async fn project_production_output(document: &ProductionOutput) -> Result<()> {
     repository::replace_for_registrator(
         A021_REGISTRATOR_TYPE,
@@ -82,6 +114,15 @@ pub async fn project_purchase_of_goods(document: &PurchaseOfGoods) -> Result<()>
         A023_REGISTRATOR_TYPE,
         &document.to_string_id(),
         &purchase_entries(document),
+    )
+    .await
+}
+
+pub async fn project_missing_cost_registry(document: &MissingCostRegistry) -> Result<()> {
+    repository::replace_for_registrator(
+        A028_REGISTRATOR_TYPE,
+        &document.to_string_id(),
+        &missing_cost_registry_entries(document),
     )
     .await
 }

@@ -70,6 +70,20 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<KitVariant>> {
     Ok(model.map(|m| m.into()))
 }
 
+pub async fn list_by_ids(ids: &[String]) -> Result<Vec<KitVariant>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let db = get_connection();
+    let rows = Entity::find()
+        .filter(Column::Id.is_in(ids.iter().cloned()))
+        .all(db)
+        .await?;
+
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
 pub async fn get_main_by_owner_ref(owner_ref: &str) -> Result<Option<KitVariant>> {
     if owner_ref.trim().is_empty() {
         return Ok(None);
@@ -110,6 +124,20 @@ pub async fn list_main_by_owner_refs(owner_refs: &[String]) -> Result<HashMap<St
     }
 
     Ok(result)
+}
+
+pub async fn list_active_with_owner_refs() -> Result<Vec<KitVariant>> {
+    let db = get_connection();
+    let rows = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::OwnerRef.is_not_null())
+        .order_by_asc(Column::OwnerRef)
+        .order_by_desc(Column::UpdatedAt)
+        .order_by_desc(Column::FetchedAt)
+        .all(db)
+        .await?;
+
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 /// Upsert варианта комплектации по ID (1С UUID является первичным ключом)

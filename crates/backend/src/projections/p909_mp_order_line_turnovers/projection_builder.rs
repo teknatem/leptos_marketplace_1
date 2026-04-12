@@ -843,6 +843,10 @@ mod tests {
             is_customer_return: is_return,
             marketplace_product_ref: Some("mp-prod-1".to_string()),
             nomenclature_ref: Some("nom-1".to_string()),
+            prod_cost_problem: false,
+            prod_cost_status: Some("ok".to_string()),
+            prod_cost_problem_message: None,
+            prod_cost_resolved_total: Some(88.0),
         }
     }
 

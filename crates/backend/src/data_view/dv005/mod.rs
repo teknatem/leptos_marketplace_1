@@ -569,6 +569,8 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         period2_label: period_label(&p2_from, &p2_to),
         metric_label: metric_label(metric).to_string(),
         metric_columns: vec![],
+        selected_dimension: None,
+        coverage: None,
     })
 }
 

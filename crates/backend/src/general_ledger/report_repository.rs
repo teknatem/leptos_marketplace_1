@@ -9,15 +9,9 @@ use contracts::general_ledger::{
     GlDrilldownResponse, GlDrilldownRow, GlReportResponse, GlReportRow,
 };
 
+use super::detail_links::descriptor_for_resource_table;
 use super::drilldown_dimensions::{dimension_label, is_nomenclature_dimension};
 use super::turnover_registry::get_turnover_class;
-
-const SUPPORTED_DETAIL_TABLES: &[&str] = &[
-    "p903_wb_finance_report",
-    "p909_mp_order_line_turnovers",
-    "p910_mp_unlinked_turnovers",
-    "p911_wb_advert_by_items",
-];
 
 fn conn() -> &'static sea_orm::DatabaseConnection {
     get_connection()
@@ -83,15 +77,32 @@ fn append_corr_account_filter(
 }
 
 fn build_signed_amount_expr(alias: &str, signed_by_account: bool) -> String {
+    let row_signed_amount_expr = build_row_signed_amount_expr(alias, signed_by_account);
+    format!("COALESCE(SUM({row_signed_amount_expr}), 0.0)")
+}
+
+fn build_row_signed_amount_expr(alias: &str, signed_by_account: bool) -> String {
     let amount = qualified_column(alias, "amount");
     if !signed_by_account {
-        return format!("COALESCE(SUM({amount}), 0.0)");
+        return format!("COALESCE({amount}, 0.0)");
     }
 
     let debit_account = qualified_column(alias, "debit_account");
     let credit_account = qualified_column(alias, "credit_account");
     format!(
-        "COALESCE(SUM(CASE WHEN {debit_account} = ? THEN {amount} WHEN {credit_account} = ? THEN -{amount} ELSE 0.0 END), 0.0)"
+        "COALESCE(CASE WHEN {debit_account} = ? THEN {amount} WHEN {credit_account} = ? THEN -{amount} ELSE 0.0 END, 0.0)"
+    )
+}
+
+fn build_row_sign_factor_expr(alias: &str, signed_by_account: bool) -> String {
+    if !signed_by_account {
+        return "1.0".to_string();
+    }
+
+    let debit_account = qualified_column(alias, "debit_account");
+    let credit_account = qualified_column(alias, "credit_account");
+    format!(
+        "CASE WHEN {debit_account} = ? THEN 1.0 WHEN {credit_account} = ? THEN -1.0 ELSE 0.0 END"
     )
 }
 
@@ -439,27 +450,19 @@ fn build_sys_gl_dimension_sql(
     }
 }
 
-fn build_nomenclature_dimension_sql(alias: &str, dimension_id: &str) -> (String, String, String) {
-    let nomenclature_ref_column = if alias == "p903" {
-        "p903.a004_nomenclature_ref"
-    } else {
-        "d.nomenclature_ref"
-    };
-
+fn build_nomenclature_dimension_sql(
+    nomenclature_ref_expr: &str,
+    dimension_id: &str,
+) -> (String, String, String) {
     if dimension_id == "nomenclature" {
         return (
-            format!("COALESCE({nomenclature_ref_column}, '(без номенклатуры)')"),
-            format!("COALESCE(n.description, {nomenclature_ref_column}, '(без номенклатуры)')"),
-            nomenclature_ref_column.to_string(),
+            format!("COALESCE({nomenclature_ref_expr}, '(без номенклатуры)')"),
+            format!("COALESCE(n.description, {nomenclature_ref_expr}, '(без номенклатуры)')"),
+            nomenclature_ref_expr.to_string(),
         );
     }
 
     match dimension_id {
-        "nomenclature" => (
-            format!("COALESCE({alias}.nomenclature_ref, '(без номенклатуры)')"),
-            format!("COALESCE(n.description, {alias}.nomenclature_ref, '(без номенклатуры)')"),
-            format!("{alias}.nomenclature_ref"),
-        ),
         "dim1_category" => (
             "COALESCE(n.dim1_category, '(не указано)')".to_string(),
             "COALESCE(n.dim1_category, '(не указано)')".to_string(),
@@ -491,9 +494,9 @@ fn build_nomenclature_dimension_sql(alias: &str, dimension_id: &str) -> (String,
             "n.dim6_size".to_string(),
         ),
         _ => (
-            "COALESCE(d.nomenclature_ref, '(без номенклатуры)')".to_string(),
-            "COALESCE(n.description, d.nomenclature_ref, '(без номенклатуры)')".to_string(),
-            "d.nomenclature_ref".to_string(),
+            format!("COALESCE({nomenclature_ref_expr}, '(без номенклатуры)')"),
+            format!("COALESCE(n.description, {nomenclature_ref_expr}, '(без номенклатуры)')"),
+            nomenclature_ref_expr.to_string(),
         ),
     }
 }
@@ -557,13 +560,13 @@ async fn query_sys_gl_common_drilldown(query: &GlDrilldownQuery) -> Result<Vec<G
 }
 
 fn build_matched_gl_cte(query: &GlDrilldownQuery, params: &mut Vec<Value>) -> String {
-    let signed_amount_expr = build_signed_amount_expr(
-        "gl",
-        query
-            .account
-            .as_ref()
-            .is_some_and(|value| !value.trim().is_empty()),
-    );
+    let signed_by_account = query
+        .account
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty());
+    let signed_amount_expr = build_row_signed_amount_expr("gl", signed_by_account);
+    let detail_sign_factor_expr = build_row_sign_factor_expr("gl", signed_by_account);
+    append_signed_amount_params(params, &query.account);
     append_signed_amount_params(params, &query.account);
     params.push(string_value(query.turnover_code.clone()));
     params.push(string_value(query.date_from.clone()));
@@ -575,9 +578,11 @@ fn build_matched_gl_cte(query: &GlDrilldownQuery, params: &mut Vec<Value>) -> St
             SELECT
                 gl.id,
                 gl.resource_table,
+                gl.resource_sign,
                 gl.registrator_type,
                 gl.registrator_ref,
-                {signed_amount_expr} AS signed_amount
+                {signed_amount_expr} AS signed_amount,
+                {detail_sign_factor_expr} AS detail_sign_factor
             FROM sys_general_ledger gl
             WHERE gl.turnover_code = ?
               AND gl.entry_date >= ?
@@ -590,45 +595,73 @@ fn build_matched_gl_cte(query: &GlDrilldownQuery, params: &mut Vec<Value>) -> St
     sql
 }
 
-fn build_detail_source_sql(table_name: &str, query: &GlDrilldownQuery) -> String {
-    if table_name == "p903_wb_finance_report" {
-        let (select_key, select_label, group_by_expr) =
-            build_nomenclature_dimension_sql("p903", &query.group_by);
-        return format!(
-            r#"
-            SELECT
-                {select_key} AS group_key,
-                {select_label} AS group_label,
-                COALESCE(SUM(gl_row.signed_amount), 0.0) AS amount,
-                COUNT(*) AS entry_count
-            FROM matched_gl gl_row
-            INNER JOIN p903_wb_finance_report p903
-                ON p903.id = gl_row.registrator_ref
-            LEFT JOIN a004_nomenclature n
-                ON p903.a004_nomenclature_ref = n.id
-            WHERE gl_row.resource_table = 'p903_wb_finance_report'
-              AND gl_row.registrator_type = 'p903_wb_finance_report'
-            GROUP BY {group_by_expr}
-            "#
-        );
+fn build_detail_amount_expr(descriptor: &super::detail_links::GlDetailLinkDescriptor) -> String {
+    match descriptor.kind {
+        super::detail_links::GlDetailLinkKind::ExternalLinked => {
+            "COALESCE(SUM(gl_row.signed_amount), 0.0)".to_string()
+        }
+        super::detail_links::GlDetailLinkKind::ProjectionLinked => {
+            "COALESCE(SUM(COALESCE(d.amount, 0.0) * COALESCE(gl.resource_sign, 1) * COALESCE(gl.detail_sign_factor, 1.0)), 0.0)"
+                .to_string()
+        }
     }
+}
 
+fn build_detail_entry_count_expr(
+    descriptor: &super::detail_links::GlDetailLinkDescriptor,
+) -> &'static str {
+    match descriptor.kind {
+        super::detail_links::GlDetailLinkKind::ExternalLinked => "COUNT(DISTINCT gl_row.id)",
+        super::detail_links::GlDetailLinkKind::ProjectionLinked => "COUNT(DISTINCT gl.id)",
+    }
+}
+
+fn build_detail_source_sql(table_name: &str, query: &GlDrilldownQuery) -> String {
+    let Some(descriptor) = descriptor_for_resource_table(table_name) else {
+        return String::new();
+    };
+
+    let gl_alias = match descriptor.kind {
+        super::detail_links::GlDetailLinkKind::ExternalLinked => "gl_row",
+        super::detail_links::GlDetailLinkKind::ProjectionLinked => "gl",
+    };
     let (select_key, select_label, group_by_expr) =
-        build_nomenclature_dimension_sql("d", &query.group_by);
-    format!(
-        r#"
+        build_nomenclature_dimension_sql(descriptor.nomenclature_ref_expr, &query.group_by);
+    let amount_expr = build_detail_amount_expr(descriptor);
+    let entry_count_expr = build_detail_entry_count_expr(descriptor);
+
+    descriptor
+        .join_variants
+        .iter()
+        .map(|join_variant| {
+            let variant_where_sql = if join_variant.extra_where_sql.is_empty() {
+                descriptor.where_sql.to_string()
+            } else {
+                format!(
+                    "{} AND {}",
+                    descriptor.where_sql, join_variant.extra_where_sql
+                )
+            };
+            format!(
+                r#"
         SELECT
             {select_key} AS group_key,
             {select_label} AS group_label,
-            COALESCE(SUM(gl.signed_amount), 0.0) AS amount,
-            COUNT(*) AS entry_count
-        FROM matched_gl gl
-        INNER JOIN {table_name} d ON d.general_ledger_ref = gl.id
-        LEFT JOIN a004_nomenclature n ON d.nomenclature_ref = n.id
-        WHERE gl.resource_table = '{table_name}'
+            {amount_expr} AS amount,
+            {entry_count_expr} AS entry_count
+        FROM matched_gl {gl_alias}
+        {join_sql}
+        LEFT JOIN a004_nomenclature n ON {nomenclature_ref_expr} = n.id
+        WHERE {where_sql}
         GROUP BY {group_by_expr}
-        "#
-    )
+        "#,
+                join_sql = join_variant.join_sql,
+                where_sql = variant_where_sql,
+                nomenclature_ref_expr = descriptor.nomenclature_ref_expr,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n        UNION ALL\n")
 }
 
 async fn list_detail_resource_tables(query: &GlDrilldownQuery) -> Result<Vec<String>> {
@@ -672,7 +705,7 @@ async fn query_detail_nomenclature_drilldown(
     let mut supported_tables = Vec::new();
     let mut unsupported_tables = Vec::new();
     for table in resource_tables {
-        if SUPPORTED_DETAIL_TABLES.contains(&table.as_str()) {
+        if descriptor_for_resource_table(&table).is_some() {
             supported_tables.push(table);
         } else {
             unsupported_tables.push(table);
@@ -736,7 +769,10 @@ async fn execute_drilldown_query(sql: &str, params: Vec<Value>) -> Result<Vec<Gl
 
 #[cfg(test)]
 mod tests {
-    use super::{append_common_gl_filters, append_signed_amount_params, build_signed_amount_expr};
+    use super::{
+        append_common_gl_filters, append_signed_amount_params, build_detail_source_sql,
+        build_matched_gl_cte, build_row_sign_factor_expr, build_signed_amount_expr,
+    };
     use contracts::general_ledger::GlDrilldownQuery;
     use sea_orm::Value;
 
@@ -789,5 +825,81 @@ mod tests {
         assert_eq!(str_value(&params[2]), Some("7609"));
         assert_eq!(str_value(&params[3]), Some("4403"));
         assert_eq!(str_value(&params[4]), Some("fact"));
+    }
+
+    #[test]
+    fn matched_gl_cte_keeps_row_level_amounts() {
+        let mut params = Vec::new();
+        let query = GlDrilldownQuery {
+            turnover_code: "mp_penalty".to_string(),
+            group_by: "nomenclature".to_string(),
+            date_from: "2026-02-01".to_string(),
+            date_to: "2026-02-28".to_string(),
+            connection_mp_ref: None,
+            connection_mp_refs: vec![],
+            account: None,
+            layer: Some("fact".to_string()),
+            corr_account: None,
+        };
+
+        let sql = build_matched_gl_cte(&query, &mut params);
+
+        assert!(sql.contains("COALESCE(gl.amount, 0.0) AS signed_amount"));
+        assert!(sql.contains("gl.resource_sign"));
+        assert!(sql.contains("1.0 AS detail_sign_factor"));
+        assert!(!sql.contains("SUM(gl.amount)"));
+    }
+
+    #[test]
+    fn row_sign_factor_expr_uses_account_side_as_sign() {
+        let expr = build_row_sign_factor_expr("gl", true);
+        assert!(expr.contains("CASE WHEN gl.debit_account = ? THEN 1.0"));
+        assert!(expr.contains("WHEN gl.credit_account = ? THEN -1.0"));
+    }
+
+    #[test]
+    fn p903_detail_source_sql_uses_union_all_per_identity_path() {
+        let query = GlDrilldownQuery {
+            turnover_code: "mp_penalty".to_string(),
+            group_by: "nomenclature".to_string(),
+            date_from: "2026-02-01".to_string(),
+            date_to: "2026-02-28".to_string(),
+            connection_mp_ref: None,
+            connection_mp_refs: vec![],
+            account: None,
+            layer: Some("fact".to_string()),
+            corr_account: None,
+        };
+
+        let sql = build_detail_source_sql("p903_wb_finance_report", &query);
+
+        assert!(sql.contains("UNION ALL"));
+        assert!(sql.contains("d.id = gl_row.registrator_ref"));
+        assert!(sql.contains("d.source_row_ref = gl_row.registrator_ref"));
+        assert!(sql.contains("d.rr_dt = SUBSTR(gl_row.registrator_ref, 6, 10)"));
+        assert!(sql.contains("d.rrd_id = CAST(SUBSTR(gl_row.registrator_ref, 17) AS INTEGER)"));
+        assert!(sql.contains("gl_row.registrator_ref LIKE 'p903:%:%'"));
+    }
+
+    #[test]
+    fn p911_detail_source_sql_uses_projection_amounts_and_distinct_gl_count() {
+        let query = GlDrilldownQuery {
+            turnover_code: "advertising_allocated".to_string(),
+            group_by: "nomenclature".to_string(),
+            date_from: "2026-02-01".to_string(),
+            date_to: "2026-02-28".to_string(),
+            connection_mp_ref: None,
+            connection_mp_refs: vec![],
+            account: None,
+            layer: Some("oper".to_string()),
+            corr_account: None,
+        };
+
+        let sql = build_detail_source_sql("p911_wb_advert_by_items", &query);
+
+        assert!(sql.contains("INNER JOIN p911_wb_advert_by_items d ON d.general_ledger_ref = gl.id"));
+        assert!(sql.contains("SUM(COALESCE(d.amount, 0.0) * COALESCE(gl.resource_sign, 1) * COALESCE(gl.detail_sign_factor, 1.0))"));
+        assert!(sql.contains("COUNT(DISTINCT gl.id) AS entry_count"));
+        assert!(!sql.contains("SUM(gl.signed_amount)"));
     }
 }

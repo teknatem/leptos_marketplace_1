@@ -1,5 +1,6 @@
 use super::view_model::MarketplaceProductDetailsViewModel;
 use crate::domain::a004_nomenclature::ui::picker::NomenclaturePicker;
+use crate::shared::date_utils::format_datetime;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
@@ -33,6 +34,8 @@ pub fn MarketplaceProductDetails(
     let vm_clear_nom = vm.clone();
     let vm_clear_nom_disabled = vm.clone();
     let vm_picker = vm.clone();
+    let vm_product_link = vm.clone();
+    let vm_operational_info = vm.clone();
 
     let description = RwSignal::new(vm.form.get_untracked().description.clone());
     let marketplace_sku = RwSignal::new(vm.form.get_untracked().marketplace_sku.clone());
@@ -246,6 +249,89 @@ pub fn MarketplaceProductDetails(
                                     <Input value=article />
                                 </Flex>
                             </Flex>
+
+                            <div class="a007-link-card__summary">
+                                <div class="a007-link-card__summary-label">"Быстрый доступ"</div>
+                                <div class="a007-link-card__summary-value">
+                                    {move || {
+                                        let sku = vm_product_link.form.get().marketplace_sku.trim().to_string();
+                                        match vm_product_link.marketplace_product_url() {
+                                            Some(url) => view! {
+                                                <a
+                                                    href=url
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style="display: inline-flex; align-items: center; gap: 8px;"
+                                                >
+                                                    {icon("link")}
+                                                    "Открыть карточку товара на WB"
+                                                </a>
+                                            }
+                                            .into_any(),
+                                            None if sku.is_empty() => view! {
+                                                <span>"Заполните SKU, чтобы собрать ссылку на товар."</span>
+                                            }
+                                            .into_any(),
+                                            None => view! {
+                                                <span>"Быстрая внешняя ссылка сейчас поддерживается только для Wildberries."</span>
+                                            }
+                                            .into_any(),
+                                        }
+                                    }}
+                                </div>
+                            </div>
+
+                            <div class="a007-link-card__summary">
+                                <div class="a007-link-card__summary-label">"Оперативная сводка"</div>
+                                <div
+                                    class="a007-link-card__summary-value"
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;"
+                                >
+                                    {move || {
+                                        let form = vm_operational_info.form.get();
+                                        let last_update = form
+                                            .last_update
+                                            .map(|d| format_datetime(&d.to_rfc3339()))
+                                            .unwrap_or_else(|| "—".to_string());
+                                        let category = form
+                                            .category_name
+                                            .clone()
+                                            .filter(|v| !v.trim().is_empty())
+                                            .unwrap_or_else(|| "—".to_string());
+                                        let brand = form
+                                            .brand
+                                            .clone()
+                                            .filter(|v| !v.trim().is_empty())
+                                            .unwrap_or_else(|| "—".to_string());
+                                        let barcode = form
+                                            .barcode
+                                            .clone()
+                                            .filter(|v| !v.trim().is_empty())
+                                            .unwrap_or_else(|| "—".to_string());
+
+                                        view! {
+                                            <>
+                                                <div>
+                                                    <strong>"Обновлено:"</strong>
+                                                    <div>{last_update}</div>
+                                                </div>
+                                                <div>
+                                                    <strong>"Категория:"</strong>
+                                                    <div>{category}</div>
+                                                </div>
+                                                <div>
+                                                    <strong>"Бренд:"</strong>
+                                                    <div>{brand}</div>
+                                                </div>
+                                                <div>
+                                                    <strong>"Штрихкод:"</strong>
+                                                    <div>{barcode}</div>
+                                                </div>
+                                            </>
+                                        }
+                                    }}
+                                </div>
+                            </div>
 
                             <Flex gap=FlexGap::Medium>
                                 <Flex vertical=true gap=FlexGap::Small style="flex: 1;">

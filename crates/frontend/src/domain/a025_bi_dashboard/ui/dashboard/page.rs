@@ -1,9 +1,8 @@
 use crate::app::ThawThemeContext;
 use crate::data_view::api as dv_api;
-use crate::data_view::types::{FilterDef, FilterRef};
+use crate::data_view::types::{FilterDef, FilterKind, FilterRef};
 use crate::data_view::ui::filter_bar::apply_defaults;
 use crate::data_view::ui::FilterBar;
-use crate::general_ledger::api::fetch_gl_dimensions;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::bi_card::{
@@ -12,7 +11,9 @@ use crate::shared::bi_card::{
 use crate::shared::icons::icon;
 use crate::shared::indicator_format::{format_int_with_triads, format_money_with_format_spec};
 use crate::shared::page_frame::PageFrame;
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate, Utc};
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::common::AggregateId;
 use contracts::shared::data_view::ViewContext;
 use gloo_net::http::Request;
 use gloo_timers::future::TimeoutFuture;
@@ -133,20 +134,6 @@ struct BiDashboardData {
     pub filters: Vec<FilterRef>,
 }
 
-/// Minimal local mirror of DimensionMeta for DataView drilldown
-#[derive(Clone, Debug, serde::Deserialize)]
-struct DataViewDim {
-    pub id: String,
-    pub label: String,
-}
-
-/// Minimal local mirror of DataViewMeta (only fields needed for drilldown)
-#[derive(Clone, Debug, serde::Deserialize)]
-struct DataViewMetaLocal {
-    #[serde(default)]
-    pub available_dimensions: Vec<DataViewDim>,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DrillDimensionGroup {
     title: &'static str,
@@ -154,7 +141,324 @@ struct DrillDimensionGroup {
     items: Vec<(String, String)>,
 }
 
-const GL_TURNOVER_DATA_VIEW_ID_LOCAL: &str = "dv004_general_ledger_turnovers";
+#[derive(Clone, Debug)]
+struct DashboardMpOption {
+    id: String,
+    label: String,
+}
+
+const DASHBOARD_PERIOD_MODE_PARAM: &str = "dashboard_period_mode";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DashboardPeriodMode {
+    Month,
+    Week,
+    Day,
+    Custom,
+}
+
+impl DashboardPeriodMode {
+    fn as_param_value(self) -> &'static str {
+        match self {
+            Self::Month => "month",
+            Self::Week => "week",
+            Self::Day => "day",
+            Self::Custom => "custom",
+        }
+    }
+
+    fn from_param(value: &str) -> Option<Self> {
+        match value.trim() {
+            "month" => Some(Self::Month),
+            "week" => Some(Self::Week),
+            "day" => Some(Self::Day),
+            "custom" => Some(Self::Custom),
+            _ => None,
+        }
+    }
+
+    fn from_ctx(ctx: &ViewContext) -> Self {
+        ctx.params
+            .get(DASHBOARD_PERIOD_MODE_PARAM)
+            .and_then(|value| Self::from_param(value))
+            .unwrap_or_else(|| infer_dashboard_period_mode(ctx))
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Month => "Месяц",
+            Self::Week => "Неделя",
+            Self::Day => "День",
+            Self::Custom => "Период",
+        }
+    }
+}
+
+fn fmt_ymd(date: NaiveDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
+fn parse_ymd(value: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()
+}
+
+fn month_bounds(anchor: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let start = NaiveDate::from_ymd_opt(anchor.year(), anchor.month(), 1).unwrap_or(anchor);
+    let end = if anchor.month() == 12 {
+        NaiveDate::from_ymd_opt(anchor.year() + 1, 1, 1)
+            .map(|date| date - Duration::days(1))
+            .unwrap_or(anchor)
+    } else {
+        NaiveDate::from_ymd_opt(anchor.year(), anchor.month() + 1, 1)
+            .map(|date| date - Duration::days(1))
+            .unwrap_or(anchor)
+    };
+    (start, end)
+}
+
+fn shift_month_anchor(anchor: NaiveDate, delta: i32) -> NaiveDate {
+    let month_index = anchor.year() * 12 + anchor.month0() as i32 + delta;
+    let year = month_index.div_euclid(12);
+    let month0 = month_index.rem_euclid(12) as u32;
+    NaiveDate::from_ymd_opt(year, month0 + 1, 1).unwrap_or(anchor)
+}
+
+fn week_bounds(anchor: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let start = anchor - Duration::days(anchor.weekday().num_days_from_monday() as i64);
+    let end = start + Duration::days(6);
+    (start, end)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DashboardPeriodSlot {
+    Primary,
+    Comparison,
+}
+
+impl DashboardPeriodSlot {
+    fn title(self) -> &'static str {
+        match self {
+            Self::Primary => "П1",
+            Self::Comparison => "П2",
+        }
+    }
+
+    fn reset_label(self, mode: DashboardPeriodMode) -> &'static str {
+        match (self, mode) {
+            (Self::Primary, DashboardPeriodMode::Month) => "Текущий",
+            (Self::Comparison, DashboardPeriodMode::Month) => "Прошлый",
+            (Self::Primary, DashboardPeriodMode::Week) => "Текущая",
+            (Self::Comparison, DashboardPeriodMode::Week) => "Прошлая",
+            (Self::Primary, DashboardPeriodMode::Day) => "Сегодня",
+            (Self::Comparison, DashboardPeriodMode::Day) => "Вчера",
+            (_, DashboardPeriodMode::Custom) => "Сброс",
+        }
+    }
+}
+
+fn canonical_range_for_mode(
+    mode: DashboardPeriodMode,
+    anchor: NaiveDate,
+) -> (NaiveDate, NaiveDate) {
+    match mode {
+        DashboardPeriodMode::Month => month_bounds(anchor),
+        DashboardPeriodMode::Week => week_bounds(anchor),
+        DashboardPeriodMode::Day | DashboardPeriodMode::Custom => (anchor, anchor),
+    }
+}
+
+fn period_slot_dates(
+    ctx: &ViewContext,
+    slot: DashboardPeriodSlot,
+) -> Option<(NaiveDate, NaiveDate)> {
+    match slot {
+        DashboardPeriodSlot::Primary => parse_ymd(&ctx.date_from).zip(parse_ymd(&ctx.date_to)),
+        DashboardPeriodSlot::Comparison => ctx
+            .period2_from
+            .as_deref()
+            .and_then(parse_ymd)
+            .zip(ctx.period2_to.as_deref().and_then(parse_ymd)),
+    }
+}
+
+fn set_period_slot(
+    ctx: &mut ViewContext,
+    slot: DashboardPeriodSlot,
+    from: NaiveDate,
+    to: NaiveDate,
+) {
+    match slot {
+        DashboardPeriodSlot::Primary => {
+            ctx.date_from = fmt_ymd(from);
+            ctx.date_to = fmt_ymd(to);
+        }
+        DashboardPeriodSlot::Comparison => {
+            ctx.period2_from = Some(fmt_ymd(from));
+            ctx.period2_to = Some(fmt_ymd(to));
+        }
+    }
+}
+
+fn short_date_label(date: NaiveDate) -> String {
+    date.format("%d.%m").to_string()
+}
+
+fn compact_period_label(mode: DashboardPeriodMode, from: NaiveDate, to: NaiveDate) -> String {
+    match mode {
+        DashboardPeriodMode::Month if is_full_month_range(from, to) => {
+            month_abbr(from.month()).to_string()
+        }
+        _ if from == to => short_date_label(from),
+        _ => format!("{} - {}", short_date_label(from), short_date_label(to)),
+    }
+}
+
+fn period_control_label(mode: DashboardPeriodMode, from: NaiveDate, to: NaiveDate) -> String {
+    match mode {
+        DashboardPeriodMode::Month if is_full_month_range(from, to) => {
+            format!("{} {}", month_abbr(from.month()), from.year())
+        }
+        _ if from == to => from.format("%d.%m.%Y").to_string(),
+        _ => format!("{} - {}", short_date_label(from), short_date_label(to)),
+    }
+}
+
+fn is_full_month_range(from: NaiveDate, to: NaiveDate) -> bool {
+    let (month_start, month_end) = month_bounds(from);
+    month_start == from && month_end == to
+}
+
+fn is_full_week_range(from: NaiveDate, to: NaiveDate) -> bool {
+    from.weekday().num_days_from_monday() == 0 && to == from + Duration::days(6)
+}
+
+fn infer_dashboard_period_mode(ctx: &ViewContext) -> DashboardPeriodMode {
+    let Some(date_from) = parse_ymd(&ctx.date_from) else {
+        return DashboardPeriodMode::Month;
+    };
+    let Some(date_to) = parse_ymd(&ctx.date_to) else {
+        return DashboardPeriodMode::Month;
+    };
+
+    if is_full_month_range(date_from, date_to)
+        && period_slot_dates(ctx, DashboardPeriodSlot::Comparison)
+            .map(|(from, to)| is_full_month_range(from, to))
+            .unwrap_or(true)
+    {
+        return DashboardPeriodMode::Month;
+    }
+
+    if is_full_week_range(date_from, date_to)
+        && period_slot_dates(ctx, DashboardPeriodSlot::Comparison)
+            .map(|(from, to)| is_full_week_range(from, to))
+            .unwrap_or(true)
+    {
+        return DashboardPeriodMode::Week;
+    }
+
+    if date_from == date_to
+        && period_slot_dates(ctx, DashboardPeriodSlot::Comparison)
+            .map(|(from, to)| from == to)
+            .unwrap_or(true)
+    {
+        return DashboardPeriodMode::Day;
+    }
+
+    DashboardPeriodMode::Custom
+}
+
+fn sync_dashboard_period_mode(ctx: &mut ViewContext) {
+    let mode = ctx
+        .params
+        .get(DASHBOARD_PERIOD_MODE_PARAM)
+        .and_then(|value| DashboardPeriodMode::from_param(value))
+        .unwrap_or_else(|| infer_dashboard_period_mode(ctx));
+    ctx.params.insert(
+        DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+        mode.as_param_value().to_string(),
+    );
+}
+
+fn shift_period_anchor(mode: DashboardPeriodMode, anchor: NaiveDate, delta: i32) -> NaiveDate {
+    match mode {
+        DashboardPeriodMode::Month => shift_month_anchor(anchor, delta),
+        DashboardPeriodMode::Week => anchor + Duration::days((delta as i64) * 7),
+        DashboardPeriodMode::Day => anchor + Duration::days(delta as i64),
+        DashboardPeriodMode::Custom => anchor,
+    }
+}
+
+fn period_slot_anchor(
+    ctx: &ViewContext,
+    slot: DashboardPeriodSlot,
+    mode: DashboardPeriodMode,
+) -> NaiveDate {
+    let primary_anchor = period_slot_dates(ctx, DashboardPeriodSlot::Primary)
+        .map(|(_, to)| to)
+        .unwrap_or_else(|| Utc::now().date_naive());
+    period_slot_dates(ctx, slot)
+        .map(|(_, to)| to)
+        .unwrap_or_else(|| match slot {
+            DashboardPeriodSlot::Primary => primary_anchor,
+            DashboardPeriodSlot::Comparison => shift_period_anchor(mode, primary_anchor, -1),
+        })
+}
+
+fn apply_period_mode(ctx: &mut ViewContext, mode: DashboardPeriodMode, anchor: NaiveDate) {
+    if mode != DashboardPeriodMode::Custom {
+        let primary_anchor = period_slot_dates(ctx, DashboardPeriodSlot::Primary)
+            .map(|(_, to)| to)
+            .unwrap_or(anchor);
+        let comparison_anchor = period_slot_anchor(ctx, DashboardPeriodSlot::Comparison, mode);
+        let (p1_from, p1_to) = canonical_range_for_mode(mode, primary_anchor);
+        let (p2_from, p2_to) = canonical_range_for_mode(mode, comparison_anchor);
+        set_period_slot(ctx, DashboardPeriodSlot::Primary, p1_from, p1_to);
+        set_period_slot(ctx, DashboardPeriodSlot::Comparison, p2_from, p2_to);
+    } else {
+        let primary_anchor =
+            period_slot_anchor(ctx, DashboardPeriodSlot::Primary, DashboardPeriodMode::Day);
+        let comparison_anchor = period_slot_anchor(
+            ctx,
+            DashboardPeriodSlot::Comparison,
+            DashboardPeriodMode::Day,
+        );
+        if ctx.date_from.trim().is_empty() {
+            ctx.date_from = fmt_ymd(primary_anchor);
+        }
+        if ctx.date_to.trim().is_empty() {
+            ctx.date_to = ctx.date_from.clone();
+        }
+        if ctx.period2_from.is_none() {
+            ctx.period2_from = Some(fmt_ymd(comparison_anchor));
+        }
+        if ctx.period2_to.is_none() {
+            ctx.period2_to = ctx.period2_from.clone();
+        }
+    }
+    ctx.params.insert(
+        DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+        mode.as_param_value().to_string(),
+    );
+}
+
+fn period_summary(ctx: &ViewContext, slot: DashboardPeriodSlot, compact: bool) -> Option<String> {
+    let mode = DashboardPeriodMode::from_ctx(ctx);
+    let (from, to) = period_slot_dates(ctx, slot)?;
+    Some(if compact {
+        compact_period_label(mode, from, to)
+    } else {
+        period_control_label(mode, from, to)
+    })
+}
+
+fn non_period_dashboard_filters(filters: &[FilterDef]) -> Vec<FilterDef> {
+    filters
+        .iter()
+        .filter(|def| !matches!(def.kind, FilterKind::DateRange { .. }))
+        .filter(|def| def.id != "connection_mp_refs")
+        .cloned()
+        .collect()
+}
 
 fn indicator_default_params(def: &IndicatorDef) -> HashMap<String, String> {
     def.params
@@ -170,79 +474,36 @@ fn indicator_default_params(def: &IndicatorDef) -> HashMap<String, String> {
         .collect()
 }
 
-fn parse_gl_turnover_items(params: &HashMap<String, String>) -> Vec<String> {
-    if let Some(items) = params
-        .get("turnover_items")
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-    {
-        let mut seen = std::collections::HashSet::new();
-        return items
-            .split(|ch| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .filter_map(|token| {
-                let code = match token.chars().next() {
-                    Some('+') | Some('-') => token[1..].trim(),
-                    _ => token,
-                };
-                if code.is_empty() || !seen.insert(code.to_string()) {
-                    None
-                } else {
-                    Some(code.to_string())
-                }
-            })
-            .collect();
-    }
-
-    params
-        .get("turnover_code")
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(|value| vec![value.to_string()])
-        .unwrap_or_default()
-}
-
 async fn fetch_indicator_drill_dimensions(
     def: &IndicatorDef,
+    ctx: &ViewContext,
     params: &HashMap<String, String>,
 ) -> Result<Vec<(String, String)>, String> {
     let Some(view_id) = def.data_spec.view_id.as_deref() else {
         return Ok(vec![]);
     };
 
-    if view_id != GL_TURNOVER_DATA_VIEW_ID_LOCAL {
-        let meta = fetch_dataview_meta(view_id).await?;
-        return Ok(meta
-            .available_dimensions
-            .into_iter()
-            .map(|dim| (dim.id, dim.label))
-            .collect());
-    }
+    let mut drill_ctx = ctx.clone();
+    drill_ctx.params = params.clone();
+    let capabilities =
+        dv_api::fetch_drilldown_capabilities(view_id, &drill_ctx, def.data_spec.metric_id.clone())
+            .await?;
 
-    let turnover_codes = parse_gl_turnover_items(params);
-    if turnover_codes.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let mut common_dims: Option<Vec<(String, String)>> = None;
-    for turnover_code in turnover_codes {
-        let response = fetch_gl_dimensions(&turnover_code).await?;
-        let dims = response
-            .dimensions
-            .into_iter()
-            .map(|dim| (dim.id, dim.label))
-            .collect::<Vec<_>>();
-        common_dims = Some(match common_dims.take() {
-            None => dims,
-            Some(current) => current
-                .into_iter()
-                .filter(|(id, _)| dims.iter().any(|(candidate_id, _)| candidate_id == id))
-                .collect(),
-        });
-    }
-
-    Ok(common_dims.unwrap_or_default())
+    Ok(capabilities
+        .safe_dimensions
+        .into_iter()
+        .map(|dim| (dim.id, format!("{} [100% safe]", dim.label)))
+        .chain(capabilities.partial_dimensions.into_iter().map(|dim| {
+            (
+                dim.id,
+                format!(
+                    "{} [partial {}% + Прочее]",
+                    dim.label,
+                    dim.coverage_pct.unwrap_or(0.0)
+                ),
+            )
+        }))
+        .collect())
 }
 
 fn merge_indicator_params(
@@ -322,37 +583,6 @@ async fn read_http_error(resp: web_sys::Response) -> String {
     format!("Ошибка HTTP {}", status)
 }
 
-async fn fetch_dataview_meta(view_id: &str) -> Result<DataViewMetaLocal, String> {
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/data-view/{}", api_base(), view_id);
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    serde_json::from_str(&text).map_err(|e| format!("{e}"))
-}
-
 async fn fetch_dashboard(id: &str) -> Result<serde_json::Value, String> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -382,6 +612,35 @@ async fn fetch_dashboard(id: &str) -> Result<serde_json::Value, String> {
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+async fn fetch_dashboard_mp_options() -> Result<Vec<DashboardMpOption>, String> {
+    let url = format!("{}/api/connection_mp", api_base());
+    let resp = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("{e}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let items: Vec<ConnectionMP> = resp.json().await.map_err(|e| format!("{e}"))?;
+
+    let mut options: Vec<DashboardMpOption> = items
+        .into_iter()
+        .map(|conn| {
+            let label = if conn.base.description.trim().is_empty() {
+                conn.base.code.clone()
+            } else {
+                conn.base.description.clone()
+            };
+            DashboardMpOption {
+                id: conn.base.id.as_string(),
+                label,
+            }
+        })
+        .collect();
+    options.sort_by(|left, right| left.label.cmp(&right.label));
+    Ok(options)
 }
 
 fn collect_indicator_ids(
@@ -539,8 +798,6 @@ async fn derive_dashboard_filters_from_indicators(
 }
 
 fn default_dashboard_ctx() -> ViewContext {
-    use chrono::{Datelike, Duration, NaiveDate, Utc};
-
     let now = Utc::now().date_naive();
     let current_month_start = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
     let current_month_end = if now.month() == 12 {
@@ -561,14 +818,16 @@ fn default_dashboard_ctx() -> ViewContext {
         NaiveDate::from_ymd_opt(prev_year, prev_month, 1).unwrap_or(current_month_start);
     let previous_month_end = current_month_start - Duration::days(1);
 
-    ViewContext {
+    let mut ctx = ViewContext {
         date_from: current_month_start.format("%Y-%m-%d").to_string(),
         date_to: current_month_end.format("%Y-%m-%d").to_string(),
         period2_from: Some(previous_month_start.format("%Y-%m-%d").to_string()),
         period2_to: Some(previous_month_end.format("%Y-%m-%d").to_string()),
         connection_mp_refs: vec![],
         params: HashMap::new(),
-    }
+    };
+    sync_dashboard_period_mode(&mut ctx);
+    ctx
 }
 
 fn merge_view_ctx(default_ctx: ViewContext, prev_ctx: ViewContext) -> ViewContext {
@@ -589,6 +848,7 @@ fn merge_view_ctx(default_ctx: ViewContext, prev_ctx: ViewContext) -> ViewContex
         merged.connection_mp_refs = prev_ctx.connection_mp_refs;
     }
     merged.params.extend(prev_ctx.params);
+    sync_dashboard_period_mode(&mut merged);
     merged
 }
 
@@ -710,7 +970,14 @@ fn reload_dashboard_data(
                     }
                     if preserve_session_filters {
                         next_ctx = merge_view_ctx(next_ctx, view_ctx.get_untracked());
+                    } else {
+                        let inferred_mode = infer_dashboard_period_mode(&next_ctx);
+                        next_ctx.params.insert(
+                            DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                            inferred_mode.as_param_value().to_string(),
+                        );
                     }
+                    sync_dashboard_period_mode(&mut next_ctx);
                     view_ctx.set(next_ctx);
 
                     // Индикаторы пересчитываются отдельным reactive-effect,
@@ -996,20 +1263,6 @@ fn month_abbr(m: u32) -> &'static str {
     }
 }
 
-/// "YYYY-MM-DD" → "МесYYYY" или пустая строка
-fn fmt_date_short(s: &str) -> Option<String> {
-    let parts: Vec<&str> = s.splitn(3, '-').collect();
-    if parts.len() < 2 {
-        return None;
-    }
-    let year: u32 = parts[0].parse().ok()?;
-    let month: u32 = parts[1].parse().ok()?;
-    if month < 1 || month > 12 {
-        return None;
-    }
-    Some(format!("{} {}", month_abbr(month), year))
-}
-
 fn fmt_date_label(s: &str) -> Option<String> {
     let date = NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
     Some(date.format("%d.%m.%Y").to_string())
@@ -1029,17 +1282,7 @@ fn period_label(from: &str, to: &str) -> String {
 fn compact_filter_hint(ctx: &ViewContext) -> String {
     let mut parts: Vec<String> = Vec::new();
 
-    // Диапазон дат
-    let from = ctx.date_from.as_str();
-    let to = ctx.date_to.as_str();
-    let date_part = match (fmt_date_short(from), fmt_date_short(to)) {
-        (Some(f), Some(t)) if f == t => f,
-        (Some(f), Some(t)) => format!("{f} – {t}"),
-        (Some(f), None) => format!("с {f}"),
-        (None, Some(t)) => format!("до {t}"),
-        _ => String::new(),
-    };
-    if !date_part.is_empty() {
+    if let Some(date_part) = period_summary(ctx, DashboardPeriodSlot::Primary, true) {
         parts.push(date_part);
     }
 
@@ -1596,6 +1839,605 @@ fn IndicatorRefreshOverlay(
     }
 }
 
+/* #[component]
+fn DashboardPeriodControlsOld(ctx: RwSignal<ViewContext>) -> impl IntoView {
+    let active_mode = Signal::derive(move || DashboardPeriodMode::from_ctx(&ctx.get()));
+    let current_period_title = Signal::derive(move || primary_period_summary(&ctx.get()));
+    let comparison_period_title =
+        Signal::derive(move || comparison_period_summary(&ctx.get()).unwrap_or_default());
+
+    view! {
+        <div
+            class="dashboard-period-controls"
+            style="display:flex; flex-direction:column; gap:12px; padding:14px 16px; border:1px solid var(--colorNeutralStroke2, #e5e7eb); border-radius:14px; background:var(--colorNeutralBackground1, #fff); margin-bottom:14px;"
+        >
+            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                    <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280);">
+                        "Период"
+                    </span>
+                    {[
+                        DashboardPeriodMode::Month,
+                        DashboardPeriodMode::Week,
+                        DashboardPeriodMode::Day,
+                        DashboardPeriodMode::Custom,
+                    ]
+                        .into_iter()
+                        .map(|entry| {
+                            let label = entry.title();
+                            view! {
+                                <button
+                                    type="button"
+                                    style=move || {
+                                        if active_mode.get() == entry {
+                                            "border:1px solid var(--colorBrandStroke1, #2563eb); background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); padding:8px 12px; border-radius:999px; font-weight:600; cursor:pointer;"
+                                        } else {
+                                            "border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:8px 12px; border-radius:999px; font-weight:500; cursor:pointer;"
+                                        }
+                                    }
+                                    on:click=move |_| {
+                                        ctx.update(|current| {
+                                            let anchor = ctx_anchor_date(current);
+                                            apply_period_mode(current, entry, anchor);
+                                        });
+                                    }
+                                >
+                                    {label}
+                                </button>
+                            }
+                        })
+                        .collect_view()}
+                </div>
+
+                <Show when=move || active_mode.get() != DashboardPeriodMode::Custom>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <button
+                            type="button"
+                            style="border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); width:36px; height:36px; border-radius:10px; font-size:18px; cursor:pointer;"
+                            on:click=move |_| {
+                                ctx.update(|current| {
+                                    let mode = DashboardPeriodMode::from_ctx(current);
+                                    if mode == DashboardPeriodMode::Custom {
+                                        return;
+                                    }
+                                    let anchor = shift_period_anchor(mode, ctx_anchor_date(current), -1);
+                                    apply_period_mode(current, mode, anchor);
+                                });
+                            }
+                        >
+                            "←"
+                        </button>
+
+                        <button
+                            type="button"
+                            style="border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:8px 12px; border-radius:10px; font-weight:600; cursor:pointer;"
+                            on:click=move |_| {
+                                ctx.update(|current| {
+                                    let mode = DashboardPeriodMode::from_ctx(current);
+                                    apply_period_mode(current, mode, Utc::now().date_naive());
+                                });
+                            }
+                        >
+                            {move || active_mode.get().reset_label()}
+                        </button>
+
+                        <button
+                            type="button"
+                            style="border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); width:36px; height:36px; border-radius:10px; font-size:18px; cursor:pointer;"
+                            on:click=move |_| {
+                                ctx.update(|current| {
+                                    let mode = DashboardPeriodMode::from_ctx(current);
+                                    if mode == DashboardPeriodMode::Custom {
+                                        return;
+                                    }
+                                    let anchor = shift_period_anchor(mode, ctx_anchor_date(current), 1);
+                                    apply_period_mode(current, mode, anchor);
+                                });
+                            }
+                        >
+                            "→"
+                        </button>
+                    </div>
+                </Show>
+            </div>
+
+            <Show
+                when=move || active_mode.get() == DashboardPeriodMode::Custom
+                fallback=move || {
+                    view! {
+                        <div
+                            style="display:flex; flex-wrap:wrap; gap:12px; align-items:stretch; justify-content:space-between;"
+                        >
+                            <div
+                                style="flex:1 1 320px; min-width:260px; padding:12px 14px; border-radius:12px; background:var(--colorNeutralBackground2, #f8fafc); border:1px solid var(--colorNeutralStroke2, #e5e7eb);"
+                            >
+                                <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); margin-bottom:6px;">
+                                    {move || active_mode.get().title()}
+                                </div>
+                                <div style="font-size:18px; font-weight:700; color:var(--colorNeutralForeground1, #111827);">
+                                    {move || current_period_title.get()}
+                                </div>
+                            </div>
+
+                            <Show when=move || !comparison_period_title.get().trim().is_empty()>
+                                <div
+                                    style="flex:1 1 280px; min-width:240px; padding:12px 14px; border-radius:12px; background:var(--colorBrandBackground2, #eff6ff); border:1px solid var(--colorBrandStroke2, #bfdbfe);"
+                                >
+                                    <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); margin-bottom:6px;">
+                                        "Сравнение"
+                                    </div>
+                                    <div style="font-size:15px; font-weight:600; color:var(--colorNeutralForeground1, #111827);">
+                                        {move || comparison_period_title.get()}
+                                    </div>
+                                </div>
+                            </Show>
+                        </div>
+                    }
+                }
+            >
+                <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                    <div
+                        style="flex:1 1 320px; min-width:260px; display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-radius:12px; background:var(--colorNeutralBackground2, #f8fafc); border:1px solid var(--colorNeutralStroke2, #e5e7eb);"
+                    >
+                        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280);">
+                            "Период 1"
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                            <label style="display:flex; flex-direction:column; gap:6px; min-width:150px; flex:1 1 150px;">
+                                <span style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280);">
+                                    "С"
+                                </span>
+                                <input
+                                    type="date"
+                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:8px 10px;"
+                                    prop:value=move || ctx.get().date_from
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        ctx.update(|current| {
+                                            current.date_from = value.clone();
+                                            current.params.insert(
+                                                DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                            );
+                                        });
+                                    }
+                                />
+                            </label>
+                            <label style="display:flex; flex-direction:column; gap:6px; min-width:150px; flex:1 1 150px;">
+                                <span style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280);">
+                                    "По"
+                                </span>
+                                <input
+                                    type="date"
+                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:8px 10px;"
+                                    prop:value=move || ctx.get().date_to
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        ctx.update(|current| {
+                                            current.date_to = value.clone();
+                                            current.params.insert(
+                                                DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                            );
+                                        });
+                                    }
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div
+                        style="flex:1 1 320px; min-width:260px; display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-radius:12px; background:var(--colorBrandBackground2, #eff6ff); border:1px solid var(--colorBrandStroke2, #bfdbfe);"
+                    >
+                        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280);">
+                            "Период 2"
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                            <label style="display:flex; flex-direction:column; gap:6px; min-width:150px; flex:1 1 150px;">
+                                <span style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280);">
+                                    "С"
+                                </span>
+                                <input
+                                    type="date"
+                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:8px 10px;"
+                                    prop:value=move || ctx.get().period2_from.unwrap_or_default()
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        ctx.update(|current| {
+                                            current.period2_from = if value.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(value.clone())
+                                            };
+                                            current.params.insert(
+                                                DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                            );
+                                        });
+                                    }
+                                />
+                            </label>
+                            <label style="display:flex; flex-direction:column; gap:6px; min-width:150px; flex:1 1 150px;">
+                                <span style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280);">
+                                    "По"
+                                </span>
+                                <input
+                                    type="date"
+                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:8px 10px;"
+                                    prop:value=move || ctx.get().period2_to.unwrap_or_default()
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        ctx.update(|current| {
+                                            current.period2_to = if value.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(value.clone())
+                                            };
+                                            current.params.insert(
+                                                DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                            );
+                                        });
+                                    }
+                                />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+        </div>
+    }
+}
+
+*/
+#[component]
+fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
+    let active_mode = Signal::derive(move || DashboardPeriodMode::from_ctx(&ctx.get()));
+    let nav_button_style = "display:inline-flex; align-items:center; justify-content:center; width:32px; min-width:32px; height:32px; padding:0; border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); border-radius:10px; cursor:pointer;";
+
+    view! {
+        <div
+            class="dashboard-period-controls"
+            style="display:flex; flex-wrap:nowrap; align-items:center; gap:10px; overflow-x:auto; padding:0; margin-bottom:14px;"
+        >
+            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
+                <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); min-width:54px;">
+                    "Период"
+                </span>
+                {[DashboardPeriodMode::Month, DashboardPeriodMode::Week, DashboardPeriodMode::Day, DashboardPeriodMode::Custom]
+                    .into_iter()
+                    .map(|entry| {
+                        let label = entry.title();
+                        view! {
+                            <button
+                                type="button"
+                                style=move || {
+                                    if active_mode.get() == entry {
+                                        "border:1px solid var(--colorBrandStroke1, #2563eb); background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); padding:6px 10px; border-radius:999px; font-weight:600; cursor:pointer; line-height:1.2;"
+                                    } else {
+                                        "border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:6px 10px; border-radius:999px; font-weight:500; cursor:pointer; line-height:1.2;"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    ctx.update(|current| {
+                                        let anchor = period_slot_anchor(
+                                            current,
+                                            DashboardPeriodSlot::Primary,
+                                            entry,
+                                        );
+                                        apply_period_mode(current, entry, anchor);
+                                    });
+                                }
+                            >
+                                {label}
+                            </button>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+
+            {[DashboardPeriodSlot::Primary, DashboardPeriodSlot::Comparison]
+                .into_iter()
+                .map(|slot| {
+                    let badge_style = match slot {
+                        DashboardPeriodSlot::Primary => {
+                            "display:flex; align-items:center; justify-content:center; min-width:34px; height:32px; border-radius:10px; background:var(--colorNeutralBackground2, #f3f4f6); color:var(--colorNeutralForeground1, #111827); font-size:12px; font-weight:700;"
+                        }
+                        DashboardPeriodSlot::Comparison => {
+                            "display:flex; align-items:center; justify-content:center; min-width:34px; height:32px; border-radius:10px; background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); font-size:12px; font-weight:700;"
+                        }
+                    };
+                    let group_style = match slot {
+                        DashboardPeriodSlot::Primary => {
+                            "display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(15, 23, 42, 0.04);"
+                        }
+                        DashboardPeriodSlot::Comparison => {
+                            "display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(37, 99, 235, 0.08);"
+                        }
+                    };
+
+                    view! {
+                        <div style=group_style>
+                            <div style=badge_style>{slot.title()}</div>
+
+                            <Show
+                                when=move || active_mode.get() == DashboardPeriodMode::Custom
+                                fallback=move || {
+                                    view! {
+                                        <>
+                                            <button
+                                                type="button"
+                                                style=nav_button_style
+                                                on:click=move |_| {
+                                                    ctx.update(|current| {
+                                                        let mode = DashboardPeriodMode::from_ctx(current);
+                                                        let anchor = period_slot_anchor(current, slot, mode);
+                                                        let shifted_anchor = shift_period_anchor(mode, anchor, -1);
+                                                        let (from, to) = canonical_range_for_mode(mode, shifted_anchor);
+                                                        set_period_slot(current, slot, from, to);
+                                                        current.params.insert(
+                                                            DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                            mode.as_param_value().to_string(),
+                                                        );
+                                                    });
+                                                }
+                                            >
+                                                <span style="display:inline-flex; transform:rotate(180deg);">{icon("chevron-right")}</span>
+                                            </button>
+
+                                            <Button
+                                                appearance=ButtonAppearance::Secondary
+                                                size=ButtonSize::Small
+                                                on:click=move |_| {
+                                                    ctx.update(|current| {
+                                                        let mode = DashboardPeriodMode::from_ctx(current);
+                                                        let today = Utc::now().date_naive();
+                                                        let anchor = match slot {
+                                                            DashboardPeriodSlot::Primary => today,
+                                                            DashboardPeriodSlot::Comparison => shift_period_anchor(mode, today, -1),
+                                                        };
+                                                        let (from, to) = canonical_range_for_mode(mode, anchor);
+                                                        set_period_slot(current, slot, from, to);
+                                                        current.params.insert(
+                                                            DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                            mode.as_param_value().to_string(),
+                                                        );
+                                                    });
+                                                }
+                                            >
+                                                {move || slot.reset_label(active_mode.get())}
+                                            </Button>
+
+                                            <div style="min-width:140px; flex:0 0 auto; padding:0 2px; font-size:13px; font-weight:600; color:var(--colorNeutralForeground1, #111827); white-space:nowrap;">
+                                                {move || {
+                                                    let current = ctx.get();
+                                                    period_summary(&current, slot, false)
+                                                        .unwrap_or_else(|| "Период не задан".to_string())
+                                                }}
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                style=nav_button_style
+                                                on:click=move |_| {
+                                                    ctx.update(|current| {
+                                                        let mode = DashboardPeriodMode::from_ctx(current);
+                                                        let anchor = period_slot_anchor(current, slot, mode);
+                                                        let shifted_anchor = shift_period_anchor(mode, anchor, 1);
+                                                        let (from, to) = canonical_range_for_mode(mode, shifted_anchor);
+                                                        set_period_slot(current, slot, from, to);
+                                                        current.params.insert(
+                                                            DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                            mode.as_param_value().to_string(),
+                                                        );
+                                                    });
+                                                }
+                                            >
+                                                {icon("chevron-right")}
+                                            </button>
+
+                                            <Show when=move || active_mode.get() == DashboardPeriodMode::Day>
+                                                <input
+                                                    type="date"
+                                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:150px;"
+                                                    prop:value=move || {
+                                                        period_slot_dates(&ctx.get(), slot)
+                                                            .map(|(_, to)| fmt_ymd(to))
+                                                            .unwrap_or_default()
+                                                    }
+                                                    on:input=move |ev| {
+                                                        let value = event_target_value(&ev);
+                                                        if let Some(date) = parse_ymd(&value) {
+                                                            ctx.update(|current| {
+                                                                set_period_slot(current, slot, date, date);
+                                                                current.params.insert(
+                                                                    DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                                    DashboardPeriodMode::Day.as_param_value().to_string(),
+                                                                );
+                                                            });
+                                                        }
+                                                    }
+                                                />
+                                            </Show>
+                                        </>
+                                    }
+                                }
+                            >
+                                <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
+                                    <input
+                                        type="date"
+                                        style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:146px;"
+                                        prop:value=move || {
+                                            period_slot_dates(&ctx.get(), slot)
+                                                .map(|(from, _)| fmt_ymd(from))
+                                                .unwrap_or_default()
+                                        }
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if value.trim().is_empty() {
+                                                return;
+                                            }
+                                            if let Some(from) = parse_ymd(&value) {
+                                                ctx.update(|current| {
+                                                    let to = period_slot_dates(current, slot)
+                                                        .map(|(_, to)| to)
+                                                        .unwrap_or(from);
+                                                    set_period_slot(current, slot, from, to);
+                                                    current.params.insert(
+                                                        DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                        DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                                    );
+                                                });
+                                            }
+                                        }
+                                    />
+
+                                    <span style="color:var(--colorNeutralForeground3, #6b7280);">"—"</span>
+
+                                    <input
+                                        type="date"
+                                        style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:146px;"
+                                        prop:value=move || {
+                                            period_slot_dates(&ctx.get(), slot)
+                                                .map(|(_, to)| fmt_ymd(to))
+                                                .unwrap_or_default()
+                                        }
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if value.trim().is_empty() {
+                                                return;
+                                            }
+                                            if let Some(to) = parse_ymd(&value) {
+                                                ctx.update(|current| {
+                                                    let from = period_slot_dates(current, slot)
+                                                        .map(|(from, _)| from)
+                                                        .unwrap_or(to);
+                                                    set_period_slot(current, slot, from, to);
+                                                    current.params.insert(
+                                                        DASHBOARD_PERIOD_MODE_PARAM.to_string(),
+                                                        DashboardPeriodMode::Custom.as_param_value().to_string(),
+                                                    );
+                                                });
+                                            }
+                                        }
+                                    />
+                                </div>
+                            </Show>
+                        </div>
+                    }
+                })
+                .collect_view()}
+        </div>
+    }
+}
+
+#[component]
+fn DashboardConnectionMpControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
+    let options = RwSignal::new(Vec::<DashboardMpOption>::new());
+    let loading = RwSignal::new(false);
+    let fetch_error = RwSignal::new(None::<String>);
+    let requested = RwSignal::new(false);
+
+    Effect::new(move |_| {
+        if requested.get() {
+            return;
+        }
+        requested.set(true);
+        spawn_local(async move {
+            loading.set(true);
+            fetch_error.set(None);
+            match fetch_dashboard_mp_options().await {
+                Ok(items) => options.set(items),
+                Err(err) => fetch_error.set(Some(err)),
+            }
+            loading.set(false);
+        });
+    });
+
+    view! {
+        <div
+            class="dashboard-mp-controls"
+            style="display:flex; flex-wrap:nowrap; align-items:center; gap:10px; overflow-x:auto; padding:0; margin-bottom:10px;"
+        >
+            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
+                <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); min-width:86px;">
+                    "Кабинет МП"
+                </span>
+            </div>
+
+            <div
+                style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(2, 132, 199, 0.07);"
+            >
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    size=ButtonSize::Small
+                    on:click=move |_| {
+                        ctx.update(|current| current.connection_mp_refs.clear());
+                    }
+                >
+                    "Все"
+                </Button>
+
+                {move || {
+                    if loading.get() {
+                        view! {
+                            <div style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280); white-space:nowrap;">
+                                "Загрузка..."
+                            </div>
+                        }.into_any()
+                    } else if let Some(err) = fetch_error.get() {
+                        view! {
+                            <div style="font-size:12px; color:var(--colorPaletteRedForeground1, #b42318); white-space:nowrap;">
+                                {err}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center;">
+                                <For
+                                    each=move || options.get()
+                                    key=|opt| opt.id.clone()
+                                    children=move |opt: DashboardMpOption| {
+                                        let option_id = opt.id.clone();
+                                        let style_option_id = option_id.clone();
+                                        let option_label = opt.label.clone();
+                                        view! {
+                                            <button
+                                                type="button"
+                                                style=move || {
+                                                    let selected = ctx.get().connection_mp_refs.iter().any(|id| id == &style_option_id);
+                                                    if selected {
+                                                        "border:1px solid var(--colorBrandStroke1, #2563eb); background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); padding:6px 10px; border-radius:999px; font-weight:600; cursor:pointer; line-height:1.2; white-space:nowrap;"
+                                                    } else {
+                                                        "border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:6px 10px; border-radius:999px; font-weight:500; cursor:pointer; line-height:1.2; white-space:nowrap;"
+                                                    }
+                                                }
+                                                on:click=move |_| {
+                                                    ctx.update(|current| {
+                                                        if current.connection_mp_refs.iter().any(|id| id == &option_id) {
+                                                            current.connection_mp_refs.retain(|id| id != &option_id);
+                                                        } else {
+                                                            current.connection_mp_refs.push(option_id.clone());
+                                                            current.connection_mp_refs.sort();
+                                                            current.connection_mp_refs.dedup();
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {option_label.clone()}
+                                            </button>
+                                        }
+                                    }
+                                />
+                            </div>
+                        }.into_any()
+                    }
+                }}
+            </div>
+        </div>
+    }
+}
+
 /// State passed from the iframe postMessage to drive the detail modal.
 #[derive(Clone, Debug)]
 struct IndicatorSelection {
@@ -1696,7 +2538,12 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
 
     let is_filter_expanded = RwSignal::new(true);
 
-    let active_filters_count = Signal::derive(move || dashboard_filter_defs.get().len());
+    let visible_dashboard_filters =
+        Signal::derive(move || non_period_dashboard_filters(&dashboard_filter_defs.get()));
+    let active_filters_count = Signal::derive(move || {
+        visible_dashboard_filters.get().len()
+            + usize::from(!view_ctx.get().connection_mp_refs.is_empty())
+    });
 
     reload_dashboard_data(
         id.clone(),
@@ -1881,15 +2728,12 @@ pub fn BiDashboardView(id: String) -> impl IntoView {
 
                         <Show when=move || is_filter_expanded.get()>
                             <div class="filter-panel-content">
+                                <DashboardPeriodControls ctx=view_ctx />
+                                <DashboardConnectionMpControls ctx=view_ctx />
                                 {move || {
-                                    let filters = dashboard_filter_defs.get();
+                                    let filters = visible_dashboard_filters.get();
                                     if filters.is_empty() {
-                                        view! {
-                                            <div class="placeholder placeholder--small">
-                                                "Для этого дашборда не настроены фильтры."
-                                            </div>
-                                        }
-                                            .into_any()
+                                        view! { <></> }.into_any()
                                     } else {
                                         view! { <FilterBar filters=filters ctx=view_ctx /> }.into_any()
                                     }
@@ -2021,8 +2865,11 @@ fn IndicatorDetailModal(
     let dv_dims: RwSignal<Option<Vec<(String, String)>>> = RwSignal::new(None);
     if let Some(def_for_dims) = def.clone() {
         let params_for_dims = effective_indicator_params.clone();
+        let ctx_for_dims = ctx.clone();
         spawn_local(async move {
-            match fetch_indicator_drill_dimensions(&def_for_dims, &params_for_dims).await {
+            match fetch_indicator_drill_dimensions(&def_for_dims, &ctx_for_dims, &params_for_dims)
+                .await
+            {
                 Ok(dims) => {
                     dv_dims.set(Some(dims));
                 }

@@ -14,6 +14,7 @@ use crate::shared::data::db::get_connection;
 
 const REGISTRATOR_TYPE: &str = "a026_wb_advert_daily";
 const TURNOVER_CODE: &str = "advertising_allocated";
+const RESOURCE_TABLE: &str = "p911_wb_advert_by_items";
 
 fn now_str() -> String {
     Utc::now().to_rfc3339()
@@ -47,7 +48,7 @@ fn to_general_ledger_entry(
         amount,
         qty: None,
         turnover_code: TURNOVER_CODE.to_string(),
-        resource_table: REGISTRATOR_TYPE.to_string(),
+        resource_table: RESOURCE_TABLE.to_string(),
         resource_field: "amount".to_string(),
         resource_sign: 1,
         created_at: now_str(),
@@ -276,5 +277,21 @@ mod tests {
         assert!(rows
             .iter()
             .all(|row| row.general_ledger_ref.as_deref() == Some("gl-1")));
+    }
+
+    #[test]
+    fn general_ledger_entry_points_to_p911_projection() {
+        let entry = super::to_general_ledger_entry(
+            "gl-1",
+            "",
+            "2026-02-12",
+            Some("conn-1".to_string()),
+            "doc-1",
+            15.0,
+        );
+
+        assert_eq!(entry.resource_table, super::RESOURCE_TABLE);
+        assert_eq!(entry.resource_field, "amount");
+        assert_eq!(entry.resource_sign, 1);
     }
 }

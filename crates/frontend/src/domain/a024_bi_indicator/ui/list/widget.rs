@@ -19,7 +19,7 @@ struct BiIndicatorRow {
     pub chip: String,
     pub status: String,
     pub is_public: bool,
-    pub owner_user_id: String,
+    pub data_view_id: Option<String>,
     pub created_at: Option<String>,
 }
 
@@ -98,7 +98,7 @@ async fn fetch_paginated(
                 .to_string();
             let status = v["status"].as_str().unwrap_or("draft").to_string();
             let is_public = v["is_public"].as_bool().unwrap_or(false);
-            let owner_user_id = v["owner_user_id"].as_str().unwrap_or("").to_string();
+            let data_view_id = v["data_spec"]["view_id"].as_str().map(|s| s.to_string());
             let created_at = v["created_at"]
                 .as_str()
                 .map(|s| s[..10.min(s.len())].to_string());
@@ -109,7 +109,7 @@ async fn fetch_paginated(
                 chip,
                 status,
                 is_public,
-                owner_user_id,
+                data_view_id,
                 created_at,
             })
         })
@@ -454,7 +454,7 @@ pub fn BiIndicatorList() -> impl IntoView {
 
                                 <TableHeaderCell resizable=true min_width=100.0>"Статус"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=80.0>"Публичный"</TableHeaderCell>
-                                <TableHeaderCell resizable=true min_width=140.0>"Владелец"</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=180.0>"Источник данных (DataView)"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=100.0>"Создан"</TableHeaderCell>
                                 <TableHeaderCell resizable=false min_width=80.0>"Действия"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=120.0>"Chip"</TableHeaderCell>
@@ -486,7 +486,7 @@ pub fn BiIndicatorList() -> impl IntoView {
                                     let desc_display = row.description.clone();
                                     let chip_display = row.chip.clone();
                                     let status_str = row.status.clone();
-                                    let owner = row.owner_user_id.clone();
+                                    let data_view_id = row.data_view_id.clone();
                                     let created_at = row.created_at.clone().unwrap_or_default();
                                     let is_public = row.is_public;
 
@@ -532,7 +532,13 @@ pub fn BiIndicatorList() -> impl IntoView {
 
                                             <TableCell>
                                                 <TableCellLayout truncate=true>
-                                                    {owner}
+                                                    {if let Some(view_id) = data_view_id.clone().filter(|v| !v.trim().is_empty()) {
+                                                        view! { {view_id} }.into_any()
+                                                    } else {
+                                                        view! {
+                                                            <span class="table__cell--muted">"—"</span>
+                                                        }.into_any()
+                                                    }}
                                                 </TableCellLayout>
                                             </TableCell>
 

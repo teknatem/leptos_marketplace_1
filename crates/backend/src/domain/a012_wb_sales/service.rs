@@ -2,7 +2,7 @@ use super::repository;
 use anyhow::Result;
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::common::AggregateId;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use uuid::Uuid;
 
 const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
@@ -22,6 +22,8 @@ pub struct PostingPreparationCache {
     >,
     nomenclature_by_id:
         HashMap<String, Option<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
+    kit_variant_by_id:
+        HashMap<String, Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>>,
     kit_variant_by_owner_ref:
         HashMap<String, Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>>,
     direct_cost_by_nom_and_date: HashMap<(String, String), Option<f64>>,
@@ -138,6 +140,23 @@ impl PostingPreparationCache {
         Ok(resolved)
     }
 
+    async fn get_kit_variant_by_id(
+        &mut self,
+        kit_variant_ref: &str,
+    ) -> Result<Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>> {
+        if let Some(value) = self.kit_variant_by_id.get(kit_variant_ref) {
+            return Ok(value.clone());
+        }
+
+        let resolved = match Uuid::parse_str(kit_variant_ref) {
+            Ok(id) => crate::domain::a022_kit_variant::repository::get_by_id(id).await?,
+            Err(_) => None,
+        };
+        self.kit_variant_by_id
+            .insert(kit_variant_ref.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
     async fn resolve_direct_cost(
         &mut self,
         nomenclature_ref: &str,
@@ -165,31 +184,111 @@ impl PostingPreparationCache {
         nomenclature_ref: &str,
         sale_date: &str,
     ) -> Result<Option<f64>> {
-        let cache_key = (nomenclature_ref.to_string(), sale_date.to_string());
-        if let Some(value) = self.resolved_prod_unit_cost_by_nom_and_date.get(&cache_key) {
+        let root_key = (nomenclature_ref.to_string(), sale_date.to_string());
+        if let Some(value) = self.resolved_prod_unit_cost_by_nom_and_date.get(&root_key) {
             return Ok(*value);
         }
 
-        let mut resolved = self
-            .resolve_direct_cost(nomenclature_ref, sale_date)
-            .await?;
-        if resolved.is_none() {
-            let base_ref = self
-                .get_nomenclature(nomenclature_ref)
-                .await?
-                .and_then(|nomenclature| nomenclature.base_nomenclature_ref)
-                .filter(|base_ref| {
-                    let trimmed = base_ref.trim();
-                    !trimmed.is_empty() && trimmed != ZERO_UUID && trimmed != nomenclature_ref
-                });
-            if let Some(base_ref) = base_ref {
-                resolved = self.resolve_direct_cost(&base_ref, sale_date).await?;
+        let mut stack = vec![(nomenclature_ref.to_string(), false)];
+        let mut visiting = HashSet::new();
+
+        while let Some((current_ref, expanded)) = stack.pop() {
+            let cache_key = (current_ref.clone(), sale_date.to_string());
+            if self
+                .resolved_prod_unit_cost_by_nom_and_date
+                .contains_key(&cache_key)
+            {
+                if expanded {
+                    visiting.remove(&current_ref);
+                }
+                continue;
+            }
+
+            if expanded {
+                visiting.remove(&current_ref);
+
+                let mut resolved = self.resolve_direct_cost(&current_ref, sale_date).await?;
+                if resolved.is_none() {
+                    if let Some(nomenclature) = self.get_nomenclature(&current_ref).await? {
+                        for fallback_ref in collect_cost_fallback_refs(&nomenclature, &current_ref)
+                        {
+                            let fallback_key = (fallback_ref.clone(), sale_date.to_string());
+                            if let Some(cost) = self
+                                .resolved_prod_unit_cost_by_nom_and_date
+                                .get(&fallback_key)
+                                .copied()
+                                .flatten()
+                            {
+                                resolved = Some(cost);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                self.resolved_prod_unit_cost_by_nom_and_date
+                    .insert(cache_key, resolved);
+                continue;
+            }
+
+            if !visiting.insert(current_ref.clone()) {
+                continue;
+            }
+
+            stack.push((current_ref.clone(), true));
+
+            if let Some(nomenclature) = self.get_nomenclature(&current_ref).await? {
+                let mut fallback_refs = collect_cost_fallback_refs(&nomenclature, &current_ref);
+                fallback_refs.reverse();
+
+                for fallback_ref in fallback_refs {
+                    let fallback_key = (fallback_ref.clone(), sale_date.to_string());
+                    if self
+                        .resolved_prod_unit_cost_by_nom_and_date
+                        .contains_key(&fallback_key)
+                        || visiting.contains(&fallback_ref)
+                    {
+                        continue;
+                    }
+                    stack.push((fallback_ref, false));
+                }
             }
         }
 
-        self.resolved_prod_unit_cost_by_nom_and_date
-            .insert(cache_key, resolved);
-        Ok(resolved)
+        Ok(self
+            .resolved_prod_unit_cost_by_nom_and_date
+            .get(&root_key)
+            .copied()
+            .flatten())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProdCostResolution {
+    pub total: Option<f64>,
+    pub status: &'static str,
+    pub problem_message: Option<String>,
+}
+
+impl ProdCostResolution {
+    fn ok(total: f64) -> Self {
+        Self {
+            total: Some(total),
+            status: "ok",
+            problem_message: None,
+        }
+    }
+
+    fn problem(status: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            total: None,
+            status,
+            problem_message: Some(message.into()),
+        }
+    }
+
+    pub fn has_problem(&self) -> bool {
+        self.problem_message.is_some()
     }
 }
 
@@ -214,11 +313,112 @@ fn clear_fact_fields(document: &mut WbSales) -> bool {
     changed
 }
 
+fn set_scalar_if_changed<T: PartialEq>(slot: &mut T, next: T) -> bool {
+    if *slot != next {
+        *slot = next;
+        true
+    } else {
+        false
+    }
+}
+
+pub fn apply_prod_cost_diagnostics(
+    document: &mut WbSales,
+    resolution: &ProdCostResolution,
+) -> bool {
+    let mut changed = false;
+    changed |= set_scalar_if_changed(&mut document.prod_cost_problem, resolution.has_problem());
+    changed |= set_if_changed(
+        &mut document.prod_cost_status,
+        Some(resolution.status.to_string()),
+    );
+    changed |= set_if_changed(
+        &mut document.prod_cost_problem_message,
+        resolution.problem_message.clone(),
+    );
+    changed |= set_if_changed(&mut document.prod_cost_resolved_total, resolution.total);
+    changed
+}
+
 fn valid_ref(value: Option<String>, current_ref: &str) -> Option<String> {
     value.filter(|raw| {
         let trimmed = raw.trim();
         !trimmed.is_empty() && trimmed != ZERO_UUID && trimmed != current_ref
     })
+}
+
+fn collect_cost_fallback_refs(
+    nomenclature: &contracts::domain::a004_nomenclature::aggregate::Nomenclature,
+    current_ref: &str,
+) -> Vec<String> {
+    let mut refs = Vec::new();
+
+    if let Some(base_ref) = valid_ref(nomenclature.base_nomenclature_ref.clone(), current_ref) {
+        refs.push(base_ref);
+    }
+
+    if let Some(alternative_ref) = valid_ref(
+        nomenclature.alternative_cost_source_ref.clone(),
+        current_ref,
+    ) {
+        if !refs.iter().any(|existing| existing == &alternative_ref) {
+            refs.push(alternative_ref);
+        }
+    }
+
+    refs
+}
+
+async fn ensure_missing_cost_entries_best_effort(target_date: &str, nomenclature_refs: &[String]) {
+    if nomenclature_refs.is_empty() {
+        return;
+    }
+
+    if let Err(error) =
+        crate::domain::a028_missing_cost_registry::service::ensure_missing_cost_entries(
+            target_date,
+            nomenclature_refs,
+        )
+        .await
+    {
+        tracing::error!(
+            "Failed to ensure a028 missing cost entries for {} refs at {}: {}",
+            nomenclature_refs.len(),
+            target_date,
+            error
+        );
+    }
+}
+
+async fn preload_nomenclature_graph(
+    cache: &mut PostingPreparationCache,
+    initial_refs: &BTreeSet<String>,
+) -> Result<BTreeSet<String>> {
+    let mut all_refs = initial_refs.clone();
+    let mut pending_refs = initial_refs.clone();
+
+    while !pending_refs.is_empty() {
+        let refs_batch = pending_refs.iter().cloned().collect::<Vec<_>>();
+        pending_refs.clear();
+
+        for nomenclature in
+            crate::domain::a004_nomenclature::repository::list_by_ids(&refs_batch).await?
+        {
+            let nomenclature_id = nomenclature.base.id.as_string();
+            let fallback_refs = collect_cost_fallback_refs(&nomenclature, &nomenclature_id);
+            cache
+                .nomenclature_by_id
+                .insert(nomenclature_id.clone(), Some(nomenclature));
+
+            for fallback_ref in fallback_refs {
+                if all_refs.insert(fallback_ref.clone()) {
+                    pending_refs.insert(fallback_ref);
+                }
+            }
+        }
+    }
+
+    Ok(all_refs)
 }
 
 pub async fn preload_prod_cost_context_for_documents(
@@ -240,13 +440,42 @@ pub async fn preload_prod_cost_context_for_documents(
         return Ok(());
     }
 
-    let document_nom_refs_vec = document_nom_refs.iter().cloned().collect::<Vec<_>>();
-    for nomenclature in
-        crate::domain::a004_nomenclature::repository::list_by_ids(&document_nom_refs_vec).await?
-    {
-        cache
-            .nomenclature_by_id
-            .insert(nomenclature.base.id.as_string(), Some(nomenclature));
+    let mut refs_to_resolve = preload_nomenclature_graph(cache, &document_nom_refs).await?;
+
+    let explicit_kit_variant_refs = document_nom_refs
+        .iter()
+        .filter_map(|nomenclature_ref| {
+            cache
+                .nomenclature_by_id
+                .get(nomenclature_ref.as_str())
+                .and_then(|item| item.as_ref())
+                .and_then(|nomenclature| valid_ref(nomenclature.kit_variant_ref.clone(), ""))
+        })
+        .collect::<Vec<_>>();
+
+    if !explicit_kit_variant_refs.is_empty() {
+        let variants =
+            crate::domain::a022_kit_variant::repository::list_by_ids(&explicit_kit_variant_refs)
+                .await?;
+        let variants_by_id = variants
+            .into_iter()
+            .map(|variant| (variant.base.id.as_string(), variant))
+            .collect::<HashMap<_, _>>();
+
+        for kit_variant_ref in &explicit_kit_variant_refs {
+            let variant = variants_by_id.get(kit_variant_ref).cloned();
+            cache
+                .kit_variant_by_id
+                .insert(kit_variant_ref.clone(), variant.clone());
+            if let Some(variant) = variant {
+                if let Some(owner_ref) = variant.owner_ref.clone() {
+                    cache
+                        .kit_variant_by_owner_ref
+                        .entry(owner_ref)
+                        .or_insert_with(|| Some(variant));
+                }
+            }
+        }
     }
 
     let owner_refs = document_nom_refs
@@ -256,7 +485,13 @@ pub async fn preload_prod_cost_context_for_documents(
                 .nomenclature_by_id
                 .get(owner_ref.as_str())
                 .and_then(|item| item.as_ref())
-                .is_some_and(|nomenclature| nomenclature.is_assembly)
+                .is_some_and(|nomenclature| {
+                    nomenclature.is_assembly
+                        || nomenclature
+                            .kit_variant_ref
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty())
+                })
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -276,35 +511,19 @@ pub async fn preload_prod_cost_context_for_documents(
         .iter()
         .filter_map(|owner_ref| cache.kit_variant_by_owner_ref.get(owner_ref))
         .filter_map(|variant| variant.as_ref())
+        .chain(
+            explicit_kit_variant_refs
+                .iter()
+                .filter_map(|kit_variant_ref| cache.kit_variant_by_id.get(kit_variant_ref))
+                .filter_map(|variant| variant.as_ref()),
+        )
         .flat_map(|variant| variant.parse_goods().into_iter())
         .map(|item| item.nomenclature_ref)
         .filter(|value| !value.trim().is_empty())
         .collect();
 
     if !component_refs.is_empty() {
-        let component_refs_vec = component_refs.iter().cloned().collect::<Vec<_>>();
-        for nomenclature in
-            crate::domain::a004_nomenclature::repository::list_by_ids(&component_refs_vec).await?
-        {
-            cache
-                .nomenclature_by_id
-                .insert(nomenclature.base.id.as_string(), Some(nomenclature));
-        }
-    }
-
-    let mut refs_to_resolve = BTreeSet::new();
-    for nomenclature_ref in document_nom_refs.iter().chain(component_refs.iter()) {
-        refs_to_resolve.insert(nomenclature_ref.clone());
-        if let Some(base_ref) = cache
-            .nomenclature_by_id
-            .get(nomenclature_ref)
-            .and_then(|item| item.as_ref())
-            .and_then(|nomenclature| {
-                valid_ref(nomenclature.base_nomenclature_ref.clone(), nomenclature_ref)
-            })
-        {
-            refs_to_resolve.insert(base_ref);
-        }
+        refs_to_resolve.extend(preload_nomenclature_graph(cache, &component_refs).await?);
     }
 
     if refs_to_resolve.is_empty() {
@@ -334,123 +553,183 @@ pub async fn preload_prod_cost_context_for_documents(
         }
     }
 
-    for nomenclature_ref in document_nom_refs.iter().chain(component_refs.iter()) {
-        let cache_key = (nomenclature_ref.clone(), sale_date.clone());
-        if cache
-            .resolved_prod_unit_cost_by_nom_and_date
-            .contains_key(&cache_key)
-        {
-            continue;
-        }
-
-        let direct_cost = cache
-            .direct_cost_by_nom_and_date
-            .get(&cache_key)
-            .copied()
-            .flatten();
-        let resolved = direct_cost.or_else(|| {
-            cache
-                .nomenclature_by_id
-                .get(nomenclature_ref)
-                .and_then(|item| item.as_ref())
-                .and_then(|nomenclature| {
-                    valid_ref(nomenclature.base_nomenclature_ref.clone(), nomenclature_ref)
-                })
-                .and_then(|base_ref| {
-                    cache
-                        .direct_cost_by_nom_and_date
-                        .get(&(base_ref, sale_date.clone()))
-                        .copied()
-                        .flatten()
-                })
-        });
-        cache
-            .resolved_prod_unit_cost_by_nom_and_date
-            .insert(cache_key, resolved);
+    for nomenclature_ref in refs_to_resolve.iter().cloned().collect::<Vec<_>>() {
+        let _ = cache
+            .resolve_simple_prod_unit_cost(&nomenclature_ref, &sale_date)
+            .await?;
     }
 
     Ok(())
 }
 
-pub async fn resolve_prod_item_cost_total_cached(
+pub async fn resolve_prod_cost_cached(
     document: &WbSales,
     cache: &mut PostingPreparationCache,
-) -> Result<Option<f64>> {
+) -> Result<ProdCostResolution> {
     let Some(nomenclature_ref) = document.nomenclature_ref.as_deref() else {
-        return Ok(None);
+        return Ok(ProdCostResolution::problem(
+            "missing_nomenclature_ref",
+            format!(
+                "Не задана номенклатура для prod-себестоимости. Документ {}, article {}",
+                document.base.id.as_string(),
+                document.line.supplier_article
+            ),
+        ));
     };
     if nomenclature_ref.trim().is_empty() {
-        return Ok(None);
+        return Ok(ProdCostResolution::problem(
+            "missing_nomenclature_ref",
+            format!(
+                "Пустая ссылка на номенклатуру для prod-себестоимости. Документ {}, article {}",
+                document.base.id.as_string(),
+                document.line.supplier_article
+            ),
+        ));
     }
 
     let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
     let Some(nomenclature) = cache.get_nomenclature(nomenclature_ref).await? else {
-        tracing::warn!(
-            "Skip prod item_cost for WB Sales {}: nomenclature not found {}",
-            document.base.id.as_string(),
-            nomenclature_ref
+        let message = format!(
+            "Номенклатура {} не найдена. Prod-себестоимость не рассчитана на дату {}",
+            nomenclature_ref, sale_date
         );
-        return Ok(None);
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: {}",
+            document.base.id.as_string(),
+            message
+        );
+        return Ok(ProdCostResolution::problem(
+            "nomenclature_not_found",
+            message,
+        ));
     };
 
-    if !nomenclature.is_assembly {
+    let has_kit_link = nomenclature
+        .kit_variant_ref
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty());
+
+    if !nomenclature.is_assembly && !has_kit_link {
         let resolved = cache
             .resolve_simple_prod_unit_cost(nomenclature_ref, &sale_date)
             .await?;
-        if resolved.is_none() {
-            tracing::warn!(
-                "Skip prod item_cost for WB Sales {}: no p912 cost for nomenclature {} on {}",
-                document.base.id.as_string(),
-                nomenclature_ref,
-                sale_date
-            );
-        }
-        return Ok(resolved.map(|unit_cost| unit_cost * document.line.qty.abs()));
+        return match resolved {
+            Some(unit_cost) => Ok(ProdCostResolution::ok(unit_cost * document.line.qty.abs())),
+            None => {
+                ensure_missing_cost_entries_best_effort(
+                    &sale_date,
+                    &[nomenclature_ref.to_string()],
+                )
+                .await;
+                let alternative_hint = valid_ref(
+                    nomenclature.alternative_cost_source_ref.clone(),
+                    nomenclature_ref,
+                )
+                .map(|alternative_ref| format!(", альтернативный источник {}", alternative_ref))
+                .unwrap_or_default();
+                let message = format!(
+                    "Не найдена себестоимость в p912 для номенклатуры {} ({}){} на дату {}",
+                    nomenclature.base.code, nomenclature.article, alternative_hint, sale_date
+                );
+                tracing::warn!(
+                    "Skip prod item_cost for WB Sales {}: {}",
+                    document.base.id.as_string(),
+                    message
+                );
+                Ok(ProdCostResolution::problem("missing_p912_cost", message))
+            }
+        };
     }
 
-    let Some(kit_variant) = cache.get_kit_variant_by_owner_ref(nomenclature_ref).await? else {
-        tracing::warn!(
-            "Skip prod item_cost for WB Sales {}: kit variant not found for owner_ref {}",
-            document.base.id.as_string(),
-            nomenclature_ref
+    let kit_variant = if let Some(kit_variant_ref) = nomenclature.kit_variant_ref.as_deref() {
+        cache.get_kit_variant_by_id(kit_variant_ref).await?
+    } else {
+        cache.get_kit_variant_by_owner_ref(nomenclature_ref).await?
+    };
+
+    let Some(kit_variant) = kit_variant else {
+        let message = format!(
+            "Для комплекта {} ({}) не найден вариант комплектации a022",
+            nomenclature.base.code, nomenclature.article
         );
-        return Ok(None);
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: {}",
+            document.base.id.as_string(),
+            message
+        );
+        return Ok(ProdCostResolution::problem(
+            "kit_variant_not_found",
+            message,
+        ));
     };
 
     let goods = kit_variant.parse_goods();
     if goods.is_empty() {
-        tracing::warn!(
-            "Skip prod item_cost for WB Sales {}: empty kit composition for owner_ref {}",
-            document.base.id.as_string(),
-            nomenclature_ref
+        let message = format!(
+            "Для комплекта {} ({}) состав a022 пустой",
+            nomenclature.base.code, nomenclature.article
         );
-        return Ok(None);
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: {}",
+            document.base.id.as_string(),
+            message
+        );
+        return Ok(ProdCostResolution::problem("empty_kit", message));
     }
 
     let mut unit_cost = 0.0;
     let mut missing_components = Vec::new();
+    let mut missing_component_refs = Vec::new();
     for component in goods {
         match cache
             .resolve_simple_prod_unit_cost(&component.nomenclature_ref, &sale_date)
             .await?
         {
             Some(component_cost) => unit_cost += component_cost * component.quantity,
-            None => missing_components.push(component.nomenclature_ref),
+            None => {
+                missing_component_refs.push(component.nomenclature_ref.clone());
+                let label = cache
+                    .get_nomenclature(&component.nomenclature_ref)
+                    .await?
+                    .map(|nom| {
+                        let article = nom.article.trim().to_string();
+                        let code = nom.base.code.trim().to_string();
+                        if article.is_empty() {
+                            code
+                        } else if code.is_empty() {
+                            article
+                        } else {
+                            format!("{code}/{article}")
+                        }
+                    })
+                    .filter(|label| !label.trim().is_empty())
+                    .unwrap_or(component.nomenclature_ref.clone());
+                missing_components.push(label);
+            }
         }
     }
 
     if !missing_components.is_empty() {
-        tracing::warn!(
-            "Skip prod item_cost for WB Sales {}: missing p912 cost for kit {} components {:?} on {}",
-            document.base.id.as_string(),
-            nomenclature_ref,
-            missing_components,
+        ensure_missing_cost_entries_best_effort(&sale_date, &missing_component_refs).await;
+        let message = format!(
+            "Не найдена себестоимость в p912 для компонентов комплекта {} ({}): {}. Дата {}",
+            nomenclature.base.code,
+            nomenclature.article,
+            missing_components.join(", "),
             sale_date
         );
-        return Ok(None);
+        tracing::warn!(
+            "Skip prod item_cost for WB Sales {}: {}",
+            document.base.id.as_string(),
+            message
+        );
+        return Ok(ProdCostResolution::problem(
+            "missing_component_costs",
+            message,
+        ));
     }
 
-    Ok(Some(unit_cost * document.line.qty.abs()))
+    Ok(ProdCostResolution::ok(unit_cost * document.line.qty.abs()))
 }
 
 pub async fn sync_organization_from_connection_cached(
@@ -695,7 +974,10 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
     .await?;
 
     document.source_meta.raw_payload_ref = raw_ref;
-    prepare_document_for_posting(&mut document).await?;
+    let mut cache = PostingPreparationCache::default();
+    prepare_document_for_posting_cached(&mut document, &mut cache).await?;
+    let prod_cost_resolution = resolve_prod_cost_cached(&document, &mut cache).await?;
+    apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
 
     document
         .validate()
@@ -764,8 +1046,11 @@ pub async fn refresh_dealer_price(id: Uuid) -> Result<()> {
 
     document.line.dealer_price_ut = None;
     document.line.cost_of_production = None;
-    fill_dealer_price_resolved(&mut document).await?;
-    calculate_plan_fields(&mut document).await?;
+    let mut cache = PostingPreparationCache::default();
+    fill_dealer_price_resolved_cached(&mut document, &mut cache).await?;
+    calculate_plan_fields_cached(&mut document, &mut cache).await?;
+    let prod_cost_resolution = resolve_prod_cost_cached(&document, &mut cache).await?;
+    apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
     repository::upsert_document(&document).await?;
 
     tracing::info!(

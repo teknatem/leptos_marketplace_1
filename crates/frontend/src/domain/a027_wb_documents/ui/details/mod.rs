@@ -500,6 +500,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                                     <ReadField label="Category ID" value=d.name.clone() />
                                                     <ReadField label="Кабинет" value=d.connection_name.clone().unwrap_or(d.connection_id.clone()) />
                                                     <ReadField label="Организация" value=d.organization_name.clone().unwrap_or(d.organization_id.clone()) />
+                                                    <ReadField label="Маркетплейс" value=d.marketplace_name.clone().unwrap_or(d.marketplace_id.clone()) />
                                                 </Card>
                                             </div>
                                             <div class="detail-grid__col">

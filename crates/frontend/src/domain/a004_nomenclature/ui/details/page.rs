@@ -7,7 +7,7 @@
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
-use super::tabs::{BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab};
+use super::tabs::{BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab, ProductionTab};
 use super::view_model::NomenclatureDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -46,6 +46,15 @@ pub fn NomenclatureDetails(
         move || {
             if vm.active_tab.get() == "dealer_prices" && !vm.dealer_prices_loaded.get() {
                 vm.load_dealer_prices();
+            }
+        }
+    });
+
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "production" && !vm.production_costs_loaded.get() {
+                vm.load_production_costs();
             }
         }
     });
@@ -123,6 +132,7 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
     let is_edit_mode = vm.is_edit_mode();
     let barcodes_count = vm.barcodes_count;
     let dealer_prices_count = vm.dealer_prices_count;
+    let production_costs_count = vm.production_costs_count;
 
     view! {
         <div class="page__tabs">
@@ -165,6 +175,32 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
 
             <button
                 class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "production"
+                disabled=move || !is_edit_mode.get()
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("production")
+                }
+            >
+                {icon("layers")} "Производство"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "production" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || production_costs_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "dealer_prices"
                 disabled=move || !is_edit_mode.get()
                 on:click=move |_| vm.set_tab("dealer_prices")
@@ -197,6 +233,7 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
     let vm_general = vm.clone();
     let vm_dimensions = vm.clone();
     let vm_barcodes = vm.clone();
+    let vm_production = vm.clone();
     let vm_dealer_prices = vm.clone();
 
     view! {
@@ -207,10 +244,17 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
             "dealer_prices" => view! {
                 <DealerPricesTab vm=vm_dealer_prices.clone() />
             }.into_any(),
+            "production" => view! {
+                <ProductionTab vm=vm_production.clone() />
+            }.into_any(),
             _ => view! {
                 <div class="detail-grid">
-                    <GeneralTab vm=vm_general.clone() />
-                    <DimensionsTab vm=vm_dimensions.clone() />
+                    <div class="detail-grid__col">
+                        <GeneralTab vm=vm_general.clone() />
+                    </div>
+                    <div class="detail-grid__col">
+                        <DimensionsTab vm=vm_dimensions.clone() />
+                    </div>
                 </div>
             }.into_any(),
         }}
@@ -241,7 +285,13 @@ fn DerivativeWarning(vm: NomenclatureDetailsVm) -> impl IntoView {
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
     view! {
-        <Show when=move || vm.is_derivative.get()>
+        <Show when=move || {
+            let current_id = vm.id.get().unwrap_or_default();
+            let base_id = vm.base_nomenclature_ref.get();
+            vm.is_derivative.get()
+                && !base_id.trim().is_empty()
+                && base_id != current_id
+        }>
             <div style="width: 100%; margin-bottom: var(--spacing-md);">
                 <MessageBar intent=MessageBarIntent::Warning>
                     <div style="display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap;">

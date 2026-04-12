@@ -36,13 +36,16 @@ pub async fn post_document_with_cache(
         should_persist_document = true;
     }
 
+    let prod_cost_resolution = super::service::resolve_prod_cost_cached(&document, cache).await?;
+    should_persist_document |=
+        super::service::apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
+
     if should_persist_document {
         document.before_write();
         repository::upsert_document(&document).await?;
     }
 
-    let prod_item_cost_total =
-        super::service::resolve_prod_item_cost_total_cached(&document, cache).await?;
+    let prod_item_cost_total = prod_cost_resolution.total;
 
     let registrator_ref = id.to_string();
     let p909_registrator_ref = format!("a012:{id}");

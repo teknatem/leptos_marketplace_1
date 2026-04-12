@@ -34,8 +34,6 @@ pub fn PivotTable(
                                             let col_id_for_check = col_id.clone();
                                             let col_id_for_set = col_id.clone();
                                             let col_name = col.name.clone();
-                                            let col_type = col.column_type;
-
                                             view! {
                                                 <TableHeaderCell>
                                                     <div

@@ -1,7 +1,8 @@
 //! API calls for DataView semantic layer catalog.
 
-use crate::data_view::types::{DataViewMeta, FilterDef};
+use crate::data_view::types::{DataViewMeta, DrilldownCapabilitiesResponse, FilterDef};
 use crate::shared::api_utils::api_base;
+use contracts::shared::data_view::ViewContext;
 use wasm_bindgen::JsCast;
 
 async fn fetch_json(url: &str) -> Result<serde_json::Value, String> {
@@ -86,6 +87,65 @@ pub async fn fetch_by_id(id: &str) -> Result<DataViewMeta, String> {
     let url = format!("{}/api/data-view/{}", api_base(), id);
     let json = fetch_json(&url).await?;
     serde_json::from_value(json).map_err(|e| e.to_string())
+}
+
+pub async fn fetch_drilldown_capabilities(
+    view_id: &str,
+    ctx: &ViewContext,
+    metric_id: Option<String>,
+) -> Result<DrilldownCapabilitiesResponse, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let payload = serde_json::json!({
+        "date_from": ctx.date_from,
+        "date_to": ctx.date_to,
+        "period2_from": ctx.period2_from,
+        "period2_to": ctx.period2_to,
+        "connection_mp_refs": ctx.connection_mp_refs,
+        "metric_id": metric_id,
+        "params": ctx.params,
+    });
+    let body = serde_json::to_string(&payload).map_err(|e| format!("serialize: {e}"))?;
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+    opts.set_body(&wasm_bindgen::JsValue::from_str(&body));
+
+    let url = format!(
+        "{}/api/data-view/{}/drilldown-capabilities",
+        api_base(),
+        view_id
+    );
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or("no window")?;
+    let resp: Response = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .dyn_into()
+        .map_err(|e| format!("{e:?}"))?;
+
+    let text: String =
+        wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .as_string()
+            .ok_or("bad text")?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}: {}", resp.status(), text));
+    }
+
+    serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone)]

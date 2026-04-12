@@ -2,9 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{
-    ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;

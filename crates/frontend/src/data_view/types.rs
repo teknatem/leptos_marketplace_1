@@ -37,6 +37,28 @@ pub struct DataViewMeta {
     pub filters: Vec<FilterRef>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DrilldownDimensionCapability {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub coverage_pct: Option<f64>,
+    #[serde(default)]
+    pub supported_turnover_codes: Vec<String>,
+    #[serde(default)]
+    pub missing_turnover_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DrilldownCapabilitiesResponse {
+    #[serde(default)]
+    pub safe_dimensions: Vec<DrilldownDimensionCapability>,
+    #[serde(default)]
+    pub partial_dimensions: Vec<DrilldownDimensionCapability>,
+}
+
 // ── Filter Registry types ─────────────────────────────────────────────────────
 
 /// Один вариант для Select-фильтра.

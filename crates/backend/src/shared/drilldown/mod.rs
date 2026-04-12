@@ -178,6 +178,8 @@ pub async fn execute_schema_drilldown(req: &DrilldownRequest) -> Result<Drilldow
         period2_label,
         metric_label,
         metric_columns: vec![],
+        selected_dimension: None,
+        coverage: None,
     })
 }
 

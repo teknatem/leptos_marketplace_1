@@ -7,6 +7,20 @@ use crate::shared::date_utils::format_datetime;
 use leptos::prelude::*;
 use thaw::*;
 
+fn format_prod_cost_status(status: &str) -> String {
+    match status {
+        "ok" => "ok".to_string(),
+        "missing_nomenclature_ref" => "нет номенклатуры".to_string(),
+        "nomenclature_not_found" => "номенклатура не найдена".to_string(),
+        "missing_p912_cost" => "нет себестоимости p912".to_string(),
+        "kit_variant_not_found" => "не найден состав комплекта".to_string(),
+        "empty_kit" => "пустой состав комплекта".to_string(),
+        "missing_component_costs" => "нет себестоимости компонентов".to_string(),
+        "not_checked" => "не проверено".to_string(),
+        _ => status.to_string(),
+    }
+}
+
 /// General tab component - displays document overview cards
 #[component]
 pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
@@ -38,6 +52,27 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let is_supply = sale_data.state.is_supply.unwrap_or(false);
             let is_realization = sale_data.state.is_realization.unwrap_or(false);
             let is_fact = sale_data.line.is_fact.unwrap_or(false);
+            let prod_cost_problem = sale_data.prod_cost_problem;
+            let prod_cost_checked = sale_data.prod_cost_status.is_some();
+            let prod_cost_status = sale_data
+                .prod_cost_status
+                .clone()
+                .map(|value| format_prod_cost_status(&value))
+                .unwrap_or_else(|| "не проверено".to_string());
+            let prod_cost_problem_message = sale_data
+                .prod_cost_problem_message
+                .clone()
+                .unwrap_or_else(|| {
+                    if prod_cost_checked {
+                        "Проблемы не выявлены".to_string()
+                    } else {
+                        "Проверка prod-себестоимости ещё не выполнялась".to_string()
+                    }
+                });
+            let prod_cost_resolved_total = sale_data
+                .prod_cost_resolved_total
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "—".to_string());
             let wh_name = sale_data
                 .warehouse
                 .warehouse_name
@@ -240,6 +275,38 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                 >
                                     {if is_realization { "Realization: Yes" } else { "Realization: No" }}
                                 </Badge>
+                                <Badge
+                                    appearance=BadgeAppearance::Filled
+                                    color=if prod_cost_problem {
+                                        BadgeColor::Warning
+                                    } else if prod_cost_checked {
+                                        BadgeColor::Success
+                                    } else {
+                                        BadgeColor::Informative
+                                    }
+                                >
+                                    {if prod_cost_problem {
+                                        "Prod cost: problem"
+                                    } else if prod_cost_checked {
+                                        "Prod cost: ok"
+                                    } else {
+                                        "Prod cost: not checked"
+                                    }}
+                                </Badge>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Prod cost status"</label>
+                                    <Input value=RwSignal::new(prod_cost_status) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Prod cost total"</label>
+                                    <Input value=RwSignal::new(prod_cost_resolved_total) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Prod cost diagnostics"</label>
+                                <Textarea value=RwSignal::new(prod_cost_problem_message) attr:readonly=true attr:rows=3 />
                             </div>
                             <div class="form__group">
                                 <label class="form__label">"Last change"</label>

@@ -136,8 +136,8 @@ fn download_csv(data: &GlAccountViewResponse) {
     };
     let array = js_sys::Array::new();
     array.push(&wasm_bindgen::JsValue::from_str(&content));
-    let mut opts = web_sys::BlobPropertyBag::new();
-    opts.type_("text/csv;charset=utf-8;");
+    let opts = web_sys::BlobPropertyBag::new();
+    opts.set_type("text/csv;charset=utf-8;");
     let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &opts) else {
         return;
     };

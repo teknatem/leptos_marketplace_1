@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use contracts::shared::universal_dashboard::{
     AggregateFunction, DashboardConfig, DashboardFilters, DashboardSort, DataSourceSchemaOwned,
-    FieldType, SchemaInfo, SchemaValidationResult, SelectedField, ValidateAllSchemasResponse,
+    SchemaInfo, SchemaValidationResult, SelectedField, ValidateAllSchemasResponse, ValueType,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 
@@ -183,9 +183,9 @@ async fn execute_test_query(
         .take(2) // Take up to 2 aggregate fields for test
         .map(|f| SelectedField {
             field_id: f.id.clone(),
-            aggregate: Some(match f.field_type {
-                Some(FieldType::Numeric) => AggregateFunction::Sum,
-                Some(FieldType::Integer) => AggregateFunction::Count,
+            aggregate: Some(match &f.value_type {
+                ValueType::Numeric => AggregateFunction::Sum,
+                ValueType::Integer => AggregateFunction::Count,
                 _ => AggregateFunction::Count,
             }),
         })

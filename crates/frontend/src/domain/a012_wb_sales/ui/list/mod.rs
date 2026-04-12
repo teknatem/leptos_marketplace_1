@@ -27,6 +27,27 @@ use crate::shared::components::table::{
     TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
 };
 
+const A012_WB_SALES_LIST_DIRTY_KEY: &str = "a012_wb_sales_list_dirty";
+
+fn get_wb_sales_list_dirty_marker() -> Option<String> {
+    web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
+        .and_then(|storage| {
+            storage
+                .get_item(A012_WB_SALES_LIST_DIRTY_KEY)
+                .ok()
+                .flatten()
+        })
+}
+
+fn clear_wb_sales_list_dirty_marker() {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
+        let _ = storage.remove_item(A012_WB_SALES_LIST_DIRTY_KEY);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
     pub id: String,
@@ -98,6 +119,19 @@ fn parse_wb_sales_item(v: &serde_json::Value, idx: usize) -> Option<WbSalesDto> 
             .and_then(|a| a.as_str())
             .map(|s| s.to_string()),
         dealer_price_ut: v.get("dealer_price_ut").and_then(|a| a.as_f64()),
+        prod_cost_problem: v
+            .get("prod_cost_problem")
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false),
+        prod_cost_status: v
+            .get("prod_cost_status")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        prod_cost_problem_message: v
+            .get("prod_cost_problem_message")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string()),
+        prod_cost_resolved_total: v.get("prod_cost_resolved_total").and_then(|a| a.as_f64()),
     });
 
     if result.is_none() {
@@ -129,6 +163,10 @@ pub struct WbSalesDto {
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
     pub dealer_price_ut: Option<f64>,
+    pub prod_cost_problem: bool,
+    pub prod_cost_status: Option<String>,
+    pub prod_cost_problem_message: Option<String>,
+    pub prod_cost_resolved_total: Option<f64>,
 }
 
 impl Sortable for WbSalesDto {
@@ -213,6 +251,7 @@ impl Sortable for WbSalesDto {
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             },
+            "prod_cost_problem" => self.prod_cost_problem.cmp(&other.prod_cost_problem),
             _ => Ordering::Equal,
         }
     }
@@ -240,6 +279,7 @@ pub fn WbSalesList() -> impl IntoView {
 
     // State for save settings notification
     let (save_notification, set_save_notification) = signal(None::<String>);
+    let last_seen_dirty_marker = StoredValue::new(get_wb_sales_list_dirty_marker());
 
     // Derived signal for selected items count (for button reactivity)
     let selected_count = Signal::derive(move || state.with(|s| s.selected_ids.len()));
@@ -263,11 +303,19 @@ pub fn WbSalesList() -> impl IntoView {
             let search_supplier_article =
                 state.with_untracked(|s| s.search_supplier_article.clone());
             let offset = page * page_size;
+            let cache_buster = js_sys::Date::now() as i64;
 
             // Build URL with pagination parameters
             let mut url = format!(
-                "{}/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset={}&sort_by={}&sort_desc={}",
-                api_base(), date_from_val, date_to_val, page_size, offset, sort_field, !sort_ascending
+                "{}/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset={}&sort_by={}&sort_desc={}&_ts={}",
+                api_base(),
+                date_from_val,
+                date_to_val,
+                page_size,
+                offset,
+                sort_field,
+                !sort_ascending,
+                cache_buster
             );
 
             // Add organization filter if selected
@@ -319,6 +367,8 @@ pub fn WbSalesList() -> impl IntoView {
                                             s.server_totals = paginated.totals;
                                             s.is_loaded = true;
                                         });
+                                        clear_wb_sales_list_dirty_marker();
+                                        last_seen_dirty_marker.set_value(None);
                                         set_loading.set(false);
                                     }
                                     Err(e) => {
@@ -426,6 +476,26 @@ pub fn WbSalesList() -> impl IntoView {
             });
         } else {
             log!("Used cached data for A012");
+        }
+    });
+
+    let was_active = StoredValue::new(false);
+    Effect::new(move |_| {
+        let is_active = tabs_store.active.get().as_deref() == Some("a012_wb_sales");
+        let was_active_before = was_active.get_value();
+        was_active.set_value(is_active);
+
+        if !is_active || !state.with(|s| s.is_loaded) {
+            return;
+        }
+
+        let current_dirty_marker = get_wb_sales_list_dirty_marker();
+        let last_dirty_marker = last_seen_dirty_marker.get_value();
+        let should_refresh = !was_active_before || current_dirty_marker != last_dirty_marker;
+
+        if should_refresh {
+            last_seen_dirty_marker.set_value(current_dirty_marker);
+            load_sales();
         }
     });
 
@@ -775,6 +845,10 @@ pub fn WbSalesList() -> impl IntoView {
         });
     };
 
+    let refresh_list = move |_: leptos::ev::MouseEvent| {
+        load_sales();
+    };
+
     // Load and restore settings from database
     let restore_settings = move |_: leptos::ev::MouseEvent| {
         spawn_local(async move {
@@ -905,10 +979,18 @@ pub fn WbSalesList() -> impl IntoView {
                         <UiButton
                             variant="ghost".to_string()
                             size="sm".to_string()
-                            on_click=Callback::new(restore_settings)
+                            on_click=Callback::new(refresh_list)
                             disabled=false
                         >
                             {icon("refresh")}
+                        </UiButton>
+                        <UiButton
+                            variant="ghost".to_string()
+                            size="sm".to_string()
+                            on_click=Callback::new(restore_settings)
+                            disabled=false
+                        >
+                            {icon("upload")}
                         </UiButton>
                         <UiButton
                             variant="ghost".to_string()
@@ -1314,6 +1396,15 @@ pub fn WbSalesList() -> impl IntoView {
                                         </TableHeaderCell>
                                         <TableHeaderCell
                                             resizable=false
+                                            min_width=110.0
+                                            class="resizable"
+                                            attr:style="cursor: pointer;"
+                                            on:click=move |_| toggle_sort("prod_cost_problem")
+                                        >
+                                            "Prod себест."
+                                        </TableHeaderCell>
+                                        <TableHeaderCell
+                                            resizable=false
                                             min_width=80.0
                                             class="resizable"
                                             attr:style=move || if state.with(|s| s.show_total_price) { "" } else { "display: none;" }
@@ -1354,6 +1445,20 @@ pub fn WbSalesList() -> impl IntoView {
                                                 let qty = item.qty;
                                                 let amount = item.amount_line;
                                                 let dealer_price = item.dealer_price_ut;
+                                                let prod_cost_problem = item.prod_cost_problem;
+                                                let prod_cost_problem_message = item.prod_cost_problem_message.clone().unwrap_or_default();
+                                                let prod_cost_badge_variant = if prod_cost_problem {
+                                                    "warning".to_string()
+                                                } else if item.prod_cost_status.is_some() {
+                                                    "success".to_string()
+                                                } else {
+                                                    "neutral".to_string()
+                                                };
+                                                let prod_cost_badge_text = if prod_cost_problem {
+                                                    "Проблема".to_string()
+                                                } else {
+                                                    item.prod_cost_status.clone().unwrap_or_else(|| "—".to_string())
+                                                };
                                                 let total = item.total_price;
                                                 let finished = item.finished_price;
 
@@ -1397,6 +1502,15 @@ pub fn WbSalesList() -> impl IntoView {
                                                     <TableCell><TableCellLayout attr:style="text-align: right;">{format_number(qty)}</TableCellLayout></TableCell>
                                                     <TableCellMoney value=amount show_currency=false color_by_sign=false />
                                                     <TableCellMoney value=dealer_price show_currency=false color_by_sign=false />
+                                                    <TableCell>
+                                                        <TableCellLayout>
+                                                            <span title=prod_cost_problem_message>
+                                                                <UiBadge variant=prod_cost_badge_variant>
+                                                                    {prod_cost_badge_text}
+                                                                </UiBadge>
+                                                            </span>
+                                                        </TableCellLayout>
+                                                    </TableCell>
                                                     <TableCell attr:style=move || if state.with(|s| s.show_total_price) { "" } else { "display: none;" }>
                                                         <TableCellMoney value=total show_currency=false color_by_sign=false />
                                                     </TableCell>

@@ -41,6 +41,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a025_routes())
         .merge(a026_routes())
         .merge(a027_routes())
+        .merge(a028_routes())
         .merge(usecase_routes())
         .merge(projection_routes())
         .merge(dashboard_routes())
@@ -910,6 +911,32 @@ fn a027_routes() -> Router {
         ))
 }
 
+fn a028_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a028/missing-cost-registry/list",
+            get(handlers::a028_missing_cost_registry::list_paginated),
+        )
+        .route(
+            "/api/a028/missing-cost-registry/:id",
+            get(handlers::a028_missing_cost_registry::get_by_id)
+                .put(handlers::a028_missing_cost_registry::update_document),
+        )
+        .route(
+            "/api/a028/missing-cost-registry/:id/post",
+            post(handlers::a028_missing_cost_registry::post_document),
+        )
+        .route(
+            "/api/a028/missing-cost-registry/:id/unpost",
+            post(handlers::a028_missing_cost_registry::unpost_document),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a028_missing_cost_registry", req, next).await
+            },
+        ))
+}
+
 // ============================================================================
 // Use Cases (U501–U508) — require auth, no scope check in Phase 1
 // ============================================================================
@@ -1352,6 +1379,10 @@ fn data_view_routes() -> Router {
         .route(
             "/api/data-view/:id/drilldown",
             axum::routing::post(handlers::data_view::drilldown),
+        )
+        .route(
+            "/api/data-view/:id/drilldown-capabilities",
+            axum::routing::post(handlers::data_view::drilldown_capabilities),
         )
         .layer(middleware::from_fn(require_auth))
 }

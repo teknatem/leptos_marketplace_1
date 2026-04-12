@@ -164,6 +164,11 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "shopping-cart",
         },
         MegaMenuItem {
+            key: "a028_missing_cost_registry",
+            title: tab_label_for_key("a028_missing_cost_registry"),
+            icon_name: "alert-circle",
+        },
+        MegaMenuItem {
             key: "a012_wb_sales",
             title: tab_label_for_key("a012_wb_sales"),
             icon_name: "file-text",

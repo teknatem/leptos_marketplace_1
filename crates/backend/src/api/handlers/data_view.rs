@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::data_view::{filters::global_filter_registry, DataViewRegistry};
 use contracts::shared::data_view::{FilterDef, ViewContext};
-use contracts::shared::drilldown::DrilldownResponse;
+use contracts::shared::drilldown::{DrilldownCapabilitiesResponse, DrilldownResponse};
 
 /// GET /api/data-view
 /// Returns list of all registered DataView metadata.
@@ -145,6 +145,22 @@ pub struct DvDrilldownBody {
     pub metric_ids: Vec<String>,
 }
 
+#[derive(Deserialize)]
+pub struct DvCapabilitiesBody {
+    pub date_from: String,
+    pub date_to: String,
+    #[serde(default)]
+    pub period2_from: Option<String>,
+    #[serde(default)]
+    pub period2_to: Option<String>,
+    #[serde(default)]
+    pub connection_mp_refs: Vec<String>,
+    #[serde(default)]
+    pub metric_id: Option<String>,
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
+}
+
 /// POST /api/data-view/:id/drilldown
 /// Compute drilldown report for a DataView with the given group_by dimension.
 pub async fn drilldown(
@@ -178,6 +194,39 @@ pub async fn drilldown(
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             tracing::error!("DataView drilldown error for {}: {}", id, e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn drilldown_capabilities(
+    Path(id): Path<String>,
+    Json(body): Json<DvCapabilitiesBody>,
+) -> Result<Json<DrilldownCapabilitiesResponse>, (StatusCode, String)> {
+    let registry = DataViewRegistry::new();
+
+    if !registry.has_view(&id) {
+        return Err((StatusCode::NOT_FOUND, format!("DataView not found: {}", id)));
+    }
+
+    let mut extra_params = body.params;
+    if let Some(metric_id) = body.metric_id.filter(|value| !value.trim().is_empty()) {
+        extra_params.insert("metric".to_string(), metric_id);
+    }
+
+    let ctx = ViewContext {
+        date_from: body.date_from,
+        date_to: body.date_to,
+        period2_from: body.period2_from,
+        period2_to: body.period2_to,
+        connection_mp_refs: body.connection_mp_refs,
+        params: extra_params,
+    };
+
+    match registry.compute_drilldown_capabilities(&id, &ctx).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            tracing::error!("DataView drilldown capability error for {}: {}", id, e);
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
