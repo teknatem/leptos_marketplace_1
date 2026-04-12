@@ -187,6 +187,18 @@ pub struct WbSales {
 
     /// Ссылка на номенклатуру 1С (a004_nomenclature)
     pub nomenclature_ref: Option<String>,
+
+    #[serde(default)]
+    pub prod_cost_problem: bool,
+
+    #[serde(default)]
+    pub prod_cost_status: Option<String>,
+
+    #[serde(default)]
+    pub prod_cost_problem_message: Option<String>,
+
+    #[serde(default)]
+    pub prod_cost_resolved_total: Option<f64>,
 }
 
 impl WbSales {
@@ -213,6 +225,10 @@ impl WbSales {
             is_customer_return: false,
             marketplace_product_ref: None,
             nomenclature_ref: None,
+            prod_cost_problem: false,
+            prod_cost_status: None,
+            prod_cost_problem_message: None,
+            prod_cost_resolved_total: None,
         }
     }
 
@@ -240,6 +256,10 @@ impl WbSales {
             is_customer_return: false,
             marketplace_product_ref: None,
             nomenclature_ref: None,
+            prod_cost_problem: false,
+            prod_cost_status: None,
+            prod_cost_problem_message: None,
+            prod_cost_resolved_total: None,
         }
     }
 

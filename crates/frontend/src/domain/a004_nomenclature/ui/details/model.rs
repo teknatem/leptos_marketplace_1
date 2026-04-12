@@ -1,5 +1,8 @@
 use crate::shared::api_utils::api_base;
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
+use contracts::projections::p912_nomenclature_costs::dto::{
+    NomenclatureCostDto, NomenclatureCostListResponse,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +37,21 @@ pub struct DimensionValuesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BaseNomenclatureInfo {
     pub name: String,
+    pub article: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KitVariantInfo {
+    pub id: String,
+    pub code: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KitComponentInfo {
+    pub nomenclature_ref: String,
+    pub quantity: f64,
+    pub description: String,
     pub article: String,
 }
 
@@ -274,6 +292,142 @@ pub async fn fetch_base_nomenclature_info(id: &str) -> Result<BaseNomenclatureIn
             })
         }
     }
+}
+
+pub async fn fetch_kit_variant_info(id: &str) -> Result<KitVariantInfo, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/a022/kit-variant/{}", api_base(), id);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+
+    Ok(KitVariantInfo {
+        id: json
+            .get("base")
+            .and_then(|b| b.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(id)
+            .to_string(),
+        code: json
+            .get("base")
+            .and_then(|b| b.get("code"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        description: json
+            .get("base")
+            .and_then(|b| b.get("description"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+pub async fn fetch_kit_components(id: &str) -> Result<Vec<KitComponentInfo>, String> {
+    let url = format!("{}/api/a022/kit-variant/{}", api_base(), id);
+    let response = gloo_net::http::Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch kit variant: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let kit_variant: contracts::domain::a022_kit_variant::aggregate::KitVariant = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse kit variant: {}", e))?;
+
+    let mut components = Vec::new();
+    for item in kit_variant.parse_goods() {
+        let nom_url = format!("{}/api/nomenclature/{}", api_base(), item.nomenclature_ref);
+        let nom_response = gloo_net::http::Request::get(&nom_url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch component nomenclature: {}", e))?;
+
+        if nom_response.status() == 200 {
+            let nomenclature: Nomenclature = nom_response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse component nomenclature: {}", e))?;
+            components.push(KitComponentInfo {
+                nomenclature_ref: nomenclature.base.id.0.to_string(),
+                quantity: item.quantity,
+                description: nomenclature.base.description,
+                article: nomenclature.article,
+            });
+        } else {
+            components.push(KitComponentInfo {
+                nomenclature_ref: item.nomenclature_ref,
+                quantity: item.quantity,
+                description: String::new(),
+                article: String::new(),
+            });
+        }
+    }
+
+    Ok(components)
+}
+
+pub async fn fetch_production_costs(
+    nomenclature_ref: &str,
+) -> Result<Vec<NomenclatureCostDto>, String> {
+    let url = format!(
+        "{}/api/p912/nomenclature-costs?nomenclature_ref={}&limit=1000",
+        api_base(),
+        nomenclature_ref
+    );
+
+    let response = gloo_net::http::Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch production costs: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let mut items = response
+        .json::<NomenclatureCostListResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse production costs: {}", e))?
+        .items;
+
+    items.sort_by(|a, b| {
+        a.period
+            .cmp(&b.period)
+            .then(a.registrator_type.cmp(&b.registrator_type))
+            .then(a.registrator_ref.cmp(&b.registrator_ref))
+            .then(a.line_no.cmp(&b.line_no))
+    });
+
+    Ok(items)
 }
 
 /// Загрузить только количество дилерских цен (без самих данных)

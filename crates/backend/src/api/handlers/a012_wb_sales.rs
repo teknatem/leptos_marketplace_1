@@ -149,6 +149,7 @@ async fn get_nom_map() -> HashMap<String, (String, String)> {
 
 /// Получить минимальные даты операций (rr_dt) из P903 по SRID
 /// Возвращает две HashMap: (sales_dates, return_dates)
+#[allow(dead_code)]
 async fn get_operation_dates_from_p903(
 ) -> Result<(HashMap<String, String>, HashMap<String, String>), anyhow::Error> {
     let db = get_connection();
@@ -224,6 +225,10 @@ pub struct WbSalesListItemDto {
     pub nomenclature_article: Option<String>,
     pub operation_date: Option<String>,
     pub dealer_price_ut: Option<f64>,
+    pub prod_cost_problem: bool,
+    pub prod_cost_status: Option<String>,
+    pub prod_cost_problem_message: Option<String>,
+    pub prod_cost_resolved_total: Option<f64>,
 }
 
 /// Серверные итоги по датасету WB Sales
@@ -359,6 +364,10 @@ pub async fn list_sales(
                 nomenclature_article: non_empty(nomenclature_article),
                 operation_date,
                 dealer_price_ut: row.dealer_price_ut,
+                prod_cost_problem: row.prod_cost_problem,
+                prod_cost_status: row.prod_cost_status,
+                prod_cost_problem_message: row.prod_cost_problem_message,
+                prod_cost_resolved_total: row.prod_cost_resolved_total,
             }
         })
         .collect();

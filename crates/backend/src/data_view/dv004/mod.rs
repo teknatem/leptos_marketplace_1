@@ -12,9 +12,12 @@ use contracts::shared::analytics::{
     IndicatorId, IndicatorStatus, IndicatorValue, SignPolicy, TurnoverClassDef,
 };
 use contracts::shared::data_view::ViewContext;
-use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, MetricColumnDef};
+use contracts::shared::drilldown::{
+    DrilldownCapabilitiesResponse, DrilldownCoverageSummary, DrilldownDimensionCapability,
+    DrilldownResponse, DrilldownRow, MetricColumnDef,
+};
 use sea_orm::{FromQueryResult, Statement};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::general_ledger::drilldown_dimensions::dimensions_for_turnover;
 use crate::general_ledger::report_repository;
@@ -311,6 +314,81 @@ fn common_dimensions_for_turnovers(
         .collect()
 }
 
+fn union_dimensions_for_turnovers(
+    turnovers: &[SignedTurnover],
+) -> Vec<contracts::general_ledger::GlDimensionDef> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+
+    for turnover in turnovers {
+        for dimension in dimensions_for_turnover(&turnover.code) {
+            if seen.insert(dimension.id.clone()) {
+                result.push(dimension);
+            }
+        }
+    }
+
+    result
+}
+
+fn turnover_supports_dimension(turnover_code: &str, dimension_id: &str) -> bool {
+    dimensions_for_turnover(turnover_code)
+        .iter()
+        .any(|dimension| dimension.id == dimension_id)
+}
+
+fn round_pct(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
+fn compute_coverage_pct(
+    turnovers: &[SignedTurnover],
+    supported_turnover_codes: &[String],
+    component_totals: &HashMap<String, f64>,
+) -> Option<f64> {
+    if turnovers.is_empty() {
+        return Some(100.0);
+    }
+
+    let supported: HashSet<&str> = supported_turnover_codes
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let total_abs = turnovers
+        .iter()
+        .map(|turnover| {
+            component_totals
+                .get(&turnover.code)
+                .copied()
+                .unwrap_or(0.0)
+                .abs()
+        })
+        .sum::<f64>();
+
+    if total_abs >= 0.01 {
+        let covered_abs = turnovers
+            .iter()
+            .filter(|turnover| supported.contains(turnover.code.as_str()))
+            .map(|turnover| {
+                component_totals
+                    .get(&turnover.code)
+                    .copied()
+                    .unwrap_or(0.0)
+                    .abs()
+            })
+            .sum::<f64>();
+        return Some(round_pct((covered_abs / total_abs) * 100.0));
+    }
+
+    let supported_count = turnovers
+        .iter()
+        .filter(|turnover| supported.contains(turnover.code.as_str()))
+        .count();
+    Some(round_pct(
+        (supported_count as f64 / turnovers.len() as f64) * 100.0,
+    ))
+}
+
 fn build_metric_case_expr(alias: &str, turnovers: &[SignedTurnover], metric: ViewMetric) -> String {
     let when_clauses = turnovers
         .iter()
@@ -335,6 +413,12 @@ struct AggRow {
 
 #[derive(Debug, FromQueryResult)]
 struct DailyRow {
+    total: f64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct TurnoverTotalRow {
+    turnover_code: String,
     total: f64,
 }
 
@@ -446,6 +530,173 @@ async fn fetch_daily_rows_from_table(
     Ok(DailyRow::find_by_statement(stmt).all(db).await?)
 }
 
+async fn fetch_turnover_component_totals_from_table(
+    table_name: &str,
+    metric: ViewMetric,
+    turnovers: &[SignedTurnover],
+    layer: &str,
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+) -> Result<HashMap<String, f64>> {
+    let db = get_connection();
+    let turnover_placeholders: Vec<&str> = turnovers.iter().map(|_| "?").collect();
+    let metric_expr = match metric {
+        ViewMetric::Amount => "CAST(COALESCE(SUM(COALESCE(t.amount, 0)), 0) AS REAL)",
+        ViewMetric::EntryCount => "CAST(COUNT(*) AS REAL)",
+    };
+    let mut sql = format!(
+        r#"
+        SELECT
+            t.turnover_code,
+            {metric_expr} AS total
+        FROM {table_name} t
+        WHERE t.turnover_code IN ({turnover_placeholders})
+          AND t.layer = ?
+          AND t.entry_date >= ? AND t.entry_date <= ?
+        "#,
+        turnover_placeholders = turnover_placeholders.join(", ")
+    );
+    let mut params: Vec<sea_orm::Value> = turnovers
+        .iter()
+        .map(|turnover| turnover.code.clone().into())
+        .collect();
+    params.push(layer.to_string().into());
+    params.push(date_from.to_string().into());
+    params.push(date_to.to_string().into());
+
+    if !connection_mp_refs.is_empty() {
+        let placeholders: Vec<&str> = connection_mp_refs.iter().map(|_| "?").collect();
+        sql.push_str(&format!(
+            " AND t.connection_mp_ref IN ({})",
+            placeholders.join(", ")
+        ));
+        for value in connection_mp_refs {
+            params.push(value.clone().into());
+        }
+    }
+
+    sql.push_str(" GROUP BY t.turnover_code");
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, &sql, params);
+    let rows = TurnoverTotalRow::find_by_statement(stmt).all(db).await?;
+    let raw_totals = rows
+        .into_iter()
+        .map(|row| (row.turnover_code, row.total))
+        .collect::<HashMap<_, _>>();
+
+    Ok(turnovers
+        .iter()
+        .map(|turnover| {
+            (
+                turnover.code.clone(),
+                raw_totals.get(&turnover.code).copied().unwrap_or(0.0) * f64::from(turnover.sign),
+            )
+        })
+        .collect())
+}
+
+async fn build_drilldown_capabilities(
+    metric: ViewMetric,
+    turnovers: &[SignedTurnover],
+    layer: &str,
+    ctx: &ViewContext,
+) -> Result<DrilldownCapabilitiesResponse> {
+    if turnovers.len() == 1 {
+        let turnover = turnovers
+            .first()
+            .ok_or_else(|| anyhow!("No turnovers configured for {}", VIEW_ID))?;
+        let safe_dimensions = dimensions_for_turnover(&turnover.code)
+            .into_iter()
+            .map(|dimension| DrilldownDimensionCapability {
+                id: dimension.id,
+                label: dimension.label,
+                mode: "safe".to_string(),
+                coverage_pct: Some(100.0),
+                supported_turnover_codes: vec![turnover.code.clone()],
+                missing_turnover_codes: Vec::new(),
+            })
+            .collect();
+
+        return Ok(DrilldownCapabilitiesResponse {
+            safe_dimensions,
+            partial_dimensions: Vec::new(),
+        });
+    }
+
+    let component_totals = fetch_turnover_component_totals_from_table(
+        "sys_general_ledger",
+        metric,
+        turnovers,
+        layer,
+        &ctx.date_from,
+        &ctx.date_to,
+        &ctx.connection_mp_refs,
+    )
+    .await?;
+
+    let safe_dimension_ids = common_dimensions_for_turnovers(turnovers)
+        .into_iter()
+        .map(|dimension| dimension.id)
+        .collect::<HashSet<_>>();
+
+    let mut safe_dimensions = Vec::new();
+    let mut partial_dimensions = Vec::new();
+
+    for dimension in union_dimensions_for_turnovers(turnovers) {
+        let supported_turnover_codes = turnovers
+            .iter()
+            .filter(|turnover| turnover_supports_dimension(&turnover.code, &dimension.id))
+            .map(|turnover| turnover.code.clone())
+            .collect::<Vec<_>>();
+        let missing_turnover_codes = turnovers
+            .iter()
+            .filter(|turnover| !turnover_supports_dimension(&turnover.code, &dimension.id))
+            .map(|turnover| turnover.code.clone())
+            .collect::<Vec<_>>();
+        let is_safe = safe_dimension_ids.contains(&dimension.id);
+        let capability = DrilldownDimensionCapability {
+            id: dimension.id,
+            label: dimension.label,
+            mode: if is_safe {
+                "safe".to_string()
+            } else {
+                "partial".to_string()
+            },
+            coverage_pct: Some(if is_safe {
+                100.0
+            } else {
+                compute_coverage_pct(turnovers, &supported_turnover_codes, &component_totals)
+                    .unwrap_or(0.0)
+            }),
+            supported_turnover_codes,
+            missing_turnover_codes,
+        };
+
+        if is_safe {
+            safe_dimensions.push(capability);
+        } else {
+            partial_dimensions.push(capability);
+        }
+    }
+
+    Ok(DrilldownCapabilitiesResponse {
+        safe_dimensions,
+        partial_dimensions,
+    })
+}
+
+fn find_dimension_capability(
+    capabilities: &DrilldownCapabilitiesResponse,
+    group_by: &str,
+) -> Option<DrilldownDimensionCapability> {
+    capabilities
+        .safe_dimensions
+        .iter()
+        .chain(capabilities.partial_dimensions.iter())
+        .find(|capability| capability.id == group_by)
+        .cloned()
+}
+
 pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
     let metric = resolve_metric(ctx)?;
     let (turnovers, layer) = resolve_turnovers(ctx)?;
@@ -523,19 +774,6 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
     })
 }
 
-fn ensure_group_by_allowed(turnovers: &[SignedTurnover], group_by: &str) -> Result<()> {
-    let allowed = common_dimensions_for_turnovers(turnovers);
-    if allowed.iter().any(|dimension| dimension.id == group_by) {
-        Ok(())
-    } else {
-        Err(anyhow!(
-            "Unsupported group_by '{}' for turnover formula '{}'",
-            group_by,
-            display_formula(turnovers)
-        ))
-    }
-}
-
 fn metric_ids_supported(metric_ids: &[String]) -> Result<()> {
     if metric_ids.is_empty() || metric_ids.len() == 1 {
         Ok(())
@@ -547,10 +785,36 @@ fn metric_ids_supported(metric_ids: &[String]) -> Result<()> {
     }
 }
 
+pub async fn compute_drilldown_capabilities(
+    ctx: &ViewContext,
+) -> Result<DrilldownCapabilitiesResponse> {
+    let metric = resolve_metric(ctx)?;
+    let (turnovers, layer) = resolve_turnovers(ctx)?;
+    build_drilldown_capabilities(metric, &turnovers, &layer, ctx).await
+}
+
 pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<DrilldownResponse> {
     let metric = resolve_metric(ctx)?;
     let (turnovers, layer) = resolve_turnovers(ctx)?;
-    ensure_group_by_allowed(&turnovers, group_by)?;
+    let capabilities = build_drilldown_capabilities(metric, &turnovers, &layer, ctx).await?;
+    let selected_dimension =
+        find_dimension_capability(&capabilities, group_by).ok_or_else(|| {
+            anyhow!(
+                "Unsupported group_by '{}' for turnover formula '{}'",
+                group_by,
+                display_formula(&turnovers)
+            )
+        })?;
+    let supported_turnovers = turnovers
+        .iter()
+        .filter(|turnover| {
+            selected_dimension
+                .supported_turnover_codes
+                .iter()
+                .any(|code| code == &turnover.code)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     let layer_filter: String = layer;
 
     let (p2_from, p2_to) = resolve_period2(ctx);
@@ -577,8 +841,39 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         corr_account: None,
     };
 
-    let rows1 = fetch_composite_drilldown(metric, &turnovers, &query_p1).await?;
-    let rows2 = fetch_composite_drilldown(metric, &turnovers, &query_p2).await?;
+    let rows1 = fetch_composite_drilldown(metric, &supported_turnovers, &query_p1).await?;
+    let rows2 = fetch_composite_drilldown(metric, &supported_turnovers, &query_p2).await?;
+    let covered_total1: f64 = rows1.iter().map(|row| row.amount).sum();
+    let covered_total2: f64 = rows2.iter().map(|row| row.amount).sum();
+    let has_full_coverage = supported_turnovers.len() == turnovers.len();
+    let total1 = if has_full_coverage {
+        covered_total1
+    } else {
+        fetch_aggregate_from_table(
+            "sys_general_ledger",
+            metric,
+            &turnovers,
+            &layer_filter,
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs,
+        )
+        .await?
+    };
+    let total2 = if has_full_coverage {
+        covered_total2
+    } else {
+        fetch_aggregate_from_table(
+            "sys_general_ledger",
+            metric,
+            &turnovers,
+            &layer_filter,
+            &p2_from,
+            &p2_to,
+            &ctx.connection_mp_refs,
+        )
+        .await?
+    };
 
     let mut merged: HashMap<String, DrilldownRow> = HashMap::new();
 
@@ -622,6 +917,19 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         })
         .collect();
 
+    let other_value1 = total1 - covered_total1;
+    let other_value2 = total2 - covered_total2;
+    if other_value1.abs() >= 0.01 || other_value2.abs() >= 0.01 {
+        rows.push(DrilldownRow {
+            group_key: "__other__".to_string(),
+            label: "Прочее".to_string(),
+            value1: other_value1,
+            value2: other_value2,
+            delta_pct: pct_change(other_value1, other_value2),
+            metric_values: HashMap::new(),
+        });
+    }
+
     if is_date_group {
         rows.sort_by(|a, b| a.group_key.cmp(&b.group_key));
     } else {
@@ -631,6 +939,54 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
+
+    let coverage_pct_period1 = if selected_dimension.mode == "safe" {
+        Some(100.0)
+    } else {
+        let component_totals_period1 = fetch_turnover_component_totals_from_table(
+            "sys_general_ledger",
+            metric,
+            &turnovers,
+            &layer_filter,
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs,
+        )
+        .await?;
+        compute_coverage_pct(
+            &turnovers,
+            &selected_dimension.supported_turnover_codes,
+            &component_totals_period1,
+        )
+    };
+    let coverage_pct_period2 = if selected_dimension.mode == "safe" {
+        Some(100.0)
+    } else {
+        let component_totals_period2 = fetch_turnover_component_totals_from_table(
+            "sys_general_ledger",
+            metric,
+            &turnovers,
+            &layer_filter,
+            &p2_from,
+            &p2_to,
+            &ctx.connection_mp_refs,
+        )
+        .await?;
+        compute_coverage_pct(
+            &turnovers,
+            &selected_dimension.supported_turnover_codes,
+            &component_totals_period2,
+        )
+    };
+    let coverage = DrilldownCoverageSummary {
+        mode: selected_dimension.mode.clone(),
+        coverage_pct_period1,
+        coverage_pct_period2,
+        covered_value1: covered_total1,
+        covered_value2: covered_total2,
+        other_value1,
+        other_value2,
+    };
 
     Ok(DrilldownResponse {
         rows,
@@ -649,6 +1005,8 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
             format!("{} / {}", display_formula(&turnovers), metric_label(metric))
         },
         metric_columns: vec![],
+        selected_dimension: Some(selected_dimension),
+        coverage: Some(coverage),
     })
 }
 
@@ -728,10 +1086,13 @@ async fn fetch_composite_drilldown(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_metric_case_expr, common_dimensions_for_turnovers, display_formula,
-        parse_signed_turnovers, pct_change, status_by_sign_policy, SignedTurnover, ViewMetric,
+        build_drilldown_capabilities, build_metric_case_expr, common_dimensions_for_turnovers,
+        compute_coverage_pct, display_formula, parse_signed_turnovers, pct_change,
+        status_by_sign_policy, SignedTurnover, ViewMetric,
     };
     use contracts::shared::analytics::{IndicatorStatus, SignPolicy};
+    use contracts::shared::data_view::ViewContext;
+    use std::collections::HashMap;
 
     #[test]
     fn expense_growth_is_bad_and_decline_is_good() {
@@ -837,6 +1198,69 @@ mod tests {
             ),
             "CASE WHEN t.turnover_code = ? THEN 1.0 ELSE 0 END"
         );
+    }
+
+    #[test]
+    fn partial_coverage_uses_absolute_component_weights() {
+        let turnovers = vec![
+            SignedTurnover {
+                code: "customer_revenue_pl".to_string(),
+                sign: 1,
+            },
+            SignedTurnover {
+                code: "mp_commission".to_string(),
+                sign: -1,
+            },
+        ];
+        let mut totals = HashMap::new();
+        totals.insert("customer_revenue_pl".to_string(), 98.0);
+        totals.insert("mp_commission".to_string(), -2.0);
+
+        let pct = compute_coverage_pct(&turnovers, &["customer_revenue_pl".to_string()], &totals);
+        assert_eq!(pct, Some(98.0));
+    }
+
+    #[test]
+    fn zero_total_coverage_falls_back_to_supported_turnover_share() {
+        let turnovers = vec![
+            SignedTurnover {
+                code: "a".to_string(),
+                sign: 1,
+            },
+            SignedTurnover {
+                code: "b".to_string(),
+                sign: -1,
+            },
+        ];
+        let mut totals = HashMap::new();
+        totals.insert("a".to_string(), 0.0);
+        totals.insert("b".to_string(), 0.0);
+
+        let pct = compute_coverage_pct(&turnovers, &["a".to_string()], &totals);
+        assert_eq!(pct, Some(50.0));
+    }
+
+    #[tokio::test]
+    async fn single_turnover_capabilities_are_all_safe_without_partial_dimensions() {
+        let ctx = ViewContext::default();
+        let caps = build_drilldown_capabilities(
+            ViewMetric::Amount,
+            &[SignedTurnover {
+                code: "mp_penalty".to_string(),
+                sign: 1,
+            }],
+            "fact",
+            &ctx,
+        )
+        .await
+        .unwrap();
+
+        assert!(!caps.safe_dimensions.is_empty());
+        assert!(caps.partial_dimensions.is_empty());
+        assert!(caps
+            .safe_dimensions
+            .iter()
+            .all(|dimension| dimension.mode == "safe" && dimension.coverage_pct == Some(100.0)));
     }
 }
 

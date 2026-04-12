@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait};
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 use crate::shared::data::db::get_connection;
 
@@ -260,10 +261,16 @@ fn build_general_ledger_entries(
         .map(|items| items.into_iter().flatten().collect())
 }
 
-fn registrator_refs_from_models(
+fn gl_registrator_aliases_from_models(
     models: &[crate::projections::p903_wb_finance_report::repository::Model],
 ) -> Vec<String> {
-    models.iter().map(|item| item.id.clone()).collect()
+    let mut aliases = BTreeSet::new();
+    for item in models {
+        aliases.insert(item.id.clone());
+        aliases.insert(item.source_row_ref.clone());
+        aliases.insert(format!("p903:{}:{}", item.rr_dt, item.rrd_id));
+    }
+    aliases.into_iter().collect()
 }
 
 fn existing_id_map(
@@ -292,7 +299,7 @@ pub async fn reconcile_day(
             changed: false,
             source_rows: existing.len(),
             general_ledger_rows: crate::general_ledger::repository::count_by_registrator_refs(
-                &registrator_refs_from_models(&existing),
+                &gl_registrator_aliases_from_models(&existing),
             )
             .await?
             .values()
@@ -303,7 +310,7 @@ pub async fn reconcile_day(
 
     let txn = db.begin().await?;
 
-    let registrator_refs = registrator_refs_from_models(&existing);
+    let registrator_refs = gl_registrator_aliases_from_models(&existing);
     crate::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
         &registrator_refs,
@@ -370,7 +377,7 @@ pub async fn rebuild_day_from_existing(
     }
 
     let txn = db.begin().await?;
-    let registrator_refs = registrator_refs_from_models(&existing);
+    let registrator_refs = gl_registrator_aliases_from_models(&existing);
     crate::general_ledger::repository::delete_by_registrator_refs_with_conn(
         &txn,
         &registrator_refs,

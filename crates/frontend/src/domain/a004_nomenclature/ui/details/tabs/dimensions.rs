@@ -64,8 +64,8 @@ pub fn DimensionsTab(vm: NomenclatureDetailsVm) -> impl IntoView {
             <DimensionInput
                 id="dim4_format"
                 label="Формат"
-                placeholder="Формат (макс. 20 символов)"
-                maxlength=20
+                placeholder="Формат (макс. 40 символов)"
+                maxlength=40
                 value=Signal::derive({
                     let dim = vm.dim4_format;
                     move || dim.get()

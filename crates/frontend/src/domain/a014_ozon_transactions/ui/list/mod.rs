@@ -887,7 +887,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
 }
 
 async fn load_saved_settings(form_key: &str) -> Result<Option<serde_json::Value>, String> {
-    use web_sys::{Request as WebRequest, RequestInit, RequestMode, Response};
+    use web_sys::{Request as WebRequest, RequestInit, RequestMode};
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);

@@ -12,6 +12,10 @@ use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
 
+fn projection_registrator_ref(document_id: &str) -> String {
+    format!("a026:{document_id}")
+}
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a026_wb_advert_daily")]
 pub struct Model {
@@ -133,18 +137,24 @@ pub async fn replace_for_period(
         existing_ids.len()
     );
 
-    for id in existing_ids {
+    for id in &existing_ids {
         let registrator_ref = id.clone();
+        let projection_ref = projection_registrator_ref(id);
         crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
             &txn,
             "a026_wb_advert_daily",
             &registrator_ref,
         )
         .await?;
+        crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
+            &txn,
+            &projection_ref,
+        )
+        .await?;
     }
 
     tracing::info!(
-        "a026_wb_advert_daily replace_for_period: GL cleanup completed connection={}, elapsed_ms={}",
+        "a026_wb_advert_daily replace_for_period: GL and p911 cleanup completed connection={}, elapsed_ms={}",
         connection_id,
         started_at.elapsed().as_millis()
     );
@@ -471,5 +481,18 @@ pub fn subtract_metrics(
         ctr: 0.0,
         cpc: 0.0,
         cr: 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::projection_registrator_ref;
+
+    #[test]
+    fn projection_registrator_ref_matches_posting_format() {
+        assert_eq!(
+            projection_registrator_ref("3f8f68d0-c0d3-4a4e-8b71-dafda55c91c2"),
+            "a026:3f8f68d0-c0d3-4a4e-8b71-dafda55c91c2"
+        );
     }
 }

@@ -29,6 +29,7 @@ pub struct BiIndicatorDto {
     pub status: Option<String>,
     pub owner_user_id: String,
     pub is_public: Option<bool>,
+    pub version: Option<i64>,
     pub updated_by: Option<String>,
 }
 
@@ -127,6 +128,18 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
     let mut indicator = repository::find_by_id(&db, &indicator_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("BI Indicator not found: {}", id_str))?;
+
+    if let Some(expected_version) = dto.version {
+        let current_version = indicator.base.metadata.version as i64;
+        if expected_version != current_version {
+            return Err(anyhow::anyhow!(
+                "Version conflict for BI indicator {}: expected {}, actual {}",
+                id_str,
+                expected_version,
+                current_version
+            ));
+        }
+    }
 
     // Обновляем поля
     if let Some(code) = dto.code {

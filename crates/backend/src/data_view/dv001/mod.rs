@@ -792,6 +792,8 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         period2_label,
         metric_label: metric.label.to_string(),
         metric_columns: vec![],
+        selected_dimension: None,
+        coverage: None,
     })
 }
 
@@ -952,6 +954,8 @@ pub async fn compute_drilldown_multi(
         period2_label,
         metric_label: String::new(),
         metric_columns,
+        selected_dimension: None,
+        coverage: None,
     })
 }
 

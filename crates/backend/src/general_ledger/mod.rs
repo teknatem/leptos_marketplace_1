@@ -7,6 +7,7 @@
 
 pub mod account_registry;
 pub mod account_view;
+pub mod detail_links;
 pub mod drilldown_dimensions;
 pub mod drilldown_session_repository;
 pub mod report_repository;

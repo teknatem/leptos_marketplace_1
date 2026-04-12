@@ -25,4 +25,5 @@ pub mod a024_bi_indicator;
 pub mod a025_bi_dashboard;
 pub mod a026_wb_advert_daily;
 pub mod a027_wb_documents;
+pub mod a028_missing_cost_registry;
 pub mod common;

@@ -3,6 +3,7 @@ use crate::shared::api_utils::api_base;
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
 use contracts::domain::a023_purchase_of_goods::aggregate::{PurchaseOfGoods, PurchaseOfGoodsLine};
 use contracts::projections::p912_nomenclature_costs::dto::{
     NomenclatureCostDto, NomenclatureCostListResponse,
@@ -10,6 +11,7 @@ use contracts::projections::p912_nomenclature_costs::dto::{
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::collections::{HashMap, HashSet};
 use thaw::*;
 
 fn format_date(s: &str) -> String {
@@ -30,6 +32,12 @@ fn format_optional_money(v: Option<f64>) -> String {
     v.map(format_money).unwrap_or_else(|| "—".to_string())
 }
 
+#[derive(Clone)]
+struct LineNomenclatureInfo {
+    description: String,
+    article: String,
+}
+
 #[component]
 pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let tabs_store =
@@ -38,6 +46,8 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
 
     let (doc, set_doc) = signal(None::<PurchaseOfGoods>);
     let (projection_rows, set_projection_rows) = signal(Vec::<NomenclatureCostDto>::new());
+    let (line_nomenclature_map, set_line_nomenclature_map) =
+        signal(HashMap::<String, LineNomenclatureInfo>::new());
     let (projection_error, set_projection_error) = signal(None::<String>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -51,6 +61,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
             set_loading.set(true);
             set_error.set(None);
             set_projection_rows.set(Vec::new());
+            set_line_nomenclature_map.set(HashMap::new());
             set_projection_error.set(None);
             spawn_local(async move {
                 let url = format!("{}/api/a023/purchase-of-goods/{}", api_base(), id_val);
@@ -82,6 +93,31 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                 Err(e) => set_projection_error
                                     .set(Some(format!("Ошибка сети p912: {}", e))),
                             }
+
+                            let mut resolved_nomenclature = HashMap::new();
+                            let mut unique_refs = HashSet::new();
+                            for line in data.parse_lines() {
+                                unique_refs.insert(line.nomenclature_key);
+                            }
+
+                            for nomenclature_ref in unique_refs {
+                                let nom_url =
+                                    format!("{}/api/nomenclature/{}", api_base(), nomenclature_ref);
+                                if let Ok(resp) = Request::get(&nom_url).send().await {
+                                    if resp.ok() {
+                                        if let Ok(nom) = resp.json::<Nomenclature>().await {
+                                            resolved_nomenclature.insert(
+                                                nom.base.id.0.to_string(),
+                                                LineNomenclatureInfo {
+                                                    description: nom.base.description,
+                                                    article: nom.article,
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            set_line_nomenclature_map.set(resolved_nomenclature);
 
                             set_doc.set(Some(data));
                         }
@@ -263,7 +299,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                     </CardAnimated>
                                 </div>
 
-                                <div class="detail-grid__col">
+                                <div class="detail-grid__col" style="grid-column: 1 / -1;">
                                     <CardAnimated delay_ms=40 nav_id="a023_purchase_of_goods_details_lines">
                                         {if !lines.is_empty() {
                                             view! {
@@ -273,7 +309,7 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                         <Table attr:style="width:100%;">
                                                             <TableHeader>
                                                                 <TableRow>
-                                                                    <TableHeaderCell>"Номенклатура (UUID)"</TableHeaderCell>
+                                                                    <TableHeaderCell>"Номенклатура"</TableHeaderCell>
                                                                     <TableHeaderCell>"Кол-во"</TableHeaderCell>
                                                                     <TableHeaderCell>"Цена"</TableHeaderCell>
                                                                     <TableHeaderCell>"Сумма с НДС"</TableHeaderCell>
@@ -288,13 +324,65 @@ pub fn PurchaseOfGoodsDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                         line.nomenclature_key, line.quantity, line.price
                                                                     )
                                                                     children=move |line| {
+                                                                        let tabs_store = tabs_store.clone();
+                                                                        let nomenclature_map = line_nomenclature_map;
                                                                         view! {
                                                                             <TableRow>
                                                                                 <TableCell>
                                                                                     <TableCellLayout truncate=true>
-                                                                                        <code style="font-family:monospace;font-size:var(--font-size-xs);">
-                                                                                            {line.nomenclature_key.clone()}
-                                                                                        </code>
+                                                                                        <div style="display:flex;flex-direction:column;gap:2px;">
+                                                                                            {move || {
+                                                                                                let info = nomenclature_map
+                                                                                                    .get()
+                                                                                                    .get(&line.nomenclature_key)
+                                                                                                    .cloned();
+                                                                                                let title = info
+                                                                                                    .as_ref()
+                                                                                                    .map(|item| {
+                                                                                                        if item.article.trim().is_empty() {
+                                                                                                            item.description.clone()
+                                                                                                        } else {
+                                                                                                            format!("{} ({})", item.article, item.description)
+                                                                                                        }
+                                                                                                    })
+                                                                                                    .unwrap_or_else(|| line.nomenclature_key.clone());
+
+                                                                                                view! {
+                                                                                                    <a
+                                                                                                        href="#"
+                                                                                                        style="color:var(--color-primary);text-decoration:underline;cursor:pointer;font-weight:500;"
+                                                                                                        on:click={
+                                                                                                            let nomenclature_ref = line.nomenclature_key.clone();
+                                                                                                            let title = title.clone();
+                                                                                                            let tabs_store = tabs_store.clone();
+                                                                                                            move |ev: web_sys::MouseEvent| {
+                                                                                                                ev.prevent_default();
+                                                                                                                tabs_store.open_tab(
+                                                                                                                    &format!("a004_nomenclature_details_{}", nomenclature_ref),
+                                                                                                                    &title,
+                                                                                                                );
+                                                                                                            }
+                                                                                                        }
+                                                                                                    >
+                                                                                                        {info
+                                                                                                            .as_ref()
+                                                                                                            .map(|item| item.description.clone())
+                                                                                                            .unwrap_or_else(|| line.nomenclature_key.clone())}
+                                                                                                    </a>
+                                                                                                    <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);font-family:monospace;">
+                                                                                                        {info
+                                                                                                            .map(|item| {
+                                                                                                                if item.article.trim().is_empty() {
+                                                                                                                    line.nomenclature_key.clone()
+                                                                                                                } else {
+                                                                                                                    format!("{} | {}", item.article, line.nomenclature_key.clone())
+                                                                                                                }
+                                                                                                            })
+                                                                                                            .unwrap_or_else(|| line.nomenclature_key.clone())}
+                                                                                                    </span>
+                                                                                                }
+                                                                                            }}
+                                                                                        </div>
                                                                                     </TableCellLayout>
                                                                                 </TableCell>
                                                                                 <TableCell>

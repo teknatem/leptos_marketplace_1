@@ -179,6 +179,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "shopping-cart",
                 ),
                 SidebarItem::with_scope(
+                    "a028_missing_cost_registry",
+                    tab_label_for_key("a028_missing_cost_registry"),
+                    "alert-circle",
+                ),
+                SidebarItem::with_scope(
                     "a020_wb_promotion",
                     tab_label_for_key("a020_wb_promotion"),
                     "tag",

@@ -79,6 +79,13 @@ pub struct Model {
     pub commission_fact: Option<f64>,
     #[sea_orm(nullable)]
     pub dealer_price_ut: Option<f64>,
+    pub prod_cost_problem: bool,
+    #[sea_orm(nullable)]
+    pub prod_cost_status: Option<String>,
+    #[sea_orm(nullable)]
+    pub prod_cost_problem_message: Option<String>,
+    #[sea_orm(nullable)]
+    pub prod_cost_resolved_total: Option<f64>,
     // JSON storage
     pub header_json: String,
     pub line_json: String,
@@ -163,6 +170,10 @@ impl From<Model> for WbSales {
             is_customer_return: m.is_customer_return,
             marketplace_product_ref: m.marketplace_product_ref,
             nomenclature_ref: m.nomenclature_ref,
+            prod_cost_problem: m.prod_cost_problem,
+            prod_cost_status: m.prod_cost_status,
+            prod_cost_problem_message: m.prod_cost_problem_message,
+            prod_cost_resolved_total: m.prod_cost_resolved_total,
         }
     }
 }
@@ -417,6 +428,10 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let commission_plan = aggregate.line.commission_plan;
     let commission_fact = aggregate.line.commission_fact;
     let dealer_price_ut = aggregate.line.dealer_price_ut;
+    let prod_cost_problem = aggregate.prod_cost_problem;
+    let prod_cost_status = aggregate.prod_cost_status.clone();
+    let prod_cost_problem_message = aggregate.prod_cost_problem_message.clone();
+    let prod_cost_resolved_total = aggregate.prod_cost_resolved_total;
 
     if let Some(existing_doc) = existing {
         let existing_uuid = existing_doc.base.id.value();
@@ -461,6 +476,10 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             commission_plan: Set(commission_plan),
             commission_fact: Set(commission_fact),
             dealer_price_ut: Set(dealer_price_ut),
+            prod_cost_problem: Set(prod_cost_problem),
+            prod_cost_status: Set(prod_cost_status.clone()),
+            prod_cost_problem_message: Set(prod_cost_problem_message.clone()),
+            prod_cost_resolved_total: Set(prod_cost_resolved_total),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -521,6 +540,10 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
             commission_plan: Set(commission_plan),
             commission_fact: Set(commission_fact),
             dealer_price_ut: Set(dealer_price_ut),
+            prod_cost_problem: Set(prod_cost_problem),
+            prod_cost_status: Set(prod_cost_status),
+            prod_cost_problem_message: Set(prod_cost_problem_message),
+            prod_cost_resolved_total: Set(prod_cost_resolved_total),
             // JSON fields
             header_json: Set(header_json),
             line_json: Set(line_json),
@@ -601,6 +624,10 @@ pub struct WbSalesListRow {
     pub commission_plan: Option<f64>,
     pub commission_fact: Option<f64>,
     pub dealer_price_ut: Option<f64>,
+    pub prod_cost_problem: bool,
+    pub prod_cost_status: Option<String>,
+    pub prod_cost_problem_message: Option<String>,
+    pub prod_cost_resolved_total: Option<f64>,
 }
 
 /// Query parameters for list
@@ -701,6 +728,7 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
         "qty" => "qty",
         "amount_line" => "amount_line",
         "dealer_price_ut" => "dealer_price_ut",
+        "prod_cost_problem" => "prod_cost_problem",
         "total_price" => "total_price",
         "finished_price" => "finished_price",
         "event_type" => "event_type",
@@ -719,7 +747,8 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
             s.is_fact, s.sell_out_plan, s.sell_out_fact, s.acquiring_fee_plan, s.acquiring_fee_fact,
             s.other_fee_plan, s.other_fee_fact, s.supplier_payout_plan, s.supplier_payout_fact,
             s.profit_plan, s.profit_fact, s.cost_of_production, s.commission_plan, s.commission_fact,
-            s.dealer_price_ut
+            s.dealer_price_ut, s.prod_cost_problem, s.prod_cost_status,
+            s.prod_cost_problem_message, s.prod_cost_resolved_total
         FROM a012_wb_sales s
         LEFT JOIN a002_organization org
                ON LOWER(TRIM(REPLACE(COALESCE(org.id, ''), '\"', '')))
@@ -776,6 +805,13 @@ pub async fn list_sql(query: WbSalesListQuery) -> Result<WbSalesListResult> {
                 commission_plan: row.try_get("", "commission_plan").ok(),
                 commission_fact: row.try_get("", "commission_fact").ok(),
                 dealer_price_ut: row.try_get("", "dealer_price_ut").ok(),
+                prod_cost_problem: row
+                    .try_get::<i32>("", "prod_cost_problem")
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+                prod_cost_status: row.try_get("", "prod_cost_status").ok(),
+                prod_cost_problem_message: row.try_get("", "prod_cost_problem_message").ok(),
+                prod_cost_resolved_total: row.try_get("", "prod_cost_resolved_total").ok(),
             })
         })
         .collect();

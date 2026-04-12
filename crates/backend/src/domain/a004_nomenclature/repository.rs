@@ -34,6 +34,8 @@ pub struct Model {
     pub dim6_size: String,
     pub is_assembly: bool,
     pub base_nomenclature_ref: Option<String>,
+    pub alternative_cost_source_ref: Option<String>,
+    pub kit_variant_ref: Option<String>,
     pub is_derivative: bool,
     pub is_deleted: bool,
     pub is_posted: bool,
@@ -79,6 +81,8 @@ impl From<Model> for Nomenclature {
             dim6_size: m.dim6_size,
             is_assembly: m.is_assembly,
             base_nomenclature_ref: m.base_nomenclature_ref,
+            alternative_cost_source_ref: m.alternative_cost_source_ref,
+            kit_variant_ref: m.kit_variant_ref,
             is_derivative: m.is_derivative,
         }
     }
@@ -218,6 +222,8 @@ pub async fn insert(aggregate: &Nomenclature) -> anyhow::Result<Uuid> {
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        alternative_cost_source_ref: Set(aggregate.alternative_cost_source_ref.clone()),
+        kit_variant_ref: Set(aggregate.kit_variant_ref.clone()),
         is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
@@ -249,6 +255,8 @@ pub async fn update(aggregate: &Nomenclature) -> anyhow::Result<()> {
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        alternative_cost_source_ref: Set(aggregate.alternative_cost_source_ref.clone()),
+        kit_variant_ref: Set(aggregate.kit_variant_ref.clone()),
         is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
@@ -366,6 +374,8 @@ pub async fn update_txn<C: ConnectionTrait>(
         dim6_size: Set(aggregate.dim6_size.clone()),
         is_assembly: Set(aggregate.is_assembly),
         base_nomenclature_ref: Set(aggregate.base_nomenclature_ref.clone()),
+        alternative_cost_source_ref: Set(aggregate.alternative_cost_source_ref.clone()),
+        kit_variant_ref: Set(aggregate.kit_variant_ref.clone()),
         is_derivative: Set(aggregate.is_derivative),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
@@ -382,6 +392,20 @@ pub async fn update_mp_ref_count(nomenclature_id: Uuid, count: i32) -> anyhow::R
     use sea_orm::sea_query::Expr;
     Entity::update_many()
         .col_expr(Column::MpRefCount, Expr::value(count))
+        .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
+        .filter(Column::Id.eq(nomenclature_id.to_string()))
+        .exec(conn())
+        .await?;
+    Ok(())
+}
+
+pub async fn update_kit_variant_ref(
+    nomenclature_id: Uuid,
+    kit_variant_ref: Option<String>,
+) -> anyhow::Result<()> {
+    use sea_orm::sea_query::Expr;
+    Entity::update_many()
+        .col_expr(Column::KitVariantRef, Expr::value(kit_variant_ref))
         .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
         .filter(Column::Id.eq(nomenclature_id.to_string()))
         .exec(conn())

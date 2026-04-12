@@ -8,6 +8,17 @@ use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 
+const A012_WB_SALES_LIST_DIRTY_KEY: &str = "a012_wb_sales_list_dirty";
+
+fn mark_wb_sales_list_dirty() {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let marker = js_sys::Date::now().to_string();
+            let _ = storage.set_item(A012_WB_SALES_LIST_DIRTY_KEY, &marker);
+        }
+    }
+}
+
 // ============================================
 // DTOs
 // ============================================
@@ -27,6 +38,14 @@ pub struct WbSalesDetailDto {
     pub nomenclature_ref: Option<String>,
     #[serde(default)]
     pub is_customer_return: bool,
+    #[serde(default)]
+    pub prod_cost_problem: bool,
+    #[serde(default)]
+    pub prod_cost_status: Option<String>,
+    #[serde(default)]
+    pub prod_cost_problem_message: Option<String>,
+    #[serde(default)]
+    pub prod_cost_resolved_total: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -311,6 +330,7 @@ pub async fn post_document(id: &str) -> Result<(), String> {
         return Err(format!("Failed to post: status {}", response.status()));
     }
 
+    mark_wb_sales_list_dirty();
     Ok(())
 }
 
@@ -327,6 +347,7 @@ pub async fn unpost_document(id: &str) -> Result<(), String> {
         return Err(format!("Failed to unpost: status {}", response.status()));
     }
 
+    mark_wb_sales_list_dirty();
     Ok(())
 }
 
@@ -466,5 +487,6 @@ pub async fn refresh_dealer_price(id: &str) -> Result<(), String> {
         return Err(format!("Failed to refresh: status {}", response.status()));
     }
 
+    mark_wb_sales_list_dirty();
     Ok(())
 }

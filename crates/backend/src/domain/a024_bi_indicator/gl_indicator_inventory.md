@@ -1,6 +1,6 @@
 # GL-First Inventory For A024 Indicators
 
-Updated: 2026-04-06
+Updated: 2026-04-12
 
 ## Scope
 
@@ -17,8 +17,10 @@ GL-first mechanism:
 | `IND-GL-MP-ACQ-FACT` | `dv004_general_ledger_turnovers` | `mp_acquiring`, `fact` |
 | `IND-GL-MP-PENALTY-FACT` | `dv004_general_ledger_turnovers` | `mp_penalty`, `fact` |
 | `IND-GL-MP-LOGISTICS-FACT` | `dv004_general_ledger_turnovers` | `mp_logistics`, `fact` |
+| `IND-MP-REV` | `dv004_general_ledger_turnovers` | `customer_revenue + customer_return`, `fact` |
 | `IND-MP-RETURNS` | `dv004_general_ledger_turnovers` | `customer_return`, `fact` |
 | `COST` | `dv004_general_ledger_turnovers` | `item_cost + item_cost_storno`, `oper` |
+| `IND-WB-ADS-SPEND` | `dv004_general_ledger_turnovers` | `advertising_allocated`, `oper` |
 
 ## Migrated In 2026-04-05 Pass
 
@@ -39,8 +41,6 @@ These indicators do not map to one turnover code and require a formula mechanism
 
 | Code | Current source | Reason |
 | --- | --- | --- |
-| `IND-MP-REV` | `dv003_mp_order_line_turnovers` | Formula: `customer_revenue + spp_discount` |
-| `IND-WB-ADS-SPEND` | `dv002_wb_advert_by_items` | GL scalar is possible, but current GL drilldown path does not route to `p911_wb_advert_by_items` |
 | `IND-REVENUE-WB` | `dv001_revenue` | Derived sales metric over `p904_sales_data` |
 | `IND-ORDERS` | `dv001_revenue` | Count metric, not a GL turnover |
 | `IND-PROFIT-D` | `dv001_revenue` | Derived formula, not a single turnover |
@@ -58,7 +58,9 @@ These indicators do not map to one turnover code and require a formula mechanism
 ## Notes
 
 - `IND-MP-RETURNS` was already moved earlier to `customer_return/fact`.
+- `IND-MP-REV` is moved by migration `0071_migrate_ind_mp_rev_to_gl_net_revenue.sql`
+  and now maps to `customer_revenue + customer_return` in `fact`.
 - `IND-MP-REV-PRICE` is corrected by migration `0053_fix_ind_mp_rev_price_to_customer_revenue_pl.sql`
   and now maps to `customer_revenue_pl` in `oper`.
-- This inventory is intentionally conservative: only indicators with a one-to-one mapping to a GL
-  turnover are migrated in this pass.
+- This inventory remains conservative: indicators are migrated only when their primary scalar can
+  be expressed directly through stable GL turnover semantics.

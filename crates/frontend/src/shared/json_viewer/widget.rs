@@ -129,6 +129,7 @@ pub fn JsonViewer(
     title: Option<String>,
 ) -> impl IntoView {
     let (copied, set_copied) = signal(false);
+    let title = title.filter(|value| !value.trim().is_empty());
 
     // Pretty-print JSON если возможно, иначе оставляем как есть
     let pretty_json = serde_json::from_str::<serde_json::Value>(&json_content)
@@ -202,12 +203,19 @@ pub fn JsonViewer(
             <div class="json-header">
                 <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center gap=FlexGap::Medium style="width: 100%;">
                     // Левая часть: название и статистика
-                        <div style="color: var(--color-text-secondary); font-size: 0.875rem; padding: 8px">
+                    <div style="padding: 8px">
+                        {title.as_ref().map(|title| {
+                            view! {
+                                <div style="font-weight: 600; margin-bottom: 4px;">{title.clone()}</div>
+                            }
+                        })}
+                        <div style="color: var(--color-text-secondary); font-size: 0.875rem;">
                             {"Размер: "}
                             <strong>{format!("{} символов", json_content_for_stats.len())}</strong>
                             {" • Строк: "}
                             <strong>{json_content_for_stats.lines().count()}</strong>
                         </div>
+                    </div>
 
                     // Правая часть: кнопки действий
                     <Flex gap=FlexGap::Small style="flex-shrink: 0;">

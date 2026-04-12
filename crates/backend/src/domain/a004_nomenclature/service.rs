@@ -2,6 +2,30 @@ use super::repository;
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
 use uuid::Uuid;
 
+fn normalize_validation_error(message: &str) -> String {
+    match message {
+        "Р¤РѕСЂРјР°С‚ РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«Р¤РѕСЂРјР°С‚В» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        "Р Р°Р·РјРµСЂ РЅРµ РґРѕР»Р¶РµРЅ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«Р Р°Р·РјРµСЂВ» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 20 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        "РљР°С‚РµРіРѕСЂРёСЏ РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«РљР°С‚РµРіРѕСЂРёСЏВ» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        "Р›РёРЅРµР№РєР° РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«Р›РёРЅРµР№РєР°В» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        "РњРѕРґРµР»СЊ РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 80 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«РњРѕРґРµР»СЊВ» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 80 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        "Р Р°РєРѕРІРёРЅР° РЅРµ РґРѕР»Р¶РЅР° РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ" => {
+            "РџРѕР»Рµ В«Р Р°РєРѕРІРёРЅР°В» РІ Р±Р»РѕРєРµ РёР·РјРµСЂРµРЅРёР№ РЅРµ РґРѕР»Р¶РЅРѕ РїСЂРµРІС‹С€Р°С‚СЊ 40 СЃРёРјРІРѕР»РѕРІ".to_string()
+        }
+        _ => message.to_string(),
+    }
+}
+
 pub async fn create(dto: NomenclatureDto) -> anyhow::Result<Uuid> {
     let code = dto
         .code
@@ -16,10 +40,15 @@ pub async fn create(dto: NomenclatureDto) -> anyhow::Result<Uuid> {
         dto.article.unwrap_or_default(),
         dto.comment,
     );
+    aggregate.alternative_cost_source_ref = dto.alternative_cost_source_ref.clone();
+    aggregate.base_nomenclature_ref = dto.base_nomenclature_ref.clone();
+    aggregate.kit_variant_ref = dto.kit_variant_ref.clone();
+    aggregate.is_assembly = dto.is_assembly.unwrap_or(false);
+    aggregate.is_derivative = aggregate.compute_is_derivative();
 
     aggregate
         .validate()
-        .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Validation failed: {}", normalize_validation_error(&e)))?;
     aggregate.before_write();
 
     repository::insert(&aggregate).await
@@ -40,7 +69,7 @@ pub async fn update(dto: NomenclatureDto) -> anyhow::Result<()> {
 
     aggregate
         .validate()
-        .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Validation failed: {}", normalize_validation_error(&e)))?;
     aggregate.before_write();
 
     repository::update(&aggregate).await
@@ -67,4 +96,9 @@ pub async fn list_paginated(
     only_mp: bool,
 ) -> anyhow::Result<(Vec<Nomenclature>, u64)> {
     repository::list_paginated(limit, offset, sort_by, sort_desc, q, only_mp).await
+}
+
+pub async fn sync_kit_variant_links(
+) -> anyhow::Result<super::kit_variant_link_sync::KitVariantLinkSyncStats> {
+    super::kit_variant_link_sync::sync_links().await
 }

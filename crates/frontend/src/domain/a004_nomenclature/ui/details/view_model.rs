@@ -3,9 +3,13 @@
 //! Contains all form fields as individual RwSignals for THAW two-way binding,
 //! nested data (barcodes), UI state, and commands.
 
-use super::model::{self, DealerPriceDto, DimensionValuesResponse, NomenclatureBarcodeDto};
+use super::model::{
+    self, DealerPriceDto, DimensionValuesResponse, KitComponentInfo, KitVariantInfo,
+    NomenclatureBarcodeDto,
+};
 use contracts::domain::a004_nomenclature::aggregate::NomenclatureDto;
 use contracts::domain::common::AggregateId;
+use contracts::projections::p912_nomenclature_costs::dto::NomenclatureCostDto;
 use leptos::prelude::*;
 
 /// Helper to convert empty strings to None
@@ -40,9 +44,17 @@ pub struct NomenclatureDetailsVm {
 
     // Derivative nomenclature fields
     pub base_nomenclature_ref: RwSignal<String>,
+    pub alternative_cost_source_ref: RwSignal<String>,
     pub is_derivative: RwSignal<bool>,
+    pub is_assembly: RwSignal<bool>,
     pub base_nomenclature_name: RwSignal<String>,
     pub base_nomenclature_article: RwSignal<String>,
+    pub alternative_cost_source_name: RwSignal<String>,
+    pub alternative_cost_source_article: RwSignal<String>,
+    pub kit_variant_ref: RwSignal<String>,
+    pub kit_variant_info: RwSignal<Option<KitVariantInfo>>,
+    pub kit_components: RwSignal<Vec<KitComponentInfo>>,
+    pub kit_components_loading: RwSignal<bool>,
 
     // === Nested data (tables) ===
     pub barcodes: RwSignal<Vec<NomenclatureBarcodeDto>>,
@@ -54,6 +66,11 @@ pub struct NomenclatureDetailsVm {
     pub dealer_prices_count: RwSignal<usize>,
     pub dealer_prices_loaded: RwSignal<bool>,
     pub dealer_prices_loading: RwSignal<bool>,
+
+    pub production_costs: RwSignal<Vec<NomenclatureCostDto>>,
+    pub production_costs_count: RwSignal<usize>,
+    pub production_costs_loaded: RwSignal<bool>,
+    pub production_costs_loading: RwSignal<bool>,
 
     // === Reference data (dropdown options) ===
     pub dimension_options: RwSignal<Option<DimensionValuesResponse>>,
@@ -90,9 +107,17 @@ impl NomenclatureDetailsVm {
 
             // Derivative nomenclature
             base_nomenclature_ref: RwSignal::new(String::new()),
+            alternative_cost_source_ref: RwSignal::new(String::new()),
             is_derivative: RwSignal::new(false),
+            is_assembly: RwSignal::new(false),
             base_nomenclature_name: RwSignal::new(String::new()),
             base_nomenclature_article: RwSignal::new(String::new()),
+            alternative_cost_source_name: RwSignal::new(String::new()),
+            alternative_cost_source_article: RwSignal::new(String::new()),
+            kit_variant_ref: RwSignal::new(String::new()),
+            kit_variant_info: RwSignal::new(None),
+            kit_components: RwSignal::new(Vec::new()),
+            kit_components_loading: RwSignal::new(false),
 
             // Nested data
             barcodes: RwSignal::new(Vec::new()),
@@ -104,6 +129,11 @@ impl NomenclatureDetailsVm {
             dealer_prices_count: RwSignal::new(0),
             dealer_prices_loaded: RwSignal::new(false),
             dealer_prices_loading: RwSignal::new(false),
+
+            production_costs: RwSignal::new(Vec::new()),
+            production_costs_count: RwSignal::new(0),
+            production_costs_loaded: RwSignal::new(false),
+            production_costs_loading: RwSignal::new(false),
 
             // Reference data
             dimension_options: RwSignal::new(None),
@@ -215,6 +245,14 @@ impl NomenclatureDetailsVm {
                 Err(_) => this_prices.dealer_prices_count.set(0),
             }
         });
+
+        let this_production = self.clone();
+        leptos::task::spawn_local(async move {
+            match model::fetch_production_costs(&nom_id).await {
+                Ok(items) => this_production.production_costs_count.set(items.len()),
+                Err(_) => this_production.production_costs_count.set(0),
+            }
+        });
     }
 
     /// Load barcodes (lazy, called when barcodes tab is activated)
@@ -286,6 +324,37 @@ impl NomenclatureDetailsVm {
         });
     }
 
+    /// Load production costs (lazy, called when production tab is activated)
+    pub fn load_production_costs(&self) {
+        let Some(nom_id) = self.id.get() else {
+            return;
+        };
+
+        if self.production_costs_loaded.get() {
+            return;
+        }
+
+        let this = self.clone();
+        this.production_costs_loading.set(true);
+
+        leptos::task::spawn_local(async move {
+            match model::fetch_production_costs(&nom_id).await {
+                Ok(items) => {
+                    this.production_costs_count.set(items.len());
+                    this.production_costs.set(items);
+                    this.production_costs_loaded.set(true);
+                    this.production_costs_loading.set(false);
+                }
+                Err(_) => {
+                    this.production_costs.set(Vec::new());
+                    this.production_costs_count.set(0);
+                    this.production_costs_loaded.set(true);
+                    this.production_costs_loading.set(false);
+                }
+            }
+        });
+    }
+
     // === Commands ===
 
     /// Save the form
@@ -339,9 +408,17 @@ impl NomenclatureDetailsVm {
         self.dim6_size.set(String::new());
 
         self.base_nomenclature_ref.set(String::new());
+        self.alternative_cost_source_ref.set(String::new());
         self.is_derivative.set(false);
+        self.is_assembly.set(false);
         self.base_nomenclature_name.set(String::new());
         self.base_nomenclature_article.set(String::new());
+        self.alternative_cost_source_name.set(String::new());
+        self.alternative_cost_source_article.set(String::new());
+        self.kit_variant_ref.set(String::new());
+        self.kit_variant_info.set(None);
+        self.kit_components.set(Vec::new());
+        self.kit_components_loading.set(false);
 
         self.barcodes.set(Vec::new());
         self.barcodes_count.set(0);
@@ -350,6 +427,12 @@ impl NomenclatureDetailsVm {
         self.dealer_prices.set(Vec::new());
         self.dealer_prices_count.set(0);
         self.dealer_prices_loaded.set(false);
+        self.dealer_prices_loading.set(false);
+
+        self.production_costs.set(Vec::new());
+        self.production_costs_count.set(0);
+        self.production_costs_loaded.set(false);
+        self.production_costs_loading.set(false);
 
         self.active_tab.set("general");
         self.error.set(None);
@@ -406,6 +489,8 @@ impl NomenclatureDetailsVm {
             dim6_size: opt(self.dim6_size.get()),
             is_assembly: None,
             base_nomenclature_ref: opt(self.base_nomenclature_ref.get()),
+            alternative_cost_source_ref: opt(self.alternative_cost_source_ref.get()),
+            kit_variant_ref: None,
             is_derivative: None, // Вычисляется автоматически на backend
         }
     }
@@ -433,7 +518,12 @@ impl NomenclatureDetailsVm {
         // Derivative nomenclature fields
         self.base_nomenclature_ref
             .set(item.base_nomenclature_ref.clone().unwrap_or_default());
+        self.alternative_cost_source_ref
+            .set(item.alternative_cost_source_ref.clone().unwrap_or_default());
         self.is_derivative.set(item.is_derivative);
+        self.is_assembly.set(item.is_assembly);
+        self.kit_variant_ref
+            .set(item.kit_variant_ref.clone().unwrap_or_default());
 
         // Load base nomenclature info if derivative
         if item.is_derivative {
@@ -457,6 +547,49 @@ impl NomenclatureDetailsVm {
         } else {
             self.base_nomenclature_name.set(String::new());
             self.base_nomenclature_article.set(String::new());
+        }
+
+        if let Some(ref alternative_ref) = item.alternative_cost_source_ref {
+            let this = self.clone();
+            let alternative_ref_clone = alternative_ref.clone();
+            leptos::task::spawn_local(async move {
+                match model::fetch_base_nomenclature_info(&alternative_ref_clone).await {
+                    Ok(info) => {
+                        this.alternative_cost_source_name.set(info.name);
+                        this.alternative_cost_source_article.set(info.article);
+                    }
+                    Err(_) => {
+                        this.alternative_cost_source_name
+                            .set(format!("[{}]", alternative_ref_clone));
+                        this.alternative_cost_source_article.set(String::new());
+                    }
+                }
+            });
+        } else {
+            self.alternative_cost_source_name.set(String::new());
+            self.alternative_cost_source_article.set(String::new());
+        }
+
+        if let Some(ref kit_variant_ref) = item.kit_variant_ref {
+            let this = self.clone();
+            let kit_variant_ref_clone = kit_variant_ref.clone();
+            self.kit_components_loading.set(true);
+            leptos::task::spawn_local(async move {
+                match model::fetch_kit_variant_info(&kit_variant_ref_clone).await {
+                    Ok(info) => this.kit_variant_info.set(Some(info)),
+                    Err(_) => this.kit_variant_info.set(None),
+                }
+
+                match model::fetch_kit_components(&kit_variant_ref_clone).await {
+                    Ok(items) => this.kit_components.set(items),
+                    Err(_) => this.kit_components.set(Vec::new()),
+                }
+                this.kit_components_loading.set(false);
+            });
+        } else {
+            self.kit_variant_info.set(None);
+            self.kit_components.set(Vec::new());
+            self.kit_components_loading.set(false);
         }
     }
 }

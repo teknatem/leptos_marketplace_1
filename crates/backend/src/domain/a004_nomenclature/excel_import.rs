@@ -7,7 +7,7 @@ use super::repository;
 use crate::shared::data::db::get_connection;
 use sea_orm::TransactionTrait;
 
-/// ExcelData для приема с фронтенда (временная структура)
+/// ExcelData РґР»СЏ РїСЂРёРµРјР° СЃ С„СЂРѕРЅС‚РµРЅРґР° (РІСЂРµРјРµРЅРЅР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР°)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExcelData {
     pub metadata: ExcelMetadata,
@@ -30,12 +30,12 @@ pub struct ColumnMapping {
     pub file_index: Option<usize>,
 }
 
-/// Импортирует данные из ExcelData (принимает весь объект с фронтенда)
-/// Конвертирует HashMap в ExcelRow и вызывает основную функцию импорта
+/// РРјРїРѕСЂС‚РёСЂСѓРµС‚ РґР°РЅРЅС‹Рµ РёР· ExcelData (РїСЂРёРЅРёРјР°РµС‚ РІРµСЃСЊ РѕР±СЉРµРєС‚ СЃ С„СЂРѕРЅС‚РµРЅРґР°)
+/// РљРѕРЅРІРµСЂС‚РёСЂСѓРµС‚ HashMap РІ ExcelRow Рё РІС‹Р·С‹РІР°РµС‚ РѕСЃРЅРѕРІРЅСѓСЋ С„СѓРЅРєС†РёСЋ РёРјРїРѕСЂС‚Р°
 pub async fn import_nomenclature_from_excel_data(
     excel_data: ExcelData,
 ) -> anyhow::Result<ImportResult> {
-    // Конвертируем rows (HashMap) в Vec<ExcelRow>
+    // РљРѕРЅРІРµСЂС‚РёСЂСѓРµРј rows (HashMap) РІ Vec<ExcelRow>
     let rows: Vec<ExcelRow> = excel_data
         .rows
         .into_iter()
@@ -50,13 +50,13 @@ pub async fn import_nomenclature_from_excel_data(
         })
         .collect();
 
-    // Вызываем основную функцию импорта
+    // Р’С‹Р·С‹РІР°РµРј РѕСЃРЅРѕРІРЅСѓСЋ С„СѓРЅРєС†РёСЋ РёРјРїРѕСЂС‚Р°
     import_nomenclature_from_rows(rows).await
 }
 
-/// Импортирует данные из списка ExcelRow в базу данных
-/// Обновляет только те поля, которые НЕ пустые в Excel
-/// Если поле в БД заполнено, а в Excel пустое - поле НЕ обновляется
+/// РРјРїРѕСЂС‚РёСЂСѓРµС‚ РґР°РЅРЅС‹Рµ РёР· СЃРїРёСЃРєР° ExcelRow РІ Р±Р°Р·Сѓ РґР°РЅРЅС‹С…
+/// РћР±РЅРѕРІР»СЏРµС‚ С‚РѕР»СЊРєРѕ С‚Рµ РїРѕР»СЏ, РєРѕС‚РѕСЂС‹Рµ РќР• РїСѓСЃС‚С‹Рµ РІ Excel
+/// Р•СЃР»Рё РїРѕР»Рµ РІ Р‘Р” Р·Р°РїРѕР»РЅРµРЅРѕ, Р° РІ Excel РїСѓСЃС‚РѕРµ - РїРѕР»Рµ РќР• РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ
 pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Result<ImportResult> {
     let started_at = std::time::Instant::now();
     let mut updated_count = 0;
@@ -73,7 +73,7 @@ pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Resul
             tracing::info!("Excel import progress: {} rows processed...", idx);
         }
 
-        // Ищем номенклатуру по артикулу
+        // РС‰РµРј РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ РїРѕ Р°СЂС‚РёРєСѓР»Сѓ
         let article_trimmed = row.article.trim();
         let found_items = repository::find_by_article_txn(&txn, article_trimmed).await?;
 
@@ -85,12 +85,12 @@ pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Resul
             continue;
         }
 
-        // Обновляем каждую найденную номенклатуру
+        // РћР±РЅРѕРІР»СЏРµРј РєР°Р¶РґСѓСЋ РЅР°Р№РґРµРЅРЅСѓСЋ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ
         for mut item in found_items {
             let mut updated = false;
 
-            // Обновляем только непустые поля из Excel
-            // Логика: если в БД заполнено, а в Excel пусто - НЕ обновляем
+            // РћР±РЅРѕРІР»СЏРµРј С‚РѕР»СЊРєРѕ РЅРµРїСѓСЃС‚С‹Рµ РїРѕР»СЏ РёР· Excel
+            // Р›РѕРіРёРєР°: РµСЃР»Рё РІ Р‘Р” Р·Р°РїРѕР»РЅРµРЅРѕ, Р° РІ Excel РїСѓСЃС‚Рѕ - РќР• РѕР±РЅРѕРІР»СЏРµРј
 
             if !row.category.is_empty() {
                 item.dim1_category = truncate_string(&row.category, 40);
@@ -108,7 +108,7 @@ pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Resul
             }
 
             if !row.format.is_empty() {
-                item.dim4_format = truncate_string(&row.format, 20);
+                item.dim4_format = truncate_string(&row.format, 40);
                 updated = true;
             }
 
@@ -145,7 +145,7 @@ pub async fn import_nomenclature_from_rows(rows: Vec<ExcelRow>) -> anyhow::Resul
     })
 }
 
-/// Обрезает строку до максимальной длины
+/// РћР±СЂРµР·Р°РµС‚ СЃС‚СЂРѕРєСѓ РґРѕ РјР°РєСЃРёРјР°Р»СЊРЅРѕР№ РґР»РёРЅС‹
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
@@ -162,6 +162,6 @@ mod tests {
     fn test_truncate_string() {
         assert_eq!(truncate_string("hello", 10), "hello");
         assert_eq!(truncate_string("hello world", 5), "hello");
-        assert_eq!(truncate_string("привет мир", 6), "привет");
+        assert_eq!(truncate_string("РїСЂРёРІРµС‚ РјРёСЂ", 6), "РїСЂРёРІРµС‚");
     }
 }

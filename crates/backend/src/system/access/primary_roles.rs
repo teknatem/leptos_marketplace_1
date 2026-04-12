@@ -33,6 +33,7 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "all"),
     ("a026_wb_advert_daily", "all"),
     ("a027_wb_documents", "all"),
+    ("a028_missing_cost_registry", "all"),
 ];
 
 /// Default scope grants for the `operator` role.
@@ -63,6 +64,7 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "all"),
     ("a026_wb_advert_daily", "all"),
     ("a027_wb_documents", "all"),
+    ("a028_missing_cost_registry", "all"),
 ];
 
 /// Default scope grants for the `viewer` role.
@@ -79,6 +81,7 @@ pub const VIEWER_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "read"),
     ("a026_wb_advert_daily", "read"),
     ("a027_wb_documents", "read"),
+    ("a028_missing_cost_registry", "read"),
 ];
 
 /// `admin` primary role: all access is granted via `is_admin=true` bypass.

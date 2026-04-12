@@ -7,7 +7,10 @@
 //!   `drilldown__new`          — ручной режим, session_id = None, drawer открывается сразу.
 
 use crate::data_view::api as dv_api;
-use crate::data_view::types::{DataViewMeta, FilterDef, ResourceMeta};
+use crate::data_view::types::{
+    DataViewMeta, DrilldownCapabilitiesResponse, DrilldownDimensionCapability, FilterDef,
+    ResourceMeta,
+};
 use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
 use contracts::shared::data_view::ViewContext;
@@ -254,6 +257,29 @@ fn sort_icon(current: &SortCol, col: &SortCol, asc: bool) -> &'static str {
     }
 }
 
+fn format_dimension_option(capability: &DrilldownDimensionCapability) -> (String, String) {
+    let label = match capability.mode.as_str() {
+        "partial" => format!(
+            "{} [partial {}% + Прочее]",
+            capability.label,
+            capability.coverage_pct.unwrap_or(0.0)
+        ),
+        _ => format!("{} [100% safe]", capability.label),
+    };
+    (capability.id.clone(), label)
+}
+
+fn capabilities_to_dimension_options(
+    capabilities: DrilldownCapabilitiesResponse,
+) -> Vec<(String, String)> {
+    capabilities
+        .safe_dimensions
+        .into_iter()
+        .chain(capabilities.partial_dimensions)
+        .map(|capability| format_dimension_option(&capability))
+        .collect()
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 #[component]
@@ -358,6 +384,8 @@ pub fn DrilldownReportPage(
 
             load_view_metadata(
                 vid,
+                view_ctx.get_untracked(),
+                record.params.metric_id.clone(),
                 filter_defs,
                 filters_loading,
                 filters_error,
@@ -390,6 +418,8 @@ pub fn DrilldownReportPage(
         spawn_local(async move {
             load_view_metadata(
                 new_vid,
+                view_ctx.get_untracked(),
+                p_metric_id.get_untracked(),
                 filter_defs,
                 filters_loading,
                 filters_error,
@@ -615,6 +645,42 @@ pub fn DrilldownReportPage(
                 </Show>
 
                 // ── Multi-resource table (двухуровневая шапка: метрика / П1·П2·Δ%) ─
+                <Show when=move || {
+                    response
+                        .get()
+                        .and_then(|resp| resp.coverage.clone())
+                        .is_some()
+                        && !loading.get()
+                }>
+                    {move || {
+                        let Some(resp) = response.get() else { return view! { <></> }.into_any() };
+                        let Some(coverage) = resp.coverage.clone() else { return view! { <></> }.into_any() };
+                        let title = if coverage.mode == "partial" {
+                            format!(
+                                "Partial coverage: {}% / {}%",
+                                coverage.coverage_pct_period1.unwrap_or(0.0),
+                                coverage.coverage_pct_period2.unwrap_or(0.0)
+                            )
+                        } else {
+                            "100% safe coverage".to_string()
+                        };
+                        view! {
+                            <div class="warning-box warning-box--info">
+                                <span class="warning-box__text">
+                                    {title}
+                                    {format!(
+                                        " · covered {} / {} · Прочее {} / {}",
+                                        fmt_value(coverage.covered_value1),
+                                        fmt_value(coverage.covered_value2),
+                                        fmt_value(coverage.other_value1),
+                                        fmt_value(coverage.other_value2)
+                                    )}
+                                </span>
+                            </div>
+                        }.into_any()
+                    }}
+                </Show>
+
                 <Show when=move || {
                     response.get().map(|r| !r.metric_columns.is_empty()).unwrap_or(false)
                         && !loading.get()
@@ -1222,6 +1288,8 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
 
 async fn load_view_metadata(
     view_id: String,
+    view_ctx: ViewContext,
+    metric_id: Option<String>,
     filter_defs: RwSignal<Vec<FilterDef>>,
     filters_loading: RwSignal<bool>,
     filters_error: RwSignal<Option<String>>,
@@ -1238,12 +1306,16 @@ async fn load_view_metadata(
     filters_loading.set(false);
 
     if let Ok(meta) = dv_api::fetch_by_id(&view_id).await {
-        dv_dims.set(
-            meta.available_dimensions
-                .into_iter()
-                .map(|dim| (dim.id, dim.label))
+        let dims = match dv_api::fetch_drilldown_capabilities(&view_id, &view_ctx, metric_id).await
+        {
+            Ok(capabilities) => capabilities_to_dimension_options(capabilities),
+            Err(_) => meta
+                .available_dimensions
+                .iter()
+                .map(|dim| (dim.id.clone(), dim.label.clone()))
                 .collect(),
-        );
+        };
+        dv_dims.set(dims);
         dv_resources.set(meta.available_resources);
     }
 }

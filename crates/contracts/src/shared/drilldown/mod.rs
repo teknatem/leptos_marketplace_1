@@ -70,6 +70,54 @@ pub struct DrilldownRow {
     pub metric_values: HashMap<String, MetricValues>,
 }
 
+/// Capability одного измерения drilldown для текущего контекста отчёта.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DrilldownDimensionCapability {
+    pub id: String,
+    pub label: String,
+    /// `safe` = измерение покрывает показатель целиком.
+    /// `partial` = измерение покрывает только часть составного показателя.
+    #[serde(default)]
+    pub mode: String,
+    /// Доля покрытия текущего периода в процентах.
+    #[serde(default)]
+    pub coverage_pct: Option<f64>,
+    /// Обороты формулы, которые поддерживают это измерение.
+    #[serde(default)]
+    pub supported_turnover_codes: Vec<String>,
+    /// Обороты формулы, которые не поддерживают это измерение.
+    #[serde(default)]
+    pub missing_turnover_codes: Vec<String>,
+}
+
+/// Каталог измерений для текущего контекста показателя.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DrilldownCapabilitiesResponse {
+    #[serde(default)]
+    pub safe_dimensions: Vec<DrilldownDimensionCapability>,
+    #[serde(default)]
+    pub partial_dimensions: Vec<DrilldownDimensionCapability>,
+}
+
+/// Прозрачное описание покрытия для partial-drilldown.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DrilldownCoverageSummary {
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub coverage_pct_period1: Option<f64>,
+    #[serde(default)]
+    pub coverage_pct_period2: Option<f64>,
+    #[serde(default)]
+    pub covered_value1: f64,
+    #[serde(default)]
+    pub covered_value2: f64,
+    #[serde(default)]
+    pub other_value1: f64,
+    #[serde(default)]
+    pub other_value2: f64,
+}
+
 /// Ответ на запрос детализации
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DrilldownResponse {
@@ -86,4 +134,10 @@ pub struct DrilldownResponse {
     /// Пуст в single-metric режиме.
     #[serde(default)]
     pub metric_columns: Vec<MetricColumnDef>,
+    /// Выбранное измерение и его режим доступности для текущего показателя.
+    #[serde(default)]
+    pub selected_dimension: Option<DrilldownDimensionCapability>,
+    /// Coverage-метаданные для partial drilldown.
+    #[serde(default)]
+    pub coverage: Option<DrilldownCoverageSummary>,
 }

@@ -1,7 +1,9 @@
 use super::model;
 use contracts::domain::a004_nomenclature::aggregate::Nomenclature;
+use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductDto;
 use contracts::domain::common::AggregateId;
+use contracts::enums::marketplace_type::MarketplaceType;
 use leptos::prelude::*;
 use std::rc::Rc;
 
@@ -11,6 +13,7 @@ pub struct MarketplaceProductDetailsViewModel {
     pub error: RwSignal<Option<String>>,
     pub success_message: RwSignal<Option<String>>,
     pub marketplace_name: RwSignal<String>,
+    pub marketplace_type: RwSignal<Option<MarketplaceType>>,
     pub connection_name: RwSignal<String>,
     pub nomenclature_name: RwSignal<String>,
     pub nomenclature_code: RwSignal<String>,
@@ -26,6 +29,7 @@ impl MarketplaceProductDetailsViewModel {
             error: RwSignal::new(None),
             success_message: RwSignal::new(None),
             marketplace_name: RwSignal::new(String::new()),
+            marketplace_type: RwSignal::new(None),
             connection_name: RwSignal::new(String::new()),
             nomenclature_name: RwSignal::new(String::new()),
             nomenclature_code: RwSignal::new(String::new()),
@@ -66,6 +70,7 @@ impl MarketplaceProductDetailsViewModel {
         let form = self.form;
         let error = self.error;
         let marketplace_name = self.marketplace_name;
+        let marketplace_type = self.marketplace_type;
         let connection_name = self.connection_name;
         let nomenclature_name = self.nomenclature_name;
         let nomenclature_code = self.nomenclature_code;
@@ -98,7 +103,9 @@ impl MarketplaceProductDetailsViewModel {
             form.set(dto);
 
             if let Ok(mp) = model::fetch_marketplace(&aggregate.marketplace_ref).await {
+                let resolved_marketplace_type = Self::resolve_marketplace_type(&mp);
                 marketplace_name.set(mp.base.description);
+                marketplace_type.set(resolved_marketplace_type);
             }
             if let Ok(conn) = model::fetch_connection_mp(&aggregate.connection_mp_ref).await {
                 connection_name.set(conn.base.description);
@@ -201,5 +208,56 @@ impl MarketplaceProductDetailsViewModel {
     pub fn open_picker(&self) {
         self.search_results.set(None);
         self.show_picker.set(true);
+    }
+
+    pub fn marketplace_product_url(&self) -> Option<String> {
+        let sku = self.form.get().marketplace_sku.trim().to_string();
+        if sku.is_empty() {
+            return None;
+        }
+
+        match self.marketplace_type.get() {
+            Some(MarketplaceType::Wildberries) => Some(format!(
+                "https://www.wildberries.ru/catalog/{sku}/detail.aspx?targetUrl=MI"
+            )),
+            _ => None,
+        }
+    }
+
+    fn resolve_marketplace_type(marketplace: &Marketplace) -> Option<MarketplaceType> {
+        if let Some(marketplace_type) = marketplace.marketplace_type {
+            return Some(marketplace_type);
+        }
+
+        let code = marketplace.base.code.to_lowercase();
+        let description = marketplace.base.description.to_lowercase();
+        let url = marketplace.url.to_lowercase();
+
+        if code.contains("wb")
+            || description.contains("wildberries")
+            || url.contains("wildberries.ru")
+        {
+            Some(MarketplaceType::Wildberries)
+        } else if code.contains("ozon") || description.contains("ozon") || url.contains("ozon.ru") {
+            Some(MarketplaceType::Ozon)
+        } else if code.contains("ym")
+            || description.contains("яндекс")
+            || description.contains("yandex")
+            || url.contains("market.yandex")
+        {
+            Some(MarketplaceType::YandexMarket)
+        } else if code.contains("kuper")
+            || description.contains("купер")
+            || description.contains("kuper")
+        {
+            Some(MarketplaceType::Kuper)
+        } else if code.contains("lemana")
+            || description.contains("лемана")
+            || description.contains("lemana")
+        {
+            Some(MarketplaceType::LemanaPro)
+        } else {
+            None
+        }
     }
 }
