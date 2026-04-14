@@ -54,6 +54,8 @@ use crate::domain::a027_wb_documents::ui::details::WbDocumentsDetail;
 use crate::domain::a027_wb_documents::ui::list::WbDocumentsList;
 use crate::domain::a028_missing_cost_registry::ui::details::MissingCostRegistryDetail;
 use crate::domain::a028_missing_cost_registry::ui::list::MissingCostRegistryList;
+use crate::domain::a029_wb_supply::ui::details::WbSupplyDetails;
+use crate::domain::a029_wb_supply::ui::list::WbSupplyList;
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerReportPage,
     GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
@@ -436,6 +438,28 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 .to_string();
             view! {
                 <MissingCostRegistryDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a029: WB Supply (поставки FBS)
+        "a029_wb_supply" => view! { <WbSupplyList /> }.into_any(),
+        k if k.starts_with("a029_wb_supply_details_") => {
+            let id = k
+                .strip_prefix("a029_wb_supply_details_")
+                .unwrap()
+                .to_string();
+            leptos::logging::log!("✅ Creating WbSupplyDetails with id: {}", id);
+            view! {
+                <WbSupplyDetails
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();

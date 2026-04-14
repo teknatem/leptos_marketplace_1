@@ -19,7 +19,7 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 once_cell = { workspace = true }
 uuid = { workspace = true }
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "gzip", "deflate"] }
 async-trait = "0.1"
 urlencoding = "2.1"
 jsonwebtoken = "9"

@@ -392,7 +392,7 @@ pub fn ImportWidget() -> impl IntoView {
         <PageFrame page_id="u504_import_from_wildberries--usecase" category="usecase">
             <div class="page__header">
                 <div class="page__header-left">
-                    <h1 class="page__title">{"u504: Импорт Wildberries"}</h1>
+                    <h1 class="page__title">{"Загрузка данных WB"}</h1>
                 </div>
             </div>
 
@@ -431,23 +431,52 @@ pub fn ImportWidget() -> impl IntoView {
                 <ServiceRow
                     row_id="a007"
                     title="Товары маркетплейса"
-                    description="a007_marketplace_product"
+                    description="/api/v2/list/goods/filter — каталог товаров продавца (nmId, артикулы, баркоды)"
                     aggregate="a007_marketplace_product"
                     selected_connection=selected_connection
                 />
+                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 4px 0 4px 0; display: flex; flex-direction: column; gap: 0;">
+                    <div style="padding: 6px 16px 4px 16px; font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-secondary); letter-spacing: 0.03em; text-transform: uppercase; border-bottom: 1px solid var(--color-border); margin-bottom: 4px;">
+                        "Заказы WB (a015)"
+                    </div>
+                    <ServiceRow
+                        row_id="a015_new"
+                        title="Оперативные заказы"
+                        description="/api/v3/orders/new + /api/v3/orders — сразу после оформления, без финансовых полей"
+                        aggregate="a015_wb_orders_new"
+                        needs_period=true
+                        selected_connection=selected_connection
+                    />
+                    <ServiceRow
+                        row_id="a015"
+                        title="Заказы (Backfill)"
+                        description="/api/v1/supplier/orders — полные данные с ценами и скидками, задержка 1–3 дня"
+                        aggregate="a015_wb_orders"
+                        needs_period=true
+                        show_backfill_note=true
+                        selected_connection=selected_connection
+                    />
+                    <ServiceRow
+                        row_id="a015_supply_link"
+                        title="Привязать к поставкам"
+                        description="/api/v3/orders — проставляет incomeID (supplyId) для существующих заказов"
+                        aggregate="a015_wb_orders_supply_link"
+                        needs_period=true
+                        selected_connection=selected_connection
+                    />
+                </div>
                 <ServiceRow
-                    row_id="a015"
-                    title="Заказы WB (Backfill)"
-                    description="a015_wb_orders"
-                    aggregate="a015_wb_orders"
+                    row_id="a029"
+                    title="Поставки WB (FBS)"
+                    description="/api/v3/supplies — список поставок за период с привязкой заказов"
+                    aggregate="a029_wb_supply"
                     needs_period=true
-                    show_backfill_note=true
                     selected_connection=selected_connection
                 />
                 <ServiceRow
                     row_id="a012"
                     title="Продажи WB"
-                    description="a012_wb_sales"
+                    description="/api/v1/supplier/sales — реализованные продажи с финансовыми полями"
                     aggregate="a012_wb_sales"
                     needs_period=true
                     selected_connection=selected_connection
@@ -455,7 +484,7 @@ pub fn ImportWidget() -> impl IntoView {
                 <ServiceRow
                     row_id="p903"
                     title="Финансовый отчет WB"
-                    description="p903_wb_finance_report"
+                    description="/api/v1/supplier/reportDetailByPeriod — детальный отчёт по реализации (лимит 1 запрос/мин)"
                     aggregate="p903_wb_finance_report"
                     needs_period=true
                     selected_connection=selected_connection
@@ -463,21 +492,21 @@ pub fn ImportWidget() -> impl IntoView {
                 <ServiceRow
                     row_id="p905"
                     title="История комиссий WB"
-                    description="p905_wb_commission_history"
+                    description="/api/v2/supplier/commission — актуальные ставки комиссии по категориям"
                     aggregate="p905_wb_commission_history"
                     selected_connection=selected_connection
                 />
                 <ServiceRow
                     row_id="p908"
                     title="Цены товаров WB"
-                    description="p908_wb_goods_prices"
+                    description="/api/v2/list/goods/filter — текущие цены и скидки по номенклатуре"
                     aggregate="p908_wb_goods_prices"
                     selected_connection=selected_connection
                 />
                 <ServiceRow
                     row_id="a020"
                     title="Акции WB (Календарь)"
-                    description="a020_wb_promotion"
+                    description="/api/v1/promo — список активных и плановых акций с товарами"
                     aggregate="a020_wb_promotion"
                     needs_period=true
                     selected_connection=selected_connection
@@ -485,7 +514,7 @@ pub fn ImportWidget() -> impl IntoView {
                 <ServiceRow
                     row_id="a027"
                     title="WB Documents"
-                    description="a027_wb_documents"
+                    description="/api/v3/documents — входящие документы (акты, накладные)"
                     aggregate="a027_wb_documents"
                     needs_period=true
                     selected_connection=selected_connection
@@ -493,7 +522,7 @@ pub fn ImportWidget() -> impl IntoView {
                 <ServiceRow
                     row_id="wb_advert_csv"
                     title="Статистика рекламных кампаний WB"
-                    description="Пишет дневные документы и дополнительно сохраняет CSV"
+                    description="/api/v2/fullstats — дневная статистика кампаний, дополнительно сохраняет CSV"
                     aggregate="wb_advert_stats_csv"
                     needs_period=true
                     selected_connection=selected_connection

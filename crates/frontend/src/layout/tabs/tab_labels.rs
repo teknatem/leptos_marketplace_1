@@ -70,6 +70,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a022_kit_variant" => "Варианты комплектации",
         "a023_purchase_of_goods" => "Приобретение товаров",
         "a028_missing_cost_registry" => "Реестр отсутствующих цен",
+        "a029_wb_supply" => "Поставки WB (FBS)",
+        k if k.starts_with("a029_wb_supply_details_") => "Поставка WB",
 
         "p900_sales_register" => "Регистр продаж",
         "p901_barcodes" => "Штрихкоды номенклатуры",

@@ -68,6 +68,24 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let created_at = format_datetime(&order_data.metadata.created_at);
             let updated_at = format_datetime(&order_data.metadata.updated_at);
             let version = order_data.metadata.version.to_string();
+            let income_id_raw = order_data.source_meta.income_id.filter(|&v| v != 0);
+            let income_id = income_id_raw
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            // Supply ID is "WB-GI-{income_id}" — used to navigate to the supply
+            let supply_id_from_income = income_id_raw.map(|v| format!("WB-GI-{}", v));
+            let sticker = order_data
+                .source_meta
+                .sticker
+                .clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "—".to_string());
+            let g_number = order_data
+                .source_meta
+                .g_number
+                .clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "—".to_string());
             let mp_ref = order_data.marketplace_product_ref.clone();
             let nom_ref = order_data.nomenclature_ref.clone();
             let base_nom_ref = order_data.base_nomenclature_ref.clone();
@@ -106,6 +124,44 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 <div class="form__group">
                                     <label class="form__label">"Последнее изменение"</label>
                                     <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"№ поставки (incomeID)"</label>
+                                    {if let Some(ref sid) = supply_id_from_income {
+                                        let sid_clone = sid.clone();
+                                        let sid_text = sid.clone();
+                                        view! {
+                                            <a
+                                                href="#"
+                                                on:click={
+                                                    move |ev: web_sys::MouseEvent| {
+                                                        ev.prevent_default();
+                                                        tabs_store.open_tab(
+                                                            &format!("a029_wb_supply_details_{}", sid_clone),
+                                                            &format!("Поставка {}", sid_clone),
+                                                        );
+                                                    }
+                                                }
+                                                style="display: block; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 4px; color: #0078d4; text-decoration: underline; cursor: pointer; font-size: var(--font-size-sm);"
+                                            >
+                                                {sid_text}
+                                            </a>
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <Input value=RwSignal::new(income_id) attr:readonly=true />
+                                        }.into_any()
+                                    }}
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"G-номер"</label>
+                                    <Input value=RwSignal::new(g_number) attr:readonly=true />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Стикер (ID)"</label>
+                                    <Input value=RwSignal::new(sticker) attr:readonly=true />
                                 </div>
                             </div>
                         </CardAnimated>

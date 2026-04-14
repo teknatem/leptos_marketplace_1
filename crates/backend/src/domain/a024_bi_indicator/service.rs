@@ -837,6 +837,80 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "active",
         ),
         (
+            "a024a024-0024-4001-a001-000000000024",
+            "IND-REV-TO-PRICE-COMPLEMENT-PCT",
+            "100% - Выручка к прайсу, %",
+            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=REVENUE and denominator=IND-MP-REV-PRICE, metric=ratio_percent_complement.",
+            DataSpec {
+                view_id: Some("dv006_indicator_ratio_percent".to_string()),
+                metric_id: Some("ratio_percent_complement".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "numerator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator indicator code".to_string(),
+                    default_value: Some("REVENUE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator indicator code".to_string(),
+                    default_value: Some("IND-MP-REV-PRICE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Percent { decimals: 1 },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
+            "a024a024-0025-4001-a001-000000000025",
+            "IND-GL-7609-TO-PRICE-COMPLEMENT-PCT",
+            "100% - 7609 к прайсу, %",
+            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=IND-GL-7609-MAIN-BALANCE and denominator=IND-MP-REV-PRICE, metric=ratio_percent_complement.",
+            DataSpec {
+                view_id: Some("dv006_indicator_ratio_percent".to_string()),
+                metric_id: Some("ratio_percent_complement".to_string()),
+            },
+            vec![
+                ParamDef {
+                    key: "numerator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Numerator indicator code".to_string(),
+                    default_value: Some("IND-GL-7609-MAIN-BALANCE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+                ParamDef {
+                    key: "denominator_indicator_code".to_string(),
+                    param_type: ParamType::String,
+                    label: "Denominator indicator code".to_string(),
+                    default_value: Some("IND-MP-REV-PRICE".to_string()),
+                    required: true,
+                    global_filter_key: None,
+                },
+            ],
+            ViewSpec {
+                style_name: "classic".to_string(),
+                custom_html: None,
+                custom_css: None,
+                format: ValueFormat::Percent { decimals: 1 },
+                thresholds: vec![],
+                preview_values: HashMap::new(),
+            },
+            "active",
+        ),
+        (
             "a024a024-0022-4001-a001-000000000022",
             "IND-MP-RETURNS-COUNT",
             "РљРѕР»РёС‡РµСЃС‚РІРѕ РІРѕР·РІСЂР°С‚РѕРІ",
@@ -1175,6 +1249,7 @@ mod tests {
             status: None,
             owner_user_id: "owner".to_string(),
             is_public: None,
+            version: None,
             updated_by: None,
         };
 
@@ -1201,6 +1276,7 @@ mod tests {
             status: None,
             owner_user_id: "owner".to_string(),
             is_public: None,
+            version: None,
             updated_by: None,
         };
 

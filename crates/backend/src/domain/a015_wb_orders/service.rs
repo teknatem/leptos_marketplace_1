@@ -321,6 +321,33 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
 
     document.source_meta.raw_payload_ref = raw_ref;
 
+    // Preserve income_id and numeric order ID set by Marketplace API.
+    // Marketplace API populates supplyId in real-time; statistics API lags 1-3 days.
+    // Also, marketplace API stores the numeric WB order ID in line_id; statistics API only has srid.
+    let needs_income_check = document.source_meta.income_id.is_none();
+    // Statistics API sets line_id to srid (non-numeric); marketplace set it to digits-only order ID.
+    let current_line_id_is_numeric = document.line.line_id.chars().all(|c| c.is_ascii_digit());
+    if needs_income_check || !current_line_id_is_numeric {
+        if let Ok(Some(existing)) =
+            repository::get_by_document_no(&document.header.document_no).await
+        {
+            if needs_income_check {
+                if let Some(existing_income_id) = existing.source_meta.income_id {
+                    if existing_income_id != 0 {
+                        document.source_meta.income_id = Some(existing_income_id);
+                    }
+                }
+            }
+            // Preserve numeric WB order ID stored by marketplace import
+            if !current_line_id_is_numeric
+                && existing.line.line_id.chars().all(|c| c.is_ascii_digit())
+                && !existing.line.line_id.is_empty()
+            {
+                document.line.line_id = existing.line.line_id;
+            }
+        }
+    }
+
     // Автозаполнение ссылок
     auto_fill_references(&mut document).await?;
 
@@ -359,6 +386,24 @@ pub async fn list_by_date_range(
     date_to: Option<NaiveDate>,
 ) -> Result<Vec<WbOrders>> {
     repository::list_by_date_range(date_from, date_to).await
+}
+
+/// Find orders that belong to a supply, matched by incomeID from WB Statistics API.
+/// Supply ID like "WB-GI-229481414" → income_id = 229481414.
+pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
+    repository::list_by_income_id(income_id).await
+}
+
+/// Update income_id for an order by its document_no (srid).
+/// Called when marketplace API provides supply assignment in real-time.
+pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) -> Result<bool> {
+    repository::update_income_id_by_document_no(document_no, income_id).await
+}
+
+/// Update numeric WB order ID (line_id) for an existing order.
+/// Only updates if line_id is currently non-numeric (e.g. srid from Statistics API).
+pub async fn update_line_id_by_document_no(document_no: &str, line_id: i64) -> Result<()> {
+    repository::update_line_id_by_document_no(document_no, line_id).await
 }
 
 pub async fn delete(id: Uuid) -> Result<bool> {

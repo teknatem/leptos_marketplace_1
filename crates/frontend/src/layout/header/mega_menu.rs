@@ -169,6 +169,11 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "alert-circle",
         },
         MegaMenuItem {
+            key: "a029_wb_supply",
+            title: tab_label_for_key("a029_wb_supply"),
+            icon_name: "package",
+        },
+        MegaMenuItem {
             key: "a012_wb_sales",
             title: tab_label_for_key("a012_wb_sales"),
             icon_name: "file-text",

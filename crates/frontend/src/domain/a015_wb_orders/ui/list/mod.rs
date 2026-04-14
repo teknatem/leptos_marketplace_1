@@ -81,6 +81,9 @@ pub struct WbOrdersDto {
     pub finished_price: Option<f64>,
     pub total_price: Option<f64>,
     pub is_cancel: bool,
+    pub is_supply: Option<bool>,
+    pub is_realization: Option<bool>,
+    pub income_id: Option<i64>,
     pub has_wb_sales: Option<bool>,
     pub organization_name: Option<String>,
     pub marketplace_article: Option<String>,
@@ -293,6 +296,12 @@ pub fn WbOrdersList() -> impl IntoView {
                                             item.get("total_price").and_then(|v| v.as_f64());
                                         let is_cancel =
                                             item.get("is_cancel")?.as_bool().unwrap_or(false);
+                                        let is_supply =
+                                            item.get("is_supply").and_then(|v| v.as_bool());
+                                        let is_realization =
+                                            item.get("is_realization").and_then(|v| v.as_bool());
+                                        let income_id =
+                                            item.get("income_id").and_then(|v| v.as_i64());
                                         let has_wb_sales =
                                             item.get("has_wb_sales").and_then(|v| v.as_bool());
                                         let organization_name = item
@@ -332,6 +341,9 @@ pub fn WbOrdersList() -> impl IntoView {
                                             finished_price,
                                             total_price,
                                             is_cancel,
+                                            is_supply,
+                                            is_realization,
+                                            income_id,
                                             has_wb_sales,
                                             organization_name,
                                             marketplace_article,
@@ -947,6 +959,14 @@ pub fn WbOrdersList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                    "Тип"
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=150.0 class="resizable">
+                                    "Поставка"
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=false min_width=90.0 class="resizable">
                                     "Отменён"
                                 </TableHeaderCell>
@@ -1057,6 +1077,51 @@ pub fn WbOrdersList() -> impl IntoView {
                                                 show_currency=false
                                                 color_by_sign=false
                                             />
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {
+                                                        if order.income_id.map_or(false, |v| v != 0) {
+                                                            view! {
+                                                                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                                                                    "FBS"
+                                                                </Badge>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! { <span class="text-muted">"—"</span> }.into_any()
+                                                        }
+                                                    }
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {
+                                                        if let Some(income_id) = order.income_id.filter(|&v| v != 0) {
+                                                            let supply_id = format!("WB-GI-{}", income_id);
+                                                            let supply_id_nav = supply_id.clone();
+                                                            let supply_id_text = supply_id.clone();
+                                                            view! {
+                                                                <a
+                                                                    href="#"
+                                                                    class="table__link"
+                                                                    on:click=move |e| {
+                                                                        e.prevent_default();
+                                                                        tabs_store.open_tab(
+                                                                            &format!("a029_wb_supply_details_{}", supply_id_nav),
+                                                                            &format!("Поставка {}", supply_id_nav),
+                                                                        );
+                                                                    }
+                                                                >
+                                                                    {supply_id_text}
+                                                                </a>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! { <span>"—"</span> }.into_any()
+                                                        }
+                                                    }
+                                                </TableCellLayout>
+                                            </TableCell>
 
                                             <TableCell>
                                                 <TableCellLayout>

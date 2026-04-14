@@ -130,6 +130,135 @@ pub async fn list_all() -> Result<Vec<WbOrders>> {
     Ok(models.into_iter().map(|m| m.into()).collect())
 }
 
+/// Find orders by income_id (номер поставки из WB Stats API).
+/// Supply ID like "WB-GI-229481414" maps to income_id = 229481414.
+pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let sql = format!(
+        "SELECT * FROM a015_wb_orders WHERE json_extract(source_meta_json, '$.income_id') = {} AND is_deleted = 0 ORDER BY document_date",
+        income_id
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let query_results = db.query_all(stmt).await?;
+
+    let mut orders = Vec::with_capacity(query_results.len());
+    for row in query_results {
+        let id: String = row.try_get("", "id").unwrap_or_default();
+        let code: String = row.try_get("", "code").unwrap_or_default();
+        let description: String = row.try_get("", "description").unwrap_or_default();
+        let comment: Option<String> = row.try_get("", "comment").ok().flatten();
+        let document_no: String = row.try_get("", "document_no").unwrap_or_default();
+        let document_date: Option<String> = row.try_get("", "document_date").ok().flatten();
+        let g_number: Option<String> = row.try_get("", "g_number").ok().flatten();
+        let spp: Option<f64> = row.try_get("", "spp").ok().flatten();
+        let is_cancel: Option<bool> = row
+            .try_get::<Option<i32>>("", "is_cancel")
+            .ok()
+            .flatten()
+            .map(|v| v != 0);
+        let cancel_date: Option<String> = row.try_get("", "cancel_date").ok().flatten();
+        let header_json: String = row.try_get("", "header_json").unwrap_or_default();
+        let line_json: String = row.try_get("", "line_json").unwrap_or_default();
+        let state_json: String = row.try_get("", "state_json").unwrap_or_default();
+        let warehouse_json: String = row.try_get("", "warehouse_json").unwrap_or_default();
+        let geography_json: String = row.try_get("", "geography_json").unwrap_or_default();
+        let source_meta_json: String = row.try_get("", "source_meta_json").unwrap_or_default();
+        let marketplace_product_ref: Option<String> =
+            row.try_get("", "marketplace_product_ref").ok().flatten();
+        let nomenclature_ref: Option<String> = row.try_get("", "nomenclature_ref").ok().flatten();
+        let base_nomenclature_ref: Option<String> =
+            row.try_get("", "base_nomenclature_ref").ok().flatten();
+        let is_deleted: bool = row
+            .try_get::<i32>("", "is_deleted")
+            .map(|v| v != 0)
+            .unwrap_or(false);
+        let is_posted: bool = row
+            .try_get::<i32>("", "is_posted")
+            .map(|v| v != 0)
+            .unwrap_or(false);
+        let version: i32 = row.try_get("", "version").unwrap_or(0);
+
+        let model = Model {
+            id,
+            code,
+            description,
+            comment,
+            document_no,
+            document_date,
+            g_number,
+            spp,
+            is_cancel,
+            cancel_date,
+            header_json,
+            line_json,
+            state_json,
+            warehouse_json,
+            geography_json,
+            source_meta_json,
+            marketplace_product_ref,
+            nomenclature_ref,
+            base_nomenclature_ref,
+            is_deleted,
+            is_posted,
+            created_at: None,
+            updated_at: None,
+            version,
+        };
+        orders.push(WbOrders::from(model));
+    }
+    Ok(orders)
+}
+
+/// Update income_id in source_meta_json for a specific order (by document_no / srid).
+/// Only updates if income_id is currently NULL or 0 — does not overwrite existing data.
+/// Returns true if a row was updated.
+pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let sql = format!(
+        "UPDATE a015_wb_orders \
+         SET source_meta_json = json_set(source_meta_json, '$.income_id', {}), \
+             updated_at = datetime('now') \
+         WHERE document_no = '{}' \
+           AND is_deleted = 0 \
+           AND (json_extract(source_meta_json, '$.income_id') IS NULL \
+             OR json_extract(source_meta_json, '$.income_id') = 0)",
+        income_id,
+        document_no.replace('\'', "''")
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    db.execute(stmt).await?;
+    Ok(true)
+}
+
+/// Update line_id (numeric WB order ID) for an existing order.
+/// Only updates if current line_id is NOT already a pure numeric string.
+pub async fn update_line_id_by_document_no(document_no: &str, line_id: i64) -> Result<()> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let line_json_path = "$.line_id";
+    let sql = format!(
+        "UPDATE a015_wb_orders \
+         SET line_json = json_set(line_json, '{path}', '{val}'), \
+             updated_at = datetime('now') \
+         WHERE document_no = '{doc}' \
+           AND is_deleted = 0 \
+           AND (json_extract(line_json, '{path}') IS NULL \
+             OR CAST(json_extract(line_json, '{path}') AS TEXT) GLOB '*[^0-9]*' \
+             OR CAST(json_extract(line_json, '{path}') AS TEXT) = '')",
+        path = line_json_path,
+        val = line_id,
+        doc = document_no.replace('\'', "''"),
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    db.execute(stmt).await?;
+    Ok(())
+}
+
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbOrders>> {
     let db = get_connection();
     let id_str = id.to_string();
@@ -330,6 +459,9 @@ pub struct WbOrdersListRow {
     pub finished_price: Option<f64>,
     pub total_price: Option<f64>,
     pub is_cancel: Option<bool>,
+    pub is_supply: Option<bool>,
+    pub is_realization: Option<bool>,
+    pub income_id: Option<i64>,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub base_nomenclature_ref: Option<String>,
@@ -442,6 +574,11 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
             json_extract(w.line_json, '$.finished_price') as finished_price,
             json_extract(w.line_json, '$.total_price') as total_price,
             w.is_cancel,
+            json_extract(w.state_json, '$.is_supply') as is_supply,
+            json_extract(w.state_json, '$.is_realization') as is_realization,
+            CASE WHEN json_extract(w.source_meta_json, '$.income_id') > 0
+                 THEN json_extract(w.source_meta_json, '$.income_id')
+                 ELSE NULL END as income_id,
             w.marketplace_product_ref,
             w.nomenclature_ref,
             w.base_nomenclature_ref,
@@ -491,6 +628,12 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
                 finished_price: row.try_get("", "finished_price").ok(),
                 total_price: row.try_get("", "total_price").ok(),
                 is_cancel: row.try_get::<i32>("", "is_cancel").ok().map(|v| v != 0),
+                is_supply: row.try_get::<i32>("", "is_supply").ok().map(|v| v != 0),
+                is_realization: row
+                    .try_get::<i32>("", "is_realization")
+                    .ok()
+                    .map(|v| v != 0),
+                income_id: row.try_get::<i64>("", "income_id").ok(),
                 marketplace_product_ref: row.try_get("", "marketplace_product_ref").ok(),
                 nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),
                 base_nomenclature_ref: row.try_get("", "base_nomenclature_ref").ok(),
