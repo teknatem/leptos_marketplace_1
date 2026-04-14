@@ -113,9 +113,11 @@ pub async fn process_order_row(
     };
 
     let source_meta = WbOrdersSourceMeta {
-        income_id: order_row.income_id,
-        sticker: order_row.sticker.clone(),
-        g_number: order_row.g_number.clone(),
+        // incomeID=0 means FBW order with no seller supply — treat as None
+        income_id: order_row.income_id.filter(|&v| v != 0),
+        // empty sticker string means no sticker assigned — treat as None
+        sticker: order_row.sticker.clone().filter(|s| !s.is_empty()),
+        g_number: order_row.g_number.clone().filter(|s| !s.is_empty()),
         raw_payload_ref: String::new(),
         fetched_at: chrono::Utc::now(),
         document_version: 1,

@@ -42,6 +42,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a026_routes())
         .merge(a027_routes())
         .merge(a028_routes())
+        .merge(a029_routes())
         .merge(usecase_routes())
         .merge(projection_routes())
         .merge(dashboard_routes())
@@ -933,6 +934,44 @@ fn a028_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a028_missing_cost_registry", req, next).await
+            },
+        ))
+}
+
+fn a029_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a029/wb-supply",
+            get(handlers::a029_wb_supply::list_supplies),
+        )
+        // Lookup by WB supply ID string (e.g. "WB-GI-32319994") — must be before :id
+        .route(
+            "/api/a029/wb-supply/by-wb-id/:wb_id",
+            get(handlers::a029_wb_supply::get_supply_by_wb_id),
+        )
+        .route(
+            "/api/a029/wb-supply/:id",
+            get(handlers::a029_wb_supply::get_supply_detail),
+        )
+        .route(
+            "/api/a029/wb-supply/:id/orders",
+            get(handlers::a029_wb_supply::get_supply_orders),
+        )
+        .route(
+            "/api/a029/wb-supply/:id/stickers",
+            get(handlers::a029_wb_supply::get_supply_stickers),
+        )
+        .route(
+            "/api/a029/raw/:ref_id",
+            get(handlers::a029_wb_supply::get_raw_json),
+        )
+        .route(
+            "/api/a029/wb-supply/:id/delete",
+            post(handlers::a029_wb_supply::delete_supply),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a029_wb_supply", req, next).await
             },
         ))
 }

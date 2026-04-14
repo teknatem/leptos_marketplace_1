@@ -4,7 +4,7 @@
 //!   numerator_indicator_code   = code of the numerator indicator
 //!   denominator_indicator_code = code of the denominator indicator
 //! Optional params:
-//!   metric = ratio_percent (default) | ratio
+//!   metric = ratio_percent (default) | ratio | ratio_percent_complement
 
 use anyhow::{anyhow, Result};
 use contracts::shared::analytics::{
@@ -23,6 +23,7 @@ const DEFAULT_METRIC_ID: &str = "ratio_percent";
 enum ViewMetric {
     Ratio,
     RatioPercent,
+    RatioPercentComplement,
 }
 
 fn resolve_metric(ctx: &ViewContext) -> Result<ViewMetric> {
@@ -34,8 +35,9 @@ fn resolve_metric(ctx: &ViewContext) -> Result<ViewMetric> {
     match metric {
         "ratio" => Ok(ViewMetric::Ratio),
         "ratio_percent" => Ok(ViewMetric::RatioPercent),
+        "ratio_percent_complement" => Ok(ViewMetric::RatioPercentComplement),
         _ => Err(anyhow!(
-            "Unsupported metric '{}' for {}. Expected 'ratio' | 'ratio_percent'",
+            "Unsupported metric '{}' for {}. Expected 'ratio' | 'ratio_percent' | 'ratio_percent_complement'",
             metric,
             VIEW_ID
         )),
@@ -61,6 +63,7 @@ fn ratio_value(
             Some(match metric {
                 ViewMetric::Ratio => ratio,
                 ViewMetric::RatioPercent => ratio * 100.0,
+                ViewMetric::RatioPercentComplement => 100.0 - (ratio * 100.0),
             })
         }
         _ => None,
@@ -124,6 +127,14 @@ fn display_indicator_name(
         .unwrap_or_else(|| code.to_string())
 }
 
+fn formula_text(metric: ViewMetric) -> &'static str {
+    match metric {
+        ViewMetric::Ratio => "Формула: числитель / знаменатель",
+        ViewMetric::RatioPercent => "Формула: числитель / знаменатель * 100",
+        ViewMetric::RatioPercentComplement => "Формула: 100 - (числитель / знаменатель * 100)",
+    }
+}
+
 pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
     let metric = resolve_metric(ctx)?;
     let numerator_code = required_param(ctx, "numerator_indicator_code")?.to_string();
@@ -150,10 +161,6 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
     let denominator_def = denominator_def_result?;
     let current = ratio_value(numerator.value, denominator.value, metric);
     let previous = ratio_value(numerator.previous_value, denominator.previous_value, metric);
-    let formula = match metric {
-        ViewMetric::Ratio => "Формула: числитель / знаменатель",
-        ViewMetric::RatioPercent => "Формула: числитель / знаменатель * 100",
-    };
     let details = vec![
         format!(
             "Числитель: {} ({}) = {}",
@@ -167,7 +174,7 @@ pub async fn compute_scalar(ctx: &ViewContext) -> Result<IndicatorValue> {
             denominator_code,
             format_value(denominator.value)
         ),
-        formula.to_string(),
+        formula_text(metric).to_string(),
     ];
 
     Ok(IndicatorValue {
@@ -226,10 +233,26 @@ mod tests {
     }
 
     #[test]
+    fn ratio_percent_complement_subtracts_from_hundred() {
+        assert_eq!(
+            ratio_value(Some(80.0), Some(100.0), ViewMetric::RatioPercentComplement),
+            Some(20.0)
+        );
+        assert_eq!(
+            ratio_value(Some(25.0), Some(50.0), ViewMetric::RatioPercentComplement),
+            Some(50.0)
+        );
+    }
+
+    #[test]
     fn ratio_value_returns_none_on_zero_denominator() {
         assert_eq!(ratio_value(Some(10.0), Some(0.0), ViewMetric::Ratio), None);
         assert_eq!(
             ratio_value(Some(10.0), None, ViewMetric::RatioPercent),
+            None
+        );
+        assert_eq!(
+            ratio_value(Some(10.0), Some(0.0), ViewMetric::RatioPercentComplement),
             None
         );
     }

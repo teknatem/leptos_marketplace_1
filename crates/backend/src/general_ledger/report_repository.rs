@@ -897,7 +897,9 @@ mod tests {
 
         let sql = build_detail_source_sql("p911_wb_advert_by_items", &query);
 
-        assert!(sql.contains("INNER JOIN p911_wb_advert_by_items d ON d.general_ledger_ref = gl.id"));
+        assert!(
+            sql.contains("INNER JOIN p911_wb_advert_by_items d ON d.general_ledger_ref = gl.id")
+        );
         assert!(sql.contains("SUM(COALESCE(d.amount, 0.0) * COALESCE(gl.resource_sign, 1) * COALESCE(gl.detail_sign_factor, 1.0))"));
         assert!(sql.contains("COUNT(DISTINCT gl.id) AS entry_count"));
         assert!(!sql.contains("SUM(gl.signed_amount)"));

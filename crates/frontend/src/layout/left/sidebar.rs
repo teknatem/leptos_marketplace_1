@@ -184,6 +184,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "alert-circle",
                 ),
                 SidebarItem::with_scope(
+                    "a029_wb_supply",
+                    tab_label_for_key("a029_wb_supply"),
+                    "package",
+                ),
+                SidebarItem::with_scope(
                     "a020_wb_promotion",
                     tab_label_for_key("a020_wb_promotion"),
                     "tag",

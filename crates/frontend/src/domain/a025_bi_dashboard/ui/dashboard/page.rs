@@ -2093,17 +2093,11 @@ fn DashboardPeriodControlsOld(ctx: RwSignal<ViewContext>) -> impl IntoView {
 #[component]
 fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
     let active_mode = Signal::derive(move || DashboardPeriodMode::from_ctx(&ctx.get()));
-    let nav_button_style = "display:inline-flex; align-items:center; justify-content:center; width:32px; min-width:32px; height:32px; padding:0; border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); border-radius:10px; cursor:pointer;";
 
     view! {
-        <div
-            class="dashboard-period-controls"
-            style="display:flex; flex-wrap:nowrap; align-items:center; gap:10px; overflow-x:auto; padding:0; margin-bottom:14px;"
-        >
-            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
-                <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); min-width:54px;">
-                    "Период"
-                </span>
+        <div class="dashboard-period-controls">
+            <span class="dpc-section-label">"Период"</span>
+            <div class="dpc-mode-tabs">
                 {[DashboardPeriodMode::Month, DashboardPeriodMode::Week, DashboardPeriodMode::Day, DashboardPeriodMode::Custom]
                     .into_iter()
                     .map(|entry| {
@@ -2111,12 +2105,10 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                         view! {
                             <button
                                 type="button"
-                                style=move || {
-                                    if active_mode.get() == entry {
-                                        "border:1px solid var(--colorBrandStroke1, #2563eb); background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); padding:6px 10px; border-radius:999px; font-weight:600; cursor:pointer; line-height:1.2;"
-                                    } else {
-                                        "border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:6px 10px; border-radius:999px; font-weight:500; cursor:pointer; line-height:1.2;"
-                                    }
+                                class=move || if active_mode.get() == entry {
+                                    "dpc-mode-tab dpc-mode-tab--active"
+                                } else {
+                                    "dpc-mode-tab"
                                 }
                                 on:click=move |_| {
                                     ctx.update(|current| {
@@ -2139,26 +2131,18 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
             {[DashboardPeriodSlot::Primary, DashboardPeriodSlot::Comparison]
                 .into_iter()
                 .map(|slot| {
-                    let badge_style = match slot {
-                        DashboardPeriodSlot::Primary => {
-                            "display:flex; align-items:center; justify-content:center; min-width:34px; height:32px; border-radius:10px; background:var(--colorNeutralBackground2, #f3f4f6); color:var(--colorNeutralForeground1, #111827); font-size:12px; font-weight:700;"
-                        }
-                        DashboardPeriodSlot::Comparison => {
-                            "display:flex; align-items:center; justify-content:center; min-width:34px; height:32px; border-radius:10px; background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); font-size:12px; font-weight:700;"
-                        }
+                    let group_class = match slot {
+                        DashboardPeriodSlot::Primary => "dpc-slot-group dpc-slot-group--primary",
+                        DashboardPeriodSlot::Comparison => "dpc-slot-group dpc-slot-group--comparison",
                     };
-                    let group_style = match slot {
-                        DashboardPeriodSlot::Primary => {
-                            "display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(15, 23, 42, 0.04);"
-                        }
-                        DashboardPeriodSlot::Comparison => {
-                            "display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(37, 99, 235, 0.08);"
-                        }
+                    let badge_class = match slot {
+                        DashboardPeriodSlot::Primary => "dpc-slot-badge dpc-slot-badge--primary",
+                        DashboardPeriodSlot::Comparison => "dpc-slot-badge dpc-slot-badge--comparison",
                     };
 
                     view! {
-                        <div style=group_style>
-                            <div style=badge_style>{slot.title()}</div>
+                        <div class=group_class>
+                            <div class=badge_class>{slot.title()}</div>
 
                             <Show
                                 when=move || active_mode.get() == DashboardPeriodMode::Custom
@@ -2167,7 +2151,7 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                                         <>
                                             <button
                                                 type="button"
-                                                style=nav_button_style
+                                                class="dpc-nav-btn"
                                                 on:click=move |_| {
                                                     ctx.update(|current| {
                                                         let mode = DashboardPeriodMode::from_ctx(current);
@@ -2208,7 +2192,7 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                                                 {move || slot.reset_label(active_mode.get())}
                                             </Button>
 
-                                            <div style="min-width:140px; flex:0 0 auto; padding:0 2px; font-size:13px; font-weight:600; color:var(--colorNeutralForeground1, #111827); white-space:nowrap;">
+                                            <div class="dpc-period-display">
                                                 {move || {
                                                     let current = ctx.get();
                                                     period_summary(&current, slot, false)
@@ -2218,7 +2202,7 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
 
                                             <button
                                                 type="button"
-                                                style=nav_button_style
+                                                class="dpc-nav-btn"
                                                 on:click=move |_| {
                                                     ctx.update(|current| {
                                                         let mode = DashboardPeriodMode::from_ctx(current);
@@ -2239,7 +2223,7 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                                             <Show when=move || active_mode.get() == DashboardPeriodMode::Day>
                                                 <input
                                                     type="date"
-                                                    style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:150px;"
+                                                    class="dpc-date-input"
                                                     prop:value=move || {
                                                         period_slot_dates(&ctx.get(), slot)
                                                             .map(|(_, to)| fmt_ymd(to))
@@ -2266,7 +2250,7 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                                 <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
                                     <input
                                         type="date"
-                                        style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:146px;"
+                                        class="dpc-date-input"
                                         prop:value=move || {
                                             period_slot_dates(&ctx.get(), slot)
                                                 .map(|(from, _)| fmt_ymd(from))
@@ -2292,11 +2276,11 @@ fn DashboardPeriodControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                                         }
                                     />
 
-                                    <span style="color:var(--colorNeutralForeground3, #6b7280);">"—"</span>
+                                    <span class="dpc-sep">"—"</span>
 
                                     <input
                                         type="date"
-                                        style="border:1px solid var(--colorNeutralStroke2, #d1d5db); border-radius:10px; padding:6px 8px; min-width:146px;"
+                                        class="dpc-date-input"
                                         prop:value=move || {
                                             period_slot_dates(&ctx.get(), slot)
                                                 .map(|(_, to)| fmt_ymd(to))
@@ -2355,19 +2339,9 @@ fn DashboardConnectionMpControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
     });
 
     view! {
-        <div
-            class="dashboard-mp-controls"
-            style="display:flex; flex-wrap:nowrap; align-items:center; gap:10px; overflow-x:auto; padding:0; margin-bottom:10px;"
-        >
-            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto;">
-                <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--colorNeutralForeground3, #6b7280); min-width:86px;">
-                    "Кабинет МП"
-                </span>
-            </div>
-
-            <div
-                style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center; flex:0 0 auto; padding:8px 10px; border-radius:14px; background:rgba(2, 132, 199, 0.07);"
-            >
+        <div class="dashboard-mp-controls">
+            <span class="dmc-section-label">"Кабинет МП"</span>
+            <div class="dmc-group">
                 <Button
                     appearance=ButtonAppearance::Secondary
                     size=ButtonSize::Small
@@ -2381,55 +2355,48 @@ fn DashboardConnectionMpControls(ctx: RwSignal<ViewContext>) -> impl IntoView {
                 {move || {
                     if loading.get() {
                         view! {
-                            <div style="font-size:12px; color:var(--colorNeutralForeground3, #6b7280); white-space:nowrap;">
-                                "Загрузка..."
-                            </div>
+                            <div class="dmc-status">"Загрузка..."</div>
                         }.into_any()
                     } else if let Some(err) = fetch_error.get() {
                         view! {
-                            <div style="font-size:12px; color:var(--colorPaletteRedForeground1, #b42318); white-space:nowrap;">
-                                {err}
-                            </div>
+                            <div class="dmc-error">{err}</div>
                         }.into_any()
                     } else {
                         view! {
-                            <div style="display:flex; flex-wrap:nowrap; gap:8px; align-items:center;">
-                                <For
-                                    each=move || options.get()
-                                    key=|opt| opt.id.clone()
-                                    children=move |opt: DashboardMpOption| {
-                                        let option_id = opt.id.clone();
-                                        let style_option_id = option_id.clone();
-                                        let option_label = opt.label.clone();
-                                        view! {
-                                            <button
-                                                type="button"
-                                                style=move || {
-                                                    let selected = ctx.get().connection_mp_refs.iter().any(|id| id == &style_option_id);
-                                                    if selected {
-                                                        "border:1px solid var(--colorBrandStroke1, #2563eb); background:var(--colorBrandBackground2, #eff6ff); color:var(--colorBrandForeground1, #1d4ed8); padding:6px 10px; border-radius:999px; font-weight:600; cursor:pointer; line-height:1.2; white-space:nowrap;"
+                            <For
+                                each=move || options.get()
+                                key=|opt| opt.id.clone()
+                                children=move |opt: DashboardMpOption| {
+                                    let option_id = opt.id.clone();
+                                    let class_option_id = option_id.clone();
+                                    let option_label = opt.label.clone();
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class=move || {
+                                                if ctx.get().connection_mp_refs.iter().any(|id| id == &class_option_id) {
+                                                    "dmc-btn dmc-btn--active"
+                                                } else {
+                                                    "dmc-btn"
+                                                }
+                                            }
+                                            on:click=move |_| {
+                                                ctx.update(|current| {
+                                                    if current.connection_mp_refs.iter().any(|id| id == &option_id) {
+                                                        current.connection_mp_refs.retain(|id| id != &option_id);
                                                     } else {
-                                                        "border:1px solid var(--colorNeutralStroke2, #d1d5db); background:var(--colorNeutralBackground1, #fff); color:var(--colorNeutralForeground1, #111827); padding:6px 10px; border-radius:999px; font-weight:500; cursor:pointer; line-height:1.2; white-space:nowrap;"
+                                                        current.connection_mp_refs.push(option_id.clone());
+                                                        current.connection_mp_refs.sort();
+                                                        current.connection_mp_refs.dedup();
                                                     }
-                                                }
-                                                on:click=move |_| {
-                                                    ctx.update(|current| {
-                                                        if current.connection_mp_refs.iter().any(|id| id == &option_id) {
-                                                            current.connection_mp_refs.retain(|id| id != &option_id);
-                                                        } else {
-                                                            current.connection_mp_refs.push(option_id.clone());
-                                                            current.connection_mp_refs.sort();
-                                                            current.connection_mp_refs.dedup();
-                                                        }
-                                                    });
-                                                }
-                                            >
-                                                {option_label.clone()}
-                                            </button>
-                                        }
+                                                });
+                                            }
+                                        >
+                                            {option_label.clone()}
+                                        </button>
                                     }
-                                />
-                            </div>
+                                }
+                            />
                         }.into_any()
                     }
                 }}

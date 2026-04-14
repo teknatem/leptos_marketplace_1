@@ -601,6 +601,208 @@
   max-height: 500px;
 }
 
+.filter-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── Dashboard filter controls: period + MP ─────────────────────────────── */
+
+.dashboard-period-controls,
+.dashboard-mp-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0;
+  scrollbar-width: none;
+}
+.dashboard-period-controls::-webkit-scrollbar,
+.dashboard-mp-controls::-webkit-scrollbar { display: none; }
+
+.dashboard-period-controls { margin-bottom: 14px; }
+.dashboard-mp-controls     { margin-bottom: 10px; }
+
+/* Section labels: "Период", "Кабинет МП" */
+.dpc-section-label,
+.dmc-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dpc-section-label { min-width: 54px; }
+.dmc-section-label { min-width: 86px; }
+
+/* Mode tabs strip: Month / Week / Day / Custom */
+.dpc-mode-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.dpc-mode-tab {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dpc-mode-tab:hover {
+  background: var(--color-hover-bg);
+}
+.dpc-mode-tab--active {
+  border-color: var(--badge-primary-border);
+  background: var(--badge-primary-bg);
+  color: var(--badge-primary-text);
+  font-weight: 600;
+}
+
+/* Period slot groups (Primary / Comparison) */
+.dpc-slot-group {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 12px;
+}
+.dpc-slot-group--primary    { background: var(--color-bg-secondary); }
+.dpc-slot-group--comparison { background: var(--badge-primary-bg); }
+
+/* P1/P2 badge inside slot group */
+.dpc-slot-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.dpc-slot-badge--primary {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+.dpc-slot-badge--comparison {
+  background: var(--badge-primary-border);
+  color: var(--badge-primary-text);
+}
+
+/* Navigation prev/next buttons */
+.dpc-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.dpc-nav-btn:hover { background: var(--color-hover-bg); }
+
+/* Period text label (e.g. "апр 2026") */
+.dpc-period-display {
+  min-width: 130px;
+  flex-shrink: 0;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+/* Date picker inputs inside controls */
+.dpc-date-input {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-radius: 8px;
+  padding: 5px 8px;
+  min-width: 140px;
+  font-size: 12px;
+}
+
+/* Range separator "—" */
+.dpc-sep { color: var(--color-text-secondary); }
+
+/* ── MP (marketplace cabinet) controls ──────────────────────────────────── */
+
+.dmc-group {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: var(--color-bg-secondary);
+}
+
+.dmc-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dmc-btn:hover { background: var(--color-hover-bg); }
+.dmc-btn--active {
+  border-color: var(--badge-primary-border);
+  background: var(--badge-primary-bg);
+  color: var(--badge-primary-text);
+  font-weight: 600;
+}
+
+.dmc-status {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.dmc-error {
+  font-size: 12px;
+  color: var(--color-error);
+  white-space: nowrap;
+}
+
 .p903-filter-notes {
   display: flex;
   flex-wrap: wrap;

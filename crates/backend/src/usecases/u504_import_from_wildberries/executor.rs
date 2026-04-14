@@ -1,6 +1,9 @@
+#[allow(unused_imports)]
+use super::wildberries_api_client::WbMarketplaceOrderRow;
 use super::{
     processors::{
-        commission, document, finance_report, goods_prices, order, product, promotion, sales,
+        commission, document, finance_report, goods_prices, marketplace_order, order, product,
+        promotion, sales, supply,
     },
     progress_tracker::ProgressTracker,
     wildberries_api_client::{
@@ -262,8 +265,35 @@ impl ImportExecutor {
                     )
                     .await?;
                 }
+                "a029_wb_supply" => {
+                    self.import_wb_supplies(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
                 "wb_advert_stats_csv" => {
                     self.import_wb_advert_stats_csv(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a015_wb_orders_new" => {
+                    self.import_wb_new_marketplace_orders(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a015_wb_orders_supply_link" => {
+                    self.import_wb_orders_supply_link(
                         session_id,
                         connection,
                         request.date_from,
@@ -632,6 +662,494 @@ impl ImportExecutor {
             total_processed,
             total_inserted,
             total_updated
+        );
+
+        Ok(())
+    }
+
+    async fn import_wb_supplies(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+
+        let aggregate_index = "a029_wb_supply";
+        let mut total_processed = 0;
+        let mut total_inserted = 0;
+        let mut total_updated = 0;
+
+        tracing::info!(
+            "Importing WB supplies for session: {} from {} to {}",
+            session_id,
+            date_from,
+            date_to
+        );
+
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!(
+                        "Организация с UUID '{}' не найдена",
+                        connection.organization_ref
+                    );
+                    tracing::error!("{}", msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", msg);
+                }
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Некорректный organization_ref UUID: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", msg);
+            }
+        };
+
+        let supply_rows = self
+            .api_client
+            .fetch_supplies(connection, date_from, date_to)
+            .await?;
+
+        tracing::info!("Received {} supply rows from WB API", supply_rows.len());
+
+        for supply_row in supply_rows {
+            // Fetch orders for each supply.
+            // WB API may return 404 for GI/FBW supplies — handled gracefully in fetch_supply_orders.
+            tracing::info!(
+                "Fetching orders for supply {} (done={})",
+                supply_row.id,
+                supply_row.done.unwrap_or(false)
+            );
+            let supply_orders = match self
+                .api_client
+                .fetch_supply_orders(connection, &supply_row.id)
+                .await
+            {
+                Ok(orders) => {
+                    tracing::info!(
+                        "Supply {}: fetched {} orders from WB API",
+                        supply_row.id,
+                        orders.len()
+                    );
+                    orders
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to fetch orders for supply {} (done={}): {}",
+                        supply_row.id,
+                        supply_row.done.unwrap_or(false),
+                        e
+                    );
+                    vec![]
+                }
+            };
+
+            // If the marketplace API returned no orders, fall back to statistics API orders
+            // stored in a015_wb_orders, matched by incomeID (numeric part of supply ID).
+            // Example: "WB-GI-229481414" → income_id = 229481414
+            let stat_orders_fallback = if supply_orders.is_empty() {
+                let income_id_opt = supply_row
+                    .id
+                    .rsplit('-')
+                    .next()
+                    .and_then(|s| s.parse::<i64>().ok());
+                if let Some(income_id) = income_id_opt {
+                    match crate::domain::a015_wb_orders::service::list_by_income_id(income_id).await
+                    {
+                        Ok(orders) => {
+                            tracing::info!(
+                                "Supply {}: found {} orders via a015 income_id={}",
+                                supply_row.id,
+                                orders.len(),
+                                income_id
+                            );
+                            orders
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Supply {}: a015 fallback failed for income_id={}: {}",
+                                supply_row.id,
+                                income_id,
+                                e
+                            );
+                            vec![]
+                        }
+                    }
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            };
+
+            match supply::process_supply_row(
+                connection,
+                &organization_id,
+                &supply_row,
+                supply_orders,
+                stat_orders_fallback,
+            )
+            .await
+            {
+                Ok(is_new) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process WB supply {}: {}", supply_row.id, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Failed to process supply {}", supply_row.id),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_processed,
+                None,
+                total_inserted,
+                total_updated,
+            );
+
+            // Brief pause between supply order fetches
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "WB supplies import completed: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Imports new FBS orders from Marketplace API for real-time order visibility.
+    ///
+    /// Flow:
+    /// 1. GET /api/v3/orders/new — brand-new orders (status "waiting", not yet in supply)
+    /// 2. GET /api/v3/orders?dateFrom=... — recent orders including those already in supplies
+    ///
+    /// For each order:
+    /// - If not in a015 yet → INSERT with partial data (no financial fields)
+    /// - If already in a015 → update income_id if supplyId is now known
+    ///
+    /// Statistics API (Backfill) should run separately to fill financial/analytics fields.
+    async fn import_wb_new_marketplace_orders(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+
+        let aggregate_index = "a015_wb_orders_new";
+        let mut total_processed = 0i32;
+        let mut total_inserted = 0i32;
+        let mut total_updated = 0i32;
+
+        self.progress_tracker.add_aggregate(
+            session_id,
+            aggregate_index.to_string(),
+            "Новые заказы WB (Оперативно)".to_string(),
+        );
+
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!(
+                        "Организация с UUID '{}' не найдена",
+                        connection.organization_ref
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", msg);
+                }
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Некорректный organization_ref UUID: '{}'",
+                    connection.organization_ref
+                );
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", msg);
+            }
+        };
+
+        // Step 1: fetch brand-new orders
+        let new_orders = match self
+            .api_client
+            .fetch_new_marketplace_orders(connection)
+            .await
+        {
+            Ok(orders) => orders,
+            Err(e) => {
+                tracing::warn!("Failed to fetch /api/v3/orders/new: {}", e);
+                vec![]
+            }
+        };
+        tracing::info!("New marketplace orders (/new): {}", new_orders.len());
+
+        // Step 2: fetch recent orders in date range (includes supplyId for assigned orders)
+        let date_from_ts = date_from
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| {
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+                    .timestamp()
+            })
+            .unwrap_or(0);
+        let date_to_ts = date_to
+            .and_hms_opt(23, 59, 59)
+            .map(|dt| {
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+                    .timestamp()
+            })
+            .unwrap_or(0);
+
+        let recent_orders = match self
+            .api_client
+            .fetch_marketplace_orders(connection, date_from_ts, date_to_ts)
+            .await
+        {
+            Ok(orders) => orders,
+            Err(e) => {
+                tracing::warn!("Failed to fetch /api/v3/orders: {}", e);
+                vec![]
+            }
+        };
+        tracing::info!(
+            "Recent marketplace orders (/orders): {}",
+            recent_orders.len()
+        );
+
+        // Merge: /new orders first, then recent (dedup by id handled naturally via document_no)
+        let all_orders: Vec<_> = new_orders.into_iter().chain(recent_orders).collect();
+        tracing::info!("Total marketplace orders to process: {}", all_orders.len());
+
+        for order in &all_orders {
+            match marketplace_order::process_marketplace_order(connection, &organization_id, order)
+                .await
+            {
+                Ok(is_new) => {
+                    total_processed += 1;
+                    if is_new {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to process marketplace order {}: {}", order.id, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Order {}", order.id),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            if total_processed % 50 == 0 {
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    Some(all_orders.len() as i32),
+                    total_inserted,
+                    total_updated,
+                );
+            }
+        }
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_processed,
+            Some(all_orders.len() as i32),
+            total_inserted,
+            total_updated,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Marketplace orders import done: processed={}, inserted={}, updated={}",
+            total_processed,
+            total_inserted,
+            total_updated
+        );
+
+        Ok(())
+    }
+
+    /// Fetches FBS orders from /api/v3/orders (WB Marketplace API v3) and updates
+    /// income_id in a015_wb_orders for orders that have a supplyId assigned.
+    /// This provides real-time supply linkage without the statistics API delay.
+    async fn import_wb_orders_supply_link(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a015_wb_orders_supply_link";
+        let mut total_linked = 0;
+
+        tracing::info!(
+            "Fetching marketplace orders to update supply links: {} to {}",
+            date_from,
+            date_to
+        );
+
+        self.progress_tracker.add_aggregate(
+            session_id,
+            aggregate_index.to_string(),
+            "Связь заказов с поставками".to_string(),
+        );
+
+        let date_from_ts = date_from
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| {
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+                    .timestamp()
+            })
+            .unwrap_or(0);
+        let date_to_ts = date_to
+            .and_hms_opt(23, 59, 59)
+            .map(|dt| {
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+                    .timestamp()
+            })
+            .unwrap_or(0);
+
+        let marketplace_orders = match self
+            .api_client
+            .fetch_marketplace_orders(connection, date_from_ts, date_to_ts)
+            .await
+        {
+            Ok(orders) => orders,
+            Err(e) => {
+                let msg = format!("Failed to fetch marketplace orders: {}", e);
+                tracing::error!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg,
+                    None,
+                );
+                return Ok(());
+            }
+        };
+
+        let total_fetched = marketplace_orders.len();
+        tracing::info!("Marketplace orders fetched: {}", total_fetched);
+
+        for order in &marketplace_orders {
+            let supply_id = match &order.supply_id {
+                Some(sid) if !sid.is_empty() => sid.clone(),
+                _ => continue,
+            };
+
+            // Parse income_id from supply_id like "WB-GI-32319994" → 32319994
+            let income_id = match supply_id
+                .rsplit('-')
+                .next()
+                .and_then(|s| s.parse::<i64>().ok())
+            {
+                Some(id) if id > 0 => id,
+                _ => {
+                    tracing::warn!("Cannot parse income_id from supplyId: {}", supply_id);
+                    continue;
+                }
+            };
+
+            // The marketplace API uses `rid` which equals `srid` used as document_no in a015
+            let document_no = match &order.rid {
+                Some(rid) if !rid.is_empty() => rid.clone(),
+                _ => continue,
+            };
+
+            match crate::domain::a015_wb_orders::service::update_income_id_by_document_no(
+                &document_no,
+                income_id,
+            )
+            .await
+            {
+                Ok(_) => {
+                    total_linked += 1;
+                    tracing::debug!(
+                        "Linked order {} to supply {} (income_id={})",
+                        document_no,
+                        supply_id,
+                        income_id
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to update income_id for order {}: {}",
+                        document_no,
+                        e
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_linked as i32,
+                Some(total_fetched as i32),
+                total_linked as i32,
+                0,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+
+        tracing::info!(
+            "Supply link import completed: fetched={}, linked={}",
+            total_fetched,
+            total_linked
         );
 
         Ok(())

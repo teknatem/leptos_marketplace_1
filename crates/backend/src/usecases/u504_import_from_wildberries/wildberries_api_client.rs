@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
 
-/// HTTP-клиент для работы с Wildberries Supplier API
+/// HTTP-РєР»РёРµРЅС‚ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ Wildberries Supplier API
 pub struct WildberriesApiClient {
     client: reqwest::Client,
 }
@@ -17,25 +17,25 @@ impl WildberriesApiClient {
 
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(60)) // Увеличен таймаут для медленных API
+                .timeout(std::time::Duration::from_secs(60)) // РЈРІРµР»РёС‡РµРЅ С‚Р°Р№РјР°СѓС‚ РґР»СЏ РјРµРґР»РµРЅРЅС‹С… API
                 .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .default_headers(headers)
-                .danger_accept_invalid_certs(true) // Временно для отладки
+                .danger_accept_invalid_certs(true) // Р’СЂРµРјРµРЅРЅРѕ РґР»СЏ РѕС‚Р»Р°РґРєРё
                 .no_proxy()
-                .redirect(reqwest::redirect::Policy::limited(10)) // Следовать редиректам
+                .redirect(reqwest::redirect::Policy::limited(10)) // РЎР»РµРґРѕРІР°С‚СЊ СЂРµРґРёСЂРµРєС‚Р°Рј
                 .build()
                 .expect("Failed to create HTTP client"),
         }
     }
 
-    /// Диагностическая функция для тестирования различных вариантов запроса
+    /// Р”РёР°РіРЅРѕСЃС‚РёС‡РµСЃРєР°СЏ С„СѓРЅРєС†РёСЏ РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ СЂР°Р·Р»РёС‡РЅС‹С… РІР°СЂРёР°РЅС‚РѕРІ Р·Р°РїСЂРѕСЃР°
     pub async fn diagnostic_fetch_all_variations(
         &self,
         connection: &ConnectionMP,
     ) -> Result<Vec<DiagnosticResult>> {
         let mut results = Vec::new();
 
-        // Вариант 1: Текущая реализация (пустой фильтр, limit=100)
+        // Р’Р°СЂРёР°РЅС‚ 1: РўРµРєСѓС‰Р°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ (РїСѓСЃС‚РѕР№ С„РёР»СЊС‚СЂ, limit=100)
         results.push(
             self.test_request_variation(
                 connection,
@@ -49,7 +49,7 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 2: Увеличенный limit до 1000
+        // Р’Р°СЂРёР°РЅС‚ 2: РЈРІРµР»РёС‡РµРЅРЅС‹Р№ limit РґРѕ 1000
         results.push(
             self.test_request_variation(
                 connection,
@@ -63,13 +63,13 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 3: Без settings вообще (минимальный запрос)
+        // Р’Р°СЂРёР°РЅС‚ 3: Р‘РµР· settings РІРѕРѕР±С‰Рµ (РјРёРЅРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїСЂРѕСЃ)
         results.push(
             self.test_minimal_request(connection, "Minimal request (no settings)", 1000)
                 .await,
         );
 
-        // Вариант 4: С явным textSearch пустым
+        // Р’Р°СЂРёР°РЅС‚ 4: РЎ СЏРІРЅС‹Рј textSearch РїСѓСЃС‚С‹Рј
         results.push(
             self.test_request_variation(
                 connection,
@@ -85,7 +85,7 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 5: Альтернативный endpoint - Marketplace API
+        // Р’Р°СЂРёР°РЅС‚ 5: РђР»СЊС‚РµСЂРЅР°С‚РёРІРЅС‹Р№ endpoint - Marketplace API
         results.push(
             self.test_alternative_endpoint(
                 connection,
@@ -96,15 +96,15 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 6: Альтернативный endpoint - Supplier API (stocks)
+        // Р’Р°СЂРёР°РЅС‚ 6: РђР»СЊС‚РµСЂРЅР°С‚РёРІРЅС‹Р№ endpoint - Supplier API (stocks)
         results.push(
             self.test_stocks_endpoint(connection, "Alternative: Supplier stocks API")
                 .await,
         );
 
-        // Вариант 7: КРИТИЧЕСКИЙ ТЕСТ - Попытка получить товары БЕЗ фильтра categories
-        // Все предыдущие запросы возвращают только subjectID=7717
-        // Попробуем запросить с явным указанием что хотим все категории
+        // Р’Р°СЂРёР°РЅС‚ 7: РљР РРўРР§Р•РЎРљРР™ РўР•РЎРў - РџРѕРїС‹С‚РєР° РїРѕР»СѓС‡РёС‚СЊ С‚РѕРІР°СЂС‹ Р‘Р•Р— С„РёР»СЊС‚СЂР° categories
+        // Р’СЃРµ РїСЂРµРґС‹РґСѓС‰РёРµ Р·Р°РїСЂРѕСЃС‹ РІРѕР·РІСЂР°С‰Р°СЋС‚ С‚РѕР»СЊРєРѕ subjectID=7717
+        // РџРѕРїСЂРѕР±СѓРµРј Р·Р°РїСЂРѕСЃРёС‚СЊ СЃ СЏРІРЅС‹Рј СѓРєР°Р·Р°РЅРёРµРј С‡С‚Рѕ С…РѕС‚РёРј РІСЃРµ РєР°С‚РµРіРѕСЂРёРё
         results.push(
             self.test_without_category_filter(
                 connection,
@@ -114,8 +114,8 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 8: АРХИВНЫЕ ТОВАРЫ - /content/v2/get/cards/trash
-        // КРИТИЧНО: Возможно большинство товаров в корзине/архиве!
+        // Р’Р°СЂРёР°РЅС‚ 8: РђР РҐРР’РќР«Р• РўРћР’РђР Р« - /content/v2/get/cards/trash
+        // РљР РРўРР§РќРћ: Р’РѕР·РјРѕР¶РЅРѕ Р±РѕР»СЊС€РёРЅСЃС‚РІРѕ С‚РѕРІР°СЂРѕРІ РІ РєРѕСЂР·РёРЅРµ/Р°СЂС…РёРІРµ!
         results.push(
             self.test_trash_endpoint(
                 connection,
@@ -125,15 +125,15 @@ impl WildberriesApiClient {
             .await,
         );
 
-        // Вариант 9: ПОЛУЧИТЬ СПИСОК ВСЕХ КАТЕГОРИЙ ПРОДАВЦА
-        // Проверить сколько категорий (subjects) используется
+        // Р’Р°СЂРёР°РЅС‚ 9: РџРћР›РЈР§РРўР¬ РЎРџРРЎРћРљ Р’РЎР•РҐ РљРђРўР•Р“РћР РР™ РџР РћР”РђР’Р¦Рђ
+        // РџСЂРѕРІРµСЂРёС‚СЊ СЃРєРѕР»СЊРєРѕ РєР°С‚РµРіРѕСЂРёР№ (subjects) РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ
         results.push(
             self.test_get_all_subjects(connection, "Get ALL subjects/categories used by seller")
                 .await,
         );
 
-        // Вариант 10: ПРОДОЛЖИТЬ ПАГИНАЦИЮ - получить СЛЕДУЮЩУЮ страницу
-        // Возможно API возвращает товары по категориям постранично
+        // Р’Р°СЂРёР°РЅС‚ 10: РџР РћР”РћР›Р–РРўР¬ РџРђР“РРќРђР¦РР® - РїРѕР»СѓС‡РёС‚СЊ РЎР›Р•Р”РЈР®Р©РЈР® СЃС‚СЂР°РЅРёС†Сѓ
+        // Р’РѕР·РјРѕР¶РЅРѕ API РІРѕР·РІСЂР°С‰Р°РµС‚ С‚РѕРІР°СЂС‹ РїРѕ РєР°С‚РµРіРѕСЂРёСЏРј РїРѕСЃС‚СЂР°РЅРёС‡РЅРѕ
         results.push(
             self.test_pagination_continuation(
                 connection,
@@ -247,7 +247,7 @@ impl WildberriesApiClient {
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
                 self.log_to_file(&format!(
-                    "✓ Success: {} items, cursor.total={}",
+                    "вњ“ Success: {} items, cursor.total={}",
                     data.cards.len(),
                     data.cursor.total
                 ));
@@ -297,7 +297,7 @@ impl WildberriesApiClient {
 
         let url = format!("{}/content/v2/get/cards/list", base_url);
 
-        // Минимальный запрос - только limit
+        // РњРёРЅРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїСЂРѕСЃ - С‚РѕР»СЊРєРѕ limit
         let body = format!(r#"{{"limit":{}}}"#, limit);
         self.log_to_file(&format!("Minimal request body: {}", body));
 
@@ -360,7 +360,7 @@ impl WildberriesApiClient {
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
                 self.log_to_file(&format!(
-                    "✓ Success: {} items, cursor.total={}",
+                    "вњ“ Success: {} items, cursor.total={}",
                     data.cards.len(),
                     data.cursor.total
                 ));
@@ -402,7 +402,7 @@ impl WildberriesApiClient {
 
         let url = format!("{}{}", base_url, endpoint_path);
 
-        // Пробуем простой GET запрос
+        // РџСЂРѕР±СѓРµРј РїСЂРѕСЃС‚РѕР№ GET Р·Р°РїСЂРѕСЃ
         let response = match self
             .client
             .get(&url)
@@ -433,7 +433,7 @@ impl WildberriesApiClient {
             let body = response.text().await.unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
 
-            // 404 или 405 означает что endpoint не существует или метод не поддерживается
+            // 404 РёР»Рё 405 РѕР·РЅР°С‡Р°РµС‚ С‡С‚Рѕ endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё РјРµС‚РѕРґ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ
             if status.as_u16() == 404 || status.as_u16() == 405 {
                 return DiagnosticResult {
                     test_name: test_name.to_string(),
@@ -474,11 +474,11 @@ impl WildberriesApiClient {
             body.chars().take(500).collect::<String>()
         ));
 
-        // Пробуем распарсить как наш стандартный ответ
+        // РџСЂРѕР±СѓРµРј СЂР°СЃРїР°СЂСЃРёС‚СЊ РєР°Рє РЅР°С€ СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ РѕС‚РІРµС‚
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
                 self.log_to_file(&format!(
-                    "✓ Success (parseable as standard response): {} items, cursor.total={}",
+                    "вњ“ Success (parseable as standard response): {} items, cursor.total={}",
                     data.cards.len(),
                     data.cursor.total
                 ));
@@ -492,7 +492,7 @@ impl WildberriesApiClient {
                 }
             }
             Err(_) => {
-                // Не парсится как стандартный ответ, но запрос успешный
+                // РќРµ РїР°СЂСЃРёС‚СЃСЏ РєР°Рє СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ РѕС‚РІРµС‚, РЅРѕ Р·Р°РїСЂРѕСЃ СѓСЃРїРµС€РЅС‹Р№
                 self.log_to_file("Response structure is different from standard format");
                 DiagnosticResult {
                     test_name: test_name.to_string(),
@@ -592,19 +592,19 @@ impl WildberriesApiClient {
             body.chars().take(500).collect::<String>()
         ));
 
-        // Stocks API возвращает массив с другой структурой
-        // Пробуем распарсить и посчитать количество товаров
+        // Stocks API РІРѕР·РІСЂР°С‰Р°РµС‚ РјР°СЃСЃРёРІ СЃ РґСЂСѓРіРѕР№ СЃС‚СЂСѓРєС‚СѓСЂРѕР№
+        // РџСЂРѕР±СѓРµРј СЂР°СЃРїР°СЂСЃРёС‚СЊ Рё РїРѕСЃС‡РёС‚Р°С‚СЊ РєРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕРІР°СЂРѕРІ
         match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => {
                 if let Some(stocks) = json.as_array() {
                     let count = stocks.len();
-                    self.log_to_file(&format!("✓ Success: Stocks API returned {} items", count));
+                    self.log_to_file(&format!("вњ“ Success: Stocks API returned {} items", count));
                     DiagnosticResult {
                         test_name: test_name.to_string(),
                         success: true,
                         error: None,
                         total_returned: count as i32,
-                        cursor_total: count as i32, // Stocks API не имеет cursor.total
+                        cursor_total: count as i32, // Stocks API РЅРµ РёРјРµРµС‚ cursor.total
                         response_headers: Some(format!("{:?}", headers)),
                     }
                 } else {
@@ -642,7 +642,7 @@ impl WildberriesApiClient {
             "\n========== DIAGNOSTIC TEST: {} ==========",
             test_name
         ));
-        self.log_to_file("📊 Getting list of ALL subjects/categories from seller account");
+        self.log_to_file("рџ“Љ Getting list of ALL subjects/categories from seller account");
         self.log_to_file("This will show how many categories are used");
 
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
@@ -655,7 +655,7 @@ impl WildberriesApiClient {
             "https://content-api.wildberries.ru"
         };
 
-        // Endpoint для получения списка subjects
+        // Endpoint РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ СЃРїРёСЃРєР° subjects
         let url = format!("{}/content/v2/object/all?limit=1000", base_url);
         self.log_to_file(&format!("GET request to: {}", url));
 
@@ -716,16 +716,16 @@ impl WildberriesApiClient {
             body.chars().take(1000).collect::<String>()
         ));
 
-        // Попробуем распарсить как JSON
+        // РџРѕРїСЂРѕР±СѓРµРј СЂР°СЃРїР°СЂСЃРёС‚СЊ РєР°Рє JSON
         match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => {
                 if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
                     self.log_to_file(&format!(
-                        "✓ Found {} subjects/categories available to this seller!",
+                        "вњ“ Found {} subjects/categories available to this seller!",
                         data.len()
                     ));
 
-                    // Найдем уникальные subjectID
+                    // РќР°Р№РґРµРј СѓРЅРёРєР°Р»СЊРЅС‹Рµ subjectID
                     let mut subject_ids = Vec::new();
                     for item in data.iter().take(20) {
                         if let Some(id) = item.get("subjectID").and_then(|i| i.as_i64()) {
@@ -740,12 +740,12 @@ impl WildberriesApiClient {
                     }
 
                     if subject_ids.contains(&7717) {
-                        self.log_to_file("✓ SubjectID 7717 is in the list!");
+                        self.log_to_file("вњ“ SubjectID 7717 is in the list!");
                     }
 
                     if data.len() > 1 {
                         self.log_to_file(&format!(
-                            "🔥 IMPORTANT: Seller has {} categories, but API returns only from ONE (7717)!",
+                            "рџ”Ґ IMPORTANT: Seller has {} categories, but API returns only from ONE (7717)!",
                             data.len()
                         ));
                         self.log_to_file(
@@ -799,7 +799,7 @@ impl WildberriesApiClient {
             "\n========== DIAGNOSTIC TEST: {} ==========",
             test_name
         ));
-        self.log_to_file("🔄 Testing pagination: Continue from FIRST page cursor");
+        self.log_to_file("рџ”„ Testing pagination: Continue from FIRST page cursor");
         self.log_to_file("Hypothesis: API returns products by categories page-by-page");
 
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
@@ -814,7 +814,7 @@ impl WildberriesApiClient {
 
         let url = format!("{}/content/v2/get/cards/list", base_url);
 
-        // Сначала получим первую страницу для извлечения cursor
+        // РЎРЅР°С‡Р°Р»Р° РїРѕР»СѓС‡РёРј РїРµСЂРІСѓСЋ СЃС‚СЂР°РЅРёС†Сѓ РґР»СЏ РёР·РІР»РµС‡РµРЅРёСЏ cursor
         self.log_to_file("Step 1: Get FIRST page to extract cursor...");
 
         let first_request = WildberriesProductListRequest {
@@ -899,7 +899,7 @@ impl WildberriesApiClient {
             first_page.cursor.nm_id
         ));
 
-        // Теперь запросим ВТОРУЮ страницу используя cursor из первой
+        // РўРµРїРµСЂСЊ Р·Р°РїСЂРѕСЃРёРј Р’РўРћР РЈР® СЃС‚СЂР°РЅРёС†Сѓ РёСЃРїРѕР»СЊР·СѓСЏ cursor РёР· РїРµСЂРІРѕР№
         self.log_to_file("Step 2: Get SECOND page using cursor from first page...");
 
         let second_request = WildberriesProductListRequest {
@@ -986,12 +986,12 @@ impl WildberriesApiClient {
         match serde_json::from_str::<WildberriesProductListResponse>(&body2_text) {
             Ok(second_page) => {
                 self.log_to_file(&format!(
-                    "✓ Second page: {} items, cursor.total={}",
+                    "вњ“ Second page: {} items, cursor.total={}",
                     second_page.cards.len(),
                     second_page.cursor.total
                 ));
 
-                // Проверим subjectID на второй странице
+                // РџСЂРѕРІРµСЂРёРј subjectID РЅР° РІС‚РѕСЂРѕР№ СЃС‚СЂР°РЅРёС†Рµ
                 let mut unique_subjects = std::collections::HashSet::new();
                 for card in &second_page.cards {
                     unique_subjects.insert(card.subject_id);
@@ -1004,10 +1004,12 @@ impl WildberriesApiClient {
                 ));
 
                 if second_page.cards.is_empty() {
-                    self.log_to_file("⚠️ Second page is EMPTY! All products were on first page.");
+                    self.log_to_file(
+                        "вљ пёЏ Second page is EMPTY! All products were on first page.",
+                    );
                     self.log_to_file("This means cursor.total matches actual product count.");
                 } else if unique_subjects.len() > 1 || !unique_subjects.contains(&7717) {
-                    self.log_to_file("🔥 JACKPOT! Second page has DIFFERENT categories!");
+                    self.log_to_file("рџ”Ґ JACKPOT! Second page has DIFFERENT categories!");
                     self.log_to_file("Solution: Need to continue pagination to get ALL products!");
                 } else if unique_subjects.contains(&7717) {
                     self.log_to_file("Still subjectID=7717. Need to continue further...");
@@ -1046,7 +1048,7 @@ impl WildberriesApiClient {
             "\n========== DIAGNOSTIC TEST: {} ==========",
             test_name
         ));
-        self.log_to_file("🗑️ CRITICAL: Checking TRASH/ARCHIVE endpoint");
+        self.log_to_file("рџ—‘пёЏ CRITICAL: Checking TRASH/ARCHIVE endpoint");
         self.log_to_file("Maybe most products are ARCHIVED/DELETED?");
 
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
@@ -1150,21 +1152,21 @@ impl WildberriesApiClient {
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
                 self.log_to_file(&format!(
-                    "✓ Success: {} items in TRASH, cursor.total={}",
+                    "вњ“ Success: {} items in TRASH, cursor.total={}",
                     data.cards.len(),
                     data.cursor.total
                 ));
 
                 if data.cursor.total > 100 {
                     self.log_to_file(&format!(
-                        "🔥 JACKPOT! Found {} archived products! This might be the missing products!",
+                        "рџ”Ґ JACKPOT! Found {} archived products! This might be the missing products!",
                         data.cursor.total
                     ));
                 } else {
                     self.log_to_file("Not many archived products found.");
                 }
 
-                // Проверяем уникальные subjectID в архиве
+                // РџСЂРѕРІРµСЂСЏРµРј СѓРЅРёРєР°Р»СЊРЅС‹Рµ subjectID РІ Р°СЂС…РёРІРµ
                 let mut unique_subjects = std::collections::HashSet::new();
                 for card in &data.cards {
                     unique_subjects.insert(card.subject_id);
@@ -1224,7 +1226,7 @@ impl WildberriesApiClient {
 
         let url = format!("{}/content/v2/get/cards/list", base_url);
 
-        // Попробуем СОВСЕМ минимальный запрос - без cursor вообще
+        // РџРѕРїСЂРѕР±СѓРµРј РЎРћР’РЎР•Рњ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїСЂРѕСЃ - Р±РµР· cursor РІРѕРѕР±С‰Рµ
         let body = format!(r#"{{"limit":{}}}"#, limit);
         self.log_to_file(&format!("Minimal request (no cursor at all): {}", body));
 
@@ -1286,14 +1288,14 @@ impl WildberriesApiClient {
 
         match serde_json::from_str::<WildberriesProductListResponse>(&body) {
             Ok(data) => {
-                // Проверяем уникальные subjectID
+                // РџСЂРѕРІРµСЂСЏРµРј СѓРЅРёРєР°Р»СЊРЅС‹Рµ subjectID
                 let mut unique_subjects = std::collections::HashSet::new();
                 for card in &data.cards {
                     unique_subjects.insert(card.subject_id);
                 }
 
                 self.log_to_file(&format!(
-                    "✓ Success: {} items, cursor.total={}",
+                    "вњ“ Success: {} items, cursor.total={}",
                     data.cards.len(),
                     data.cursor.total
                 ));
@@ -1305,11 +1307,11 @@ impl WildberriesApiClient {
 
                 if unique_subjects.len() == 1 {
                     self.log_to_file(
-                        "⚠️ WARNING: Still only ONE subjectID! API might be filtering by category.",
+                        "вљ пёЏ WARNING: Still only ONE subjectID! API might be filtering by category.",
                     );
                 } else {
                     self.log_to_file(&format!(
-                        "✓ GOOD: Multiple subjectIDs found! This approach might work."
+                        "вњ“ GOOD: Multiple subjectIDs found! This approach might work."
                     ));
                 }
 
@@ -1336,7 +1338,7 @@ impl WildberriesApiClient {
         }
     }
 
-    /// Записать в лог-файл
+    /// Р—Р°РїРёСЃР°С‚СЊ РІ Р»РѕРі-С„Р°Р№Р»
     fn log_to_file(&self, message: &str) {
         if let Ok(mut file) = OpenOptions::new()
             .create(true)
@@ -1348,17 +1350,17 @@ impl WildberriesApiClient {
         }
     }
 
-    /// Получить список товаров через POST /content/v2/get/cards/list
+    /// РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє С‚РѕРІР°СЂРѕРІ С‡РµСЂРµР· POST /content/v2/get/cards/list
     pub async fn fetch_product_list(
         &self,
         connection: &ConnectionMP,
         limit: i32,
         cursor: Option<WildberriesCursor>,
     ) -> Result<WildberriesProductListResponse> {
-        // Используем URL из настроек подключения, если задан, иначе default
+        // РСЃРїРѕР»СЊР·СѓРµРј URL РёР· РЅР°СЃС‚СЂРѕРµРє РїРѕРґРєР»СЋС‡РµРЅРёСЏ, РµСЃР»Рё Р·Р°РґР°РЅ, РёРЅР°С‡Рµ default
         let base_url = if let Some(ref supplier_id) = connection.supplier_id {
             if supplier_id.starts_with("http") {
-                // Если supplier_id содержит полный URL, используем его как base URL
+                // Р•СЃР»Рё supplier_id СЃРѕРґРµСЂР¶РёС‚ РїРѕР»РЅС‹Р№ URL, РёСЃРїРѕР»СЊР·СѓРµРј РµРіРѕ РєР°Рє base URL
                 supplier_id.trim_end_matches('/')
             } else {
                 "https://content-api.wildberries.ru"
@@ -1375,7 +1377,7 @@ impl WildberriesApiClient {
 
         self.log_to_file(&format!("Using API URL: {}", url));
 
-        // Wildberries API использует курсорную пагинацию
+        // Wildberries API РёСЃРїРѕР»СЊР·СѓРµС‚ РєСѓСЂСЃРѕСЂРЅСѓСЋ РїР°РіРёРЅР°С†РёСЋ
         let request_body = WildberriesProductListRequest {
             settings: WildberriesSettings {
                 cursor: cursor.unwrap_or_default(),
@@ -1407,13 +1409,13 @@ impl WildberriesApiClient {
                 self.log_to_file(&error_msg);
                 tracing::error!("Wildberries API connection error: {}", e);
 
-                // Проверяем конкретные типы ошибок
+                // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                 if e.is_timeout() {
-                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                    anyhow::bail!("Request timeout: API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ");
                 } else if e.is_connect() {
-                    anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                    anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ WB. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёРµ.");
                 } else if e.is_request() {
-                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                    anyhow::bail!("Request error: РїСЂРѕР±Р»РµРјР° РїСЂРё РѕС‚РїСЂР°РІРєРµ Р·Р°РїСЂРѕСЃР° - {}", e);
                 } else {
                     anyhow::bail!("Unknown error: {}", e);
                 }
@@ -1463,7 +1465,7 @@ impl WildberriesApiClient {
                 ));
 
                 if data.cards.is_empty() {
-                    self.log_to_file("⚠ WARNING: Empty cards array - no more products!");
+                    self.log_to_file("вљ  WARNING: Empty cards array - no more products!");
                 } else {
                     let first_nm_id = data.cards.first().map(|c| c.nm_id);
                     let last_nm_id = data.cards.last().map(|c| c.nm_id);
@@ -1496,9 +1498,9 @@ impl WildberriesApiClient {
         }
     }
 
-    /// Получить данные по продажам через Statistics API
+    /// РџРѕР»СѓС‡РёС‚СЊ РґР°РЅРЅС‹Рµ РїРѕ РїСЂРѕРґР°Р¶Р°Рј С‡РµСЂРµР· Statistics API
     /// GET /api/v1/supplier/sales
-    /// ВАЖНО: Загружает ВСЕ записи с учетом пагинации API
+    /// Р’РђР–РќРћ: Р—Р°РіСЂСѓР¶Р°РµС‚ Р’РЎР• Р·Р°РїРёСЃРё СЃ СѓС‡РµС‚РѕРј РїР°РіРёРЅР°С†РёРё API
     pub async fn fetch_sales(
         &self,
         connection: &ConnectionMP,
@@ -1514,29 +1516,29 @@ impl WildberriesApiClient {
         let date_from_str = date_from.format("%Y-%m-%d").to_string();
         let date_to_str = date_to.format("%Y-%m-%d").to_string();
 
-        // API Wildberries Statistics может возвращать до 100,000 записей за запрос,
-        // но рекомендуется делать запросы с флагом page для пагинации
-        // Согласно документации: если записей больше, то нужно делать повторные запросы
-        // используя параметр flag=1 для получения следующих страниц
+        // API Wildberries Statistics РјРѕР¶РµС‚ РІРѕР·РІСЂР°С‰Р°С‚СЊ РґРѕ 100,000 Р·Р°РїРёСЃРµР№ Р·Р° Р·Р°РїСЂРѕСЃ,
+        // РЅРѕ СЂРµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ РґРµР»Р°С‚СЊ Р·Р°РїСЂРѕСЃС‹ СЃ С„Р»Р°РіРѕРј page РґР»СЏ РїР°РіРёРЅР°С†РёРё
+        // РЎРѕРіР»Р°СЃРЅРѕ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё: РµСЃР»Рё Р·Р°РїРёСЃРµР№ Р±РѕР»СЊС€Рµ, С‚Рѕ РЅСѓР¶РЅРѕ РґРµР»Р°С‚СЊ РїРѕРІС‚РѕСЂРЅС‹Рµ Р·Р°РїСЂРѕСЃС‹
+        // РёСЃРїРѕР»СЊР·СѓСЏ РїР°СЂР°РјРµС‚СЂ flag=1 РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ СЃР»РµРґСѓСЋС‰РёС… СЃС‚СЂР°РЅРёС†
 
         let mut all_sales: Vec<(WbSaleRow, String)> = Vec::new();
-        let mut page_flag = 0; // 0 = первая страница, 1 = следующие страницы
+        let mut page_flag = 0; // 0 = РїРµСЂРІР°СЏ СЃС‚СЂР°РЅРёС†Р°, 1 = СЃР»РµРґСѓСЋС‰РёРµ СЃС‚СЂР°РЅРёС†С‹
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
-        self.log_to_file(&format!("║ WILDBERRIES SALES API - LOADING ALL RECORDS"));
-        self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
+        self.log_to_file(&format!("в•‘ WILDBERRIES SALES API - LOADING ALL RECORDS"));
+        self.log_to_file(&format!("в•‘ Period: {} to {}", date_from_str, date_to_str));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ"
         ));
 
         loop {
             self.log_to_file(&format!(
-                "\n┌────────────────────────────────────────────────────────────┐"
+                "\nв”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ"
             ));
             self.log_to_file(&format!(
-                "│ Request #{} (flag={})",
+                "в”‚ Request #{} (flag={})",
                 (page_flag + 1),
                 page_flag
             ));
@@ -1564,13 +1566,13 @@ impl WildberriesApiClient {
                     self.log_to_file(&error_msg);
                     tracing::error!("Wildberries Sales API connection error: {}", e);
 
-                    // Проверяем конкретные типы ошибок
+                    // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                     if e.is_timeout() {
-                        anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                        anyhow::bail!("Request timeout: API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ");
                     } else if e.is_connect() {
-                        anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                        anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ WB. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёРµ.");
                     } else if e.is_request() {
-                        anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                        anyhow::bail!("Request error: РїСЂРѕР±Р»РµРјР° РїСЂРё РѕС‚РїСЂР°РІРєРµ Р·Р°РїСЂРѕСЃР° - {}", e);
                     } else {
                         anyhow::bail!("Unknown error: {}", e);
                     }
@@ -1606,22 +1608,22 @@ impl WildberriesApiClient {
             match serde_json::from_str::<Vec<WbSaleRow>>(&body) {
                 Ok(page_data) => {
                     let page_count = page_data.len();
-                    self.log_to_file(&format!("│ Received: {} records", page_count));
+                    self.log_to_file(&format!("в”‚ Received: {} records", page_count));
                     self.log_to_file(&format!(
-                        "│ Total so far: {} records",
+                        "в”‚ Total so far: {} records",
                         all_sales.len() + page_count
                     ));
 
                     if page_data.is_empty() {
-                        self.log_to_file(&format!("│ ✓ Empty response - all records loaded"));
+                        self.log_to_file(&format!("в”‚ вњ“ Empty response - all records loaded"));
                         self.log_to_file(&format!(
-                            "└────────────────────────────────────────────────────────────┘"
+                            "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                         ));
                         break;
                     }
 
-                    // Парсим тело как массив serde_json::Value для сохранения оригинального JSON
-                    // Если не получается — используем пустой объект как fallback
+                    // РџР°СЂСЃРёРј С‚РµР»Рѕ РєР°Рє РјР°СЃСЃРёРІ serde_json::Value РґР»СЏ СЃРѕС…СЂР°РЅРµРЅРёСЏ РѕСЂРёРіРёРЅР°Р»СЊРЅРѕРіРѕ JSON
+                    // Р•СЃР»Рё РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ вЂ” РёСЃРїРѕР»СЊР·СѓРµРј РїСѓСЃС‚РѕР№ РѕР±СЉРµРєС‚ РєР°Рє fallback
                     let raw_values: Vec<serde_json::Value> =
                         serde_json::from_str(&body).unwrap_or_default();
 
@@ -1635,30 +1637,30 @@ impl WildberriesApiClient {
                         })
                         .collect();
 
-                    // Добавляем полученные данные
+                    // Р”РѕР±Р°РІР»СЏРµРј РїРѕР»СѓС‡РµРЅРЅС‹Рµ РґР°РЅРЅС‹Рµ
                     all_sales.extend(page_pairs);
 
-                    // API WB Statistics возвращает максимум 100,000 записей за запрос
-                    // Если получили меньше, значит это последняя страница
+                    // API WB Statistics РІРѕР·РІСЂР°С‰Р°РµС‚ РјР°РєСЃРёРјСѓРј 100,000 Р·Р°РїРёСЃРµР№ Р·Р° Р·Р°РїСЂРѕСЃ
+                    // Р•СЃР»Рё РїРѕР»СѓС‡РёР»Рё РјРµРЅСЊС€Рµ, Р·РЅР°С‡РёС‚ СЌС‚Рѕ РїРѕСЃР»РµРґРЅСЏСЏ СЃС‚СЂР°РЅРёС†Р°
                     if page_count < 100000 {
                         self.log_to_file(&format!(
-                            "│ ✓ Received {} records (less than limit) - last page",
+                            "в”‚ вњ“ Received {} records (less than limit) - last page",
                             page_count
                         ));
                         self.log_to_file(&format!(
-                            "└────────────────────────────────────────────────────────────┘"
+                            "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                         ));
                         break;
                     }
 
                     self.log_to_file(&format!(
-                        "│ → More records may be available, requesting next page..."
+                        "в”‚ в†’ More records may be available, requesting next page..."
                     ));
                     self.log_to_file(&format!(
-                        "└────────────────────────────────────────────────────────────┘"
+                        "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                     ));
 
-                    // Переходим к следующей странице
+                    // РџРµСЂРµС…РѕРґРёРј Рє СЃР»РµРґСѓСЋС‰РµР№ СЃС‚СЂР°РЅРёС†Рµ
                     page_flag = 1;
                 }
                 Err(e) => {
@@ -1668,24 +1670,24 @@ impl WildberriesApiClient {
                 }
             }
 
-            // Небольшая задержка между запросами для снижения нагрузки на API
+            // РќРµР±РѕР»СЊС€Р°СЏ Р·Р°РґРµСЂР¶РєР° РјРµР¶РґСѓ Р·Р°РїСЂРѕСЃР°РјРё РґР»СЏ СЃРЅРёР¶РµРЅРёСЏ РЅР°РіСЂСѓР·РєРё РЅР° API
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
         self.log_to_file(&format!(
-            "║ COMPLETED: Loaded {} total sale records",
+            "в•‘ COMPLETED: Loaded {} total sale records",
             all_sales.len()
         ));
-        // all_sales содержит пары (WbSaleRow, raw_json_string)
+        // all_sales СЃРѕРґРµСЂР¶РёС‚ РїР°СЂС‹ (WbSaleRow, raw_json_string)
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝\n"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ\n"
         ));
 
         tracing::info!(
-            "✓ Wildberries Sales API: Successfully loaded {} total records for period {} to {}",
+            "вњ“ Wildberries Sales API: Successfully loaded {} total records for period {} to {}",
             all_sales.len(),
             date_from_str,
             date_to_str
@@ -1694,11 +1696,11 @@ impl WildberriesApiClient {
         Ok(all_sales)
     }
 
-    /// Загрузить финансовые отчеты из Wildberries по периоду (reportDetailByPeriod)
-    /// Возвращает только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+    /// Р—Р°РіСЂСѓР·РёС‚СЊ С„РёРЅР°РЅСЃРѕРІС‹Рµ РѕС‚С‡РµС‚С‹ РёР· Wildberries РїРѕ РїРµСЂРёРѕРґСѓ (reportDetailByPeriod)
+    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РѕР»СЊРєРѕ Р•Р–Р•Р”РќР•Р’РќР«Р• РѕС‚С‡РµС‚С‹ (report_type = 1)
     ///
-    /// ВАЖНО: API имеет лимит 1 запрос в минуту!
-    /// Используется пагинация через rrdid для загрузки больших объемов данных.
+    /// Р’РђР–РќРћ: API РёРјРµРµС‚ Р»РёРјРёС‚ 1 Р·Р°РїСЂРѕСЃ РІ РјРёРЅСѓС‚Сѓ!
+    /// РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РїР°РіРёРЅР°С†РёСЏ С‡РµСЂРµР· rrdid РґР»СЏ Р·Р°РіСЂСѓР·РєРё Р±РѕР»СЊС€РёС… РѕР±СЉРµРјРѕРІ РґР°РЅРЅС‹С….
     pub async fn fetch_finance_report_by_period(
         &self,
         connection: &ConnectionMP,
@@ -1715,35 +1717,35 @@ impl WildberriesApiClient {
         let date_to_str = date_to.format("%Y-%m-%d").to_string();
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
         self.log_to_file(&format!(
-            "║ WILDBERRIES FINANCE REPORT API - reportDetailByPeriod"
+            "в•‘ WILDBERRIES FINANCE REPORT API - reportDetailByPeriod"
         ));
-        self.log_to_file(&format!("║ Period: {} to {}", date_from_str, date_to_str));
+        self.log_to_file(&format!("в•‘ Period: {} to {}", date_from_str, date_to_str));
         self.log_to_file(&format!(
-            "║ Rate limit: 1 request per minute (using pagination)"
+            "в•‘ Rate limit: 1 request per minute (using pagination)"
         ));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ"
         ));
 
         let period = "daily";
         let mut all_daily_reports: Vec<WbFinanceReportRow> = Vec::new();
-        let mut rrdid: i64 = 0; // Начинаем с 0 для первой страницы
-        let limit = 100000; // Максимальный лимит записей
+        let mut rrdid: i64 = 0; // РќР°С‡РёРЅР°РµРј СЃ 0 РґР»СЏ РїРµСЂРІРѕР№ СЃС‚СЂР°РЅРёС†С‹
+        let limit = 100000; // РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ Р»РёРјРёС‚ Р·Р°РїРёСЃРµР№
         let mut page_num = 1;
 
         loop {
             self.log_to_file(&format!(
-                "\n┌────────────────────────────────────────────────────────────┐"
+                "\nв”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ"
             ));
             self.log_to_file(&format!(
-                "│ Page {}: rrdid={}, limit={}",
+                "в”‚ Page {}: rrdid={}, limit={}",
                 page_num, rrdid, limit
             ));
             self.log_to_file(&format!(
-                "└────────────────────────────────────────────────────────────┘"
+                "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
             ));
 
             self.log_to_file(&format!(
@@ -1771,13 +1773,13 @@ impl WildberriesApiClient {
                     self.log_to_file(&error_msg);
                     tracing::error!("Wildberries Finance Report API connection error: {}", e);
 
-                    // Проверяем конкретные типы ошибок
+                    // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                     if e.is_timeout() {
-                        anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                        anyhow::bail!("Request timeout: API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ");
                     } else if e.is_connect() {
-                        anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                        anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ WB. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёРµ.");
                     } else if e.is_request() {
-                        anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                        anyhow::bail!("Request error: РїСЂРѕР±Р»РµРјР° РїСЂРё РѕС‚РїСЂР°РІРєРµ Р·Р°РїСЂРѕСЃР° - {}", e);
                     } else {
                         anyhow::bail!("Unknown error: {}", e);
                     }
@@ -1787,19 +1789,19 @@ impl WildberriesApiClient {
             let status = response.status();
             self.log_to_file(&format!("Response status: {}", status));
 
-            // Обработка 429 Too Many Requests - ждем и повторяем
+            // РћР±СЂР°Р±РѕС‚РєР° 429 Too Many Requests - Р¶РґРµРј Рё РїРѕРІС‚РѕСЂСЏРµРј
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 self.log_to_file(&format!(
-                    "│ ⚠️ Rate limit hit (429). Waiting 65 seconds before retry..."
+                    "в”‚ вљ пёЏ Rate limit hit (429). Waiting 65 seconds before retry..."
                 ));
                 tracing::warn!("WB Finance Report API rate limit hit. Waiting 65 seconds...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
                 continue;
             }
 
-            // Обработка 204 No Content - нет данных
+            // РћР±СЂР°Р±РѕС‚РєР° 204 No Content - РЅРµС‚ РґР°РЅРЅС‹С…
             if status == reqwest::StatusCode::NO_CONTENT {
-                self.log_to_file(&format!("│ No more data (204 No Content)"));
+                self.log_to_file(&format!("в”‚ No more data (204 No Content)"));
                 break;
             }
 
@@ -1816,9 +1818,9 @@ impl WildberriesApiClient {
 
             let body = response.text().await?;
 
-            // Пустой ответ - конец данных
+            // РџСѓСЃС‚РѕР№ РѕС‚РІРµС‚ - РєРѕРЅРµС† РґР°РЅРЅС‹С…
             if body.trim().is_empty() || body.trim() == "[]" {
-                self.log_to_file(&format!("│ Empty response - no more data"));
+                self.log_to_file(&format!("в”‚ Empty response - no more data"));
                 break;
             }
 
@@ -1833,7 +1835,7 @@ impl WildberriesApiClient {
                 body_preview
             ));
 
-            // Парсим записи
+            // РџР°СЂСЃРёРј Р·Р°РїРёСЃРё
             let page_rows: Vec<WbFinanceReportRow> = match serde_json::from_str(&body) {
                 Ok(rows) => rows,
                 Err(e) => {
@@ -1845,58 +1847,58 @@ impl WildberriesApiClient {
 
             let page_count = page_rows.len();
             self.log_to_file(&format!(
-                "│ Received {} records on page {}",
+                "в”‚ Received {} records on page {}",
                 page_count, page_num
             ));
 
             if page_count == 0 {
-                self.log_to_file(&format!("│ No records on this page - done"));
+                self.log_to_file(&format!("в”‚ No records on this page - done"));
                 break;
             }
 
-            // Находим максимальный rrd_id для следующей страницы
+            // РќР°С…РѕРґРёРј РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ rrd_id РґР»СЏ СЃР»РµРґСѓСЋС‰РµР№ СЃС‚СЂР°РЅРёС†С‹
             let max_rrd_id = page_rows.iter().filter_map(|r| r.rrd_id).max().unwrap_or(0);
 
-            // Фильтруем только ЕЖЕДНЕВНЫЕ отчеты (report_type = 1)
+            // Р¤РёР»СЊС‚СЂСѓРµРј С‚РѕР»СЊРєРѕ Р•Р–Р•Р”РќР•Р’РќР«Р• РѕС‚С‡РµС‚С‹ (report_type = 1)
             let daily_rows: Vec<WbFinanceReportRow> = page_rows
                 .into_iter()
                 .filter(|row| row.report_type == Some(1))
                 .collect();
 
             self.log_to_file(&format!(
-                "│ Filtered {} daily records (report_type=1)",
+                "в”‚ Filtered {} daily records (report_type=1)",
                 daily_rows.len()
             ));
 
             all_daily_reports.extend(daily_rows);
 
-            // Если получили меньше записей чем лимит, значит это последняя страница
+            // Р•СЃР»Рё РїРѕР»СѓС‡РёР»Рё РјРµРЅСЊС€Рµ Р·Р°РїРёСЃРµР№ С‡РµРј Р»РёРјРёС‚, Р·РЅР°С‡РёС‚ СЌС‚Рѕ РїРѕСЃР»РµРґРЅСЏСЏ СЃС‚СЂР°РЅРёС†Р°
             if page_count < limit as usize {
                 self.log_to_file(&format!(
-                    "│ Received {} < {} records - this is the last page",
+                    "в”‚ Received {} < {} records - this is the last page",
                     page_count, limit
                 ));
                 break;
             }
 
-            // Подготовка к следующей странице
+            // РџРѕРґРіРѕС‚РѕРІРєР° Рє СЃР»РµРґСѓСЋС‰РµР№ СЃС‚СЂР°РЅРёС†Рµ
             rrdid = max_rrd_id;
             page_num += 1;
 
             self.log_to_file(&format!(
-                "│ → More records may be available. Next rrdid={}",
+                "в”‚ в†’ More records may be available. Next rrdid={}",
                 rrdid
             ));
             self.log_to_file(&format!(
-                "│ ⏳ Waiting 65 seconds before next request (rate limit: 1 req/min)..."
+                "в”‚ вЏі Waiting 65 seconds before next request (rate limit: 1 req/min)..."
             ));
 
-            // ВАЖНО: API имеет лимит 1 запрос в минуту!
-            // Ждем 65 секунд для надежности
+            // Р’РђР–РќРћ: API РёРјРµРµС‚ Р»РёРјРёС‚ 1 Р·Р°РїСЂРѕСЃ РІ РјРёРЅСѓС‚Сѓ!
+            // Р–РґРµРј 65 СЃРµРєСѓРЅРґ РґР»СЏ РЅР°РґРµР¶РЅРѕСЃС‚Рё
             tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
         }
 
-        // Логируем первые 3 записи для проверки загрузки полей
+        // Р›РѕРіРёСЂСѓРµРј РїРµСЂРІС‹Рµ 3 Р·Р°РїРёСЃРё РґР»СЏ РїСЂРѕРІРµСЂРєРё Р·Р°РіСЂСѓР·РєРё РїРѕР»РµР№
         for (idx, row) in all_daily_reports.iter().take(3).enumerate() {
             self.log_to_file(&format!(
                 "\n=== Sample Record {} ===\nrrd_id: {:?}\ncommission_percent: {:?}\nppvz_sales_commission: {:?}\nretail_price_withdisc_rub: {:?}\nretail_amount: {:?}\n",
@@ -1917,19 +1919,19 @@ impl WildberriesApiClient {
         }
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
         self.log_to_file(&format!(
-            "║ COMPLETED: Loaded {} daily finance report records ({} pages)",
+            "в•‘ COMPLETED: Loaded {} daily finance report records ({} pages)",
             all_daily_reports.len(),
             page_num
         ));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝\n"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ\n"
         ));
 
         tracing::info!(
-            "✓ Wildberries Finance Report API: Successfully loaded {} daily records for period {} to {}",
+            "вњ“ Wildberries Finance Report API: Successfully loaded {} daily records for period {} to {}",
             all_daily_reports.len(),
             date_from_str,
             date_to_str
@@ -1938,16 +1940,16 @@ impl WildberriesApiClient {
         Ok(all_daily_reports)
     }
 
-    /// Получить данные по заказам через Statistics API (Backfill mode)
+    /// РџРѕР»СѓС‡РёС‚СЊ РґР°РЅРЅС‹Рµ РїРѕ Р·Р°РєР°Р·Р°Рј С‡РµСЂРµР· Statistics API (Backfill mode)
     /// GET /api/v1/supplier/orders
     ///
-    /// Стратегия:
-    /// - flag=0 (инкремент по lastChangeDate)
-    /// - dateFrom = курсор lastChangeDate
-    /// - для следующей страницы курсор сдвигаем на +1мс от максимального lastChangeDate
-    /// - соблюдаем лимит API (1 запрос/мин) и обрабатываем 429
+    /// РЎС‚СЂР°С‚РµРіРёСЏ:
+    /// - flag=0 (РёРЅРєСЂРµРјРµРЅС‚ РїРѕ lastChangeDate)
+    /// - dateFrom = РєСѓСЂСЃРѕСЂ lastChangeDate
+    /// - РґР»СЏ СЃР»РµРґСѓСЋС‰РµР№ СЃС‚СЂР°РЅРёС†С‹ РєСѓСЂСЃРѕСЂ СЃРґРІРёРіР°РµРј РЅР° +1РјСЃ РѕС‚ РјР°РєСЃРёРјР°Р»СЊРЅРѕРіРѕ lastChangeDate
+    /// - СЃРѕР±Р»СЋРґР°РµРј Р»РёРјРёС‚ API (1 Р·Р°РїСЂРѕСЃ/РјРёРЅ) Рё РѕР±СЂР°Р±Р°С‚С‹РІР°РµРј 429
     ///
-    /// date_to используется как soft-stop / фильтр.
+    /// date_to РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РєР°Рє soft-stop / С„РёР»СЊС‚СЂ.
     pub async fn fetch_orders(
         &self,
         connection: &ConnectionMP,
@@ -1982,23 +1984,26 @@ impl WildberriesApiClient {
         }
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
-        self.log_to_file(&format!("║ WILDBERRIES ORDERS API - BACKFILL BY CURSOR"));
-        self.log_to_file(&format!("║ Period: {} to {}", date_from, date_to));
-        self.log_to_file(&format!("║ API URL: {}", url));
+        self.log_to_file(&format!("в•‘ WILDBERRIES ORDERS API - BACKFILL BY CURSOR"));
+        self.log_to_file(&format!("в•‘ Period: {} to {}", date_from, date_to));
+        self.log_to_file(&format!("в•‘ API URL: {}", url));
         self.log_to_file(&format!(
-            "║ Method: flag=0 with lastChangeDate cursor (1 req/min)"
+            "в•‘ Method: flag=0 with lastChangeDate cursor (1 req/min)"
         ));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ"
         ));
 
         loop {
             self.log_to_file(&format!(
-                "\n┌────────────────────────────────────────────────────────────┐"
+                "\nв”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ"
             ));
-            self.log_to_file(&format!("│ Page {}: dateFrom={}, flag=0", page_num, cursor));
+            self.log_to_file(&format!(
+                "в”‚ Page {}: dateFrom={}, flag=0",
+                page_num, cursor
+            ));
 
             self.log_to_file(&format!(
                 "=== REQUEST ===\nGET {}?dateFrom={}&flag=0\nAuthorization: ****",
@@ -2017,43 +2022,43 @@ impl WildberriesApiClient {
                 Err(e) => {
                     let error_msg = format!("HTTP request to Orders API failed: {:?}", e);
                     self.log_to_file(&error_msg);
-                    tracing::error!("❌ Wildberries Orders API connection error: {}", e);
+                    tracing::error!("вќЊ Wildberries Orders API connection error: {}", e);
 
-                    // Проверяем конкретные типы ошибок
+                    // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                     if e.is_timeout() {
                         anyhow::bail!(
-                            "⏱️ Request timeout: Orders API не ответил в течение 60 секунд.\n\n\
-                            ⚠️ ВЕРОЯТНАЯ ПРИЧИНА: API endpoint /api/v1/supplier/orders может не существовать в Wildberries API.\n\
-                            💡 РЕКОМЕНДАЦИЯ: Попробуйте отключить импорт заказов (a015_wb_orders) и использовать только:\n\
-                               - a007_marketplace_product (товары)\n\
-                               - a012_wb_sales (продажи)\n\
-                               - p903_wb_finance_report (финансы)\n\n\
-                            📚 Проверьте актуальную документацию: https://openapi.wb.ru/statistics/api/ru/\n\
-                            🔗 URL: {}", 
+                            "вЏ±пёЏ Request timeout: Orders API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ.\n\n\
+                            вљ пёЏ Р’Р•Р РћРЇРўРќРђРЇ РџР РР§РРќРђ: API endpoint /api/v1/supplier/orders РјРѕР¶РµС‚ РЅРµ СЃСѓС‰РµСЃС‚РІРѕРІР°С‚СЊ РІ Wildberries API.\n\
+                            рџ’Ў Р Р•РљРћРњР•РќР”РђР¦РРЇ: РџРѕРїСЂРѕР±СѓР№С‚Рµ РѕС‚РєР»СЋС‡РёС‚СЊ РёРјРїРѕСЂС‚ Р·Р°РєР°Р·РѕРІ (a015_wb_orders) Рё РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ С‚РѕР»СЊРєРѕ:\n\
+                               - a007_marketplace_product (С‚РѕРІР°СЂС‹)\n\
+                               - a012_wb_sales (РїСЂРѕРґР°Р¶Рё)\n\
+                               - p903_wb_finance_report (С„РёРЅР°РЅСЃС‹)\n\n\
+                            рџ“љ РџСЂРѕРІРµСЂСЊС‚Рµ Р°РєС‚СѓР°Р»СЊРЅСѓСЋ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ: https://openapi.wb.ru/statistics/api/ru/\n\
+                            рџ”— URL: {}", 
                             url
                         );
                     } else if e.is_connect() {
                         anyhow::bail!(
-                            "🔌 Connection error: не удалось подключиться к WB Orders API.\n\n\
-                            ⚠️ ВЕРОЯТНАЯ ПРИЧИНА: API endpoint не существует или был изменён.\n\
-                            Возможные решения:\n\
-                            1. 📚 Проверьте документацию Wildberries API\n\
-                            2. 🌐 Убедитесь в наличии интернет-соединения\n\
-                            3. 🔑 Проверьте права API ключа\n\
-                            4. ⚙️ Отключите импорт заказов и используйте Sales API (a012)\n\n\
-                            🔗 URL: {}\n\
+                            "рџ”Њ Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє WB Orders API.\n\n\
+                            вљ пёЏ Р’Р•Р РћРЇРўРќРђРЇ РџР РР§РРќРђ: API endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё Р±С‹Р» РёР·РјРµРЅС‘РЅ.\n\
+                            Р’РѕР·РјРѕР¶РЅС‹Рµ СЂРµС€РµРЅРёСЏ:\n\
+                            1. рџ“љ РџСЂРѕРІРµСЂСЊС‚Рµ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ Wildberries API\n\
+                            2. рџЊђ РЈР±РµРґРёС‚РµСЃСЊ РІ РЅР°Р»РёС‡РёРё РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёСЏ\n\
+                            3. рџ”‘ РџСЂРѕРІРµСЂСЊС‚Рµ РїСЂР°РІР° API РєР»СЋС‡Р°\n\
+                            4. вљ™пёЏ РћС‚РєР»СЋС‡РёС‚Рµ РёРјРїРѕСЂС‚ Р·Р°РєР°Р·РѕРІ Рё РёСЃРїРѕР»СЊР·СѓР№С‚Рµ Sales API (a012)\n\n\
+                            рџ”— URL: {}\n\
                             Error: {}",
                             url,
                             e
                         );
                     } else if e.is_request() {
-                        anyhow::bail!("📤 Request error при загрузке orders: {}", e);
+                        anyhow::bail!("рџ“¤ Request error РїСЂРё Р·Р°РіСЂСѓР·РєРµ orders: {}", e);
                     } else {
                         anyhow::bail!(
-                            "❓ Unknown error при запросе orders: {}.\n\n\
-                            ⚠️ ВОЗМОЖНО: API endpoint не существует или не доступен.\n\
-                            📝 Проверьте документацию Wildberries API для корректного endpoint заказов.\n\
-                            🔗 URL: {}", 
+                            "вќ“ Unknown error РїСЂРё Р·Р°РїСЂРѕСЃРµ orders: {}.\n\n\
+                            вљ пёЏ Р’РћР—РњРћР–РќРћ: API endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё РЅРµ РґРѕСЃС‚СѓРїРµРЅ.\n\
+                            рџ“ќ РџСЂРѕРІРµСЂСЊС‚Рµ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ Wildberries API РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ endpoint Р·Р°РєР°Р·РѕРІ.\n\
+                            рџ”— URL: {}", 
                             e, url
                         );
                     }
@@ -2067,14 +2072,14 @@ impl WildberriesApiClient {
 
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 self.log_to_file(&format!(
-                    "│ ⚠️ Rate limit hit (429). Waiting 65 seconds before retry..."
+                    "в”‚ вљ пёЏ Rate limit hit (429). Waiting 65 seconds before retry..."
                 ));
                 tracing::warn!("WB Orders API rate limit hit. Waiting 65 seconds...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
                 continue;
             }
 
-            // Логируем заголовки ответа для диагностики
+            // Р›РѕРіРёСЂСѓРµРј Р·Р°РіРѕР»РѕРІРєРё РѕС‚РІРµС‚Р° РґР»СЏ РґРёР°РіРЅРѕСЃС‚РёРєРё
             self.log_to_file(&format!("Response headers:"));
             for (name, value) in response.headers() {
                 if let Ok(val_str) = value.to_str() {
@@ -2091,7 +2096,7 @@ impl WildberriesApiClient {
                     body
                 );
 
-                // Специальная обработка для 302 редиректов
+                // РЎРїРµС†РёР°Р»СЊРЅР°СЏ РѕР±СЂР°Р±РѕС‚РєР° РґР»СЏ 302 СЂРµРґРёСЂРµРєС‚РѕРІ
                 if status.as_u16() == 302 || status.as_u16() == 301 {
                     anyhow::bail!(
                         "Wildberries Orders API returned redirect {} for cursor {}. \
@@ -2115,11 +2120,11 @@ impl WildberriesApiClient {
                 );
             }
 
-            // Читаем тело ответа
+            // Р§РёС‚Р°РµРј С‚РµР»Рѕ РѕС‚РІРµС‚Р°
             let body = match response.text().await {
                 Ok(b) => b,
                 Err(e) => {
-                    self.log_to_file(&format!("│ ⚠️ Failed to read response body: {}", e));
+                    self.log_to_file(&format!("в”‚ вљ пёЏ Failed to read response body: {}", e));
                     tracing::error!("Failed to read response body for cursor {}: {}", cursor, e);
                     anyhow::bail!("Failed to read response body: {}", e);
                 }
@@ -2127,13 +2132,13 @@ impl WildberriesApiClient {
 
             self.log_to_file(&format!("Body length: {} bytes", body.len()));
 
-            // Проверяем, не пустой ли ответ
+            // РџСЂРѕРІРµСЂСЏРµРј, РЅРµ РїСѓСЃС‚РѕР№ Р»Рё РѕС‚РІРµС‚
             let body_trimmed = body.trim();
             if body_trimmed.is_empty() || body_trimmed == "[]" {
-                self.log_to_file(&format!("│ Empty response, all records loaded"));
-                self.log_to_file(&format!("│ Total so far: {} records", all_orders.len()));
+                self.log_to_file(&format!("в”‚ Empty response, all records loaded"));
+                self.log_to_file(&format!("в”‚ Total so far: {} records", all_orders.len()));
                 self.log_to_file(&format!(
-                    "└────────────────────────────────────────────────────────────┘"
+                    "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                 ));
                 break;
             }
@@ -2153,15 +2158,15 @@ impl WildberriesApiClient {
                 Ok(page_data) => {
                     let page_count = page_data.len();
                     self.log_to_file(&format!(
-                        "│ Received: {} rows on page {}",
+                        "в”‚ Received: {} rows on page {}",
                         page_count, page_num
                     ));
                     self.log_to_file(&format!(
-                        "│ Total so far: {} records",
+                        "в”‚ Total so far: {} records",
                         all_orders.len() + page_count
                     ));
                     self.log_to_file(&format!(
-                        "└────────────────────────────────────────────────────────────┘"
+                        "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                     ));
 
                     let mut max_last_change = None::<chrono::NaiveDateTime>;
@@ -2175,7 +2180,7 @@ impl WildberriesApiClient {
                             }
                         }
 
-                        // soft-stop по date_to: строки после date_to не включаем
+                        // soft-stop РїРѕ date_to: СЃС‚СЂРѕРєРё РїРѕСЃР»Рµ date_to РЅРµ РІРєР»СЋС‡Р°РµРј
                         let include_row = row_last_change.map(|dt| dt <= soft_stop).unwrap_or(true);
                         if include_row {
                             all_orders.push(row);
@@ -2183,16 +2188,19 @@ impl WildberriesApiClient {
                         }
                     }
 
-                    self.log_to_file(&format!("│ Kept {} rows after soft-stop filter", kept_rows));
+                    self.log_to_file(&format!(
+                        "в”‚ Kept {} rows after soft-stop filter",
+                        kept_rows
+                    ));
 
                     let Some(max_dt) = max_last_change else {
-                        self.log_to_file("│ No lastChangeDate found on page; stopping");
+                        self.log_to_file("в”‚ No lastChangeDate found on page; stopping");
                         break;
                     };
 
                     if max_dt > soft_stop {
                         self.log_to_file(&format!(
-                            "│ Soft-stop reached (max lastChangeDate {} > date_to {})",
+                            "в”‚ Soft-stop reached (max lastChangeDate {} > date_to {})",
                             max_dt, soft_stop
                         ));
                         break;
@@ -2210,23 +2218,23 @@ impl WildberriesApiClient {
                 }
             }
 
-            // Лимит WB Statistics: 1 запрос в минуту
+            // Р›РёРјРёС‚ WB Statistics: 1 Р·Р°РїСЂРѕСЃ РІ РјРёРЅСѓС‚Сѓ
             tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
         }
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
         self.log_to_file(&format!(
-            "║ COMPLETED: Loaded {} total order records",
+            "в•‘ COMPLETED: Loaded {} total order records",
             all_orders.len()
         ));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝\n"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ\n"
         ));
 
         tracing::info!(
-            "✓ Wildberries Orders API: Successfully loaded {} total records for period {} to {}",
+            "вњ“ Wildberries Orders API: Successfully loaded {} total records for period {} to {}",
             all_orders.len(),
             date_from,
             date_to
@@ -2338,10 +2346,10 @@ impl WildberriesApiClient {
         Ok(parsed.data)
     }
 
-    /// Получить тарифы комиссий по категориям
+    /// РџРѕР»СѓС‡РёС‚СЊ С‚Р°СЂРёС„С‹ РєРѕРјРёСЃСЃРёР№ РїРѕ РєР°С‚РµРіРѕСЂРёСЏРј
     /// GET https://common-api.wildberries.ru/api/v1/tariffs/commission?locale=ru
     ///
-    /// Требует авторизацию через API ключ
+    /// РўСЂРµР±СѓРµС‚ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ С‡РµСЂРµР· API РєР»СЋС‡
     pub async fn fetch_commission_tariffs(
         &self,
         connection: &ConnectionMP,
@@ -2353,13 +2361,13 @@ impl WildberriesApiClient {
         }
 
         self.log_to_file(&format!(
-            "\n╔════════════════════════════════════════════════════════════════╗"
+            "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
-        self.log_to_file(&format!("║ WILDBERRIES COMMISSION TARIFFS API"));
-        self.log_to_file(&format!("║ URL: {}", url));
-        self.log_to_file(&format!("║ Method: GET (requires Authorization header)"));
+        self.log_to_file(&format!("в•‘ WILDBERRIES COMMISSION TARIFFS API"));
+        self.log_to_file(&format!("в•‘ URL: {}", url));
+        self.log_to_file(&format!("в•‘ Method: GET (requires Authorization header)"));
         self.log_to_file(&format!(
-            "╚════════════════════════════════════════════════════════════════╝"
+            "в•љв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ќ"
         ));
 
         self.log_to_file(&format!(
@@ -2380,13 +2388,13 @@ impl WildberriesApiClient {
                 self.log_to_file(&error_msg);
                 tracing::error!("Wildberries Commission Tariffs API connection error: {}", e);
 
-                // Проверяем конкретные типы ошибок
+                // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                 if e.is_timeout() {
-                    anyhow::bail!("Request timeout: API не ответил в течение 60 секунд");
+                    anyhow::bail!("Request timeout: API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ");
                 } else if e.is_connect() {
-                    anyhow::bail!("Connection error: не удалось подключиться к серверу WB. Проверьте интернет-соединение.");
+                    anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ WB. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёРµ.");
                 } else if e.is_request() {
-                    anyhow::bail!("Request error: проблема при отправке запроса - {}", e);
+                    anyhow::bail!("Request error: РїСЂРѕР±Р»РµРјР° РїСЂРё РѕС‚РїСЂР°РІРєРµ Р·Р°РїСЂРѕСЃР° - {}", e);
                 } else {
                     anyhow::bail!("Unknown error: {}", e);
                 }
@@ -2420,19 +2428,19 @@ impl WildberriesApiClient {
         })?;
 
         self.log_to_file(&format!(
-            "✓ Successfully parsed {} commission tariff records",
+            "вњ“ Successfully parsed {} commission tariff records",
             parsed.report.len()
         ));
 
         tracing::info!(
-            "✓ Wildberries Commission Tariffs API: Successfully loaded {} tariff records",
+            "вњ“ Wildberries Commission Tariffs API: Successfully loaded {} tariff records",
             parsed.report.len()
         );
 
         Ok(parsed.report)
     }
 
-    /// Получить страницу цен товаров из WB Prices API
+    /// РџРѕР»СѓС‡РёС‚СЊ СЃС‚СЂР°РЅРёС†Сѓ С†РµРЅ С‚РѕРІР°СЂРѕРІ РёР· WB Prices API
     /// GET https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=N&offset=N
     pub async fn fetch_goods_prices(
         &self,
@@ -2467,9 +2475,9 @@ impl WildberriesApiClient {
                 self.log_to_file(&error_msg);
                 tracing::error!("Wildberries Prices API connection error: {}", e);
                 if e.is_timeout() {
-                    anyhow::bail!("Request timeout: WB Prices API не ответил в течение 60 секунд");
+                    anyhow::bail!("Request timeout: WB Prices API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ");
                 } else if e.is_connect() {
-                    anyhow::bail!("Connection error: не удалось подключиться к discounts-prices-api.wildberries.ru");
+                    anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє discounts-prices-api.wildberries.ru");
                 } else {
                     anyhow::bail!("Unknown error: {}", e);
                 }
@@ -2502,7 +2510,7 @@ impl WildberriesApiClient {
         })?;
 
         let rows = parsed.data.map(|d| d.list_goods).unwrap_or_default();
-        self.log_to_file(&format!("✓ Parsed {} goods price rows", rows.len()));
+        self.log_to_file(&format!("вњ“ Parsed {} goods price rows", rows.len()));
         tracing::info!(
             "WB Prices API: loaded {} rows (offset={})",
             rows.len(),
@@ -2512,7 +2520,7 @@ impl WildberriesApiClient {
         Ok(rows)
     }
 
-    /// GET /api/v1/calendar/promotions — список акций из WB Calendar API
+    /// GET /api/v1/calendar/promotions вЂ” СЃРїРёСЃРѕРє Р°РєС†РёР№ РёР· WB Calendar API
     pub async fn fetch_calendar_promotions(
         &self,
         connection: &ConnectionMP,
@@ -2548,10 +2556,10 @@ impl WildberriesApiClient {
                 tracing::error!("WB Promotion API connection error: {}", e);
                 if e.is_timeout() {
                     anyhow::bail!(
-                        "Request timeout: WB Promotion API не ответил в течение 60 секунд"
+                        "Request timeout: WB Promotion API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ"
                     );
                 } else if e.is_connect() {
-                    anyhow::bail!("Connection error: не удалось подключиться к dp-calendar-api.wildberries.ru");
+                    anyhow::bail!("Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє dp-calendar-api.wildberries.ru");
                 } else {
                     anyhow::bail!("Unknown error: {}", e);
                 }
@@ -2597,13 +2605,13 @@ impl WildberriesApiClient {
         } else {
             vec![]
         };
-        self.log_to_file(&format!("✓ Parsed {} promotions", promotions.len()));
+        self.log_to_file(&format!("вњ“ Parsed {} promotions", promotions.len()));
         tracing::info!("WB Calendar API: loaded {} promotions", promotions.len());
 
         Ok(promotions)
     }
 
-    /// GET /api/v1/calendar/promotions/details — детальная информация по списку акций (до 100 ID за раз)
+    /// GET /api/v1/calendar/promotions/details вЂ” РґРµС‚Р°Р»СЊРЅР°СЏ РёРЅС„РѕСЂРјР°С†РёСЏ РїРѕ СЃРїРёСЃРєСѓ Р°РєС†РёР№ (РґРѕ 100 ID Р·Р° СЂР°Р·)
     pub async fn fetch_promotion_details(
         &self,
         connection: &ConnectionMP,
@@ -2616,7 +2624,7 @@ impl WildberriesApiClient {
             anyhow::bail!("API Key is required for Wildberries Promotion Details API");
         }
 
-        // Формируем query string: promotionIDs=1&promotionIDs=2&...
+        // Р¤РѕСЂРјРёСЂСѓРµРј query string: promotionIDs=1&promotionIDs=2&...
         let query: String = promotion_ids
             .iter()
             .map(|id| format!("promotionIDs={}", id))
@@ -2677,16 +2685,16 @@ impl WildberriesApiClient {
         Ok(details)
     }
 
-    /// GET /api/v1/calendar/promotions/nomenclatures — список nmId товаров для акции
-    /// Обязательные параметры: promotionID + inAction
-    /// Не работает для акций типа "auto"
+    /// GET /api/v1/calendar/promotions/nomenclatures вЂ” СЃРїРёСЃРѕРє nmId С‚РѕРІР°СЂРѕРІ РґР»СЏ Р°РєС†РёРё
+    /// РћР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹: promotionID + inAction
+    /// РќРµ СЂР°Р±РѕС‚Р°РµС‚ РґР»СЏ Р°РєС†РёР№ С‚РёРїР° "auto"
     pub async fn fetch_promotion_nomenclatures(
         &self,
         connection: &ConnectionMP,
         promotion_id: i64,
         promotion_type: Option<&str>,
     ) -> Result<Vec<i64>> {
-        // Автоматические акции не поддерживают этот эндпоинт
+        // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРёРµ Р°РєС†РёРё РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚ СЌС‚РѕС‚ СЌРЅРґРїРѕРёРЅС‚
         if promotion_type.map(|t| t == "auto").unwrap_or(false) {
             tracing::debug!(
                 "Skipping nomenclatures for auto promotion {} (not supported)",
@@ -2702,7 +2710,7 @@ impl WildberriesApiClient {
         let mut all_nm_ids: Vec<i64> = Vec::new();
         let page_size: u32 = 1000;
 
-        // Загружаем оба состояния: участвующие (inAction=true) и подходящие (inAction=false)
+        // Р—Р°РіСЂСѓР¶Р°РµРј РѕР±Р° СЃРѕСЃС‚РѕСЏРЅРёСЏ: СѓС‡Р°СЃС‚РІСѓСЋС‰РёРµ (inAction=true) Рё РїРѕРґС…РѕРґСЏС‰РёРµ (inAction=false)
         for in_action in [true, false] {
             let mut offset: u32 = 0;
             loop {
@@ -2787,7 +2795,7 @@ impl WildberriesApiClient {
         Ok(all_nm_ids)
     }
 
-    /// GET /adv/v1/promotion/count — получить все advertId рекламных кампаний (статусы 7, 9, 11)
+    /// GET /adv/v1/promotion/count вЂ” РїРѕР»СѓС‡РёС‚СЊ РІСЃРµ advertId СЂРµРєР»Р°РјРЅС‹С… РєР°РјРїР°РЅРёР№ (СЃС‚Р°С‚СѓСЃС‹ 7, 9, 11)
     pub async fn fetch_advert_campaign_ids(&self, connection: &ConnectionMP) -> Result<Vec<i64>> {
         let url = "https://advert-api.wildberries.ru/adv/v1/promotion/count";
 
@@ -2853,12 +2861,12 @@ impl WildberriesApiClient {
             .collect();
 
         tracing::info!("WB Advert: found {} campaign IDs", ids.len());
-        self.log_to_file(&format!("✓ Found {} advertIds", ids.len()));
+        self.log_to_file(&format!("вњ“ Found {} advertIds", ids.len()));
 
         Ok(ids)
     }
 
-    /// GET /adv/v3/fullstats — статистика рекламных кампаний (макс 50 ID за запрос)
+    /// GET /adv/v3/fullstats вЂ” СЃС‚Р°С‚РёСЃС‚РёРєР° СЂРµРєР»Р°РјРЅС‹С… РєР°РјРїР°РЅРёР№ (РјР°РєСЃ 50 ID Р·Р° Р·Р°РїСЂРѕСЃ)
     pub async fn fetch_advert_fullstats(
         &self,
         connection: &ConnectionMP,
@@ -2940,7 +2948,7 @@ impl Default for WildberriesApiClient {
 }
 
 // ============================================================================
-// Request/Response structures для Wildberries API
+// Request/Response structures РґР»СЏ Wildberries API
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3041,9 +3049,12 @@ pub struct WildberriesDimensions {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WildberriesCharacteristic {
-    #[serde(rename = "Наименование характеристики", default)]
+    #[serde(
+        rename = "РќР°РёРјРµРЅРѕРІР°РЅРёРµ С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё",
+        default
+    )]
     pub name: Option<String>,
-    #[serde(rename = "Значение характеристики", default)]
+    #[serde(rename = "Р—РЅР°С‡РµРЅРёРµ С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё", default)]
     pub value: Option<String>,
 }
 
@@ -3079,82 +3090,82 @@ pub struct WildberriesTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSaleRow {
-    /// Уникальный идентификатор строки продажи
+    /// РЈРЅРёРєР°Р»СЊРЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЃС‚СЂРѕРєРё РїСЂРѕРґР°Р¶Рё
     #[serde(default)]
     pub srid: Option<String>,
-    /// Номенклатурный номер товара
+    /// РќРѕРјРµРЅРєР»Р°С‚СѓСЂРЅС‹Р№ РЅРѕРјРµСЂ С‚РѕРІР°СЂР°
     #[serde(rename = "nmId", default)]
     pub nm_id: Option<i64>,
-    /// Артикул продавца
+    /// РђСЂС‚РёРєСѓР» РїСЂРѕРґР°РІС†Р°
     #[serde(rename = "supplierArticle", default)]
     pub supplier_article: Option<String>,
-    /// Штрихкод
+    /// РЁС‚СЂРёС…РєРѕРґ
     #[serde(default)]
     pub barcode: Option<String>,
-    /// Название товара
+    /// РќР°Р·РІР°РЅРёРµ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub brand: Option<String>,
-    /// Предмет
+    /// РџСЂРµРґРјРµС‚
     #[serde(default)]
     pub subject: Option<String>,
-    /// Категория
+    /// РљР°С‚РµРіРѕСЂРёСЏ
     #[serde(default)]
     pub category: Option<String>,
-    /// Дата продажи
+    /// Р”Р°С‚Р° РїСЂРѕРґР°Р¶Рё
     #[serde(rename = "date", default)]
     pub sale_dt: Option<String>,
-    /// Дата последнего изменения записи
+    /// Р”Р°С‚Р° РїРѕСЃР»РµРґРЅРµРіРѕ РёР·РјРµРЅРµРЅРёСЏ Р·Р°РїРёСЃРё
     #[serde(rename = "lastChangeDate", default)]
     pub last_change_date: Option<String>,
-    /// Склад
+    /// РЎРєР»Р°Рґ
     #[serde(rename = "warehouseName", default)]
     pub warehouse_name: Option<String>,
-    /// Страна
+    /// РЎС‚СЂР°РЅР°
     #[serde(rename = "countryName", default)]
     pub country_name: Option<String>,
-    /// Регион
+    /// Р РµРіРёРѕРЅ
     #[serde(rename = "oblastOkrugName", default)]
     pub region_name: Option<String>,
-    /// Цена без скидки
+    /// Р¦РµРЅР° Р±РµР· СЃРєРёРґРєРё
     #[serde(rename = "priceWithDisc", default)]
     pub price_with_disc: Option<f64>,
-    /// Скидка продавца
+    /// РЎРєРёРґРєР° РїСЂРѕРґР°РІС†Р°
     #[serde(rename = "discount", default)]
     pub discount: Option<f64>,
-    /// Количество
+    /// РљРѕР»РёС‡РµСЃС‚РІРѕ
     #[serde(rename = "quantity", default)]
     pub quantity: Option<i32>,
-    /// Тип документа: sale или return
+    /// РўРёРї РґРѕРєСѓРјРµРЅС‚Р°: sale РёР»Рё return
     #[serde(rename = "saleID", default)]
     pub sale_id: Option<String>,
-    /// Номер заказа
+    /// РќРѕРјРµСЂ Р·Р°РєР°Р·Р°
     #[serde(rename = "odid", default)]
     pub order_id: Option<i64>,
-    /// SPP (Согласованная скидка продавца)
+    /// SPP (РЎРѕРіР»Р°СЃРѕРІР°РЅРЅР°СЏ СЃРєРёРґРєР° РїСЂРѕРґР°РІС†Р°)
     #[serde(rename = "spp", default)]
     pub spp: Option<f64>,
-    /// Вознаграждение
+    /// Р’РѕР·РЅР°РіСЂР°Р¶РґРµРЅРёРµ
     #[serde(rename = "forPay", default)]
     pub for_pay: Option<f64>,
-    /// Итоговая стоимость
+    /// РС‚РѕРіРѕРІР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ
     #[serde(rename = "finishedPrice", default)]
     pub finished_price: Option<f64>,
-    /// Флаг поставки
+    /// Р¤Р»Р°Рі РїРѕСЃС‚Р°РІРєРё
     #[serde(rename = "isSupply", default)]
     pub is_supply: Option<bool>,
-    /// Флаг реализации
+    /// Р¤Р»Р°Рі СЂРµР°Р»РёР·Р°С†РёРё
     #[serde(rename = "isRealization", default)]
     pub is_realization: Option<bool>,
-    /// Полная цена
+    /// РџРѕР»РЅР°СЏ С†РµРЅР°
     #[serde(rename = "totalPrice", default)]
     pub total_price: Option<f64>,
-    /// Процент скидки
+    /// РџСЂРѕС†РµРЅС‚ СЃРєРёРґРєРё
     #[serde(rename = "discountPercent", default)]
     pub discount_percent: Option<f64>,
-    /// Сумма платежа за продажу
+    /// РЎСѓРјРјР° РїР»Р°С‚РµР¶Р° Р·Р° РїСЂРѕРґР°Р¶Сѓ
     #[serde(rename = "paymentSaleAmount", default)]
     pub payment_sale_amount: Option<f64>,
-    /// Тип склада
+    /// РўРёРї СЃРєР»Р°РґР°
     #[serde(rename = "warehouseType", default)]
     pub warehouse_type: Option<String>,
 }
@@ -3165,243 +3176,243 @@ pub struct WbSaleRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbFinanceReportRow {
-    /// ID строки отчета
+    /// ID СЃС‚СЂРѕРєРё РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub rrd_id: Option<i64>,
-    /// Дата строки финансового отчёта
+    /// Р”Р°С‚Р° СЃС‚СЂРѕРєРё С„РёРЅР°РЅСЃРѕРІРѕРіРѕ РѕС‚С‡С‘С‚Р°
     #[serde(default)]
     pub rr_dt: Option<String>,
-    /// Номенклатурный номер товара
+    /// РќРѕРјРµРЅРєР»Р°С‚СѓСЂРЅС‹Р№ РЅРѕРјРµСЂ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub nm_id: Option<i64>,
-    /// Артикул продавца
+    /// РђСЂС‚РёРєСѓР» РїСЂРѕРґР°РІС†Р°
     #[serde(default)]
     pub sa_name: Option<String>,
-    /// Категория товара
+    /// РљР°С‚РµРіРѕСЂРёСЏ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub subject_name: Option<String>,
-    /// Тип операции по заказу
+    /// РўРёРї РѕРїРµСЂР°С†РёРё РїРѕ Р·Р°РєР°Р·Сѓ
     #[serde(default)]
     pub supplier_oper_name: Option<String>,
-    /// Количество товаров
+    /// РљРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕРІР°СЂРѕРІ
     #[serde(default)]
     pub quantity: Option<i32>,
-    /// Розничная цена за единицу товара
+    /// Р РѕР·РЅРёС‡РЅР°СЏ С†РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub retail_price: Option<f64>,
-    /// Общая сумма продажи
+    /// РћР±С‰Р°СЏ СЃСѓРјРјР° РїСЂРѕРґР°Р¶Рё
     #[serde(default)]
     pub retail_amount: Option<f64>,
-    /// Цена продажи с учетом скидок
+    /// Р¦РµРЅР° РїСЂРѕРґР°Р¶Рё СЃ СѓС‡РµС‚РѕРј СЃРєРёРґРѕРє
     #[serde(default)]
     pub retail_price_withdisc_rub: Option<f64>,
-    /// Процент комиссии Wildberries
+    /// РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё Wildberries
     #[serde(default)]
     pub commission_percent: Option<f64>,
-    /// Комиссия за эквайринг
+    /// РљРѕРјРёСЃСЃРёСЏ Р·Р° СЌРєРІР°Р№СЂРёРЅРі
     #[serde(default)]
     pub acquiring_fee: Option<f64>,
-    /// Процент комиссии за эквайринг
+    /// РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё Р·Р° СЌРєРІР°Р№СЂРёРЅРі
     #[serde(default)]
     pub acquiring_percent: Option<f64>,
-    /// Сумма, уплаченная покупателем за доставку
+    /// РЎСѓРјРјР°, СѓРїР»Р°С‡РµРЅРЅР°СЏ РїРѕРєСѓРїР°С‚РµР»РµРј Р·Р° РґРѕСЃС‚Р°РІРєСѓ
     #[serde(default)]
     pub delivery_amount: Option<f64>,
-    /// Стоимость доставки на стороне продавца
+    /// РЎС‚РѕРёРјРѕСЃС‚СЊ РґРѕСЃС‚Р°РІРєРё РЅР° СЃС‚РѕСЂРѕРЅРµ РїСЂРѕРґР°РІС†Р°
     #[serde(default)]
     pub delivery_rub: Option<f64>,
-    /// Сумма вознаграждения Вайлдберриз за текущий период (ВВ), без НДС
+    /// РЎСѓРјРјР° РІРѕР·РЅР°РіСЂР°Р¶РґРµРЅРёСЏ Р’Р°Р№Р»РґР±РµСЂСЂРёР· Р·Р° С‚РµРєСѓС‰РёР№ РїРµСЂРёРѕРґ (Р’Р’), Р±РµР· РќР”РЎ
     #[serde(default)]
     pub ppvz_vw: Option<f64>,
-    /// НДС с вознаграждения Вайлдберриз
+    /// РќР”РЎ СЃ РІРѕР·РЅР°РіСЂР°Р¶РґРµРЅРёСЏ Р’Р°Р№Р»РґР±РµСЂСЂРёР·
     #[serde(default)]
     pub ppvz_vw_nds: Option<f64>,
-    /// Комиссия WB за продажу
+    /// РљРѕРјРёСЃСЃРёСЏ WB Р·Р° РїСЂРѕРґР°Р¶Сѓ
     #[serde(default)]
     pub ppvz_sales_commission: Option<f64>,
-    /// Сумма возврата за возвращённые товары
+    /// РЎСѓРјРјР° РІРѕР·РІСЂР°С‚Р° Р·Р° РІРѕР·РІСЂР°С‰С‘РЅРЅС‹Рµ С‚РѕРІР°СЂС‹
     #[serde(default)]
     pub return_amount: Option<f64>,
-    /// Сумма штрафа, удержанного с продавца
+    /// РЎСѓРјРјР° С€С‚СЂР°С„Р°, СѓРґРµСЂР¶Р°РЅРЅРѕРіРѕ СЃ РїСЂРѕРґР°РІС†Р°
     #[serde(default)]
     pub penalty: Option<f64>,
-    /// Дополнительные (корректирующие) выплаты продавцу
+    /// Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ (РєРѕСЂСЂРµРєС‚РёСЂСѓСЋС‰РёРµ) РІС‹РїР»Р°С‚С‹ РїСЂРѕРґР°РІС†Сѓ
     #[serde(default)]
     pub additional_payment: Option<f64>,
-    /// Плата за хранение товаров на складе
+    /// РџР»Р°С‚Р° Р·Р° С…СЂР°РЅРµРЅРёРµ С‚РѕРІР°СЂРѕРІ РЅР° СЃРєР»Р°РґРµ
     #[serde(default)]
     pub storage_fee: Option<f64>,
-    /// Скорректированные расходы на логистику
+    /// РЎРєРѕСЂСЂРµРєС‚РёСЂРѕРІР°РЅРЅС‹Рµ СЂР°СЃС…РѕРґС‹ РЅР° Р»РѕРіРёСЃС‚РёРєСѓ
     #[serde(default)]
     pub rebill_logistic_cost: Option<f64>,
-    /// Тип бонуса или штрафа
+    /// РўРёРї Р±РѕРЅСѓСЃР° РёР»Рё С€С‚СЂР°С„Р°
     #[serde(default)]
     pub bonus_type_name: Option<String>,
-    /// Тип отчета (1 = daily, 2 = weekly)
+    /// РўРёРї РѕС‚С‡РµС‚Р° (1 = daily, 2 = weekly)
     #[serde(default)]
     pub report_type: Option<i32>,
 
-    // ============ Дополнительные поля из API (для полного JSON) ============
-    /// ID реализационного отчета
+    // ============ Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ РёР· API (РґР»СЏ РїРѕР»РЅРѕРіРѕ JSON) ============
+    /// ID СЂРµР°Р»РёР·Р°С†РёРѕРЅРЅРѕРіРѕ РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub realizationreport_id: Option<i64>,
-    /// Дата начала периода отчета
+    /// Р”Р°С‚Р° РЅР°С‡Р°Р»Р° РїРµСЂРёРѕРґР° РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub date_from: Option<String>,
-    /// Дата окончания периода отчета
+    /// Р”Р°С‚Р° РѕРєРѕРЅС‡Р°РЅРёСЏ РїРµСЂРёРѕРґР° РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub date_to: Option<String>,
-    /// Дата создания отчета
+    /// Р”Р°С‚Р° СЃРѕР·РґР°РЅРёСЏ РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub create_dt: Option<String>,
-    /// Валюта
+    /// Р’Р°Р»СЋС‚Р°
     #[serde(default)]
     pub currency_name: Option<String>,
-    /// Код договора поставщика
+    /// РљРѕРґ РґРѕРіРѕРІРѕСЂР° РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub suppliercontract_code: Option<String>,
-    /// ID сборочного задания
+    /// ID СЃР±РѕСЂРѕС‡РЅРѕРіРѕ Р·Р°РґР°РЅРёСЏ
     #[serde(default)]
     pub gi_id: Option<i64>,
-    /// Процент доставки
+    /// РџСЂРѕС†РµРЅС‚ РґРѕСЃС‚Р°РІРєРё
     #[serde(default)]
     pub dlv_prc: Option<f64>,
-    /// Дата начала действия фикс. тарифа
+    /// Р”Р°С‚Р° РЅР°С‡Р°Р»Р° РґРµР№СЃС‚РІРёСЏ С„РёРєСЃ. С‚Р°СЂРёС„Р°
     #[serde(default)]
     pub fix_tariff_date_from: Option<String>,
-    /// Дата окончания действия фикс. тарифа
+    /// Р”Р°С‚Р° РѕРєРѕРЅС‡Р°РЅРёСЏ РґРµР№СЃС‚РІРёСЏ С„РёРєСЃ. С‚Р°СЂРёС„Р°
     #[serde(default)]
     pub fix_tariff_date_to: Option<String>,
-    /// Бренд товара
+    /// Р‘СЂРµРЅРґ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub brand_name: Option<String>,
-    /// Размер товара
+    /// Р Р°Р·РјРµСЂ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub ts_name: Option<String>,
-    /// Штрихкод товара
+    /// РЁС‚СЂРёС…РєРѕРґ С‚РѕРІР°СЂР°
     #[serde(default)]
     pub barcode: Option<String>,
-    /// Тип документа
+    /// РўРёРї РґРѕРєСѓРјРµРЅС‚Р°
     #[serde(default)]
     pub doc_type_name: Option<String>,
-    /// Процент скидки
+    /// РџСЂРѕС†РµРЅС‚ СЃРєРёРґРєРё
     #[serde(default)]
     pub sale_percent: Option<f64>,
-    /// Название склада
+    /// РќР°Р·РІР°РЅРёРµ СЃРєР»Р°РґР°
     #[serde(default)]
     pub office_name: Option<String>,
-    /// Дата заказа
+    /// Р”Р°С‚Р° Р·Р°РєР°Р·Р°
     #[serde(default)]
     pub order_dt: Option<String>,
-    /// Дата продажи
+    /// Р”Р°С‚Р° РїСЂРѕРґР°Р¶Рё
     #[serde(default)]
     pub sale_dt: Option<String>,
-    /// ID поставки
+    /// ID РїРѕСЃС‚Р°РІРєРё
     #[serde(default)]
     pub shk_id: Option<i64>,
-    /// Тип коробов
+    /// РўРёРї РєРѕСЂРѕР±РѕРІ
     #[serde(default)]
     pub gi_box_type_name: Option<String>,
-    /// Скидка на товар для отчета
+    /// РЎРєРёРґРєР° РЅР° С‚РѕРІР°СЂ РґР»СЏ РѕС‚С‡РµС‚Р°
     #[serde(default)]
     pub product_discount_for_report: Option<f64>,
-    /// Промо поставщика
+    /// РџСЂРѕРјРѕ РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub supplier_promo: Option<f64>,
-    /// Согласованная скидка продавца
+    /// РЎРѕРіР»Р°СЃРѕРІР°РЅРЅР°СЏ СЃРєРёРґРєР° РїСЂРѕРґР°РІС†Р°
     #[serde(default)]
     pub ppvz_spp_prc: Option<f64>,
-    /// Базовый процент комиссии
+    /// Р‘Р°Р·РѕРІС‹Р№ РїСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё
     #[serde(default)]
     pub ppvz_kvw_prc_base: Option<f64>,
-    /// Процент комиссии
+    /// РџСЂРѕС†РµРЅС‚ РєРѕРјРёСЃСЃРёРё
     #[serde(default)]
     pub ppvz_kvw_prc: Option<f64>,
-    /// Процент повышения рейтинга поставщика
+    /// РџСЂРѕС†РµРЅС‚ РїРѕРІС‹С€РµРЅРёСЏ СЂРµР№С‚РёРЅРіР° РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub sup_rating_prc_up: Option<f64>,
-    /// Участие в КГВП v2
+    /// РЈС‡Р°СЃС‚РёРµ РІ РљР“Р’Рџ v2
     #[serde(default)]
     pub is_kgvp_v2: Option<i32>,
-    /// К перечислению за товар
+    /// Рљ РїРµСЂРµС‡РёСЃР»РµРЅРёСЋ Р·Р° С‚РѕРІР°СЂ
     #[serde(default)]
     pub ppvz_for_pay: Option<f64>,
-    /// Вознаграждение
+    /// Р’РѕР·РЅР°РіСЂР°Р¶РґРµРЅРёРµ
     #[serde(default)]
     pub ppvz_reward: Option<f64>,
-    /// Тип процессинга платежа
+    /// РўРёРї РїСЂРѕС†РµСЃСЃРёРЅРіР° РїР»Р°С‚РµР¶Р°
     #[serde(default)]
     pub payment_processing: Option<String>,
-    /// Банк-эквайер
+    /// Р‘Р°РЅРє-СЌРєРІР°Р№РµСЂ
     #[serde(default)]
     pub acquiring_bank: Option<String>,
-    /// Название пункта выдачи
+    /// РќР°Р·РІР°РЅРёРµ РїСѓРЅРєС‚Р° РІС‹РґР°С‡Рё
     #[serde(default)]
     pub ppvz_office_name: Option<String>,
-    /// ID пункта выдачи
+    /// ID РїСѓРЅРєС‚Р° РІС‹РґР°С‡Рё
     #[serde(default)]
     pub ppvz_office_id: Option<i64>,
-    /// ID поставщика
+    /// ID РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub ppvz_supplier_id: Option<i64>,
-    /// Название поставщика
+    /// РќР°Р·РІР°РЅРёРµ РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub ppvz_supplier_name: Option<String>,
-    /// ИНН поставщика
+    /// РРќРќ РїРѕСЃС‚Р°РІС‰РёРєР°
     #[serde(default)]
     pub ppvz_inn: Option<String>,
-    /// Номер декларации
+    /// РќРѕРјРµСЂ РґРµРєР»Р°СЂР°С†РёРё
     #[serde(default)]
     pub declaration_number: Option<String>,
-    /// ID стикера
+    /// ID СЃС‚РёРєРµСЂР°
     #[serde(default)]
     pub sticker_id: Option<String>,
-    /// Страна продажи
+    /// РЎС‚СЂР°РЅР° РїСЂРѕРґР°Р¶Рё
     #[serde(default)]
     pub site_country: Option<String>,
-    /// Доставка силами продавца
+    /// Р”РѕСЃС‚Р°РІРєР° СЃРёР»Р°РјРё РїСЂРѕРґР°РІС†Р°
     #[serde(default)]
     pub srv_dbs: Option<bool>,
-    /// Организация, предоставившая логистику
+    /// РћСЂРіР°РЅРёР·Р°С†РёСЏ, РїСЂРµРґРѕСЃС‚Р°РІРёРІС€Р°СЏ Р»РѕРіРёСЃС‚РёРєСѓ
     #[serde(default)]
     pub rebill_logistic_org: Option<String>,
-    /// Удержания
+    /// РЈРґРµСЂР¶Р°РЅРёСЏ
     #[serde(default)]
     pub deduction: Option<f64>,
-    /// Приемка
+    /// РџСЂРёРµРјРєР°
     #[serde(default)]
     pub acceptance: Option<f64>,
-    /// ID сборочного задания
+    /// ID СЃР±РѕСЂРѕС‡РЅРѕРіРѕ Р·Р°РґР°РЅРёСЏ
     #[serde(default)]
     pub assembly_id: Option<i64>,
-    /// Код маркировки
+    /// РљРѕРґ РјР°СЂРєРёСЂРѕРІРєРё
     #[serde(default)]
     pub kiz: Option<String>,
-    /// Уникальный идентификатор строки
+    /// РЈРЅРёРєР°Р»СЊРЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЃС‚СЂРѕРєРё
     #[serde(default)]
     pub srid: Option<String>,
-    /// Юридическое лицо
+    /// Р®СЂРёРґРёС‡РµСЃРєРѕРµ Р»РёС†Рѕ
     #[serde(default)]
     pub is_legal_entity: Option<bool>,
-    /// ID возврата
+    /// ID РІРѕР·РІСЂР°С‚Р°
     #[serde(default)]
     pub trbx_id: Option<String>,
-    /// Сумма софинансирования рассрочки
+    /// РЎСѓРјРјР° СЃРѕС„РёРЅР°РЅСЃРёСЂРѕРІР°РЅРёСЏ СЂР°СЃСЃСЂРѕС‡РєРё
     #[serde(default)]
     pub installment_cofinancing_amount: Option<f64>,
-    /// Процент скидки WiBES
+    /// РџСЂРѕС†РµРЅС‚ СЃРєРёРґРєРё WiBES
     #[serde(default)]
     pub wibes_wb_discount_percent: Option<f64>,
-    /// Сумма кэшбэка
+    /// РЎСѓРјРјР° РєСЌС€Р±СЌРєР°
     #[serde(default)]
     pub cashback_amount: Option<f64>,
-    /// Скидка по кэшбэку
+    /// РЎРєРёРґРєР° РїРѕ РєСЌС€Р±СЌРєСѓ
     #[serde(default)]
     pub cashback_discount: Option<f64>,
-    /// Изменение комиссии по кэшбэку
+    /// РР·РјРµРЅРµРЅРёРµ РєРѕРјРёСЃСЃРёРё РїРѕ РєСЌС€Р±СЌРєСѓ
     #[serde(default)]
     pub cashback_commission_change: Option<f64>,
-    /// Уникальный ID заказа
+    /// РЈРЅРёРєР°Р»СЊРЅС‹Р№ ID Р·Р°РєР°Р·Р°
     #[serde(default)]
     pub order_uid: Option<String>,
 }
@@ -3412,85 +3423,85 @@ pub struct WbFinanceReportRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbOrderRow {
-    /// Дата заказа
+    /// Р”Р°С‚Р° Р·Р°РєР°Р·Р°
     #[serde(default)]
     pub date: Option<String>,
-    /// Дата последнего изменения
+    /// Р”Р°С‚Р° РїРѕСЃР»РµРґРЅРµРіРѕ РёР·РјРµРЅРµРЅРёСЏ
     #[serde(rename = "lastChangeDate", default)]
     pub last_change_date: Option<String>,
-    /// Название склада
+    /// РќР°Р·РІР°РЅРёРµ СЃРєР»Р°РґР°
     #[serde(rename = "warehouseName", default)]
     pub warehouse_name: Option<String>,
-    /// Тип склада
+    /// РўРёРї СЃРєР»Р°РґР°
     #[serde(rename = "warehouseType", default)]
     pub warehouse_type: Option<String>,
-    /// Название страны
+    /// РќР°Р·РІР°РЅРёРµ СЃС‚СЂР°РЅС‹
     #[serde(rename = "countryName", default)]
     pub country_name: Option<String>,
-    /// Название области/округа
+    /// РќР°Р·РІР°РЅРёРµ РѕР±Р»Р°СЃС‚Рё/РѕРєСЂСѓРіР°
     #[serde(rename = "oblastOkrugName", default)]
     pub oblast_okrug_name: Option<String>,
-    /// Название региона
+    /// РќР°Р·РІР°РЅРёРµ СЂРµРіРёРѕРЅР°
     #[serde(rename = "regionName", default)]
     pub region_name: Option<String>,
-    /// Артикул продавца
+    /// РђСЂС‚РёРєСѓР» РїСЂРѕРґР°РІС†Р°
     #[serde(rename = "supplierArticle", default)]
     pub supplier_article: Option<String>,
-    /// nmId (ID номенклатуры WB)
+    /// nmId (ID РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹ WB)
     #[serde(rename = "nmId", default)]
     pub nm_id: Option<i64>,
-    /// Баркод
+    /// Р‘Р°СЂРєРѕРґ
     #[serde(default)]
     pub barcode: Option<String>,
-    /// Категория
+    /// РљР°С‚РµРіРѕСЂРёСЏ
     #[serde(default)]
     pub category: Option<String>,
-    /// Предмет
+    /// РџСЂРµРґРјРµС‚
     #[serde(default)]
     pub subject: Option<String>,
-    /// Бренд
+    /// Р‘СЂРµРЅРґ
     #[serde(default)]
     pub brand: Option<String>,
-    /// Размер
+    /// Р Р°Р·РјРµСЂ
     #[serde(rename = "techSize", default)]
     pub tech_size: Option<String>,
-    /// Номер поставки
+    /// РќРѕРјРµСЂ РїРѕСЃС‚Р°РІРєРё
     #[serde(rename = "incomeID", default)]
     pub income_id: Option<i64>,
-    /// Флаг поставки
+    /// Р¤Р»Р°Рі РїРѕСЃС‚Р°РІРєРё
     #[serde(rename = "isSupply", default)]
     pub is_supply: Option<bool>,
-    /// Флаг реализации
+    /// Р¤Р»Р°Рі СЂРµР°Р»РёР·Р°С†РёРё
     #[serde(rename = "isRealization", default)]
     pub is_realization: Option<bool>,
-    /// Цена без скидки
+    /// Р¦РµРЅР° Р±РµР· СЃРєРёРґРєРё
     #[serde(rename = "totalPrice", default)]
     pub total_price: Option<f64>,
-    /// Процент скидки
+    /// РџСЂРѕС†РµРЅС‚ СЃРєРёРґРєРё
     #[serde(rename = "discountPercent", default)]
     pub discount_percent: Option<f64>,
-    /// SPP (Согласованная скидка продавца)
+    /// SPP (РЎРѕРіР»Р°СЃРѕРІР°РЅРЅР°СЏ СЃРєРёРґРєР° РїСЂРѕРґР°РІС†Р°)
     #[serde(default)]
     pub spp: Option<f64>,
-    /// Итоговая цена для клиента
+    /// РС‚РѕРіРѕРІР°СЏ С†РµРЅР° РґР»СЏ РєР»РёРµРЅС‚Р°
     #[serde(rename = "finishedPrice", default)]
     pub finished_price: Option<f64>,
-    /// Цена с учетом скидки
+    /// Р¦РµРЅР° СЃ СѓС‡РµС‚РѕРј СЃРєРёРґРєРё
     #[serde(rename = "priceWithDisc", default)]
     pub price_with_disc: Option<f64>,
-    /// Флаг отмены заказа
+    /// Р¤Р»Р°Рі РѕС‚РјРµРЅС‹ Р·Р°РєР°Р·Р°
     #[serde(rename = "isCancel", default)]
     pub is_cancel: Option<bool>,
-    /// Дата отмены
+    /// Р”Р°С‚Р° РѕС‚РјРµРЅС‹
     #[serde(rename = "cancelDate", default)]
     pub cancel_date: Option<String>,
-    /// ID стикера
+    /// ID СЃС‚РёРєРµСЂР°
     #[serde(default)]
     pub sticker: Option<String>,
-    /// G-номер
+    /// G-РЅРѕРјРµСЂ
     #[serde(rename = "gNumber", default)]
     pub g_number: Option<String>,
-    /// SRID - уникальный идентификатор заказа
+    /// SRID - СѓРЅРёРєР°Р»СЊРЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ Р·Р°РєР°Р·Р°
     #[serde(default)]
     pub srid: Option<String>,
 }
@@ -3622,7 +3633,7 @@ pub struct WbGoodsSize {
 // WB Calendar Promotions API structures
 // ============================================================================
 
-/// Ответ GET /api/v1/calendar/promotions
+/// РћС‚РІРµС‚ GET /api/v1/calendar/promotions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbCalendarPromotionsResponse {
     #[serde(default)]
@@ -3637,10 +3648,10 @@ pub struct WbCalendarPromotionsData {
     pub upcoming_promos: Vec<WbCalendarPromotion>,
 }
 
-/// Одна акция из WB Calendar API
+/// РћРґРЅР° Р°РєС†РёСЏ РёР· WB Calendar API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbCalendarPromotion {
-    /// WB использует поле "id" (не "promotionID")
+    /// WB РёСЃРїРѕР»СЊР·СѓРµС‚ РїРѕР»Рµ "id" (РЅРµ "promotionID")
     pub id: i64,
     #[serde(default)]
     pub name: Option<String>,
@@ -3650,7 +3661,7 @@ pub struct WbCalendarPromotion {
     pub start_date_time: Option<String>,
     #[serde(rename = "endDateTime", default)]
     pub end_date_time: Option<String>,
-    /// Тип акции: "auto", "regular", etc.
+    /// РўРёРї Р°РєС†РёРё: "auto", "regular", etc.
     #[serde(rename = "type", default)]
     pub promotion_type: Option<String>,
     #[serde(rename = "exceptionProductsCount", default)]
@@ -3659,7 +3670,7 @@ pub struct WbCalendarPromotion {
     pub in_promo_action_total: Option<i32>,
 }
 
-/// Ответ GET /api/v1/calendar/promotions/details
+/// РћС‚РІРµС‚ GET /api/v1/calendar/promotions/details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbCalendarPromotionDetailsResponse {
     #[serde(default)]
@@ -3672,7 +3683,7 @@ pub struct WbCalendarPromotionDetailsData {
     pub promotions: Vec<WbCalendarPromotionDetail>,
 }
 
-/// Детальные данные акции из /details
+/// Р”РµС‚Р°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ Р°РєС†РёРё РёР· /details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbCalendarPromotionDetail {
     pub id: i64,
@@ -3714,7 +3725,7 @@ pub struct WbPromotionRanging {
     pub boost: Option<f64>,
 }
 
-/// Ответ GET /api/v1/calendar/promotions/nomenclatures
+/// РћС‚РІРµС‚ GET /api/v1/calendar/promotions/nomenclatures
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbPromotionNomenclaturesResponse {
     #[serde(default)]
@@ -3729,7 +3740,7 @@ pub struct WbPromotionNomenclaturesData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbPromotionNmItem {
-    /// API возвращает поле "id" (это nmId товара)
+    /// API РІРѕР·РІСЂР°С‰Р°РµС‚ РїРѕР»Рµ "id" (СЌС‚Рѕ nmId С‚РѕРІР°СЂР°)
     #[serde(rename = "id")]
     pub nm_id: i64,
     #[serde(rename = "inAction", default)]
@@ -3748,7 +3759,7 @@ pub struct WbPromotionNmItem {
 // WB Advertising Campaigns API structures (/adv/v3/fullstats)
 // ============================================================================
 
-/// Ответ GET /adv/v1/promotion/count — список рекламных кампаний по типу/статусу
+/// РћС‚РІРµС‚ GET /adv/v1/promotion/count вЂ” СЃРїРёСЃРѕРє СЂРµРєР»Р°РјРЅС‹С… РєР°РјРїР°РЅРёР№ РїРѕ С‚РёРїСѓ/СЃС‚Р°С‚СѓСЃСѓ
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertCampaignListResponse {
     #[serde(default)]
@@ -3777,7 +3788,7 @@ pub struct WbAdvertCampaignEntry {
     pub change_time: Option<String>,
 }
 
-/// Статистика на уровне одного товара (nmId) внутри дня и типа приложения
+/// РЎС‚Р°С‚РёСЃС‚РёРєР° РЅР° СѓСЂРѕРІРЅРµ РѕРґРЅРѕРіРѕ С‚РѕРІР°СЂР° (nmId) РІРЅСѓС‚СЂРё РґРЅСЏ Рё С‚РёРїР° РїСЂРёР»РѕР¶РµРЅРёСЏ
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertFullStatNm {
     #[serde(rename = "nmId")]
@@ -3808,7 +3819,7 @@ pub struct WbAdvertFullStatNm {
     pub canceled: i64,
 }
 
-/// Статистика по типу приложения (appType: 1=iOS, 32=Android, 64=Web)
+/// РЎС‚Р°С‚РёСЃС‚РёРєР° РїРѕ С‚РёРїСѓ РїСЂРёР»РѕР¶РµРЅРёСЏ (appType: 1=iOS, 32=Android, 64=Web)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertFullStatApp {
     #[serde(rename = "appType")]
@@ -3839,7 +3850,7 @@ pub struct WbAdvertFullStatApp {
     pub canceled: i64,
 }
 
-/// Статистика за один день по кампании
+/// РЎС‚Р°С‚РёСЃС‚РёРєР° Р·Р° РѕРґРёРЅ РґРµРЅСЊ РїРѕ РєР°РјРїР°РЅРёРё
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertFullStatDay {
     pub date: String,
@@ -3869,7 +3880,7 @@ pub struct WbAdvertFullStatDay {
     pub canceled: i64,
 }
 
-/// Сводная статистика по одной рекламной кампании за период
+/// РЎРІРѕРґРЅР°СЏ СЃС‚Р°С‚РёСЃС‚РёРєР° РїРѕ РѕРґРЅРѕР№ СЂРµРєР»Р°РјРЅРѕР№ РєР°РјРїР°РЅРёРё Р·Р° РїРµСЂРёРѕРґ
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertFullStat {
     #[serde(rename = "advertId")]
@@ -3898,4 +3909,517 @@ pub struct WbAdvertFullStat {
     pub cr: f64,
     #[serde(default)]
     pub canceled: i64,
+}
+
+// ============================================================================
+// WB Supply (FBS) structs and methods
+// ============================================================================
+
+/// РџРѕСЃС‚Р°РІРєР° РёР· /api/v3/supplies
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSupplyRow {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(rename = "isB2b", default)]
+    pub is_b2b: Option<bool>,
+    #[serde(default)]
+    pub done: Option<bool>,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    #[serde(rename = "closedAt", default)]
+    pub closed_at: Option<String>,
+    #[serde(rename = "scanDt", default)]
+    pub scan_dt: Option<String>,
+    #[serde(rename = "cargoType", default)]
+    pub cargo_type: Option<i32>,
+    #[serde(rename = "crossBorderType", default)]
+    pub cross_border_type: Option<i32>,
+    #[serde(rename = "destinationOfficeId", default)]
+    pub destination_office_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WbSuppliesResponse {
+    pub next: i64,
+    #[serde(default)]
+    pub supplies: Vec<WbSupplyRow>,
+}
+
+/// Р—Р°РєР°Р· РІРЅСѓС‚СЂРё РїРѕСЃС‚Р°РІРєРё РёР· /api/v3/supplies/{id}/orders
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSupplyOrderApiRow {
+    #[serde(default)]
+    pub id: i64,
+    #[serde(rename = "orderUid", default)]
+    pub order_uid: Option<String>,
+    #[serde(default)]
+    pub article: Option<String>,
+    #[serde(rename = "nmId", default)]
+    pub nm_id: Option<i64>,
+    #[serde(rename = "chrtId", default)]
+    pub chrt_id: Option<i64>,
+    #[serde(default)]
+    pub barcodes: Option<Vec<String>>,
+    #[serde(default)]
+    pub price: Option<i64>,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    #[serde(rename = "warehouseId", default)]
+    pub warehouse_id: Option<i64>,
+    #[serde(rename = "partA", default)]
+    pub part_a: Option<i64>,
+    #[serde(rename = "partB", default)]
+    pub part_b: Option<i64>,
+    #[serde(rename = "colorCode", default)]
+    pub color_code: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WbSupplyOrdersResponse {
+    #[serde(default)]
+    pub orders: Vec<WbSupplyOrderApiRow>,
+}
+
+/// РЎС‚РёРєРµСЂ РёР· /api/v3/orders/stickers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbStickerRow {
+    #[serde(rename = "orderId", default)]
+    pub order_id: i64,
+    /// WB returns partA/partB as either integers or quoted strings — handle both.
+    #[serde(rename = "partA", default, deserialize_with = "deser_str_or_i64")]
+    pub part_a: Option<i64>,
+    #[serde(rename = "partB", default, deserialize_with = "deser_str_or_i64")]
+    pub part_b: Option<i64>,
+    #[serde(default)]
+    pub barcode: Option<String>,
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+/// Deserializes a field that WB sometimes sends as an integer and sometimes as a quoted string.
+fn deser_str_or_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Unexpected, Visitor};
+    use std::fmt;
+
+    struct StrOrI64;
+
+    impl<'de> Visitor<'de> for StrOrI64 {
+        type Value = Option<i64>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "an integer or a string containing an integer")
+        }
+
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(if v == 0 { None } else { Some(v) })
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+            Ok(if v == 0 { None } else { Some(v as i64) })
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            if v.is_empty() {
+                return Ok(None);
+            }
+            v.parse::<i64>()
+                .map(|n| if n == 0 { None } else { Some(n) })
+                .map_err(|_| de::Error::invalid_value(Unexpected::Str(v), &self))
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_any(StrOrI64)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WbStickersResponse {
+    #[serde(default)]
+    pub stickers: Vec<WbStickerRow>,
+}
+
+impl WildberriesApiClient {
+    pub async fn fetch_supplies(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> anyhow::Result<Vec<WbSupplyRow>> {
+        let url = "https://marketplace-api.wildberries.ru/api/v3/supplies";
+        let mut all_supplies: Vec<WbSupplyRow> = Vec::new();
+        let mut next_cursor: i64 = 0;
+        let date_from_str = format!("{}T00:00:00Z", date_from);
+        let date_to_str = format!("{}T23:59:59Z", date_to);
+
+        loop {
+            let next_str = next_cursor.to_string();
+            let response = match self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[("limit", "1000"), ("next", next_str.as_str())])
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    return Err(anyhow::anyhow!("HTTP error fetching supplies: {}", e));
+                }
+            };
+
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                tracing::warn!("WB supplies API rate limit, sleeping 65s");
+                tokio::time::sleep(std::time::Duration::from_secs(65)).await;
+                continue;
+            }
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                return Err(anyhow::anyhow!(
+                    "WB supplies API error {}: {}",
+                    status,
+                    body
+                ));
+            }
+
+            let parsed: WbSuppliesResponse = response
+                .json()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to parse WB supplies response: {}", e))?;
+
+            let page_supplies = parsed.supplies;
+            let new_next = parsed.next;
+
+            for supply in page_supplies {
+                let supply_date = supply.created_at.as_deref().unwrap_or("");
+                if supply_date >= date_from_str.as_str() && supply_date <= date_to_str.as_str() {
+                    all_supplies.push(supply);
+                }
+            }
+
+            if new_next == 0 {
+                break;
+            }
+            next_cursor = new_next;
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        tracing::info!(
+            "Fetched {} supplies in date range {}-{}",
+            all_supplies.len(),
+            date_from,
+            date_to
+        );
+        Ok(all_supplies)
+    }
+
+    pub async fn fetch_supply_orders(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        supply_id: &str,
+    ) -> anyhow::Result<Vec<WbSupplyOrderApiRow>> {
+        let url = format!(
+            "https://marketplace-api.wildberries.ru/api/v3/supplies/{}/orders",
+            supply_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch supply orders: {}", e))?;
+
+        let status = response.status();
+
+        // 404 means WB has no orders for this supply (expected for old/closed supplies)
+        if status == reqwest::StatusCode::NOT_FOUND {
+            let body = response.text().await.unwrap_or_default();
+            tracing::info!(
+                "WB supply orders 404 for supply {} — body: {}",
+                supply_id,
+                body
+            );
+            return Ok(vec![]);
+        }
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "WB supply orders API error {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read supply orders response: {}", e))?;
+        tracing::info!(
+            "WB supply orders raw response for {}: {}",
+            supply_id,
+            &body[..body.len().min(500)]
+        );
+
+        let parsed: WbSupplyOrdersResponse = serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse supply orders response: {}\nBody: {}",
+                e,
+                &body[..body.len().min(300)]
+            )
+        })?;
+
+        Ok(parsed.orders)
+    }
+
+    pub async fn fetch_order_stickers(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        order_ids: &[i64],
+        sticker_type: &str,
+        width: i32,
+        height: i32,
+    ) -> anyhow::Result<Vec<WbStickerRow>> {
+        if order_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // WB API limit: max 100 order IDs per request
+        const BATCH_SIZE: usize = 100;
+        let url = "https://marketplace-api.wildberries.ru/api/v3/orders/stickers";
+        let mut all_stickers: Vec<WbStickerRow> = Vec::new();
+
+        for chunk in order_ids.chunks(BATCH_SIZE) {
+            let body = serde_json::json!({ "orders": chunk });
+
+            let response = self
+                .client
+                .post(url)
+                .header("Authorization", &connection.api_key)
+                .header("Content-Type", "application/json")
+                .query(&[
+                    ("type", sticker_type),
+                    ("width", &width.to_string()),
+                    ("height", &height.to_string()),
+                ])
+                .body(body.to_string())
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to fetch stickers: {}", e))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body_text = response.text().await.unwrap_or_default();
+                return Err(anyhow::anyhow!(
+                    "WB stickers API error {}: {}",
+                    status,
+                    body_text
+                ));
+            }
+
+            let body_text = response
+                .text()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to read stickers response body: {}", e))?;
+
+            tracing::debug!(
+                "WB stickers raw response (batch {} ids): {}",
+                chunk.len(),
+                &body_text[..body_text.len().min(500)]
+            );
+
+            let parsed: WbStickersResponse = serde_json::from_str(&body_text).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to parse stickers JSON: {}\nRaw: {}",
+                    e,
+                    &body_text[..body_text.len().min(500)]
+                )
+            })?;
+
+            all_stickers.extend(parsed.stickers);
+        }
+
+        Ok(all_stickers)
+    }
+
+    /// Fetches brand-new FBS orders from /api/v3/orders/new (no cursor pagination).
+    /// These are orders in "waiting" status — just placed, not yet in any supply.
+    /// Call this for real-time order visibility without the statistics API delay.
+    pub async fn fetch_new_marketplace_orders(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> anyhow::Result<Vec<WbMarketplaceOrderRow>> {
+        let url = "https://marketplace-api.wildberries.ru/api/v3/orders/new";
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch new marketplace orders: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "WB /api/v3/orders/new error {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read new orders response: {}", e))?;
+
+        // /api/v3/orders/new returns {"orders": [...]} without pagination
+        let parsed: WbMarketplaceOrdersResponse = serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse new orders response: {}\nBody: {}",
+                e,
+                &body[..body.len().min(500)]
+            )
+        })?;
+
+        tracing::info!(
+            "Fetched {} new marketplace orders from /api/v3/orders/new",
+            parsed.orders.len()
+        );
+        Ok(parsed.orders)
+    }
+
+    /// Fetches all FBS orders from /api/v3/orders with cursor pagination.
+    /// Returns orders with supplyId field — the real-time link between orders and supplies.
+    pub async fn fetch_marketplace_orders(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: i64,
+        date_to: i64,
+    ) -> anyhow::Result<Vec<WbMarketplaceOrderRow>> {
+        let mut all_orders: Vec<WbMarketplaceOrderRow> = Vec::new();
+        let mut next_cursor: i64 = 0;
+        let limit = 1000i64;
+
+        loop {
+            let url = "https://marketplace-api.wildberries.ru/api/v3/orders";
+            let response = self
+                .client
+                .get(url)
+                .header("Authorization", &connection.api_key)
+                .query(&[
+                    ("limit", limit.to_string()),
+                    ("next", next_cursor.to_string()),
+                    ("dateFrom", date_from.to_string()),
+                    ("dateTo", date_to.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to fetch marketplace orders: {}", e))?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(anyhow::anyhow!(
+                    "WB marketplace orders API error {}: {}",
+                    status,
+                    body
+                ));
+            }
+
+            let body = response.text().await.map_err(|e| {
+                anyhow::anyhow!("Failed to read marketplace orders response: {}", e)
+            })?;
+
+            let parsed: WbMarketplaceOrdersResponse = serde_json::from_str(&body).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to parse marketplace orders response: {}\nBody: {}",
+                    e,
+                    &body[..body.len().min(500)]
+                )
+            })?;
+
+            let page_count = parsed.orders.len();
+            tracing::info!(
+                "Marketplace orders page: {} records, next={}",
+                page_count,
+                parsed.next
+            );
+
+            all_orders.extend(parsed.orders);
+
+            if parsed.next == 0 || page_count == 0 {
+                break;
+            }
+            next_cursor = parsed.next;
+        }
+
+        tracing::info!(
+            "Fetched {} marketplace orders total (dateFrom={}, dateTo={})",
+            all_orders.len(),
+            date_from,
+            date_to
+        );
+        Ok(all_orders)
+    }
+}
+
+/// Order from /api/v3/orders — marketplace FBS orders with real-time supplyId.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbMarketplaceOrderRow {
+    pub id: i64,
+    #[serde(rename = "orderUid", default)]
+    pub order_uid: Option<String>,
+    #[serde(default)]
+    pub article: Option<String>,
+    #[serde(rename = "nmId", default)]
+    pub nm_id: Option<i64>,
+    #[serde(rename = "chrtId", default)]
+    pub chrt_id: Option<i64>,
+    #[serde(default)]
+    pub rid: Option<String>,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    #[serde(rename = "warehouseId", default)]
+    pub warehouse_id: Option<i64>,
+    #[serde(default)]
+    pub price: Option<i64>,
+    #[serde(rename = "convertedPrice", default)]
+    pub converted_price: Option<i64>,
+    #[serde(rename = "cargoType", default)]
+    pub cargo_type: Option<i32>,
+    /// Supply ID in format "WB-GI-XXXXXXXX" — the key for linking orders to supplies.
+    #[serde(rename = "supplyId", default)]
+    pub supply_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(rename = "isZeroOrder", default)]
+    pub is_zero_order: Option<bool>,
+    #[serde(default)]
+    pub skus: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WbMarketplaceOrdersResponse {
+    pub next: i64,
+    #[serde(default)]
+    pub orders: Vec<WbMarketplaceOrderRow>,
 }
