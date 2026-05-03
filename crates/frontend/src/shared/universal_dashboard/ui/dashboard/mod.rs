@@ -4,7 +4,7 @@
 //! - Level 1 (result): Full-page report display
 //! - Level 2 (settings): Configuration tabs (Настройки, Сохранённые, SQL, JSON)
 //!
-//! Header buttons: [Настройки] [Обновить] [Сохранить CSV] [Закрыть]
+//! Header buttons: [Настройки] [Обновить] [Excel (csv)] [Закрыть]
 
 mod json_tab;
 pub mod result_tab;
@@ -13,6 +13,7 @@ mod settings_tab;
 mod sql_tab;
 mod tabs_container;
 
+use crate::shared::icons::icon;
 use contracts::shared::universal_dashboard::{
     DashboardConfig, DashboardFilters, ExecuteDashboardRequest, ExecuteDashboardResponse,
     SaveDashboardConfigRequest, SavedDashboardConfigSummary, SchemaInfo,
@@ -458,7 +459,7 @@ pub fn UniversalDashboard(
                             >
                                 {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
                             </Button>
-                            // Сохранить CSV — export result
+                            // Excel (csv) — export result
                             <Show when=move || response.get().is_some()>
                                 <Button
                                     appearance=ButtonAppearance::Subtle
@@ -469,7 +470,8 @@ pub fn UniversalDashboard(
                                         }
                                     }
                                 >
-                                    "Сохранить CSV"
+                                    {icon("download")}
+                                    "Excel (csv)"
                                 </Button>
                             </Show>
                             // Закрыть — close tab (if on_close provided)

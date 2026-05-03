@@ -82,6 +82,150 @@ pub async fn list_all() -> anyhow::Result<Vec<ConnectionMP>> {
     repository::list_all().await
 }
 
+/// Получение информации о продавце через WB API /api/v1/seller-info
+pub async fn seller_info(dto: ConnectionMPDto) -> anyhow::Result<ConnectionTestResult> {
+    let start = std::time::Instant::now();
+
+    if dto.api_key.trim().is_empty() {
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: "API Key не может быть пустым".into(),
+            duration_ms: 0,
+            tested_at: Utc::now(),
+            details: None,
+        });
+    }
+
+    if dto.marketplace_id.trim().is_empty() {
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: "Маркетплейс должен быть выбран".into(),
+            duration_ms: 0,
+            tested_at: Utc::now(),
+            details: None,
+        });
+    }
+
+    let marketplace_uuid = match uuid::Uuid::parse_str(&dto.marketplace_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Ok(ConnectionTestResult {
+                success: false,
+                message: "Некорректный ID маркетплейса".into(),
+                duration_ms: 0,
+                tested_at: Utc::now(),
+                details: None,
+            });
+        }
+    };
+
+    let marketplace =
+        match crate::domain::a005_marketplace::repository::get_by_id(marketplace_uuid).await? {
+            Some(mp) => mp,
+            None => {
+                return Ok(ConnectionTestResult {
+                    success: false,
+                    message: "Маркетплейс не найден в базе данных".into(),
+                    duration_ms: 0,
+                    tested_at: Utc::now(),
+                    details: None,
+                });
+            }
+        };
+
+    let mp_code = marketplace.base.code.to_lowercase();
+    if !mp_code.contains("wildberries") && !mp_code.contains("wb") {
+        let duration = start.elapsed();
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: format!(
+                "Информация о продавце поддерживается только для Wildberries (маркетплейс: {})",
+                marketplace.base.description
+            ),
+            duration_ms: duration.as_millis() as u64,
+            tested_at: Utc::now(),
+            details: None,
+        });
+    }
+
+    let api_key = dto.api_key.trim().replace(['\n', '\r', '\t'], "");
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(ConnectionTestResult {
+                success: false,
+                message: "Ошибка создания HTTP клиента".into(),
+                duration_ms: 0,
+                tested_at: Utc::now(),
+                details: Some(format!("{}", e)),
+            });
+        }
+    };
+
+    let url = "https://common-api.wildberries.ru/api/v1/seller-info";
+
+    let response = match client
+        .get(url)
+        .header("Authorization", api_key.as_str())
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            let duration = start.elapsed();
+            return Ok(ConnectionTestResult {
+                success: false,
+                message: format!("Ошибка запроса к WB seller-info: {}", e),
+                duration_ms: duration.as_millis() as u64,
+                tested_at: Utc::now(),
+                details: None,
+            });
+        }
+    };
+
+    let duration = start.elapsed();
+    let status = response.status();
+
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        return Ok(ConnectionTestResult {
+            success: false,
+            message: format!("WB API вернул ошибку (HTTP {})", status.as_u16()),
+            duration_ms: duration.as_millis() as u64,
+            tested_at: Utc::now(),
+            details: Some(error_text),
+        });
+    }
+
+    match response.text().await {
+        Ok(text) => {
+            let pretty = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                .unwrap_or(text);
+
+            Ok(ConnectionTestResult {
+                success: true,
+                message: "Информация о продавце получена".into(),
+                duration_ms: duration.as_millis() as u64,
+                tested_at: Utc::now(),
+                details: Some(pretty),
+            })
+        }
+        Err(e) => Ok(ConnectionTestResult {
+            success: false,
+            message: "Ошибка чтения ответа от WB API".into(),
+            duration_ms: duration.as_millis() as u64,
+            tested_at: Utc::now(),
+            details: Some(format!("{}", e)),
+        }),
+    }
+}
+
 /// Тестирование подключения к маркетплейсу
 pub async fn test_connection(dto: ConnectionMPDto) -> anyhow::Result<ConnectionTestResult> {
     let start = std::time::Instant::now();

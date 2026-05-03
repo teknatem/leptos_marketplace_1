@@ -1,5 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::table::TableCrosshairHighlight;
+use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDailyMetrics;
@@ -8,6 +10,7 @@ use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
+use std::cmp::Ordering;
 use thaw::*;
 
 fn fmt_date(v: &str) -> String {
@@ -34,6 +37,65 @@ fn fmt_money(v: f64) -> String {
     format!("{:.2}", v)
 }
 
+fn fmt_ratio(v: f64) -> String {
+    format!("{:.2}", v)
+}
+
+fn fmt_int_list<T: ToString>(values: &[T]) -> String {
+    if values.is_empty() {
+        "—".to_string()
+    } else {
+        values
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn fmt_advert_id(advert_id: i64) -> String {
+    if advert_id > 0 {
+        advert_id.to_string()
+    } else {
+        "—".to_string()
+    }
+}
+
+fn fmt_placements(values: &[String]) -> String {
+    if values.is_empty() {
+        return "—".to_string();
+    }
+
+    values
+        .iter()
+        .map(|value| match value.as_str() {
+            "search" => "Поиск".to_string(),
+            "recommendations" => "Рекомендации".to_string(),
+            other => other.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn cmp_text(a: &str, b: &str) -> Ordering {
+    a.to_lowercase().cmp(&b.to_lowercase())
+}
+
+fn cmp_optional_text(a: &Option<String>, b: &Option<String>) -> Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) => cmp_text(a, b),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn cmp_float(a: f64, b: f64) -> Ordering {
+    a.partial_cmp(&b).unwrap_or(Ordering::Equal)
+}
+
+const LINES_TABLE_ID: &str = "a026-wb-advert-daily-lines-table";
+
 #[derive(Debug, Clone, Deserialize)]
 struct LineDto {
     nm_id: i64,
@@ -41,7 +103,52 @@ struct LineDto {
     nomenclature_ref: Option<String>,
     nomenclature_article: Option<String>,
     nomenclature_name: Option<String>,
+    advert_ids: Vec<i64>,
+    app_types: Vec<i32>,
+    placements: Vec<String>,
     metrics: WbAdvertDailyMetrics,
+}
+
+impl Sortable for LineDto {
+    fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
+        match field {
+            "nm_id" => self.nm_id.cmp(&other.nm_id),
+            "wb_name" => cmp_text(&self.wb_name, &other.wb_name),
+            "nomenclature_article" => {
+                cmp_optional_text(&self.nomenclature_article, &other.nomenclature_article)
+            }
+            "nomenclature_name" => {
+                cmp_optional_text(&self.nomenclature_name, &other.nomenclature_name)
+            }
+            "nomenclature_ref" => {
+                cmp_optional_text(&self.nomenclature_ref, &other.nomenclature_ref)
+            }
+            "advert_ids" => cmp_text(
+                &fmt_int_list(&self.advert_ids),
+                &fmt_int_list(&other.advert_ids),
+            ),
+            "app_types" => cmp_text(
+                &fmt_int_list(&self.app_types),
+                &fmt_int_list(&other.app_types),
+            ),
+            "placements" => cmp_text(
+                &fmt_placements(&self.placements),
+                &fmt_placements(&other.placements),
+            ),
+            "views" => self.metrics.views.cmp(&other.metrics.views),
+            "clicks" => self.metrics.clicks.cmp(&other.metrics.clicks),
+            "ctr" => cmp_float(self.metrics.ctr, other.metrics.ctr),
+            "cpc" => cmp_float(self.metrics.cpc, other.metrics.cpc),
+            "atbs" => self.metrics.atbs.cmp(&other.metrics.atbs),
+            "orders" => self.metrics.orders.cmp(&other.metrics.orders),
+            "shks" => self.metrics.shks.cmp(&other.metrics.shks),
+            "sum" => cmp_float(self.metrics.sum, other.metrics.sum),
+            "sum_price" => cmp_float(self.metrics.sum_price, other.metrics.sum_price),
+            "cr" => cmp_float(self.metrics.cr, other.metrics.cr),
+            "canceled" => self.metrics.canceled.cmp(&other.metrics.canceled),
+            _ => Ordering::Equal,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,6 +156,8 @@ struct DetailsDto {
     id: String,
     document_no: String,
     document_date: String,
+    #[serde(default)]
+    advert_id: i64,
     connection_id: String,
     connection_name: Option<String>,
     organization_id: String,
@@ -76,6 +185,34 @@ fn ReadField(label: &'static str, value: String) -> impl IntoView {
 }
 
 #[component]
+fn SortHeaderCell(
+    label: &'static str,
+    field: &'static str,
+    min_width: f32,
+    sort_field: ReadSignal<String>,
+    sort_ascending: ReadSignal<bool>,
+    on_toggle: Callback<&'static str>,
+    #[prop(default = false)] numeric: bool,
+) -> impl IntoView {
+    let header_style = if numeric {
+        "cursor: pointer; text-align: right; justify-content: flex-end;"
+    } else {
+        "cursor: pointer;"
+    };
+
+    view! {
+        <TableHeaderCell resizable=false min_width=min_width class="resizable">
+            <div class="table__sortable-header" style=header_style on:click=move |_| on_toggle.run(field)>
+                {label}
+                <span class=move || get_sort_class(&sort_field.get(), field)>
+                    {move || get_sort_indicator(&sort_field.get(), field, sort_ascending.get())}
+                </span>
+            </div>
+        </TableHeaderCell>
+    }
+}
+
+#[component]
 pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let tabs = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let stored_id = StoredValue::new(id.clone());
@@ -86,6 +223,8 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (posting, set_posting) = signal(false);
     let (journal, set_journal) = signal(Vec::<GeneralLedgerEntryDto>::new());
     let (journal_loaded, set_journal_loaded) = signal(false);
+    let (lines_sort_field, set_lines_sort_field) = signal("wb_name".to_string());
+    let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
 
     let load_doc = {
         let tabs = tabs.clone();
@@ -107,9 +246,14 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                 {
                     Ok(resp) if resp.ok() => match resp.json::<DetailsDto>().await {
                         Ok(data) => {
+                            let title = if data.advert_id > 0 {
+                                format!("WB Ads {} · {}", data.document_date, data.advert_id)
+                            } else {
+                                format!("WB Ads {}", data.document_date)
+                            };
                             tabs.update_tab_title(
                                 &format!("a026_wb_advert_daily_details_{tab_id}"),
-                                &format!("WB Ads {}", data.document_date),
+                                &title,
                             );
                             set_doc.set(Some(data));
                         }
@@ -236,35 +380,40 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         }
     };
 
+    let toggle_lines_sort = Callback::new(move |field: &'static str| {
+        if lines_sort_field.get_untracked() == field {
+            set_lines_sort_ascending.update(|value| *value = !*value);
+        } else {
+            set_lines_sort_field.set(field.to_string());
+            set_lines_sort_ascending.set(true);
+        }
+    });
+
+    let sorted_lines = Signal::derive(move || {
+        let mut lines = doc.get().map(|item| item.lines).unwrap_or_default();
+        let current_field = lines_sort_field.get();
+        sort_list(&mut lines, &current_field, lines_sort_ascending.get());
+        lines
+    });
+
     view! {
-        <PageFrame page_id="a026_wb_advert_daily--detail" category=PAGE_CAT_DETAIL>
+        <PageFrame page_id="a026_wb_advert_daily--detail" category=PAGE_CAT_DETAIL class="page--wide">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">
-                        {move || {
-                            doc.get()
-                                .map(|d| format!("WB Ads {} от {}", d.document_no, fmt_date(&d.document_date)))
-                                .unwrap_or_else(|| "WB Ads".to_string())
-                        }}
+                        {move || doc.get().map(|d| {
+                            if d.advert_id > 0 {
+                                format!("WB Ads {} · {} от {}", d.document_no, d.advert_id, fmt_date(&d.document_date))
+                            } else {
+                                format!("WB Ads {} от {}", d.document_no, fmt_date(&d.document_date))
+                            }
+                        }).unwrap_or_else(|| "WB Ads".to_string())}
                     </h1>
                     <Show when=move || doc.get().is_some()>
-                        {move || {
-                            view! {
-                                <Badge
-                                    appearance=BadgeAppearance::Tint
-                                    color=if doc.get().map(|d| d.is_posted).unwrap_or(false) {
-                                        BadgeColor::Success
-                                    } else {
-                                        BadgeColor::Informative
-                                    }
-                                >
-                                    {if doc.get().map(|d| d.is_posted).unwrap_or(false) {
-                                        "Проведен"
-                                    } else {
-                                        "Не проведен"
-                                    }}
-                                </Badge>
-                            }
+                        {move || view! {
+                            <Badge appearance=BadgeAppearance::Tint color=if doc.get().map(|d| d.is_posted).unwrap_or(false) { BadgeColor::Success } else { BadgeColor::Informative }>
+                                {if doc.get().map(|d| d.is_posted).unwrap_or(false) { "Проведен" } else { "Не проведен" }}
+                            </Badge>
                         }}
                     </Show>
                 </div>
@@ -317,6 +466,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                     <ReadField label="ID" value=d.id.clone() />
                                     <ReadField label="Номер" value=d.document_no.clone() />
                                     <ReadField label="Дата" value=fmt_date(&d.document_date) />
+                                    <ReadField label="Кампания (advert_id)" value=fmt_advert_id(d.advert_id) />
                                     <ReadField label="Кабинет" value=d.connection_name.clone().unwrap_or(d.connection_id.clone()) />
                                     <ReadField label="Организация" value=d.organization_name.clone().unwrap_or(d.organization_id.clone()) />
                                     <ReadField label="Маркетплейс" value=d.marketplace_name.clone().unwrap_or(d.marketplace_id.clone()) />
@@ -346,55 +496,128 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                 </div>
                             </div>
                         }.into_any(),
-                        "lines" => view! {
-                            <div class="table-wrapper">
-                                <Table attr:style="width:100%;min-width:1000px;">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHeaderCell>"nmID"</TableHeaderCell>
-                                            <TableHeaderCell>"Артикул"</TableHeaderCell>
-                                            <TableHeaderCell>"Наименование"</TableHeaderCell>
-                                            <TableHeaderCell>"Номенклатура"</TableHeaderCell>
-                                            <TableHeaderCell>"Расход"</TableHeaderCell>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        <For each=move || d.lines.clone() key=|l| l.nm_id children=move |l| {
-                                            let nom = l.nomenclature_ref.clone();
-                                            let article = l.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
-                                            let name = l.nomenclature_name.clone().unwrap_or(l.wb_name.clone());
-                                            let tabs = tabs.clone();
-                                            view! {
-                                                <TableRow>
-                                                    <TableCell><TableCellLayout>{l.nm_id}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{article}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout truncate=true>{name}</TableCellLayout></TableCell>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            {if let Some(nom_ref) = nom {
-                                                                let r = nom_ref.clone();
-                                                                view! {
-                                                                    <a href="#" class="table__link" on:click=move |e| {
-                                                                        e.prevent_default();
-                                                                        tabs.open_tab(
-                                                                            &format!("a004_nomenclature_details_{}", r.clone()),
-                                                                            &format!("Номенклатура {}", r.clone()),
-                                                                        );
-                                                                    }>{nom_ref}</a>
-                                                                }.into_any()
-                                                            } else {
-                                                                view! { <span>"—"</span> }.into_any()
-                                                            }}
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell class="table__cell--right"><TableCellLayout>{fmt_money(l.metrics.sum)}</TableCellLayout></TableCell>
-                                                </TableRow>
+                        "lines" => {
+                            let total_lines = d.lines.len();
+                            let without_nomenclature =
+                                d.lines.iter().filter(|line| line.nomenclature_ref.is_none()).count();
+
+                            view! {
+                                <div style="display:flex;flex-direction:column;gap:12px;">
+                                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                        <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
+                                            {format!("Позиции: {}", total_lines)}
+                                        </Badge>
+                                        <Badge
+                                            appearance=BadgeAppearance::Tint
+                                            color={
+                                                if without_nomenclature > 0 {
+                                                    BadgeColor::Danger
+                                                } else {
+                                                    BadgeColor::Success
+                                                }
                                             }
-                                        } />
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        }.into_any(),
+                                        >
+                                            {if without_nomenclature > 0 {
+                                                format!("Без номенклатуры: {}", without_nomenclature)
+                                            } else {
+                                                "Все позиции сопоставлены".to_string()
+                                            }}
+                                        </Badge>
+                                    </div>
+
+                                    <div class="table-wrapper">
+                                        <TableCrosshairHighlight table_id=LINES_TABLE_ID.to_string() />
+                                        <Table attr:id=LINES_TABLE_ID attr:style="width:100%;min-width:2200px;">
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <SortHeaderCell label="nmID" field="nm_id" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="WB наименование" field="wb_name" min_width=240.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="Артикул 1С" field="nomenclature_article" min_width=140.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="Номенклатура 1С" field="nomenclature_name" min_width=240.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="UUID номенклатуры" field="nomenclature_ref" min_width=270.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="Advert IDs" field="advert_ids" min_width=170.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="App types" field="app_types" min_width=140.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="Зоны показа" field="placements" min_width=170.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
+                                                    <SortHeaderCell label="Просмотры" field="views" min_width=100.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Клики" field="clicks" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="CTR, %" field="ctr" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="CPC" field="cpc" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="В корзину" field="atbs" min_width=110.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Заказы" field="orders" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Штуки" field="shks" min_width=110.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Расход" field="sum" min_width=110.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Выручка" field="sum_price" min_width=120.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="CR, %" field="cr" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                    <SortHeaderCell label="Отмены" field="canceled" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                <For
+                                                    each=move || sorted_lines.get()
+                                                    key=|line| format!("{}:{}", line.nm_id, line.nomenclature_ref.clone().unwrap_or_default())
+                                                    children=move |line| {
+                                                        let tabs = tabs.clone();
+                                                        let article = line.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
+                                                        let nomenclature_name = line.nomenclature_name.clone().unwrap_or_else(|| "—".to_string());
+                                                        let nomenclature_ref = line.nomenclature_ref.clone();
+                                                        let advert_ids = fmt_int_list(&line.advert_ids);
+                                                        let app_types = fmt_int_list(&line.app_types);
+                                                        let placements = fmt_placements(&line.placements);
+
+                                                        view! {
+                                                            <TableRow>
+                                                                <TableCell><TableCellLayout>{line.nm_id}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{line.wb_name}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{article}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{nomenclature_name}</TableCellLayout></TableCell>
+                                                                <TableCell>
+                                                                    <TableCellLayout truncate=true>
+                                                                        {if let Some(nom_ref) = nomenclature_ref {
+                                                                            let nom_ref_for_nav = nom_ref.clone();
+                                                                            view! {
+                                                                                <a
+                                                                                    href="#"
+                                                                                    class="table__link"
+                                                                                    on:click=move |e| {
+                                                                                        e.prevent_default();
+                                                                                        tabs.open_tab(
+                                                                                            &format!("a004_nomenclature_details_{}", nom_ref_for_nav.clone()),
+                                                                                            &format!("Номенклатура {}", nom_ref_for_nav.clone()),
+                                                                                        );
+                                                                                    }
+                                                                                >
+                                                                                    {nom_ref}
+                                                                                </a>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            view! { <span>"—"</span> }.into_any()
+                                                                        }}
+                                                                    </TableCellLayout>
+                                                                </TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{advert_ids}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{app_types}</TableCellLayout></TableCell>
+                                                                <TableCell><TableCellLayout truncate=true>{placements}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.views}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.clicks}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{fmt_ratio(line.metrics.ctr)}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{fmt_money(line.metrics.cpc)}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.atbs}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.orders}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.shks}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{fmt_money(line.metrics.sum)}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{fmt_money(line.metrics.sum_price)}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{fmt_ratio(line.metrics.cr)}</TableCellLayout></TableCell>
+                                                                <TableCell class="text-right"><TableCellLayout>{line.metrics.canceled}</TableCellLayout></TableCell>
+                                                            </TableRow>
+                                                        }
+                                                    }
+                                                />
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            }.into_any()
+                        },
                         "journal" => view! {
                             <div class="table-wrapper">
                                 <Table attr:style="width:100%;min-width:950px;">

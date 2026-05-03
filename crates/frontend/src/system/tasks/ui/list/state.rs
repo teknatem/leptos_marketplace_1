@@ -5,7 +5,6 @@ use leptos::prelude::*;
 pub struct ScheduledTaskListState {
     pub tasks: Vec<ScheduledTaskResponse>,
     pub is_loaded: bool,
-    pub selected_ids: Vec<String>,
 }
 
 pub fn create_state() -> RwSignal<ScheduledTaskListState> {

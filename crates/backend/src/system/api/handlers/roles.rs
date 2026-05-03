@@ -2,9 +2,8 @@ use axum::{
     extract::{Json, Path},
     http::StatusCode,
 };
-use contracts::system::roles::{CreateRoleDto, Role, RoleScopeAccess, ScopeInfo, UpdateRoleDto};
+use contracts::system::roles::{CreateRoleDto, Role, RoleScopeAccess, UpdateRoleDto};
 
-use crate::system::access::primary_roles;
 use crate::system::roles::service;
 
 pub async fn list_roles() -> Result<Json<Vec<Role>>, StatusCode> {
@@ -72,14 +71,21 @@ pub async fn get_role_permissions(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// Returns all known scope IDs (derived from MANAGER_GRANTS which covers all scopes).
-pub async fn list_scopes() -> Json<Vec<ScopeInfo>> {
-    let scopes = primary_roles::MANAGER_GRANTS
-        .iter()
-        .map(|(scope_id, _)| ScopeInfo {
-            scope_id: scope_id.to_string(),
-        })
-        .collect::<Vec<_>>();
-
-    Json(scopes)
+/// PUT /api/system/roles/:id/permissions
+/// Replace all scope grants for a custom role.
+pub async fn update_role_permissions(
+    Path(id): Path<String>,
+    Json(grants): Json<Vec<RoleScopeAccess>>,
+) -> Result<StatusCode, StatusCode> {
+    match service::update_permissions(&id, grants).await {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("system role") || msg.contains("not found") || msg.contains("Invalid") {
+                Err(StatusCode::BAD_REQUEST)
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
 }

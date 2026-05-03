@@ -10,6 +10,8 @@ pub struct ConnectionMPDetailsVm {
     pub error: RwSignal<Option<String>>,
     pub test_result: RwSignal<Option<ConnectionTestResult>>,
     pub is_testing: RwSignal<bool>,
+    pub seller_info_result: RwSignal<Option<ConnectionTestResult>>,
+    pub is_fetching_info: RwSignal<bool>,
     pub marketplace_name: RwSignal<String>,
     pub marketplace_code: RwSignal<String>,
     pub organization_name: RwSignal<String>,
@@ -22,6 +24,8 @@ impl ConnectionMPDetailsVm {
             error: RwSignal::new(None),
             test_result: RwSignal::new(None),
             is_testing: RwSignal::new(false),
+            seller_info_result: RwSignal::new(None),
+            is_fetching_info: RwSignal::new(false),
             marketplace_name: RwSignal::new(String::new()),
             marketplace_code: RwSignal::new(String::new()),
             organization_name: RwSignal::new(String::new()),
@@ -152,6 +156,40 @@ impl ConnectionMPDetailsVm {
                 Err(e) => {
                     error.set(Some(format!("Ошибка теста: {}", e)));
                     is_testing.set(false);
+                }
+            }
+        });
+    }
+
+    /// Получить информацию о продавце (WB seller-info)
+    pub fn seller_info_command(&self) {
+        let current = self.form.get();
+
+        if current.marketplace_id.is_empty() || current.api_key.trim().is_empty() {
+            self.error.set(Some(
+                "Для получения информации необходимо указать маркетплейс и API Key".to_string(),
+            ));
+            return;
+        }
+
+        self.is_fetching_info.set(true);
+        self.seller_info_result.set(None);
+        self.error.set(None);
+
+        let dto = current.into();
+        let seller_info_result = self.seller_info_result;
+        let is_fetching_info = self.is_fetching_info;
+        let error = self.error;
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match model::fetch_seller_info(&dto).await {
+                Ok(result) => {
+                    seller_info_result.set(Some(result));
+                    is_fetching_info.set(false);
+                }
+                Err(e) => {
+                    error.set(Some(format!("Ошибка запроса: {}", e)));
+                    is_fetching_info.set(false);
                 }
             }
         });

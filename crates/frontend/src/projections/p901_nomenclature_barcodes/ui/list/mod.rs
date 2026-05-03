@@ -1,6 +1,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::{detail_tab_label, pick_identifier};
 use crate::shared::date_utils::format_datetime;
+use crate::shared::icons::icon;
 use contracts::domain::a004_nomenclature::ENTITY_METADATA as A004;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -275,7 +276,8 @@ pub fn BarcodesList() -> impl IntoView {
                                 class="button button--secondary"
                                 on:click=export_to_csv
                             >
-                                "Экспорт в Excel"
+                                {icon("download")}
+                                "Excel (csv)"
                             </button>
                         </div>
                     </div>

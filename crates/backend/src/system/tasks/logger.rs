@@ -3,6 +3,7 @@ use chrono::Utc;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 
 /// Логгер для записи информации о выполнении задачи в файл.
 /// Каждый лог-файл привязан к конкретной сессии выполнения задачи.
@@ -61,4 +62,24 @@ impl TaskLogger {
         }
         Ok(())
     }
+}
+
+// ── Глобальный синглтон ──────────────────────────────────────────────────────
+
+static GLOBAL_TASK_LOGGER: OnceLock<Arc<TaskLogger>> = OnceLock::new();
+
+/// Возвращает единственный экземпляр `TaskLogger` для всего процесса.
+///
+/// При первом вызове создаёт логгер с путём `./task_logs`.  
+/// Если вызвать до `set_global_task_logger`, возвращает значение по умолчанию.
+pub fn get_global_task_logger() -> Arc<TaskLogger> {
+    GLOBAL_TASK_LOGGER
+        .get_or_init(|| Arc::new(TaskLogger::new("./task_logs")))
+        .clone()
+}
+
+/// Устанавливает глобальный логгер (из `initialization`).
+/// Если логгер уже был создан вызовом `get_global_task_logger`, вызов игнорируется.
+pub fn set_global_task_logger(logger: Arc<TaskLogger>) {
+    let _ = GLOBAL_TASK_LOGGER.set(logger);
 }

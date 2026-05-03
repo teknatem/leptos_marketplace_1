@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use contracts::system::roles::{CreateRoleDto, Role, RoleScopeAccess, UpdateRoleDto};
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
 
 fn row_to_role(row: &sea_orm::QueryResult) -> Result<Role> {
     // sys_roles uses INTEGER PRIMARY KEY — cast to TEXT in SQL for uniform string API
@@ -159,4 +159,36 @@ pub async fn get_scope_access(role_id: &str) -> Result<Vec<RoleScopeAccess>> {
     }
 
     Ok(result)
+}
+
+/// Replace all scope access grants for a role atomically (DELETE + INSERT in a transaction).
+pub async fn replace_all_scope_access(role_id: &str, grants: &[RoleScopeAccess]) -> Result<()> {
+    use crate::shared::data::db::get_connection;
+
+    let id_i64: i64 = role_id.parse().unwrap_or(0);
+    let conn = get_connection();
+    let txn = conn.begin().await?;
+
+    txn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "DELETE FROM sys_role_scope_access WHERE role_id = ?",
+        [id_i64.into()],
+    ))
+    .await
+    .context("Failed to clear scope access")?;
+
+    for grant in grants {
+        txn.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO sys_role_scope_access (role_id, access_scope_id, access_mode) VALUES (?, ?, ?)",
+            [id_i64.into(), grant.scope_id.clone().into(), grant.access_mode.clone().into()],
+        ))
+        .await
+        .context("Failed to insert scope access")?;
+    }
+
+    txn.commit()
+        .await
+        .context("Failed to commit scope access transaction")?;
+    Ok(())
 }

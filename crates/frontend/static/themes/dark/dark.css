@@ -42,6 +42,7 @@
   --table-header-fg: rgba(255, 255, 255, 0.95);
   --table-row-odd: rgba(30, 41, 59, 0.15);
   --table-row-even: rgba(30, 41, 59, 0.25);
+  --color-surface-alt: rgba(42, 48, 62, 0.85);
   --table-row-hover: rgba(255, 255, 255, 0.08);
   --table-row-selected: rgba(200, 170, 110, 0.25);
   

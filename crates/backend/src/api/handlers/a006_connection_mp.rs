@@ -79,3 +79,16 @@ pub async fn test_connection(
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
+
+/// POST /api/connection_mp/seller_info
+pub async fn seller_info(
+    Json(dto): Json<contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto>,
+) -> Result<
+    Json<contracts::domain::a006_connection_mp::aggregate::ConnectionTestResult>,
+    axum::http::StatusCode,
+> {
+    match a006_connection_mp::service::seller_info(dto).await {
+        Ok(result) => Ok(Json(result)),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}

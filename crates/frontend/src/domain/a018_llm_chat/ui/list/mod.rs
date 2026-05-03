@@ -2,7 +2,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
-use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
+use contracts::domain::a017_llm_agent::aggregate::{AgentType, LlmAgent};
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use leptos::prelude::*;
 use thaw::*;
@@ -92,6 +92,7 @@ pub fn LlmChatList() -> impl IntoView {
                     <TableRow>
                         <TableHeaderCell resizable=true min_width=250.0>"Название"</TableHeaderCell>
                         <TableHeaderCell resizable=true min_width=200.0>"Агент"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=140.0>"Тип агента"</TableHeaderCell>
                         <TableHeaderCell resizable=true min_width=150.0>"Модель"</TableHeaderCell>
                         <TableHeaderCell min_width=100.0>"Сообщений"</TableHeaderCell>
                         <TableHeaderCell resizable=true min_width=150.0>"Последнее сообщение"</TableHeaderCell>
@@ -111,6 +112,9 @@ pub fn LlmChatList() -> impl IntoView {
                             dt.format("%d.%m.%Y %H:%M").to_string()
                         }).unwrap_or_else(|| "-".to_string());
                         let created = item.created_at.format("%d.%m.%Y %H:%M").to_string();
+                        let item_agent_type = AgentType::from_str(
+                            item.agent_type.as_deref().unwrap_or("business_analyst")
+                        );
 
                         view! {
                             <TableRow>
@@ -131,6 +135,11 @@ pub fn LlmChatList() -> impl IntoView {
                                 <TableCell>
                                     <TableCellLayout>
                                         {item.agent_name.clone().unwrap_or_else(|| "Неизвестный агент".to_string())}
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {agent_type_badge(&item_agent_type)}
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>
@@ -308,11 +317,23 @@ fn CreateChatModal(on_saved: Callback<String>, on_cancel: Callback<()>) -> impl 
                         <For each=move || agents.get() key=|agent| agent.to_string_id() let:agent>
                             {{
                                 let id = agent.to_string_id();
-                                let desc = agent.base.description.clone();
+                                let type_label = agent.agent_type.display_name();
+                                let desc = format!("{} [{}]", agent.base.description.clone(), type_label);
                                 view! { <option value=id>{desc}</option> }
                             }}
                         </For>
                     </select>
+                    {move || {
+                        let sid = selected_agent_id.get();
+                        agents.get().iter().find(|a| a.to_string_id() == sid).map(|agent| {
+                            let at = agent.agent_type.clone();
+                            view! {
+                                <div style="margin-top: 6px;">
+                                    {agent_type_badge(&at)}
+                                </div>
+                            }
+                        })
+                    }}
                 </div>
 
                 <div>
@@ -417,6 +438,30 @@ fn CreateChatModal(on_saved: Callback<String>, on_cancel: Callback<()>) -> impl 
                 </Flex>
             </div>
         </div>
+    }
+}
+
+// ─── Вспомогательные ─────────────────────────────────────────────────────────
+
+fn agent_type_color(agent_type: &AgentType) -> &'static str {
+    match agent_type {
+        AgentType::BusinessAnalyst => "var(--colorBrandBackground)",
+        AgentType::SystemAdmin => "#8b5cf6",
+        AgentType::General => "#059669",
+    }
+}
+
+fn agent_type_badge(agent_type: &AgentType) -> impl IntoView {
+    let label = agent_type.display_name();
+    let color = agent_type_color(agent_type);
+    view! {
+        <span style=format!(
+            "display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; \
+             font-weight: 600; color: #fff; background: {}; white-space: nowrap;",
+            color
+        )>
+            {label}
+        </span>
     }
 }
 

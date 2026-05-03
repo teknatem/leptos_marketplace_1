@@ -49,6 +49,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a014_ozon_transactions" => "Транзакции OZON",
         "a015_wb_orders" => "WB Orders",
         "a026_wb_advert_daily" => "Статистика рекламы WB",
+        "report_a026_wb_advert_daily" => "Реклама WB — выгрузка CSV",
         "a016_ym_returns" => "Возвраты Yandex",
 
         "u501_import_from_ut" => "Импорт из УТ 11",
@@ -72,6 +73,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a028_missing_cost_registry" => "Реестр отсутствующих цен",
         "a029_wb_supply" => "Поставки WB (FBS)",
         k if k.starts_with("a029_wb_supply_details_") => "Поставка WB",
+        "a030_wb_advert_campaign" => "Рекламные кампании WB",
+        k if k.starts_with("a030_wb_advert_campaign_details_") => "Рекламная кампания WB",
 
         "p900_sales_register" => "Регистр продаж",
         "p901_barcodes" => "Штрихкоды номенклатуры",
@@ -94,7 +97,11 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         k if k.starts_with("sys_user_details_") => "Пользователь",
         "sys_roles" => "Роли",
         "sys_roles_matrix" => "Матрица ролей",
-        "sys_scheduled_tasks" => "Регламентные задания",
+        "sys_audit" => "Аудит доступа",
+        "sys_tasks" => "Регламентные задания",
+        "sys_task_details" => "Новая задача",
+        k if k.starts_with("sys_task_details_") => "Задача",
+        "sys_task_type_registry" => "Реестр типов заданий",
         "sys_thaw_test" => "Тест Thaw UI",
         "dom_inspector" => "DOM Inspector",
 

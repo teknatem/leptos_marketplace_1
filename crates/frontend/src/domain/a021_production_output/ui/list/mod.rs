@@ -376,7 +376,7 @@ pub fn ProductionOutputList() -> impl IntoView {
                         disabled=Signal::derive(move || loading.get() || state.get().items.is_empty())
                     >
                         {icon("download")}
-                        " Excel"
+                        "Excel (csv)"
                     </Button>
                 </div>
             </div>

@@ -250,61 +250,18 @@ pub async fn fill_dealer_price_resolved(document: &mut WbOrders) -> Result<()> {
     Ok(())
 }
 
-/// Расчёт margin_pro в процентах, если dealer_price_ut > 0:
-/// 1) Основная формула:
-///    (price_with_disc * (100 - planned_commission_percent) / 100 - dealer_price_ut)
-///    / dealer_price_ut * 100
-/// 2) Fallback при отсутствии planned_commission_percent:
-///    (finished_price - dealer_price_ut) / dealer_price_ut * 100
+/// Расчёт margin_pro в процентах, если dealer_price_ut и price_with_disc > 0:
+/// (price_with_disc - dealer_price_ut) / price_with_disc * 100
 pub async fn calculate_margin_pro(document: &mut WbOrders) -> Result<()> {
     let dealer_price = document.line.dealer_price_ut.unwrap_or(0.0);
-    if dealer_price <= 0.0 {
+    let price_with_disc = document.line.price_with_disc.unwrap_or(0.0);
+
+    if dealer_price <= 0.0 || price_with_disc <= 0.0 {
         document.line.margin_pro = None;
         return Ok(());
     }
 
-    // Базовый fallback: старая формула.
-    let finished_price = document.line.finished_price.unwrap_or(0.0);
-    let mut margin = (finished_price - dealer_price) / dealer_price * 100.0;
-
-    match Uuid::parse_str(&document.header.connection_id) {
-        Ok(connection_id) => {
-            match crate::domain::a006_connection_mp::service::get_by_id(connection_id).await {
-                Ok(Some(connection)) => {
-                    if let Some(planned_percent) = connection.planned_commission_percent {
-                        let price_with_disc = document.line.price_with_disc.unwrap_or(0.0);
-                        margin = (price_with_disc * (100.0 - planned_percent) / 100.0
-                            - dealer_price)
-                            / dealer_price
-                            * 100.0;
-                    }
-                }
-                Ok(None) => {
-                    tracing::warn!(
-                        "Connection MP not found for WB Orders document {}, id: {}. Using legacy margin formula.",
-                        document.base.id.as_string(),
-                        document.header.connection_id
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to load Connection MP for WB Orders document {}: {}. Using legacy margin formula.",
-                        document.base.id.as_string(),
-                        e
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(
-                "Invalid connection_id {} for WB Orders document {}: {}. Using legacy margin formula.",
-                document.header.connection_id,
-                document.base.id.as_string(),
-                e
-            );
-        }
-    }
-
+    let margin = (price_with_disc - dealer_price) / price_with_disc * 100.0;
     document.line.margin_pro = Some(margin);
     Ok(())
 }
@@ -394,10 +351,21 @@ pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
     repository::list_by_income_id(income_id).await
 }
 
+pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders>> {
+    repository::list_by_numeric_order_ids(order_ids).await
+}
+
 /// Update income_id for an order by its document_no (srid).
 /// Called when marketplace API provides supply assignment in real-time.
 pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) -> Result<bool> {
     repository::update_income_id_by_document_no(document_no, income_id).await
+}
+
+pub async fn set_income_id_by_document_no(
+    document_no: &str,
+    income_id: Option<i64>,
+) -> Result<bool> {
+    repository::set_income_id_by_document_no(document_no, income_id).await
 }
 
 /// Update numeric WB order ID (line_id) for an existing order.

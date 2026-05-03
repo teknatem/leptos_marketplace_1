@@ -16,19 +16,24 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
     WbAdvertDaily, WbAdvertDailyHeader, WbAdvertDailyLine, WbAdvertDailyMetrics,
     WbAdvertDailySourceMeta,
 };
+use contracts::domain::a030_wb_advert_campaign::aggregate::{
+    WbAdvertCampaign, WbAdvertCampaignHeader, WbAdvertCampaignSourceMeta,
+};
 use contracts::domain::common::AggregateId;
+use contracts::system::tasks::progress::TaskProgress;
 use contracts::usecases::u504_import_from_wildberries::{
     progress::ImportStatus,
     request::ImportRequest,
     response::{ImportResponse, ImportStartStatus},
 };
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Форматирует f64 с запятой как десятичным разделителем (для CSV в Excel)
-fn fmt_dec(v: f64) -> String {
-    format!("{:.4}", v).replace('.', ",")
+/// Итог фонового импорта WB для планировщика: `wb_advert_partial_success` — не двигать watermark.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ImportRunFlags {
+    pub wb_advert_partial_success: bool,
 }
 
 #[derive(Default)]
@@ -37,6 +42,7 @@ struct AdvertLineAccumulator {
     metrics: WbAdvertDailyMetrics,
     advert_ids: BTreeSet<i64>,
     app_types: BTreeSet<i32>,
+    placements: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -44,6 +50,10 @@ struct AdvertDayAccumulator {
     totals: WbAdvertDailyMetrics,
     lines: BTreeMap<i64, AdvertLineAccumulator>,
 }
+
+const WB_ADVERT_MIN_REQUEST_INTERVAL_MS: u64 = 250;
+const WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS: u64 = 21;
+const WB_ADVERT_FULLSTATS_CHUNK_SIZE: usize = 50;
 
 fn normalize_day_date(value: &str) -> String {
     if value.len() >= 10 {
@@ -124,6 +134,16 @@ impl ImportExecutor {
         }
     }
 
+    /// Только память: активные (`Running`) сессии для лёгкого мониторинга, без БД и без диска.
+    pub fn list_live_task_progress(&self) -> Vec<TaskProgress> {
+        self.progress_tracker
+            .snapshot_sessions()
+            .into_iter()
+            .filter(|p| matches!(p.status, ImportStatus::Running))
+            .map(Into::into)
+            .collect()
+    }
+
     /// Запустить импорт (создает async task и возвращает session_id)
     pub async fn start_import(&self, request: ImportRequest) -> Result<ImportResponse> {
         // Валидация запроса
@@ -149,7 +169,8 @@ impl ImportExecutor {
                 "p905_wb_commission_history" => "История комиссий WB",
                 "p908_wb_goods_prices" => "Цены товаров WB",
                 "a020_wb_promotion" => "Акции WB (Календарь)",
-                "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
+                "a030_wb_advert_campaign" => "Рекламные кампании WB",
+                "wb_advert_stats" | "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -198,15 +219,100 @@ impl ImportExecutor {
         self.progress_tracker.get_progress(session_id)
     }
 
-    /// Выполнить импорт
+    /// Подписи агрегатов (как в `start_import` + все ветки `execute_import`).
+    fn wb_aggregate_display_name(aggregate_index: &str) -> &'static str {
+        match aggregate_index {
+            "a007_marketplace_product" => "Товары маркетплейса",
+            "a015_wb_orders" => "Заказы Wildberries (Backfill)",
+            "a012_wb_sales" => "Продажи Wildberries",
+            "p903_wb_finance_report" => "Финансовый отчет WB",
+            "p905_wb_commission_history" => "История комиссий WB",
+            "p908_wb_goods_prices" => "Цены товаров WB",
+            "a020_wb_promotion" => "Акции WB (Календарь)",
+            "a030_wb_advert_campaign" => "Рекламные кампании WB",
+            "wb_advert_stats" | "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
+            "a027_wb_documents" => "Документы WB",
+            "a029_wb_supply" => "Поставки WB",
+            "a015_wb_orders_new" => "Новые заказы WB (оперативно)",
+            "a015_wb_orders_supply_link" => "Связь заказов с поставками",
+            _ => "Unknown",
+        }
+    }
+
+    /// Регламентные задачи вызывают `execute_import` напрямую — сессия в трекере должна существовать,
+    /// иначе `get_progress` после завершения вернёт `None` и в `sys_task_runs` не попадут метрики.
+    fn ensure_progress_session(&self, session_id: &str, request: &ImportRequest) {
+        if self.progress_tracker.get_progress(session_id).is_some() {
+            return;
+        }
+        self.progress_tracker.create_session(session_id.to_string());
+        for aggregate_index in &request.target_aggregates {
+            self.progress_tracker.add_aggregate(
+                session_id,
+                aggregate_index.clone(),
+                Self::wb_aggregate_display_name(aggregate_index).to_string(),
+            );
+        }
+    }
+
+    /// Выполнить импорт.
+    /// Гарантирует вызов `complete_session` в трекере при любом исходе —
+    /// даже если внутренний шаг вернул ошибку.
     pub async fn execute_import(
         &self,
         session_id: &str,
         request: &ImportRequest,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
-    ) -> Result<()> {
+    ) -> Result<ImportRunFlags> {
         tracing::info!("Starting Wildberries import for session: {}", session_id);
 
+        self.ensure_progress_session(session_id, request);
+
+        let _http_tracking = self
+            .api_client
+            .bind_http_tracking(Arc::clone(&self.progress_tracker), session_id.to_string());
+        let work_result = self.run_aggregates(session_id, request, connection).await;
+
+        // Трекер ВСЕГДА получает финальный статус — не только в happy path.
+        let final_status = match &work_result {
+            Err(e) => {
+                self.progress_tracker.add_error(
+                    session_id,
+                    None,
+                    format!("Import failed: {}", e),
+                    None,
+                );
+                ImportStatus::Failed
+            }
+            Ok(flags) => {
+                let tracker_errors = self
+                    .progress_tracker
+                    .get_progress(session_id)
+                    .map(|p| p.total_errors > 0)
+                    .unwrap_or(false);
+                if flags.wb_advert_partial_success || tracker_errors {
+                    ImportStatus::CompletedWithErrors
+                } else {
+                    ImportStatus::Completed
+                }
+            }
+        };
+
+        self.progress_tracker
+            .complete_session(session_id, final_status);
+        tracing::info!("Import completed for session: {}", session_id);
+
+        work_result
+    }
+
+    /// Внутренний цикл по агрегатам; возвращает первую ошибку без изменения трекера.
+    async fn run_aggregates(
+        &self,
+        session_id: &str,
+        request: &ImportRequest,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<ImportRunFlags> {
+        let mut flags = ImportRunFlags::default();
         for aggregate_index in &request.target_aggregates {
             match aggregate_index.as_str() {
                 "a007_marketplace_product" => {
@@ -274,14 +380,22 @@ impl ImportExecutor {
                     )
                     .await?;
                 }
-                "wb_advert_stats_csv" => {
-                    self.import_wb_advert_stats_csv(
-                        session_id,
-                        connection,
-                        request.date_from,
-                        request.date_to,
-                    )
-                    .await?;
+                "a030_wb_advert_campaign" => {
+                    self.import_wb_advert_campaigns(session_id, connection)
+                        .await?;
+                }
+                "wb_advert_stats" | "wb_advert_stats_csv" => {
+                    let partial = self
+                        .import_wb_advert_stats(
+                            session_id,
+                            connection,
+                            request.date_from,
+                            request.date_to,
+                        )
+                        .await?;
+                    if partial {
+                        flags.wb_advert_partial_success = true;
+                    }
                 }
                 "a015_wb_orders_new" => {
                     self.import_wb_new_marketplace_orders(
@@ -293,7 +407,10 @@ impl ImportExecutor {
                     .await?;
                 }
                 "a015_wb_orders_supply_link" => {
-                    self.import_wb_orders_supply_link(
+                    tracing::info!(
+                        "Aggregate a015_wb_orders_supply_link is deprecated; delegating to a029_wb_supply import"
+                    );
+                    self.import_wb_supplies(
                         session_id,
                         connection,
                         request.date_from,
@@ -313,24 +430,7 @@ impl ImportExecutor {
                 }
             }
         }
-
-        // Завершить импорт
-        let final_status = if self
-            .progress_tracker
-            .get_progress(session_id)
-            .map(|p| p.total_errors > 0)
-            .unwrap_or(false)
-        {
-            ImportStatus::CompletedWithErrors
-        } else {
-            ImportStatus::Completed
-        };
-
-        self.progress_tracker
-            .complete_session(session_id, final_status);
-        tracing::info!("Import completed for session: {}", session_id);
-
-        Ok(())
+        Ok(flags)
     }
 
     /// Импорт товаров из Wildberries
@@ -730,80 +830,125 @@ impl ImportExecutor {
         tracing::info!("Received {} supply rows from WB API", supply_rows.len());
 
         for supply_row in supply_rows {
-            // Fetch orders for each supply.
-            // WB API may return 404 for GI/FBW supplies — handled gracefully in fetch_supply_orders.
-            tracing::info!(
-                "Fetching orders for supply {} (done={})",
-                supply_row.id,
-                supply_row.done.unwrap_or(false)
-            );
-            let supply_orders = match self
+            let income_id_opt = supply_row
+                .id
+                .rsplit('-')
+                .next()
+                .and_then(|s| s.parse::<i64>().ok());
+
+            let (supply_order_ids_loaded, supply_order_ids) = match self
                 .api_client
-                .fetch_supply_orders(connection, &supply_row.id)
+                .fetch_supply_order_ids(connection, &supply_row.id)
                 .await
             {
-                Ok(orders) => {
+                Ok(order_ids) => {
                     tracing::info!(
-                        "Supply {}: fetched {} orders from WB API",
+                        "Supply {}: fetched {} order ids from WB API",
                         supply_row.id,
-                        orders.len()
+                        order_ids.len()
                     );
-                    orders
+                    (true, order_ids)
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to fetch orders for supply {} (done={}): {}",
+                        "Failed to fetch order ids for supply {} (done={}): {}",
                         supply_row.id,
                         supply_row.done.unwrap_or(false),
                         e
                     );
-                    vec![]
+                    (false, vec![])
                 }
             };
 
-            // If the marketplace API returned no orders, fall back to statistics API orders
-            // stored in a015_wb_orders, matched by incomeID (numeric part of supply ID).
-            // Example: "WB-GI-229481414" → income_id = 229481414
-            let stat_orders_fallback = if supply_orders.is_empty() {
-                let income_id_opt = supply_row
-                    .id
-                    .rsplit('-')
-                    .next()
-                    .and_then(|s| s.parse::<i64>().ok());
+            tracing::info!(
+                "Preparing enrichment for supply {} (done={})",
+                supply_row.id,
+                supply_row.done.unwrap_or(false)
+            );
+
+            if supply_order_ids_loaded {
                 if let Some(income_id) = income_id_opt {
-                    match crate::domain::a015_wb_orders::service::list_by_income_id(income_id).await
+                    if let Err(e) = self
+                        .sync_a015_supply_links_for_supply(
+                            &supply_row.id,
+                            income_id,
+                            &supply_order_ids,
+                        )
+                        .await
                     {
-                        Ok(orders) => {
-                            tracing::info!(
-                                "Supply {}: found {} orders via a015 income_id={}",
-                                supply_row.id,
-                                orders.len(),
-                                income_id
-                            );
-                            orders
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Supply {}: a015 fallback failed for income_id={}: {}",
-                                supply_row.id,
-                                income_id,
-                                e
-                            );
-                            vec![]
-                        }
+                        tracing::warn!(
+                            "Supply {}: failed to sync a015 supply links: {}",
+                            supply_row.id,
+                            e
+                        );
                     }
-                } else {
-                    vec![]
+                }
+            }
+
+            let stat_orders_fallback = if let Some(income_id) = income_id_opt {
+                match crate::domain::a015_wb_orders::service::list_by_income_id(income_id).await {
+                    Ok(orders) => {
+                        tracing::info!(
+                            "Supply {}: found {} orders via a015 income_id={}",
+                            supply_row.id,
+                            orders.len(),
+                            income_id
+                        );
+                        orders
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Supply {}: a015 enrichment failed for income_id={}: {}",
+                            supply_row.id,
+                            income_id,
+                            e
+                        );
+                        vec![]
+                    }
                 }
             } else {
                 vec![]
+            };
+
+            let sticker_order_ids: Vec<i64> = supply_order_ids.clone();
+
+            let sticker_rows = if sticker_order_ids.is_empty() {
+                vec![]
+            } else {
+                match self
+                    .api_client
+                    .fetch_order_stickers(connection, &sticker_order_ids, "zplv", 58, 40)
+                    .await
+                {
+                    Ok(mut stickers) => {
+                        for sticker in &mut stickers {
+                            sticker.file = None;
+                        }
+                        tracing::info!(
+                            "Supply {}: fetched {} stickers from WB API",
+                            supply_row.id,
+                            stickers.len()
+                        );
+                        stickers
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to fetch stickers for supply {} ({} order ids): {}",
+                            supply_row.id,
+                            sticker_order_ids.len(),
+                            e
+                        );
+                        vec![]
+                    }
+                }
             };
 
             match supply::process_supply_row(
                 connection,
                 &organization_id,
                 &supply_row,
-                supply_orders,
+                supply_order_ids,
+                sticker_rows,
                 stat_orders_fallback,
             )
             .await
@@ -853,6 +998,57 @@ impl ImportExecutor {
         Ok(())
     }
 
+    async fn sync_a015_supply_links_for_supply(
+        &self,
+        supply_id: &str,
+        income_id: i64,
+        current_order_ids: &[i64],
+    ) -> Result<()> {
+        use crate::domain::a015_wb_orders::service as orders_service;
+
+        let current_order_ids: HashSet<i64> = current_order_ids
+            .iter()
+            .copied()
+            .filter(|&order_id| order_id > 0)
+            .collect();
+
+        let currently_linked_orders = orders_service::list_by_income_id(income_id).await?;
+        for order in &currently_linked_orders {
+            let numeric_order_id = order.line.line_id.parse::<i64>().unwrap_or(0);
+            if numeric_order_id > 0 && !current_order_ids.contains(&numeric_order_id) {
+                orders_service::set_income_id_by_document_no(&order.header.document_no, None)
+                    .await?;
+            }
+        }
+
+        if current_order_ids.is_empty() {
+            tracing::info!(
+                "Supply {}: cleared links for income_id={} because WB returned no current orders",
+                supply_id,
+                income_id
+            );
+            return Ok(());
+        }
+
+        let known_orders = orders_service::list_by_numeric_order_ids(
+            &current_order_ids.iter().copied().collect::<Vec<_>>(),
+        )
+        .await?;
+
+        for order in known_orders {
+            let current_income_id = order.source_meta.income_id.filter(|&value| value > 0);
+            if current_income_id != Some(income_id) {
+                orders_service::set_income_id_by_document_no(
+                    &order.header.document_no,
+                    Some(income_id),
+                )
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Imports new FBS orders from Marketplace API for real-time order visibility.
     ///
     /// Flow:
@@ -884,38 +1080,6 @@ impl ImportExecutor {
             "Новые заказы WB (Оперативно)".to_string(),
         );
 
-        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
-            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
-                Some(org) => org.base.id.as_string(),
-                None => {
-                    let msg = format!(
-                        "Организация с UUID '{}' не найдена",
-                        connection.organization_ref
-                    );
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        msg.clone(),
-                        None,
-                    );
-                    anyhow::bail!("{}", msg);
-                }
-            },
-            Err(_) => {
-                let msg = format!(
-                    "Некорректный organization_ref UUID: '{}'",
-                    connection.organization_ref
-                );
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    msg.clone(),
-                    None,
-                );
-                anyhow::bail!("{}", msg);
-            }
-        };
-
         // Step 1: fetch brand-new orders
         let new_orders = match self
             .api_client
@@ -931,6 +1095,40 @@ impl ImportExecutor {
         tracing::info!("New marketplace orders (/new): {}", new_orders.len());
 
         // Step 2: fetch recent orders in date range (includes supplyId for assigned orders)
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!(
+                        "Организация с UUID '{}' не найдена",
+                        connection.organization_ref
+                    );
+                    tracing::error!("{}", msg);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        msg.clone(),
+                        None,
+                    );
+                    anyhow::bail!("{}", msg);
+                }
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Некорректный organization_ref UUID: '{}'",
+                    connection.organization_ref
+                );
+                tracing::error!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg.clone(),
+                    None,
+                );
+                anyhow::bail!("{}", msg);
+            }
+        };
+
         let date_from_ts = date_from
             .and_hms_opt(0, 0, 0)
             .map(|dt| {
@@ -1025,6 +1223,7 @@ impl ImportExecutor {
     /// Fetches FBS orders from /api/v3/orders (WB Marketplace API v3) and updates
     /// income_id in a015_wb_orders for orders that have a supplyId assigned.
     /// This provides real-time supply linkage without the statistics API delay.
+    #[allow(dead_code)]
     async fn import_wb_orders_supply_link(
         &self,
         session_id: &str,
@@ -1033,7 +1232,9 @@ impl ImportExecutor {
         date_to: chrono::NaiveDate,
     ) -> Result<()> {
         let aggregate_index = "a015_wb_orders_supply_link";
-        let mut total_linked = 0;
+        let mut total_synced = 0;
+        let mut total_supply_rows_refreshed = 0;
+        let mut touched_income_ids = BTreeSet::new();
 
         tracing::info!(
             "Fetching marketplace orders to update supply links: {} to {}",
@@ -1085,71 +1286,143 @@ impl ImportExecutor {
         tracing::info!("Marketplace orders fetched: {}", total_fetched);
 
         for order in &marketplace_orders {
-            let supply_id = match &order.supply_id {
-                Some(sid) if !sid.is_empty() => sid.clone(),
-                _ => continue,
-            };
-
-            // Parse income_id from supply_id like "WB-GI-32319994" → 32319994
-            let income_id = match supply_id
-                .rsplit('-')
-                .next()
-                .and_then(|s| s.parse::<i64>().ok())
-            {
-                Some(id) if id > 0 => id,
-                _ => {
-                    tracing::warn!("Cannot parse income_id from supplyId: {}", supply_id);
-                    continue;
-                }
-            };
-
-            // The marketplace API uses `rid` which equals `srid` used as document_no in a015
             let document_no = match &order.rid {
                 Some(rid) if !rid.is_empty() => rid.clone(),
                 _ => continue,
             };
 
-            match crate::domain::a015_wb_orders::service::update_income_id_by_document_no(
+            let Some(existing_order) =
+                crate::domain::a015_wb_orders::service::get_by_document_no(&document_no).await?
+            else {
+                continue;
+            };
+
+            if order.id > 0 {
+                let _ = crate::domain::a015_wb_orders::service::update_line_id_by_document_no(
+                    &document_no,
+                    order.id,
+                )
+                .await;
+            }
+
+            let old_income_id = existing_order
+                .source_meta
+                .income_id
+                .filter(|&value| value > 0);
+            let new_income_id = match order.supply_id.as_deref().map(str::trim) {
+                Some("") | None => None,
+                Some(supply_id) => match supply_id
+                    .rsplit('-')
+                    .next()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .filter(|&value| value > 0)
+                {
+                    Some(value) => Some(value),
+                    None => {
+                        tracing::warn!("Cannot parse income_id from supplyId: {}", supply_id);
+                        old_income_id
+                    }
+                },
+            };
+
+            if let Some(value) = old_income_id {
+                touched_income_ids.insert(value);
+            }
+            if let Some(value) = new_income_id {
+                touched_income_ids.insert(value);
+            }
+
+            if old_income_id == new_income_id {
+                continue;
+            }
+
+            match crate::domain::a015_wb_orders::service::set_income_id_by_document_no(
                 &document_no,
-                income_id,
+                new_income_id,
             )
             .await
             {
                 Ok(_) => {
-                    total_linked += 1;
+                    total_synced += 1;
                     tracing::debug!(
-                        "Linked order {} to supply {} (income_id={})",
+                        "Synced order {} supply link: {:?} -> {:?}",
                         document_no,
-                        supply_id,
-                        income_id
+                        old_income_id,
+                        new_income_id
                     );
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to update income_id for order {}: {}",
-                        document_no,
-                        e
-                    );
+                    tracing::warn!("Failed to sync income_id for order {}: {}", document_no, e);
                 }
             }
 
             self.progress_tracker.update_aggregate(
                 session_id,
                 aggregate_index,
-                total_linked as i32,
+                total_synced as i32,
                 Some(total_fetched as i32),
-                total_linked as i32,
+                total_synced as i32,
                 0,
             );
+        }
+
+        for income_id in touched_income_ids {
+            let supply_id = format!("WB-GI-{}", income_id);
+            let Some(mut supply_doc) =
+                crate::domain::a029_wb_supply::service::get_by_supply_id(&supply_id).await?
+            else {
+                continue;
+            };
+
+            let stat_orders =
+                match crate::domain::a015_wb_orders::service::list_by_income_id(income_id).await {
+                    Ok(orders) if !orders.is_empty() => orders,
+                    Ok(_) => continue,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to load a015 orders for missing supply income_id={}: {}",
+                            income_id,
+                            e
+                        );
+                        continue;
+                    }
+                };
+
+            supply_doc.supply_orders = supply::build_supply_rows_from_stat_orders(&stat_orders);
+            supply_doc.base.description = format!(
+                "WB Supply {} - {} orders",
+                supply_id,
+                supply_doc.supply_orders.len()
+            );
+
+            match crate::domain::a029_wb_supply::service::store_document(supply_doc).await {
+                Ok(_) => {
+                    total_supply_rows_refreshed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to refresh linked orders for supply {}: {}",
+                        supply_id,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        supply_id,
+                        Some(e.to_string()),
+                    );
+                }
+            }
         }
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
 
         tracing::info!(
-            "Supply link import completed: fetched={}, linked={}",
+            "Supply link import completed: fetched={}, links_synced={}, existing_supplies_refreshed={}",
             total_fetched,
-            total_linked
+            total_synced,
+            total_supply_rows_refreshed
         );
 
         Ok(())
@@ -1731,43 +2004,306 @@ impl ImportExecutor {
         Ok(())
     }
 
-    async fn import_wb_advert_stats_csv(
+    async fn import_wb_advert_campaigns(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<usize> {
+        let aggregate_index = "a030_wb_advert_campaign";
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Получение списка кампаний".into()),
+        );
+
+        let summaries = match self
+            .api_client
+            .fetch_advert_campaign_summaries(connection)
+            .await
+        {
+            Ok(summaries) => summaries,
+            Err(err) => {
+                let existing = crate::domain::a030_wb_advert_campaign::service::list_by_connection(
+                    &connection.to_string_id(),
+                )
+                .await
+                .context("Failed to read existing a030_wb_advert_campaign fallback")?;
+                let message = format!("Failed to fetch WB advert campaign summaries: {}", err);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    message.clone(),
+                    Some(err.to_string()),
+                );
+
+                if !existing.is_empty() {
+                    tracing::warn!(
+                        "{}; keeping existing a030 campaigns for connection={} count={}",
+                        message,
+                        connection.to_string_id(),
+                        existing.len()
+                    );
+                    self.progress_tracker.update_aggregate(
+                        session_id,
+                        aggregate_index,
+                        existing.len() as i32,
+                        Some(existing.len() as i32),
+                        0,
+                        0,
+                    );
+                    self.progress_tracker
+                        .complete_aggregate(session_id, aggregate_index);
+                    return Ok(existing.len());
+                }
+
+                anyhow::bail!(
+                    "{}; no existing a030 campaigns are available for fallback",
+                    message
+                );
+            }
+        };
+
+        if summaries.is_empty() {
+            self.progress_tracker
+                .complete_aggregate(session_id, aggregate_index);
+            return Ok(0);
+        }
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            0,
+            Some(summaries.len() as i32),
+            0,
+            0,
+        );
+
+        // Load lightweight snapshot (advert_id → change_time + has_info_json) to decide
+        // which campaigns need a fresh API call.  Full aggregates are NOT loaded here —
+        // the upsert will preserve existing info_json for campaigns we pass Null for.
+        let snapshot = crate::domain::a030_wb_advert_campaign::service::list_info_snapshot(
+            &connection.to_string_id(),
+        )
+        .await
+        .unwrap_or_default();
+
+        // Classify every campaign from the summaries response.
+        // Priority 1 — new (not in DB): must fetch info.
+        // Priority 2 — existing but change_time changed: fetch info (data may differ).
+        // Priority 3 — existing, unchanged change_time, has info_json: skip API call.
+        // Priority 4 — existing, unchanged change_time, no info_json: fetch info.
+        let mut priority1: Vec<i64> = Vec::new(); // new
+        let mut priority2: Vec<i64> = Vec::new(); // changed
+        let mut priority4: Vec<i64> = Vec::new(); // no info yet
+
+        for summary in &summaries {
+            let advert_id = summary.advert_id;
+            match snapshot.get(&advert_id) {
+                None => priority1.push(advert_id),
+                Some(snap) => {
+                    let same_change_time = snap.change_time == summary.change_time;
+                    if same_change_time && snap.has_info_json {
+                        // nothing to do — cached info is still valid
+                    } else if !snap.has_info_json {
+                        priority4.push(advert_id);
+                    } else {
+                        priority2.push(advert_id);
+                    }
+                }
+            }
+        }
+
+        // Build the ordered list of IDs to fetch, then take at most 50 (one API call).
+        // Remaining IDs are deferred to the next run; the upsert preserves their info_json.
+        let mut need_info_ids: Vec<i64> = priority1
+            .into_iter()
+            .chain(priority4)
+            .chain(priority2)
+            .collect();
+
+        const MAX_INFO_IDS_PER_RUN: usize = 50;
+        let deferred_count = need_info_ids.len().saturating_sub(MAX_INFO_IDS_PER_RUN);
+        need_info_ids.truncate(MAX_INFO_IDS_PER_RUN);
+
+        let cached_count = summaries.len() - need_info_ids.len() - deferred_count;
+        tracing::info!(
+            "WB advert campaign info: total={}, cached={}, fetch_now={}, deferred_to_next_run={}",
+            summaries.len(),
+            cached_count,
+            need_info_ids.len(),
+            deferred_count,
+        );
+        if deferred_count > 0 {
+            tracing::warn!(
+                "WB advert API rate limit: only {} of {} campaigns will get fresh info_json \
+                 this run (limit=1 req/hour). Deferred {} campaigns will be updated on \
+                 subsequent runs.",
+                need_info_ids.len(),
+                summaries.len(),
+                deferred_count,
+            );
+        }
+
+        // Fetch info_json for the selected campaigns (at most one API call).
+        let mut info_by_id: HashMap<i64, serde_json::Value> = HashMap::new();
+        if !need_info_ids.is_empty() {
+            tokio::time::sleep(tokio::time::Duration::from_millis(
+                WB_ADVERT_MIN_REQUEST_INTERVAL_MS,
+            ))
+            .await;
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Свойства {} кампаний из WB API",
+                    need_info_ids.len()
+                )),
+            );
+
+            match self
+                .api_client
+                .fetch_advert_campaign_info_values(connection, &need_info_ids)
+                .await
+            {
+                Ok(values) => {
+                    for value in values {
+                        if let Some(id) = value
+                            .get("advertId")
+                            .or_else(|| value.get("id"))
+                            .and_then(|v| v.as_i64())
+                        {
+                            info_by_id.insert(id, value);
+                        }
+                    }
+                    tracing::info!(
+                        "WB advert campaign info fetched: requested={}, received={}",
+                        need_info_ids.len(),
+                        info_by_id.len(),
+                    );
+                }
+                Err(err) => {
+                    let message = format!(
+                        "WB advert campaign info fetch failed; saving all campaigns without \
+                         fresh info_json (existing info_json is preserved by upsert): {}",
+                        err
+                    );
+                    tracing::warn!("{}", message);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        message,
+                        Some(err.to_string()),
+                    );
+                }
+            }
+        }
+
+        // Capture before the loop consumes info_by_id via .remove().
+        let api_fetched_count = info_by_id.len();
+
+        let fetched_at = chrono::Utc::now().to_rfc3339();
+        let mut campaigns = Vec::with_capacity(summaries.len());
+        for summary in &summaries {
+            // Campaigns not in info_by_id get Null — the upsert will preserve existing info_json.
+            let info_json = info_by_id
+                .remove(&summary.advert_id)
+                .unwrap_or(serde_json::Value::Null);
+            let header = WbAdvertCampaignHeader {
+                advert_id: summary.advert_id,
+                connection_id: connection.to_string_id(),
+                organization_id: connection.organization_ref.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                campaign_type: summary.campaign_type,
+                status: summary.status,
+                change_time: summary.change_time.clone(),
+                nm_count: 0, // recalculated by before_write() from info_json
+            };
+            let source_meta = WbAdvertCampaignSourceMeta {
+                source: "wb_advert_campaigns".to_string(),
+                fetched_at: fetched_at.clone(),
+                info_json,
+            };
+            let mut campaign = WbAdvertCampaign::new_for_insert(header, source_meta);
+            campaign.before_write();
+            campaign.validate().map_err(|e| anyhow::anyhow!(e))?;
+            campaigns.push(campaign);
+        }
+
+        let (new_count, total_count) =
+            crate::domain::a030_wb_advert_campaign::service::upsert_many(&campaigns)
+                .await
+                .context("Failed to save a030_wb_advert_campaign")?;
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_count as i32,
+            Some(summaries.len() as i32),
+            new_count as i32,         // "Новые" = физически добавленные записи
+            api_fetched_count as i32, // "Изменено" = получили свежий info_json из API
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Advert campaigns synced: connection={}, total={}, new={}, api_fetched={}, deferred={}",
+            connection.to_string_id(),
+            total_count,
+            new_count,
+            api_fetched_count,
+            deferred_count,
+        );
+        Ok(total_count)
+    }
+
+    /// Загрузка статистики рекламы WB без промежуточного CSV.
+    /// Возвращает `true`, если были частичные ошибки API (данные за период всё равно пересобираются из успешных ответов).
+    async fn import_wb_advert_stats(
         &self,
         session_id: &str,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
-    ) -> Result<()> {
-        let aggregate_index = "wb_advert_stats_csv";
+    ) -> Result<bool> {
+        let aggregate_index = "wb_advert_stats";
         let begin_date = date_from.format("%Y-%m-%d").to_string();
         let end_date = date_to.format("%Y-%m-%d").to_string();
 
         tracing::info!(
-            "WB Advert stats CSV: session={}, period={} to {}",
+            "WB Advert stats: session={}, period={} to {}",
             session_id,
             begin_date,
             end_date
         );
 
-        // Шаг 1: получить все advertId
-        let advert_ids = match self.api_client.fetch_advert_campaign_ids(connection).await {
-            Ok(ids) => ids,
-            Err(e) => {
-                tracing::error!("Failed to fetch WB advert campaign IDs: {}", e);
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    format!("Failed to fetch advert campaign IDs: {}", e),
-                    None,
-                );
-                self.progress_tracker
-                    .complete_aggregate(session_id, aggregate_index);
-                return Ok(());
-            }
-        };
+        let all_advert_ids =
+            crate::domain::a030_wb_advert_campaign::service::list_advert_ids_by_connection(
+                &connection.to_string_id(),
+            )
+            .await
+            .context("Failed to read advert ids from a030_wb_advert_campaign")?;
+
+        // Filter out completed campaigns (status=7) that ended before the period start —
+        // they cannot have any activity in [date_from, date_to].
+        let advert_ids =
+            crate::domain::a030_wb_advert_campaign::service::list_advert_ids_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+            )
+            .await
+            .context("Failed to read filtered advert ids from a030_wb_advert_campaign")?;
+
+        let skipped_count = all_advert_ids.len().saturating_sub(advert_ids.len());
+        tracing::info!(
+            "WB Advert: total={}, period_relevant={}, skipped_completed={}",
+            all_advert_ids.len(),
+            advert_ids.len(),
+            skipped_count,
+        );
 
         if advert_ids.is_empty() {
-            tracing::info!("WB Advert: no campaigns found, clearing existing documents");
+            tracing::info!(
+                "WB Advert: no relevant campaigns for period, clearing existing documents"
+            );
             crate::domain::a026_wb_advert_daily::service::replace_for_period(
                 &connection.to_string_id(),
                 &begin_date,
@@ -1777,10 +2313,16 @@ impl ImportExecutor {
             .await?;
             self.progress_tracker
                 .complete_aggregate(session_id, aggregate_index);
-            return Ok(());
+            return Ok(false);
         }
 
-        tracing::info!("WB Advert: found {} campaigns total", advert_ids.len());
+        tracing::info!(
+            "WB Advert: {} campaigns → {} chunks of up to {} (delay {}s each)",
+            advert_ids.len(),
+            advert_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).count(),
+            WB_ADVERT_FULLSTATS_CHUNK_SIZE,
+            WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
+        );
         self.progress_tracker.update_aggregate(
             session_id,
             aggregate_index,
@@ -1790,35 +2332,12 @@ impl ImportExecutor {
             0,
         );
 
-        // Шаг 2: подготовить CSV файл
-        let csv_dir = std::path::Path::new("csv_export");
-        if let Err(e) = std::fs::create_dir_all(csv_dir) {
-            tracing::error!("Failed to create csv_export directory: {}", e);
-            self.progress_tracker.add_error(
-                session_id,
-                Some(aggregate_index.to_string()),
-                format!("Cannot create csv_export directory: {}", e),
-                None,
-            );
-            self.progress_tracker
-                .complete_aggregate(session_id, aggregate_index);
-            return Ok(());
-        }
-
-        let csv_path = csv_dir.join(format!("wb_advert_stats_{}_{}.csv", begin_date, end_date));
-
-        // UTF-8 BOM для корректного отображения кириллицы в Excel
-        let mut csv_content = String::from(
-            "\u{FEFF}advert_id;date;app_type;nm_id;nm_name;views;clicks;ctr;cpc;atbs;orders;shks;sum;sum_price;cr;canceled\n",
-        );
-
-        // Шаг 3: запрашивать fullstats чанками по 50 с паузой (rate limit: 3/мин)
-        let chunks: Vec<&[i64]> = advert_ids.chunks(50).collect();
+        let chunks: Vec<&[i64]> = advert_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).collect();
         let total_chunks = chunks.len();
-        let mut total_rows = 0i32;
         let mut processed_campaigns = 0i32;
         let mut had_fetch_errors = false;
         let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
+        let mut successful_advert_ids: Vec<i64> = Vec::new();
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             self.progress_tracker.set_current_item(
@@ -1838,86 +2357,9 @@ impl ImportExecutor {
                 .await
             {
                 Ok(stats) => {
+                    processed_campaigns += chunk.len() as i32;
+                    successful_advert_ids.extend(chunk.iter().copied());
                     all_stats.extend(stats.iter().cloned());
-                    for stat in &stats {
-                        for day in &stat.days {
-                            // Убираем только время из ISO-даты (оставляем YYYY-MM-DD)
-                            let date_str = normalize_day_date(&day.date);
-
-                            if day.apps.is_empty() {
-                                // Нет детализации по app — пишем строку с нулевым app_type
-                                let line = format!(
-                                    "{};{};0;0;;{};{};{};{};{};{};{};{};{};{};{}\n",
-                                    stat.advert_id,
-                                    date_str,
-                                    day.views,
-                                    day.clicks,
-                                    fmt_dec(day.ctr),
-                                    fmt_dec(day.cpc),
-                                    day.atbs,
-                                    day.orders,
-                                    day.shks,
-                                    fmt_dec(day.sum),
-                                    fmt_dec(day.sum_price),
-                                    fmt_dec(day.cr),
-                                    day.canceled,
-                                );
-                                csv_content.push_str(&line);
-                                total_rows += 1;
-                            } else {
-                                for app in &day.apps {
-                                    if app.nms.is_empty() {
-                                        let line = format!(
-                                            "{};{};{};0;;{};{};{};{};{};{};{};{};{};{};{}\n",
-                                            stat.advert_id,
-                                            date_str,
-                                            app.app_type,
-                                            app.views,
-                                            app.clicks,
-                                            fmt_dec(app.ctr),
-                                            fmt_dec(app.cpc),
-                                            app.atbs,
-                                            app.orders,
-                                            app.shks,
-                                            fmt_dec(app.sum),
-                                            fmt_dec(app.sum_price),
-                                            fmt_dec(app.cr),
-                                            app.canceled,
-                                        );
-                                        csv_content.push_str(&line);
-                                        total_rows += 1;
-                                    } else {
-                                        for nm in &app.nms {
-                                            let nm_name =
-                                                nm.name.as_deref().unwrap_or("").replace(';', " ");
-                                            let line = format!(
-                                                "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\n",
-                                                stat.advert_id,
-                                                date_str,
-                                                app.app_type,
-                                                nm.nm_id,
-                                                nm_name,
-                                                nm.views,
-                                                nm.clicks,
-                                                fmt_dec(nm.ctr),
-                                                fmt_dec(nm.cpc),
-                                                nm.atbs,
-                                                nm.orders,
-                                                nm.shks,
-                                                fmt_dec(nm.sum),
-                                                fmt_dec(nm.sum_price),
-                                                fmt_dec(nm.cr),
-                                                nm.canceled,
-                                            );
-                                            csv_content.push_str(&line);
-                                            total_rows += 1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        processed_campaigns += 1;
-                    }
                 }
                 Err(e) => {
                     had_fetch_errors = true;
@@ -1940,39 +2382,15 @@ impl ImportExecutor {
                 aggregate_index,
                 processed_campaigns,
                 Some(advert_ids.len() as i32),
-                total_rows,
+                all_stats.len() as i32,
                 0,
             );
 
-            // Соблюдаем rate limit: 3 запроса в минуту → 21 сек между запросами
             if chunk_idx + 1 < total_chunks {
-                tokio::time::sleep(tokio::time::Duration::from_secs(21)).await;
-            }
-        }
-
-        // Шаг 4: записать CSV на диск
-        match std::fs::write(&csv_path, csv_content.as_bytes()) {
-            Ok(_) => {
-                let path_str = csv_path.display().to_string();
-                tracing::info!(
-                    "WB Advert stats CSV saved: {} ({} rows)",
-                    path_str,
-                    total_rows
-                );
-                self.progress_tracker.set_current_item(
-                    session_id,
-                    aggregate_index,
-                    Some(format!("Сохранено: {} ({} строк)", path_str, total_rows)),
-                );
-            }
-            Err(e) => {
-                tracing::error!("Failed to write CSV file {:?}: {}", csv_path, e);
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    format!("Failed to write CSV: {}", e),
-                    None,
-                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
+                ))
+                .await;
             }
         }
 
@@ -1980,48 +2398,78 @@ impl ImportExecutor {
             self.progress_tracker.add_error(
                 session_id,
                 Some(aggregate_index.to_string()),
-                "Часть рекламной статистики не загрузилась, документы за период не обновлялись"
+                "Часть рекламной статистики не загрузилась; сохранены только успешно полученные данные"
                     .to_string(),
                 None,
             );
-        } else {
-            let build_started_at = std::time::Instant::now();
-            tracing::info!(
-                "WB Advert document build started: connection={}, stats={}",
-                connection.to_string_id(),
-                all_stats.len()
-            );
-            let documents = self
-                .build_wb_advert_documents(connection, &all_stats)
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed during WB advert document build for connection={} period={}..{}",
-                        connection.to_string_id(),
-                        begin_date,
-                        end_date
-                    )
-                })?;
-            let document_ids: Vec<Uuid> = documents
-                .iter()
-                .map(|document| document.base.id.value())
-                .collect();
-            tracing::info!(
-                "WB Advert document build completed: connection={}, documents={}, elapsed_ms={}",
-                connection.to_string_id(),
-                documents.len(),
-                build_started_at.elapsed().as_millis()
-            );
+        }
 
-            let replace_started_at = std::time::Instant::now();
-            tracing::info!(
-                "WB Advert document replace started: connection={}, period={}..{}, documents={}",
-                connection.to_string_id(),
-                begin_date,
-                end_date,
-                documents.len()
+        if had_fetch_errors && successful_advert_ids.is_empty() {
+            anyhow::bail!(
+                "WB Advert fullstats failed for all {} chunks; existing a026 data was left unchanged",
+                total_chunks
             );
-            let documents_count = crate::domain::a026_wb_advert_daily::service::replace_for_period(
+        }
+
+        let build_started_at = std::time::Instant::now();
+        tracing::info!(
+            "WB Advert document build started: connection={}, stats={}",
+            connection.to_string_id(),
+            all_stats.len()
+        );
+        let documents = self
+            .build_wb_advert_documents(connection, &all_stats)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed during WB advert document build for connection={} period={}..{}",
+                    connection.to_string_id(),
+                    begin_date,
+                    end_date
+                )
+            })?;
+        let document_ids: Vec<Uuid> = documents
+            .iter()
+            .map(|document| document.base.id.value())
+            .collect();
+        tracing::info!(
+            "WB Advert document build completed: connection={}, documents={}, elapsed_ms={}",
+            connection.to_string_id(),
+            documents.len(),
+            build_started_at.elapsed().as_millis()
+        );
+
+        let replace_started_at = std::time::Instant::now();
+        tracing::info!(
+            "WB Advert document replace started: connection={}, period={}..{}, documents={}",
+            connection.to_string_id(),
+            begin_date,
+            end_date,
+            documents.len()
+        );
+        let documents_count = if had_fetch_errors {
+            successful_advert_ids.sort_unstable();
+            successful_advert_ids.dedup();
+            crate::domain::a026_wb_advert_daily::service::replace_for_period_advert_ids(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &successful_advert_ids,
+                &documents,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed during scoped WB advert replace_for_period for connection={} period={}..{} successful_adverts={} documents={}",
+                    connection.to_string_id(),
+                    begin_date,
+                    end_date,
+                    successful_advert_ids.len(),
+                    documents.len()
+                )
+            })?
+        } else {
+            crate::domain::a026_wb_advert_daily::service::replace_for_period(
                 &connection.to_string_id(),
                 &begin_date,
                 &end_date,
@@ -2036,64 +2484,65 @@ impl ImportExecutor {
                     end_date,
                     documents.len()
                 )
-            })?;
+            })?
+        };
 
-            let post_started_at = std::time::Instant::now();
-            tracing::info!(
-                "WB Advert auto-post started: connection={}, period={}..{}, documents={}",
-                connection.to_string_id(),
-                begin_date,
-                end_date,
-                document_ids.len()
-            );
-            for document_id in &document_ids {
-                crate::domain::a026_wb_advert_daily::posting::post_document(*document_id)
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed during WB advert auto-post for connection={} document_id={}",
-                            connection.to_string_id(),
-                            document_id
-                        )
-                    })?;
-            }
-            tracing::info!(
-                "WB Advert auto-post completed: connection={}, period={}..{}, documents={}, elapsed_ms={}",
-                connection.to_string_id(),
-                begin_date,
-                end_date,
-                document_ids.len(),
-                post_started_at.elapsed().as_millis()
-            );
-
-            self.progress_tracker.update_aggregate(
-                session_id,
-                aggregate_index,
-                processed_campaigns,
-                Some(advert_ids.len() as i32),
-                documents_count as i32,
-                0,
-            );
-
-            tracing::info!(
-                "WB Advert documents synced: connection={}, period={}..{}, documents={}, elapsed_ms={}",
-                connection.to_string_id(),
-                begin_date,
-                end_date,
-                documents_count,
-                replace_started_at.elapsed().as_millis()
-            );
+        let post_started_at = std::time::Instant::now();
+        tracing::info!(
+            "WB Advert auto-post started: connection={}, period={}..{}, documents={}",
+            connection.to_string_id(),
+            begin_date,
+            end_date,
+            document_ids.len()
+        );
+        for document_id in &document_ids {
+            crate::domain::a026_wb_advert_daily::posting::post_document(*document_id)
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed during WB advert auto-post for connection={} document_id={}",
+                        connection.to_string_id(),
+                        document_id
+                    )
+                })?;
         }
+        tracing::info!(
+            "WB Advert auto-post completed: connection={}, period={}..{}, documents={}, elapsed_ms={}",
+            connection.to_string_id(),
+            begin_date,
+            end_date,
+            document_ids.len(),
+            post_started_at.elapsed().as_millis()
+        );
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            processed_campaigns,
+            Some(advert_ids.len() as i32),
+            documents_count as i32,
+            0,
+        );
+
+        tracing::info!(
+            "WB Advert documents synced: connection={}, period={}..{}, documents={}, elapsed_ms={}",
+            connection.to_string_id(),
+            begin_date,
+            end_date,
+            documents_count,
+            replace_started_at.elapsed().as_millis()
+        );
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
-            "WB Advert stats CSV completed: {} campaigns processed, {} CSV rows",
+            "WB Advert stats completed: {} campaigns processed, {} stat records, partial={}",
             processed_campaigns,
-            total_rows
+            all_stats.len(),
+            had_fetch_errors
         );
 
-        Ok(())
+        Ok(had_fetch_errors)
     }
 
     async fn build_wb_advert_documents(
@@ -2101,32 +2550,32 @@ impl ImportExecutor {
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
         stats: &[WbAdvertFullStat],
     ) -> Result<Vec<WbAdvertDaily>> {
-        let mut by_day: BTreeMap<String, AdvertDayAccumulator> = BTreeMap::new();
+        let mut by_doc: BTreeMap<(String, i64), AdvertDayAccumulator> = BTreeMap::new();
 
         for stat in stats {
             for day in &stat.days {
                 let date_key = normalize_day_date(&day.date);
-                let day_acc = by_day.entry(date_key).or_default();
-                append_metrics(&mut day_acc.totals, &metrics_from_day(day));
+                let doc_acc = by_doc.entry((date_key, stat.advert_id)).or_default();
+                append_metrics(&mut doc_acc.totals, &metrics_from_day(day));
 
                 for app in &day.apps {
-                    self.accumulate_day_app(day_acc, stat.advert_id, app);
+                    self.accumulate_day_app(doc_acc, stat.advert_id, app);
                 }
             }
         }
 
-        let total_line_groups: usize = by_day.values().map(|day| day.lines.len()).sum();
+        let total_line_groups: usize = by_doc.values().map(|day| day.lines.len()).sum();
         tracing::info!(
-            "WB Advert document build prepared: connection={}, days={}, nm_groups={}",
+            "WB Advert document build prepared: connection={}, documents={}, nm_groups={}",
             connection.to_string_id(),
-            by_day.len(),
+            by_doc.len(),
             total_line_groups
         );
 
         let mut nomenclature_cache: HashMap<i64, Option<String>> = HashMap::new();
-        let mut documents = Vec::with_capacity(by_day.len());
+        let mut documents = Vec::with_capacity(by_doc.len());
 
-        for (document_date, mut day_acc) in by_day {
+        for ((document_date, advert_id), mut day_acc) in by_doc {
             let mut lines = Vec::with_capacity(day_acc.lines.len());
             let mut attributed_totals = WbAdvertDailyMetrics::default();
 
@@ -2145,6 +2594,7 @@ impl ImportExecutor {
                     nomenclature_ref,
                     advert_ids: line_acc.advert_ids.iter().copied().collect(),
                     app_types: line_acc.app_types.iter().copied().collect(),
+                    placements: line_acc.placements.iter().cloned().collect(),
                     metrics,
                 });
             }
@@ -2167,15 +2617,16 @@ impl ImportExecutor {
             finalize_metrics(&mut unattributed_totals);
 
             let header = WbAdvertDailyHeader {
-                document_no: format!("WB-ADV-{}-{}", document_date, connection.to_string_id()),
+                document_no: format!("WB-ADV-{}-{}", advert_id, document_date),
                 document_date: document_date.clone(),
+                advert_id,
                 connection_id: connection.to_string_id(),
                 organization_id: connection.organization_ref.clone(),
                 marketplace_id: connection.marketplace_id.clone(),
             };
 
             let source_meta = WbAdvertDailySourceMeta {
-                source: "wb_advert_stats_csv".to_string(),
+                source: "wb_advert_stats".to_string(),
                 fetched_at: chrono::Utc::now().to_rfc3339(),
             };
 

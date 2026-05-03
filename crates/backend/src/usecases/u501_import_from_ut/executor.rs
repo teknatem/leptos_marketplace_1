@@ -9,6 +9,7 @@ use crate::domain::{
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
+use contracts::system::tasks::progress::TaskProgress;
 use contracts::usecases::u501_import_from_ut::{
     progress::ImportStatus,
     request::ImportRequest,
@@ -29,6 +30,16 @@ impl ImportExecutor {
             odata_client: Arc::new(UtODataClient::new()),
             progress_tracker,
         }
+    }
+
+    /// Только память: активные (`Running`) сессии для лёгкого мониторинга, без БД и без диска.
+    pub fn list_live_task_progress(&self) -> Vec<TaskProgress> {
+        self.progress_tracker
+            .snapshot_sessions()
+            .into_iter()
+            .filter(|p| matches!(p.status, ImportStatus::Running))
+            .map(Into::into)
+            .collect()
     }
 
     /// Запустить импорт (создает async task и возвращает session_id)
@@ -113,6 +124,57 @@ impl ImportExecutor {
     ) -> Result<()> {
         tracing::info!("Starting import for session: {}", session_id);
 
+        if self.progress_tracker.get_progress(session_id).is_none() {
+            self.progress_tracker.create_session(session_id.to_string());
+            for aggregate_index in &request.target_aggregates {
+                let aggregate_name = match aggregate_index.as_str() {
+                    "a002_organization" => "Организации",
+                    "a003_counterparty" => "Контрагенты",
+                    "a004_nomenclature" => "Номенклатура",
+                    "a022_kit_variant" => "Варианты комплектации",
+                    "a023_purchase_of_goods" => "Приобретение товаров и услуг",
+                    "p901_barcodes" => "Штрихкоды номенклатуры",
+                    "p906_prices" => "Цены номенклатуры",
+                    _ => "Unknown",
+                };
+                self.progress_tracker.add_aggregate(
+                    session_id,
+                    aggregate_index.clone(),
+                    aggregate_name.to_string(),
+                );
+            }
+        }
+
+        let work_result = self.run_aggregates(session_id, request, connection).await;
+
+        let final_status = if let Err(ref e) = work_result {
+            self.progress_tracker
+                .add_error(session_id, None, e.to_string(), None);
+            ImportStatus::Failed
+        } else if self
+            .progress_tracker
+            .get_progress(session_id)
+            .map(|p| p.total_errors > 0)
+            .unwrap_or(false)
+        {
+            ImportStatus::CompletedWithErrors
+        } else {
+            ImportStatus::Completed
+        };
+
+        self.progress_tracker
+            .complete_session(session_id, final_status);
+        tracing::info!("Import completed for session: {}", session_id);
+
+        work_result
+    }
+
+    async fn run_aggregates(
+        &self,
+        session_id: &str,
+        request: &ImportRequest,
+        connection: &contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase,
+    ) -> Result<()> {
         for aggregate_index in &request.target_aggregates {
             match aggregate_index.as_str() {
                 "a002_organization" => {
@@ -201,22 +263,6 @@ impl ImportExecutor {
                 }
             }
         }
-
-        // Завершить импорт
-        let final_status = if self
-            .progress_tracker
-            .get_progress(session_id)
-            .map(|p| p.total_errors > 0)
-            .unwrap_or(false)
-        {
-            ImportStatus::CompletedWithErrors
-        } else {
-            ImportStatus::Completed
-        };
-
-        self.progress_tracker
-            .complete_session(session_id, final_status);
-        tracing::info!("Import completed for session: {}", session_id);
 
         Ok(())
     }

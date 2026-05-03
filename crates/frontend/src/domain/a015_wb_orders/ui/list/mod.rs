@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{
@@ -12,6 +13,7 @@ use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
+use crate::system::tasks::ui::RunTaskButton;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -712,11 +714,16 @@ pub fn WbOrdersList() -> impl IntoView {
                             disabled=Signal::derive(move || loading.get() || state.get().orders.is_empty())
                         >
                             {icon("download")}
-                            "Excel"
+                            "Excel (csv)"
                         </Button>
+                        <RunTaskButton
+                            task_code="task001-wb-orders-fbs".to_string()
+                            label="Получить заказы".to_string()
+                        />
                         {move || operation_notification.get().map(|msg| view! {
                             <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">{msg}</span>
                         })}
+                        <ClosePageButton />
                     </Space>
                 </div>
             </div>

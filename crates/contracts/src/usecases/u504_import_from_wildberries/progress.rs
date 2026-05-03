@@ -20,6 +20,14 @@ pub struct ImportProgress {
     pub total_updated: i32,
     pub total_errors: i32,
 
+    /// HTTP к WB API в рамках сессии (для UI «Активные» и `sys_task_runs`).
+    #[serde(default)]
+    pub http_request_count: i32,
+    #[serde(default)]
+    pub http_bytes_sent: i64,
+    #[serde(default)]
+    pub http_bytes_received: i64,
+
     /// Ошибки импорта
     pub errors: Vec<ImportError>,
 }
@@ -88,6 +96,9 @@ impl ImportProgress {
             total_inserted: 0,
             total_updated: 0,
             total_errors: 0,
+            http_request_count: 0,
+            http_bytes_sent: 0,
+            http_bytes_received: 0,
             errors: Vec::new(),
         }
     }

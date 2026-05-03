@@ -15,6 +15,9 @@ pub struct ScheduledTaskResponse {
     pub config_json: String,
     pub last_run_log_file: Option<String>,
     pub last_run_status: Option<String>,
+    /// Watermark для инкрементальной загрузки — дата последнего успешного запуска.
+    /// Администратор может сбросить это значение для повторной загрузки данных с нужной даты.
+    pub last_successful_run_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl From<ScheduledTask> for ScheduledTaskResponse {
@@ -33,6 +36,7 @@ impl From<ScheduledTask> for ScheduledTaskResponse {
             config_json: task.config_json,
             last_run_log_file: task.last_run_log_file,
             last_run_status: task.last_run_status,
+            last_successful_run_at: task.last_successful_run_at,
         }
     }
 }

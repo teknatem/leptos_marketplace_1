@@ -3,6 +3,8 @@ pub mod state;
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::auth_download::download_authenticated_file;
+use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::TableCrosshairHighlight;
@@ -72,6 +74,7 @@ pub struct WbAdvertDailyListDto {
     pub id: String,
     pub document_no: String,
     pub document_date: String,
+    pub advert_id: i64,
     pub lines_count: i32,
     pub total_views: i64,
     pub total_clicks: i64,
@@ -103,15 +106,18 @@ pub fn WbAdvertDailyList() -> impl IntoView {
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let state = create_state();
     let (loading, set_loading) = signal(false);
+    let (csv_exporting, set_csv_exporting) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
     let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
 
-    let open_detail = move |id: String, document_date: String| {
-        tabs_store.open_tab(
-            &format!("a026_wb_advert_daily_details_{}", id),
-            &format!("WB Ads {}", document_date),
-        );
+    let open_detail = move |id: String, document_date: String, advert_id: i64| {
+        let title = if advert_id > 0 {
+            format!("WB Ads {} · {}", document_date, advert_id)
+        } else {
+            format!("WB Ads {}", document_date)
+        };
+        tabs_store.open_tab(&format!("a026_wb_advert_daily_details_{}", id), &title);
     };
 
     let load_items = move || {
@@ -171,6 +177,10 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                     id: v.get("id")?.as_str()?.to_string(),
                                     document_no: v.get("document_no")?.as_str()?.to_string(),
                                     document_date: v.get("document_date")?.as_str()?.to_string(),
+                                    advert_id: v
+                                        .get("advert_id")
+                                        .and_then(|x| x.as_i64())
+                                        .unwrap_or(0),
                                     lines_count: v
                                         .get("lines_count")
                                         .and_then(|x| x.as_i64())
@@ -278,6 +288,14 @@ pub fn WbAdvertDailyList() -> impl IntoView {
         });
     });
 
+    let position_query = RwSignal::new(state.get_untracked().position_query.clone());
+    Effect::new(move || {
+        let value = position_query.get();
+        untrack(move || {
+            state.update(|s| s.position_query = value);
+        });
+    });
+
     let selected_connection_id = RwSignal::new(
         state
             .get_untracked()
@@ -327,6 +345,9 @@ pub fn WbAdvertDailyList() -> impl IntoView {
         if !s.search_query.is_empty() {
             count += 1;
         }
+        if !s.position_query.is_empty() {
+            count += 1;
+        }
         count
     });
 
@@ -356,6 +377,52 @@ pub fn WbAdvertDailyList() -> impl IntoView {
         load_items();
     };
 
+    let export_csv = move || {
+        spawn_local(async move {
+            set_csv_exporting.set(true);
+            set_error.set(None);
+            let date_from_val = state.with_untracked(|s| s.date_from.clone());
+            let date_to_val = state.with_untracked(|s| s.date_to.clone());
+            let connection_id_val = state.with_untracked(|s| s.selected_connection_id.clone());
+            let search_query_val = state.with_untracked(|s| s.search_query.clone());
+            let position_query_val = state.with_untracked(|s| s.position_query.clone());
+            let cache_buster = js_sys::Date::now() as i64;
+
+            let mut url = format!(
+                "{}/api/a026/wb-advert-daily/report.csv?date_from={}&date_to={}&_ts={}",
+                api_base(),
+                urlencoding::encode(&date_from_val),
+                urlencoding::encode(&date_to_val),
+                cache_buster
+            );
+
+            if !search_query_val.is_empty() {
+                url.push_str(&format!(
+                    "&search_query={}",
+                    urlencoding::encode(&search_query_val)
+                ));
+            }
+            if let Some(connection_id) = connection_id_val.filter(|value| !value.is_empty()) {
+                url.push_str(&format!(
+                    "&connection_id={}",
+                    urlencoding::encode(&connection_id)
+                ));
+            }
+            if !position_query_val.is_empty() {
+                url.push_str(&format!(
+                    "&position_query={}",
+                    urlencoding::encode(&position_query_val)
+                ));
+            }
+
+            let res = download_authenticated_file(&url, "wb_advert_daily.csv").await;
+            set_csv_exporting.set(false);
+            if let Err(e) = res {
+                set_error.set(Some(format!("CSV: {}", e)));
+            }
+        });
+    };
+
     view! {
         <PageFrame page_id="a026_wb_advert_daily--list" category="list">
             <div class="page__header">
@@ -364,6 +431,9 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                     <Badge appearance=BadgeAppearance::Filled>
                         {move || state.get().total_count.to_string()}
                     </Badge>
+                </div>
+                <div class="page__header-right">
+                    <ClosePageButton />
                 </div>
             </div>
 
@@ -419,6 +489,20 @@ pub fn WbAdvertDailyList() -> impl IntoView {
 
                         <div class="filter-panel-header__right">
                             <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| export_csv()
+                                disabled=Signal::derive(move || csv_exporting.get())
+                            >
+                                {icon("download")}
+                                {move || {
+                                    if csv_exporting.get() {
+                                        "Выгрузка…"
+                                    } else {
+                                        "Excel (csv)"
+                                    }
+                                }}
+                            </Button>
+                            <Button
                                 appearance=ButtonAppearance::Primary
                                 on_click=move |_| load_items()
                                 disabled=Signal::derive(move || loading.get())
@@ -470,7 +554,17 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                         <Label>"Поиск"</Label>
                                         <Input
                                             value=search_query
-                                            placeholder="Документ, кабинет, организация"
+                                            placeholder="Документ, advert_id, кабинет, организация"
+                                        />
+                                    </Flex>
+                                </div>
+
+                                <div style="min-width: 280px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Позиция (отчёт CSV)"</Label>
+                                        <Input
+                                            value=position_query
+                                            placeholder="nm_id, название, артикул"
                                         />
                                     </Flex>
                                 </div>
@@ -486,7 +580,7 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
 
-                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1180px;">
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1280px;">
                         <TableHeader>
                             <TableRow>
                                 <TableHeaderCell resizable=false min_width=110.0 class="resizable">
@@ -503,6 +597,15 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                         "Документ"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "document_no", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=100.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right; justify-content: flex-end;" on:click=move |_| toggle_sort("advert_id")>
+                                        "Кампания"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "advert_id"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "advert_id", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
                                 </TableHeaderCell>
@@ -587,6 +690,12 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                 children=move |item| {
                                     let row_id = item.id.clone();
                                     let doc_date = item.document_date.clone();
+                                    let advert_id = item.advert_id;
+                                    let advert_id_text = if advert_id > 0 {
+                                        advert_id.to_string()
+                                    } else {
+                                        "—".to_string()
+                                    };
                                     let document_no = item.document_no.clone();
                                     let connection_name = item
                                         .connection_name
@@ -615,11 +724,17 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                                         class="table__link"
                                                         on:click=move |e| {
                                                             e.prevent_default();
-                                                            open_detail(row_id.clone(), doc_date.clone());
+                                                            open_detail(row_id.clone(), doc_date.clone(), advert_id);
                                                         }
                                                     >
                                                         {document_no}
                                                     </a>
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout attr:style="text-align: right;">
+                                                    {advert_id_text}
                                                 </TableCellLayout>
                                             </TableCell>
 

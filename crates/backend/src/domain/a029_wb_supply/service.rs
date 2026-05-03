@@ -24,6 +24,14 @@ pub async fn store_document_with_raw(mut document: WbSupply, raw_json: &str) -> 
     Ok(id)
 }
 
+pub async fn store_document(mut document: WbSupply) -> Result<Uuid> {
+    document
+        .validate()
+        .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+    document.before_write();
+    repository::upsert_document(&document).await
+}
+
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbSupply>> {
     repository::get_by_id(id).await
 }

@@ -7,6 +7,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 use crate::domain::a010_ozon_fbs_posting::ui::details::OzonFbsPostingDetail;
+use crate::shared::icons::icon;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OzonFinanceRealizationDto {
@@ -269,9 +270,10 @@ pub fn OzonFinanceRealizationList() -> impl IntoView {
                 <button
                     on:click=move |_| export_to_excel()
                     style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                    title="Export to Excel (CSV)"
+                    title="Excel (csv)"
                 >
-                    "Export Excel"
+                    {icon("download")}
+                    "Excel (csv)"
                 </button>
             </div>
 

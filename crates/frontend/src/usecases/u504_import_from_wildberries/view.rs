@@ -1,11 +1,13 @@
 use super::api;
 use crate::shared::page_frame::PageFrame;
+use crate::system::tasks::ui::TaskProgressPanel;
 use chrono::{Duration, NaiveDate, Utc};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 use contracts::enums::marketplace_type::MarketplaceType;
+use contracts::system::tasks::import_progress_map::task_progress_response_from_u504;
 use contracts::usecases::u504_import_from_wildberries::{
-    progress::{ImportProgress, ImportStatus},
+    progress::{AggregateImportStatus, ImportProgress, ImportStatus},
     request::{ImportMode, ImportRequest},
 };
 use leptos::prelude::*;
@@ -66,11 +68,123 @@ fn is_finished(progress: &ImportProgress) -> bool {
     )
 }
 
+fn find_aggregate_progress(
+    progress: &ImportProgress,
+    aggregate: &str,
+) -> Option<contracts::usecases::u504_import_from_wildberries::progress::AggregateProgress> {
+    progress
+        .aggregates
+        .iter()
+        .find(|agg| agg.aggregate_index == aggregate)
+        .cloned()
+}
+
+#[derive(Clone, Copy)]
+enum RowDisplayStatus {
+    Idle,
+    Starting,
+    Pending,
+    Running,
+    Completed,
+    CompletedWithErrors,
+    Failed,
+    Cancelled,
+}
+
+fn derive_row_status(
+    progress: Option<&ImportProgress>,
+    aggregate: &str,
+    is_starting: bool,
+) -> RowDisplayStatus {
+    if is_starting {
+        return RowDisplayStatus::Starting;
+    }
+
+    let Some(progress) = progress else {
+        return RowDisplayStatus::Idle;
+    };
+
+    if let Some(agg) = find_aggregate_progress(progress, aggregate) {
+        return match agg.status {
+            AggregateImportStatus::Pending => RowDisplayStatus::Pending,
+            AggregateImportStatus::Running => RowDisplayStatus::Running,
+            AggregateImportStatus::Completed => {
+                if agg.errors > 0 {
+                    RowDisplayStatus::CompletedWithErrors
+                } else {
+                    RowDisplayStatus::Completed
+                }
+            }
+            AggregateImportStatus::Failed => RowDisplayStatus::Failed,
+        };
+    }
+
+    match progress.status {
+        ImportStatus::Running => RowDisplayStatus::Running,
+        ImportStatus::Completed => RowDisplayStatus::Completed,
+        ImportStatus::CompletedWithErrors => RowDisplayStatus::CompletedWithErrors,
+        ImportStatus::Failed => RowDisplayStatus::Failed,
+        ImportStatus::Cancelled => RowDisplayStatus::Cancelled,
+    }
+}
+
+fn row_status_label(status: RowDisplayStatus) -> &'static str {
+    match status {
+        RowDisplayStatus::Idle => "Не запущено",
+        RowDisplayStatus::Starting => "Запуск...",
+        RowDisplayStatus::Pending => "Ожидает",
+        RowDisplayStatus::Running => "В работе",
+        RowDisplayStatus::Completed => "Завершено",
+        RowDisplayStatus::CompletedWithErrors => "Есть ошибки",
+        RowDisplayStatus::Failed => "Ошибка",
+        RowDisplayStatus::Cancelled => "Отменено",
+    }
+}
+
+fn row_status_style(status: RowDisplayStatus) -> &'static str {
+    match status {
+        RowDisplayStatus::Idle => {
+            "display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--colorNeutralBackground3); color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 600;"
+        }
+        RowDisplayStatus::Starting | RowDisplayStatus::Pending | RowDisplayStatus::Running => {
+            "display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--colorBrandBackground2); color: var(--colorBrandForeground1); font-size: var(--font-size-sm); font-weight: 600;"
+        }
+        RowDisplayStatus::Completed => {
+            "display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--colorSuccessBackground2); color: var(--colorSuccessForeground1); font-size: var(--font-size-sm); font-weight: 600;"
+        }
+        RowDisplayStatus::CompletedWithErrors => {
+            "display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--colorPaletteYellowBackground2); color: var(--colorPaletteDarkOrangeForeground2); font-size: var(--font-size-sm); font-weight: 600;"
+        }
+        RowDisplayStatus::Failed | RowDisplayStatus::Cancelled => {
+            "display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; background: var(--colorPaletteRedBackground2); color: var(--color-error); font-size: var(--font-size-sm); font-weight: 600;"
+        }
+    }
+}
+
+#[component]
+fn TaskSection(title: &'static str, subtitle: &'static str, children: Children) -> impl IntoView {
+    view! {
+        <section style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 4px;">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--color-text);">
+                    {title}
+                </h2>
+                <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                    {subtitle}
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                {children()}
+            </div>
+        </section>
+    }
+}
+
 #[component]
 fn ServiceRow(
     row_id: &'static str,
     title: &'static str,
-    description: &'static str,
+    details_text: &'static str,
     aggregate: &'static str,
     #[prop(default = false)] needs_period: bool,
     #[prop(default = false)] show_backfill_note: bool,
@@ -207,137 +321,184 @@ fn ServiceRow(
         });
     };
 
-    let row_agg = move || {
-        progress.get().and_then(|p| {
-            let status = p.status;
-            p.aggregates
-                .into_iter()
-                .find(|agg| agg.aggregate_index == aggregate)
-                .map(|agg| (status, agg))
-        })
-    };
-
     view! {
         <Card>
-            <div class="doc-filters__row">
-                <Button
-                    appearance=ButtonAppearance::Primary
-                    on_click=on_start
-                    disabled=move || {
-                        selected_connection.get().is_empty() || is_starting.get() || session_id.get().is_some()
-                    }
-                >
-                    {move || if is_starting.get() {
-                        "Запуск..."
-                    } else if session_id.get().is_some() {
-                        "В работе"
-                    } else {
-                        "Запустить"
-                    }}
-                </Button>
-
-                <div class="doc-filter" style="flex-direction: column; align-items: flex-start; gap: 2px; min-width: 220px;">
-                    <span style="font-size: var(--font-size-base); font-weight: 600;">{title}</span>
-                    <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">{description}</span>
-                    <div style="font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-family: monospace;">
-                        {aggregate}
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 4px 0 0 0; background: linear-gradient(90deg, var(--color-subtle-background) 0%, transparent 100%);">
+                    <div style="display: flex; align-items: flex-start; gap: 10px; min-width: 0;">
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            on_click=on_start
+                            disabled=move || {
+                                selected_connection.get().is_empty() || is_starting.get() || session_id.get().is_some()
+                            }
+                        >
+                            {move || if is_starting.get() {
+                                "Запуск..."
+                            } else if session_id.get().is_some() {
+                                "В работе"
+                            } else {
+                                "Запустить"
+                            }}
+                        </Button>
+                        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+                            <div style="font-size: var(--font-size-base); font-weight: 700; color: var(--color-text);">
+                                {title}
+                            </div>
+                            <div style="font-size: 12px; color: var(--color-text-secondary);">
+                                {if needs_period {
+                                    "Запуск по выбранному периоду"
+                                } else {
+                                    "Разовый запуск без выбора периода"
+                                }}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                        {move || {
+                            let current_progress = progress.get();
+                            let status = derive_row_status(
+                                current_progress.as_ref(),
+                                aggregate,
+                                is_starting.get(),
+                            );
+                            view! {
+                                <span style={row_status_style(status)}>
+                                    {row_status_label(status)}
+                                </span>
+                            }
+                        }}
                     </div>
                 </div>
 
-                <Flex vertical=true gap=FlexGap::Small>
-                {move || if needs_period {
-                    view! {
-                        <div class="doc-filter">
-                            <label class="doc-filter__label">"Период:"</label>
-                            <input
-                                type="date"
-                                class="doc-filter__input"
-                                prop:value=move || date_from.get()
-                                on:change=move |ev| set_date_from.set(event_target_value(&ev))
-                            />
-                            <span>"—"</span>
-                            <input
-                                type="date"
-                                class="doc-filter__input"
-                                prop:value=move || date_to.get()
-                                on:change=move |ev| set_date_to.set(event_target_value(&ev))
-                            />
-                        </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
+                {move || {
+                    let has_progress = progress.get().is_some();
+                    if needs_period || has_progress {
+                        view! {
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px;">
+                                {move || if needs_period {
+                                    view! {
+                                        <div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 0;">
+                                            <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-tertiary);">
+                                                "Период импорта"
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 10px; white-space: nowrap;">
+                                                <input
+                                                    type="date"
+                                                    class="doc-filter__input"
+                                                    style="width: 132px;"
+                                                    prop:value=move || date_from.get()
+                                                    on:change=move |ev| set_date_from.set(event_target_value(&ev))
+                                                />
+                                                <span style="color: var(--color-text-secondary);">"—"</span>
+                                                <input
+                                                    type="date"
+                                                    class="doc-filter__input"
+                                                    style="width: 132px;"
+                                                    prop:value=move || date_to.get()
+                                                    on:change=move |ev| set_date_to.set(event_target_value(&ev))
+                                                />
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
+                                {move || if let Some(prog) = progress.get() {
+                                    let filter = find_aggregate_progress(&prog, aggregate)
+                                        .map(|_| aggregate);
+                                    let resp = task_progress_response_from_u504(&prog, filter);
+                                    view! {
+                                        <TaskProgressPanel
+                                            progress=resp
+                                            section_title="Прогресс".to_string()
+                                            running_title="Синхронизация".to_string()
+                                        />
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }
                 }}
 
                 {move || {
-                    if let Some((status, agg)) = row_agg() {
-                        let total = agg.total.unwrap_or(0);
-                        let percent = if total > 0 {
-                            ((agg.processed as f64 / total as f64) * 100.0).clamp(0.0, 100.0) as i32
-                        } else if agg.processed > 0 {
-                            100
-                        } else {
-                            0
-                        };
-                        let current_info = agg.current_item.unwrap_or_else(|| "-".to_string());
+                    let mut has_messages = false;
+                    if !error_msg.get().is_empty() || show_backfill_note {
+                        has_messages = true;
+                    }
+                    if let Some(prog) = progress.get() {
+                        if let Some(agg) = find_aggregate_progress(&prog, aggregate) {
+                            if agg.current_item.as_ref().map(|item| !item.trim().is_empty()).unwrap_or(false) {
+                                has_messages = true;
+                            }
+                        }
+                    }
 
+                    if has_messages {
                         view! {
-                            <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
-                                <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 90px;">
-                                    {format!("{:?}", status)}
-                                </span>
-                                <div style="height: 16px; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-border); flex: 1; min-width: 200px;">
-                                    <div style={format!("width: {}%; height: 100%; background: var(--colorBrandForeground1); transition: width 0.2s;", percent)}></div>
-                                </div>
-                                <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 85px; text-align: right;">
-                                    {if total > 0 { format!("{} / {}", agg.processed, total) } else { format!("{}", agg.processed) }}
-                                </span>
-                                <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 165px;">
-                                    {format!("ins: {}  upd: {}  err:{}", agg.inserted, agg.updated, agg.errors)}
-                                </span>
-                                <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); min-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                    {format!("item: {}", current_info)}
-                                </span>
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                {move || {
+                                    if let Some(prog) = progress.get() {
+                                        if let Some(agg) = find_aggregate_progress(&prog, aggregate) {
+                                            if let Some(current_item) = agg.current_item {
+                                                if !current_item.trim().is_empty() {
+                                                    return view! {
+                                                        <div style="padding: 2px 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                                            {format!("Текущий элемент: {}", current_item)}
+                                                        </div>
+                                                    }.into_any();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    view! { <></> }.into_any()
+                                }}
+                                {move || {
+                                    let err = error_msg.get();
+                                    if !err.is_empty() {
+                                        view! {
+                                            <div style="padding: 2px 0; color: var(--color-error); font-size: var(--font-size-sm);">
+                                                {err}
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! { <></> }.into_any()
+                                    }
+                                }}
+                                {move || if show_backfill_note {
+                                    view! {
+                                        <div style="padding: 2px 0; font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-style: italic;">
+                                            "Backfill: cursor lastChangeDate (flag=0), date_to как soft-stop."
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
                             </div>
                         }.into_any()
-                    } else if let Some(p) = progress.get() {
-                        view! {
-                            <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
-                                {format!("status: {:?}, processed: {}, errors: {}", p.status, p.total_processed, p.total_errors)}
-                            </span>
-                        }.into_any()
                     } else {
-                        view! {
-                            <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
-                                "Готово к запуску"
-                            </span>
-                        }.into_any()
+                        view! { <></> }.into_any()
                     }
                 }}
-                </Flex>
-            </div>
 
-            {move || {
-                let err = error_msg.get();
-                if !err.is_empty() {
-                    view! {
-                        <div style="margin-top: 8px; padding: 8px 12px; border-radius: var(--radius-md); border-left: 3px solid var(--color-error); background: var(--color-error-50); font-size: var(--font-size-sm);">
-                            {err}
+                <details>
+                    <summary style="cursor: pointer; user-select: none; color: var(--colorBrandForeground1); font-weight: 600;">
+                        "Технические детали"
+                    </summary>
+                    <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                        <div style="line-height: 1.4;">
+                            {details_text}
                         </div>
-                    }.into_any()
-                } else {
-                    view! { <></> }.into_any()
-                }
-            }}
-
-            {move || if show_backfill_note {
-                view! {
-                    <div style="margin-top: 6px; font-size: var(--font-size-sm); color: var(--color-text-tertiary); font-style: italic;">
-                        "Backfill: cursor lastChangeDate (flag=0), date_to как soft-stop."
+                        <div style="font-family: monospace; color: var(--color-text-tertiary); font-size: 12px;">
+                            {format!("aggregate: {}", aggregate)}
+                        </div>
                     </div>
-                }.into_any()
-            } else {
-                view! { <></> }.into_any()
-            }}
+                </details>
+            </div>
         </Card>
     }
 }
@@ -409,125 +570,142 @@ pub fn ImportWidget() -> impl IntoView {
                 }
             }}
 
-            <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
-                <Flex vertical=false gap=FlexGap::Large justify=FlexJustify::Center align=FlexAlign::Center>
-                    <label class="form__label">"Подключение Wildberries"</label>
-                    <select
-                        class="doc-filter__select"
-                        style="width: 100%; max-width: 500px;"
-                        on:change=move |ev| set_selected_connection.set(event_target_value(&ev))
-                    >
-                        <option value="">"— выберите подключение —"</option>
-                        {move || connections.get().into_iter().map(|conn| {
-                            let id = conn.to_string_id();
-                            let selected = id == selected_connection.get();
-                            let caption = conn.base.description.clone();
-                            view! { <option selected=selected value={id}>{caption}</option> }
-                        }).collect_view()}
-                    </select>
-                </Flex>
-
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-left:16px; margin-right:16px;">
-                <ServiceRow
-                    row_id="a007"
-                    title="Товары маркетплейса"
-                    description="/api/v2/list/goods/filter — каталог товаров продавца (nmId, артикулы, баркоды)"
-                    aggregate="a007_marketplace_product"
-                    selected_connection=selected_connection
-                />
-                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 4px 0 4px 0; display: flex; flex-direction: column; gap: 0;">
-                    <div style="padding: 6px 16px 4px 16px; font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-secondary); letter-spacing: 0.03em; text-transform: uppercase; border-bottom: 1px solid var(--color-border); margin-bottom: 4px;">
-                        "Заказы WB (a015)"
+            <div style="display: flex; flex-direction: column; gap: 18px; margin-top: 16px;">
+                <Card>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="font-size: var(--font-size-base); font-weight: 700; color: var(--color-text);">
+                            "Подключение Wildberries"
+                        </div>
+                        <div style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                            "Сначала выберите кабинет, затем запускайте нужные операции по секциям ниже."
+                        </div>
+                        <select
+                            class="doc-filter__select"
+                            style="width: 100%; max-width: 520px;"
+                            on:change=move |ev| set_selected_connection.set(event_target_value(&ev))
+                        >
+                            <option value="">"— выберите подключение —"</option>
+                            {move || connections.get().into_iter().map(|conn| {
+                                let id = conn.to_string_id();
+                                let selected = id == selected_connection.get();
+                                let caption = conn.base.description.clone();
+                                view! { <option selected=selected value={id}>{caption}</option> }
+                            }).collect_view()}
+                        </select>
                     </div>
-                    <ServiceRow
-                        row_id="a015_new"
-                        title="Оперативные заказы"
-                        description="/api/v3/orders/new + /api/v3/orders — сразу после оформления, без финансовых полей"
-                        aggregate="a015_wb_orders_new"
-                        needs_period=true
-                        selected_connection=selected_connection
-                    />
-                    <ServiceRow
-                        row_id="a015"
-                        title="Заказы (Backfill)"
-                        description="/api/v1/supplier/orders — полные данные с ценами и скидками, задержка 1–3 дня"
-                        aggregate="a015_wb_orders"
-                        needs_period=true
-                        show_backfill_note=true
-                        selected_connection=selected_connection
-                    />
-                    <ServiceRow
-                        row_id="a015_supply_link"
-                        title="Привязать к поставкам"
-                        description="/api/v3/orders — проставляет incomeID (supplyId) для существующих заказов"
-                        aggregate="a015_wb_orders_supply_link"
-                        needs_period=true
-                        selected_connection=selected_connection
-                    />
+                </Card>
+
+                <div style="display: flex; flex-direction: column; gap: 18px; margin-left:16px; margin-right:16px;">
+                    <TaskSection
+                        title="Каталог и цены"
+                        subtitle="Товары, цены и акции по ассортименту Wildberries."
+                    >
+                        <ServiceRow
+                            row_id="a007"
+                            title="Товары WB: каталог"
+                            details_text="Загружает карточки товаров продавца из кабинета Wildberries: номенклатурные идентификаторы WB, артикулы, баркоды и другие данные, которые нужны для сопоставления ассортимента внутри системы."
+                            aggregate="a007_marketplace_product"
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="p908"
+                            title="Товары WB: цены"
+                            details_text="Загружает актуальные цены и скидки по товарам Wildberries, чтобы в системе были свежие значения по каждой позиции ассортимента и можно было анализировать текущие условия продаж."
+                            aggregate="p908_wb_goods_prices"
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="a020"
+                            title="Товары WB: акции"
+                            details_text="Загружает список активных и запланированных акций Wildberries вместе с привязанными товарами, чтобы видеть, какие позиции участвуют в промо и на какой период запланированы изменения."
+                            aggregate="a020_wb_promotion"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                    </TaskSection>
+
+                    <TaskSection
+                        title="Заказы и логистика"
+                        subtitle="Новые заказы, историческая загрузка и FBS-поставки."
+                    >
+                        <ServiceRow
+                            row_id="a015_new"
+                            title="Заказы WB: новые"
+                            details_text="Загружает новые заказы вскоре после оформления в кабинете Wildberries. Этот режим нужен для оперативной работы с заказами, когда важна скорость появления данных, даже если часть финансовых полей еще недоступна."
+                            aggregate="a015_wb_orders_new"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="a015"
+                            title="Заказы WB: история"
+                            details_text="Загружает исторические заказы Wildberries с более полным набором данных: ценами, скидками и дополнительными реквизитами. Этот режим подходит для выравнивания и дозагрузки данных за период."
+                            aggregate="a015_wb_orders"
+                            needs_period=true
+                            show_backfill_note=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="a029"
+                            title="Поставки WB (FBS)"
+                            details_text="Загружает поставки FBS за выбранный период, актуализирует связь уже известных заказов с этими поставками и сохраняет текущий состав поставки без затирания существующих данных. Во время загрузки дополнительно запрашиваются номера стикеров по заказам поставки и сохраняются в составе поставки для колонки «Стикер A-B»."
+                            aggregate="a029_wb_supply"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                    </TaskSection>
+
+                    <TaskSection
+                        title="Финансы"
+                        subtitle="Продажи, финансовый отчет и актуальные комиссии."
+                    >
+                        <ServiceRow
+                            row_id="a012"
+                            title="Продажи WB"
+                            details_text="Загружает продажи и возвраты Wildberries с финансовыми полями, чтобы в системе появились данные для выручки, скидок, комиссий и последующего расчета финансового результата."
+                            aggregate="a012_wb_sales"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="p903"
+                            title="Финансы WB: отчет"
+                            details_text="Загружает детализированный финансовый отчет Wildberries по выбранному периоду: строки реализации, удержания и прочие финансовые показатели, которые нужны для глубокой сверки расчетов."
+                            aggregate="p903_wb_finance_report"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="p905"
+                            title="Финансы WB: комиссии"
+                            details_text="Загружает актуальные ставки комиссий Wildberries по категориям, чтобы система могла использовать свежие правила расчета комиссионной нагрузки по ассортименту."
+                            aggregate="p905_wb_commission_history"
+                            selected_connection=selected_connection
+                        />
+                    </TaskSection>
+
+                    <TaskSection
+                        title="Документы и маркетинг"
+                        subtitle="Входящие документы и статистика рекламных кампаний."
+                    >
+                        <ServiceRow
+                            row_id="a027"
+                            title="Документы WB"
+                            details_text="Загружает входящие документы Wildberries, например акты и накладные, чтобы в системе был единый список доступных документов по кабинету за выбранный период."
+                            aggregate="a027_wb_documents"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="wb_advert_csv"
+                            title="Реклама WB: статистика"
+                            details_text="Загружает дневную статистику рекламных кампаний Wildberries в документы a026 (по дате и advert_id), с проводками и проекциями. Промежуточный CSV в пайплайне не создаётся."
+                            aggregate="wb_advert_stats"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                    </TaskSection>
                 </div>
-                <ServiceRow
-                    row_id="a029"
-                    title="Поставки WB (FBS)"
-                    description="/api/v3/supplies — список поставок за период с привязкой заказов"
-                    aggregate="a029_wb_supply"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="a012"
-                    title="Продажи WB"
-                    description="/api/v1/supplier/sales — реализованные продажи с финансовыми полями"
-                    aggregate="a012_wb_sales"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="p903"
-                    title="Финансовый отчет WB"
-                    description="/api/v1/supplier/reportDetailByPeriod — детальный отчёт по реализации (лимит 1 запрос/мин)"
-                    aggregate="p903_wb_finance_report"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="p905"
-                    title="История комиссий WB"
-                    description="/api/v2/supplier/commission — актуальные ставки комиссии по категориям"
-                    aggregate="p905_wb_commission_history"
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="p908"
-                    title="Цены товаров WB"
-                    description="/api/v2/list/goods/filter — текущие цены и скидки по номенклатуре"
-                    aggregate="p908_wb_goods_prices"
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="a020"
-                    title="Акции WB (Календарь)"
-                    description="/api/v1/promo — список активных и плановых акций с товарами"
-                    aggregate="a020_wb_promotion"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="a027"
-                    title="WB Documents"
-                    description="/api/v3/documents — входящие документы (акты, накладные)"
-                    aggregate="a027_wb_documents"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-                <ServiceRow
-                    row_id="wb_advert_csv"
-                    title="Статистика рекламных кампаний WB"
-                    description="/api/v2/fullstats — дневная статистика кампаний, дополнительно сохраняет CSV"
-                    aggregate="wb_advert_stats_csv"
-                    needs_period=true
-                    selected_connection=selected_connection
-                />
-            </div>
             </div>
         </PageFrame>
     }

@@ -1,4 +1,5 @@
 pub mod card_animated;
+pub mod close_page_button;
 pub mod date_input;
 pub mod date_range_picker;
 pub mod date_range_picker_smart;

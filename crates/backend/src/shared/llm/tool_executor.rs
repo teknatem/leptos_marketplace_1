@@ -1,18 +1,106 @@
 //! Исполнитель инструментов (tool calls) для LLM.
 //!
 //! Содержит:
-//! - определения инструментов для передачи LLM (`metadata_tool_definitions`)
+//! - определения инструментов для передачи LLM (`metadata_tool_definitions`, `tool_definitions_for`)
 //! - диспетчер выполнения (`execute_tool_call`)
 
+use super::admin_tools::{admin_tool_definitions, execute_admin_tool};
 use super::knowledge_base::KNOWLEDGE_BASE;
 use super::metadata_registry::METADATA_REGISTRY;
 use super::types::{ToolCall, ToolDefinition};
+use contracts::domain::a017_llm_agent::aggregate::AgentType;
 
 // ─── Определения инструментов ────────────────────────────────────────────────
 
-/// Вернуть определения инструментов для работы с метаданными схемы.
-/// Передаётся в `chat_completion_with_tools` при каждом запросе к LLM.
+/// Вернуть определения инструментов для BusinessAnalyst агента.
+/// Используется для обратной совместимости; предпочитай `tool_definitions_for`.
 pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
+    tool_definitions_for(&AgentType::BusinessAnalyst)
+}
+
+/// Вернуть набор инструментов для конкретного типа агента.
+///
+/// - `BusinessAnalyst` — инструменты работы с данными маркетплейсов и BI
+/// - `SystemAdmin`     — инструменты мониторинга и диагностики системы
+/// - `General`         — все инструменты
+pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
+    let shared = shared_tool_definitions();
+    match agent_type {
+        AgentType::BusinessAnalyst => {
+            let mut tools = shared;
+            tools.extend(analyst_tool_definitions());
+            tools
+        }
+        AgentType::SystemAdmin => {
+            let mut tools = shared;
+            tools.extend(admin_tool_definitions());
+            tools
+        }
+        AgentType::General => {
+            let mut tools = shared;
+            tools.extend(analyst_tool_definitions());
+            tools.extend(admin_tool_definitions());
+            tools
+        }
+    }
+}
+
+/// Общие инструменты для всех агентов (схемы, KB, DataView).
+fn shared_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "get_entity_schema".into(),
+            description: "Получить детальную схему таблицы: поля, SQL-типы, описания, \
+                          внешние ключи (FK). Используй ПЕРЕД написанием SQL-запроса. \
+                          Примеры entity_index: 'a004' (номенклатура), 'a012' (продажи WB), \
+                          'a013' (заказы YM), 'a006' (подключения МП), 'a002' (организации)."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "entity_index": {
+                        "type": "string",
+                        "description": "Индекс сущности из list_entities, например: 'a012', 'a004', 'a006'."
+                    }
+                },
+                "required": ["entity_index"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_knowledge".into(),
+            description: "Получить полное содержимое справочного материала по id. \
+                          id берётся из результата search_knowledge."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Идентификатор документа из search_knowledge, например 'wb-promotions'."
+                    }
+                },
+                "required": ["id"]
+            }),
+        },
+        ToolDefinition {
+            name: "list_data_views".into(),
+            description: "Получить список доступных DataView — именованных бизнес-вычислений \
+                          (семантический слой над таблицами БД). \
+                          Каждый DataView описывает: метрики (metric_id) и измерения (group_by) \
+                          для drill-down детализации. \
+                          Используй для выбора view_id и metric_id при создании BI-индикаторов \
+                          или при вопросах о доступных аналитических срезах."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+    ]
+}
+
+/// Инструменты бизнес-аналитика (данные маркетплейсов, SQL, BI).
+fn analyst_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "list_entities".into(),
@@ -32,24 +120,6 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
                         "enum": ["wb", "ozon", "ym", "ref", "llm", "promotion", "bi", "dashboard", "gl", "accounting"]
                     }
                 }
-            }),
-        },
-        ToolDefinition {
-            name: "get_entity_schema".into(),
-            description: "Получить детальную схему таблицы: поля, SQL-типы, описания, \
-                          внешние ключи (FK). Используй ПЕРЕД написанием SQL-запроса. \
-                          Примеры entity_index: 'a004' (номенклатура), 'a012' (продажи WB), \
-                          'a013' (заказы YM), 'a006' (подключения МП), 'a002' (организации)."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "entity_index": {
-                        "type": "string",
-                        "description": "Индекс сущности из list_entities, например: 'a012', 'a004', 'a006'."
-                    }
-                },
-                "required": ["entity_index"]
             }),
         },
         ToolDefinition {
@@ -96,36 +166,6 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "get_knowledge".into(),
-            description: "Получить полное содержимое справочного материала по id. \
-                          id берётся из результата search_knowledge."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "Идентификатор документа из search_knowledge, например 'wb-promotions'."
-                    }
-                },
-                "required": ["id"]
-            }),
-        },
-        ToolDefinition {
-            name: "list_data_views".into(),
-            description: "Получить список доступных DataView — именованных бизнес-вычислений \
-                          (семантический слой над таблицами БД). \
-                          Каждый DataView описывает: метрики (metric_id) и измерения (group_by) \
-                          для drill-down детализации. \
-                          Используй для выбора view_id и metric_id при создании BI-индикаторов \
-                          или при вопросах о доступных аналитических срезах."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {}
-            }),
-        },
-        ToolDefinition {
             name: "execute_query".into(),
             description: "Выполнить SQL SELECT-запрос к базе данных и получить результат. \
                           ТОЛЬКО SELECT (WITH ... SELECT тоже разрешён). INSERT/UPDATE/DELETE — запрещены. \
@@ -165,39 +205,14 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "view_id": {
-                        "type": "string",
-                        "description": "ID DataView, например 'dv001_revenue'."
-                    },
-                    "group_by": {
-                        "type": "string",
-                        "description": "Измерение для детализации: 'marketplace', 'date', 'article', \
-                                        'connection_mp_ref', 'nomenclature_ref', 'dim1'..'dim6'."
-                    },
-                    "metric_id": {
-                        "type": "string",
-                        "description": "Метрика: 'revenue', 'cost', 'commission', 'expenses', 'profit', 'profit_d'."
-                    },
-                    "date_from": {
-                        "type": "string",
-                        "description": "Начало периода, YYYY-MM-DD."
-                    },
-                    "date_to": {
-                        "type": "string",
-                        "description": "Конец периода, YYYY-MM-DD."
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Человекочитаемое название отчёта, например 'Выручка по маркетплейсам, январь 2026'."
-                    },
-                    "period2_from": {
-                        "type": "string",
-                        "description": "Начало периода сравнения (опционально). Если не задан — автоматически -1 месяц."
-                    },
-                    "period2_to": {
-                        "type": "string",
-                        "description": "Конец периода сравнения (опционально)."
-                    },
+                    "view_id": { "type": "string", "description": "ID DataView, например 'dv001_revenue'." },
+                    "group_by": { "type": "string", "description": "Измерение для детализации." },
+                    "metric_id": { "type": "string", "description": "Метрика: 'revenue', 'cost', 'commission', 'expenses', 'profit', 'profit_d'." },
+                    "date_from": { "type": "string", "description": "Начало периода, YYYY-MM-DD." },
+                    "date_to": { "type": "string", "description": "Конец периода, YYYY-MM-DD." },
+                    "description": { "type": "string", "description": "Человекочитаемое название отчёта." },
+                    "period2_from": { "type": "string", "description": "Начало периода сравнения (опционально)." },
+                    "period2_to": { "type": "string", "description": "Конец периода сравнения (опционально)." },
                     "connection_mp_refs": {
                         "type": "array",
                         "items": { "type": "string" },
@@ -240,12 +255,57 @@ pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
 /// Выполнить tool call и вернуть результат в виде JSON-строки.
 ///
 /// `chat_id` и `agent_id` нужны для создания артефактов (a019_llm_artifact).
+/// `agent_type` определяет допустимый набор инструментов.
 /// Вызывается в цикле `send_message`, когда LLM возвращает `tool_calls`.
-pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -> String {
+pub async fn execute_tool_call(
+    call: &ToolCall,
+    chat_id: &str,
+    agent_id: &str,
+    agent_type: &AgentType,
+) -> String {
+    // Admin-only tools — dispatch to admin_tools module
+    if matches!(
+        call.name.as_str(),
+        "check_system_health"
+            | "get_performance_stats"
+            | "list_background_jobs"
+            | "get_data_integrity_report"
+    ) {
+        let result = if matches!(agent_type, AgentType::SystemAdmin | AgentType::General) {
+            execute_admin_tool(&call.name, &call.arguments).await
+        } else {
+            serde_json::json!({
+                "error": format!(
+                    "Tool '{}' is only available for SystemAdmin and General agents.",
+                    call.name
+                )
+            })
+        };
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     let result = match call.name.as_str() {
         "list_entities" => {
-            let category = parse_string_arg(&call.arguments, "category");
-            METADATA_REGISTRY.list_entities(category.as_deref())
+            // Guard: analyst-only
+            if matches!(agent_type, AgentType::SystemAdmin) {
+                serde_json::json!({
+                    "error": "Tool 'list_entities' is not available for SystemAdmin agents. \
+                              Use check_system_health or list_background_jobs instead."
+                })
+            } else {
+                let category = parse_string_arg(&call.arguments, "category");
+                METADATA_REGISTRY.list_entities(category.as_deref())
+            }
         }
 
         "get_entity_schema" => {
@@ -267,9 +327,15 @@ pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -
         }
 
         "get_join_hint" => {
-            let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
-            let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
-            METADATA_REGISTRY.get_join_hint(&from, &to)
+            if matches!(agent_type, AgentType::SystemAdmin) {
+                serde_json::json!({
+                    "error": "Tool 'get_join_hint' is not available for SystemAdmin agents."
+                })
+            } else {
+                let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
+                let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
+                METADATA_REGISTRY.get_join_hint(&from, &to)
+            }
         }
 
         "search_knowledge" => {
@@ -371,10 +437,25 @@ pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -
             })
         }
 
-        "execute_query" => execute_query_tool(&call.arguments, chat_id, agent_id).await,
+        "execute_query" => {
+            if matches!(agent_type, AgentType::SystemAdmin) {
+                serde_json::json!({
+                    "error": "Tool 'execute_query' is not available for SystemAdmin agents. \
+                              Use check_system_health or get_data_integrity_report instead."
+                })
+            } else {
+                execute_query_tool(&call.arguments, chat_id, agent_id).await
+            }
+        }
 
         "create_drilldown_report" => {
-            create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
+            if matches!(agent_type, AgentType::SystemAdmin) {
+                serde_json::json!({
+                    "error": "Tool 'create_drilldown_report' is not available for SystemAdmin agents."
+                })
+            } else {
+                create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
+            }
         }
 
         "list_gl_turnovers" => {
@@ -409,9 +490,13 @@ pub async fn execute_tool_call(call: &ToolCall, chat_id: &str, agent_id: &str) -
 
         unknown => serde_json::json!({
             "error": format!(
-                "Unknown tool: '{}'. Available tools: list_entities, get_entity_schema, \
-                 get_join_hint, search_knowledge, get_knowledge, list_data_views, \
-                 execute_query, create_drilldown_report, list_gl_turnovers.",
+                "Unknown tool: '{}'. Available tools depend on agent type. \
+                 BusinessAnalyst: list_entities, get_entity_schema, get_join_hint, \
+                 search_knowledge, get_knowledge, list_data_views, execute_query, \
+                 create_drilldown_report, list_gl_turnovers. \
+                 SystemAdmin: get_entity_schema, get_knowledge, list_data_views, \
+                 check_system_health, get_performance_stats, list_background_jobs, \
+                 get_data_integrity_report.",
                 unknown
             )
         }),

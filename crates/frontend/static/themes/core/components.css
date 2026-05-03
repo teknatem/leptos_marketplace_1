@@ -6291,7 +6291,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   position: absolute;
   top: 0px;
   right: 0px;
-  z-index: 4;
+  z-index: 20;  /* must be > .thaw-table-header z-index:10 */
 }
 
 .card-animated__nav-trigger {
@@ -6441,6 +6441,36 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 .card-animated__nav-copy svg {
   width: 14px;
   height: 14px;
+}
+
+/* Compact access-restriction row */
+.card-animated__nav-row--policy {
+  background: var(--color-warning-50, rgba(251,191,36,0.08));
+  border-radius: 6px;
+  border: 1px solid var(--color-warning-500, #f59e0b);
+  padding: 4px 6px;
+}
+
+.card-animated__nav-key--lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-warning-700, #b45309);
+  white-space: nowrap;
+}
+
+.card-animated__nav-key--lock svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.card-animated__nav-code--roles {
+  font-family: inherit;
+  font-weight: 600;
+  background: transparent;
+  padding: 0;
+  color: var(--color-text-primary);
 }
 
 /* ============================================

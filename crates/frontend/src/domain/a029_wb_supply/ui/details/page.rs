@@ -37,7 +37,7 @@ pub fn WbSupplyDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
         let vm = vm.clone();
         move || match vm.active_tab.get() {
             "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
-            "stickers" => { /* stickers loaded on demand by user action */ }
+            "stickers" => {}
             _ => {}
         }
     });

@@ -37,6 +37,9 @@ impl AggregateId for WbAdvertDailyId {
 pub struct WbAdvertDailyHeader {
     pub document_no: String,
     pub document_date: String,
+    /// Идентификатор рекламной кампании WB; один документ = одна дата + один advert_id.
+    #[serde(default)]
+    pub advert_id: i64,
     pub connection_id: String,
     pub organization_id: String,
     pub marketplace_id: String,
@@ -63,7 +66,10 @@ pub struct WbAdvertDailyLine {
     pub nm_name: String,
     pub nomenclature_ref: Option<String>,
     pub advert_ids: Vec<i64>,
+    #[serde(default)]
     pub app_types: Vec<i32>,
+    #[serde(default)]
+    pub placements: Vec<String>,
     pub metrics: WbAdvertDailyMetrics,
 }
 
@@ -93,7 +99,10 @@ impl WbAdvertDaily {
         lines: Vec<WbAdvertDailyLine>,
         source_meta: WbAdvertDailySourceMeta,
     ) -> Self {
-        let description = format!("Статистика рекламы WB за {}", header.document_date);
+        let description = format!(
+            "Статистика рекламы WB advert_id={} за {}",
+            header.advert_id, header.document_date
+        );
         let base = BaseAggregate::new(
             WbAdvertDailyId::new_v4(),
             header.document_no.clone(),
@@ -124,6 +133,9 @@ impl WbAdvertDaily {
         }
         if self.header.connection_id.trim().is_empty() {
             return Err("Подключение обязательно".into());
+        }
+        if self.header.advert_id <= 0 {
+            return Err("advert_id должен быть положительным".into());
         }
         Ok(())
     }

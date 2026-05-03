@@ -432,7 +432,7 @@ pub fn NomenclatureList() -> impl IntoView {
                     </Button>
                     <Button appearance=ButtonAppearance::Secondary on_click=move |_| handle_excel_export()>
                         {icon("download")}
-                        " Excel (страница)"
+                        "Excel (csv)"
                     </Button>
                 </div>
             </div>

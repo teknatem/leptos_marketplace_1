@@ -28,6 +28,7 @@ pub mod a026_wb_advert_daily;
 pub mod a027_wb_documents;
 pub mod a028_missing_cost_registry;
 pub mod a029_wb_supply;
+pub mod a030_wb_advert_campaign;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -62,6 +63,9 @@ pub mod ds02_mp_sales_register;
 
 // UseCase handlers
 pub mod usecases;
+
+// External integration API (1C, etc.)
+pub mod ext_1c_wb_supply;
 
 // Debug endpoints (dev only)
 pub mod debug;

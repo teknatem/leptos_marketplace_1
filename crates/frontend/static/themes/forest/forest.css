@@ -43,6 +43,7 @@
   --table-header-fg: #ffffff;
   --table-row-odd: #ffffff;
   --table-row-even: rgba(200, 230, 201, 0.3);
+  --color-surface-alt: rgba(48, 68, 48, 0.85);
   --table-row-hover: rgba(200, 230, 201, 0.5);
   --table-row-selected: rgba(255, 235, 59, 0.3);
   

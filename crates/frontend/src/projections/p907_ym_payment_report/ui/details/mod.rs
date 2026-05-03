@@ -418,8 +418,8 @@ pub fn YmPaymentReportDetail(
                                         appearance=ButtonAppearance::Primary
                                         on_click=move |_| export_excel()
                                     >
-                                        <span>{vec![icon("download").into_view()]}</span>
-                                        <span>" Export Excel"</span>
+                                        {icon("download")}
+                                        "Excel (csv)"
                                     </Button>
                                 </div>
 

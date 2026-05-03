@@ -1,3 +1,11 @@
+/* Отступ между иконкой (SVG) и текстом внутри ЛЮБОЙ кнопки.
+   Работает для Thaw Button и наших .button без изменений разметки:
+   SVG и текстовые узлы — прямые flex-children, gap применяется автоматически. */
+.thaw-button,
+.button {
+  gap: var(--spacing-sm);
+}
+
 /* Универсальный класс для фиксации ширины 40px */
 .width-40px,
 .thaw-table-cell.width-40px,

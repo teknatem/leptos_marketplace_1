@@ -2,6 +2,7 @@
 
 use super::model::*;
 use leptos::prelude::*;
+use std::collections::{HashMap, HashSet};
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ pub struct WbSupplyDetailsVm {
 
     pub connection_info: RwSignal<Option<ConnectionInfo>>,
     pub organization_info: RwSignal<Option<OrganizationInfo>>,
+    pub nomenclatures_info: RwSignal<HashMap<String, NomenclatureInfo>>,
 
     pub active_tab: RwSignal<&'static str>,
     pub loading: RwSignal<bool>,
@@ -40,7 +42,7 @@ impl WbSupplyDetailsVm {
             orders_loading: RwSignal::new(false),
             orders_error: RwSignal::new(None),
 
-            sticker_type: RwSignal::new("png".to_string()),
+            sticker_type: RwSignal::new("zplv".to_string()),
 
             raw_json: RwSignal::new(None),
             raw_json_loaded: RwSignal::new(false),
@@ -48,6 +50,7 @@ impl WbSupplyDetailsVm {
 
             connection_info: RwSignal::new(None),
             organization_info: RwSignal::new(None),
+            nomenclatures_info: RwSignal::new(HashMap::new()),
 
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
@@ -94,6 +97,8 @@ impl WbSupplyDetailsVm {
                     // Orders are embedded in the supply aggregate
                     vm.orders.set(data.supply_orders.clone());
                     vm.orders_loaded.set(true);
+                    vm.nomenclatures_info.set(HashMap::new());
+                    vm.load_nomenclatures(&data.supply_orders);
 
                     let conn_id = data.header.connection_id.clone();
                     let org_id = data.header.organization_id.clone();
@@ -145,6 +150,48 @@ impl WbSupplyDetailsVm {
             }
             vm.raw_json_loading.set(false);
         });
+    }
+
+    fn load_nomenclatures(&self, orders: &[SupplyOrderDto]) {
+        const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
+        let refs: HashSet<String> = orders
+            .iter()
+            .flat_map(|order| {
+                let base_ref = order
+                    .base_nomenclature_ref
+                    .as_deref()
+                    .filter(|base_ref| {
+                        let base_ref = base_ref.trim();
+                        !base_ref.is_empty()
+                            && base_ref != ZERO_UUID
+                            && Some(base_ref) != order.nomenclature_ref.as_deref()
+                    })
+                    .map(ToOwned::to_owned);
+
+                [
+                    order
+                        .nomenclature_ref
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|nom_ref| !nom_ref.is_empty() && *nom_ref != ZERO_UUID)
+                        .map(ToOwned::to_owned),
+                    base_ref,
+                ]
+            })
+            .flatten()
+            .collect();
+
+        for nom_ref in refs {
+            let info_map = self.nomenclatures_info;
+            spawn_local(async move {
+                if let Ok(info) = fetch_nomenclature(&nom_ref).await {
+                    info_map.update(|map| {
+                        map.insert(nom_ref.clone(), info);
+                    });
+                }
+            });
+        }
     }
 }
 

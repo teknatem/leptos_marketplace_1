@@ -6,8 +6,11 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectionTrait, EntityTrait, QueryFilter, Set, Statement, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
@@ -24,6 +27,7 @@ pub struct Model {
     pub code: String,
     pub description: String,
     pub comment: Option<String>,
+    pub advert_id: i64,
     pub document_no: String,
     pub document_date: String,
     pub connection_id: String,
@@ -63,21 +67,23 @@ impl From<Model> for WbAdvertDaily {
             version: m.version,
         };
         let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let header: WbAdvertDailyHeader =
+        let mut header: WbAdvertDailyHeader =
             serde_json::from_str(&m.header_json).unwrap_or(WbAdvertDailyHeader {
                 document_no: m.document_no.clone(),
                 document_date: m.document_date.clone(),
+                advert_id: m.advert_id,
                 connection_id: m.connection_id.clone(),
                 organization_id: m.organization_id.clone(),
                 marketplace_id: m.marketplace_id.clone(),
             });
+        header.advert_id = m.advert_id;
         let totals = serde_json::from_str(&m.totals_json).unwrap_or_default();
         let unattributed_totals =
             serde_json::from_str(&m.unattributed_totals_json).unwrap_or_default();
         let lines = serde_json::from_str(&m.lines_json).unwrap_or_default();
         let source_meta =
             serde_json::from_str(&m.source_meta_json).unwrap_or(WbAdvertDailySourceMeta {
-                source: "wb_advert_stats_csv".to_string(),
+                source: "wb_advert_stats".to_string(),
                 fetched_at: m.fetched_at.clone(),
             });
 
@@ -105,13 +111,48 @@ pub async fn replace_for_period(
     date_to: &str,
     documents: &[WbAdvertDaily],
 ) -> Result<usize> {
-    let db = get_connection();
-    let started_at = std::time::Instant::now();
-    tracing::info!(
-        "a026_wb_advert_daily replace_for_period: acquiring transaction connection={}, period={}..{}, documents={}",
+    replace_for_period_scoped(connection_id, date_from, date_to, None, documents).await
+}
+
+pub async fn replace_for_period_advert_ids(
+    connection_id: &str,
+    date_from: &str,
+    date_to: &str,
+    advert_ids: &[i64],
+    documents: &[WbAdvertDaily],
+) -> Result<usize> {
+    replace_for_period_scoped(
         connection_id,
         date_from,
         date_to,
+        Some(advert_ids),
+        documents,
+    )
+    .await
+}
+
+async fn replace_for_period_scoped(
+    connection_id: &str,
+    date_from: &str,
+    date_to: &str,
+    advert_ids: Option<&[i64]>,
+    documents: &[WbAdvertDaily],
+) -> Result<usize> {
+    let db = get_connection();
+    let started_at = std::time::Instant::now();
+    let advert_scope: Option<Vec<i64>> = advert_ids.map(|ids| {
+        ids.iter()
+            .copied()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect()
+    });
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: acquiring transaction connection={}, period={}..{}, advert_scope={:?}, documents={}",
+        connection_id,
+        date_from,
+        date_to,
+        advert_scope,
         documents.len()
     );
     let txn = db.begin().await?;
@@ -121,10 +162,15 @@ pub async fn replace_for_period(
         started_at.elapsed().as_millis()
     );
 
-    let existing_ids: Vec<String> = Entity::find()
+    let mut existing_query = Entity::find()
         .filter(Column::ConnectionId.eq(connection_id))
         .filter(Column::DocumentDate.gte(date_from))
-        .filter(Column::DocumentDate.lte(date_to))
+        .filter(Column::DocumentDate.lte(date_to));
+    if let Some(scope) = advert_scope.as_ref() {
+        existing_query = existing_query.filter(Column::AdvertId.is_in(scope.clone()));
+    }
+
+    let existing_ids: Vec<String> = existing_query
         .all(&txn)
         .await?
         .into_iter()
@@ -159,12 +205,14 @@ pub async fn replace_for_period(
         started_at.elapsed().as_millis()
     );
 
-    Entity::delete_many()
+    let mut delete_query = Entity::delete_many()
         .filter(Column::ConnectionId.eq(connection_id))
         .filter(Column::DocumentDate.gte(date_from))
-        .filter(Column::DocumentDate.lte(date_to))
-        .exec(&txn)
-        .await?;
+        .filter(Column::DocumentDate.lte(date_to));
+    if let Some(scope) = advert_scope.as_ref() {
+        delete_query = delete_query.filter(Column::AdvertId.is_in(scope.clone()));
+    }
+    delete_query.exec(&txn).await?;
 
     tracing::info!(
         "a026_wb_advert_daily replace_for_period: source rows deleted connection={}, elapsed_ms={}",
@@ -198,6 +246,7 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
         code: Set(document.base.code.clone()),
         description: Set(document.base.description.clone()),
         comment: Set(document.base.comment.clone()),
+        advert_id: Set(document.header.advert_id),
         document_no: Set(document.header.document_no.clone()),
         document_date: Set(document.header.document_date.clone()),
         connection_id: Set(document.header.connection_id.clone()),
@@ -248,6 +297,7 @@ pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
         code: Set(document.base.code.clone()),
         description: Set(document.base.description.clone()),
         comment: Set(document.base.comment.clone()),
+        advert_id: Set(document.header.advert_id),
         document_no: Set(document.header.document_no.clone()),
         document_date: Set(document.header.document_date.clone()),
         connection_id: Set(document.header.connection_id.clone()),
@@ -324,6 +374,7 @@ pub struct WbAdvertDailyListRow {
     pub id: String,
     pub document_no: String,
     pub document_date: String,
+    pub advert_id: i64,
     pub lines_count: i32,
     pub total_views: i64,
     pub total_clicks: i64,
@@ -367,7 +418,7 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
         if !search.is_empty() {
             let escaped = search.replace('\'', "''");
             conditions.push(format!(
-                "(d.document_no LIKE '%{0}%' OR c.description LIKE '%{0}%' OR o.description LIKE '%{0}%')",
+                "(d.document_no LIKE '%{0}%' OR CAST(d.advert_id AS TEXT) LIKE '%{0}%' OR c.description LIKE '%{0}%' OR o.description LIKE '%{0}%')",
                 escaped
             ));
         }
@@ -376,6 +427,7 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
     let where_clause = conditions.join(" AND ");
     let sort_column = match query.sort_by.as_str() {
         "document_no" => "d.document_no",
+        "advert_id" => "d.advert_id",
         "document_date" => "d.document_date",
         "lines_count" => "d.lines_count",
         "total_views" => "d.total_views",
@@ -404,6 +456,7 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
             d.id,
             d.document_no,
             d.document_date,
+            d.advert_id,
             d.lines_count,
             d.total_views,
             d.total_clicks,
@@ -448,6 +501,7 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
             id: row.try_get("", "id").unwrap_or_default(),
             document_no: row.try_get("", "document_no").unwrap_or_default(),
             document_date: row.try_get("", "document_date").unwrap_or_default(),
+            advert_id: row.try_get("", "advert_id").unwrap_or(0),
             lines_count: row.try_get("", "lines_count").unwrap_or(0),
             total_views: row.try_get("", "total_views").unwrap_or(0),
             total_clicks: row.try_get("", "total_clicks").unwrap_or(0),
@@ -463,6 +517,143 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
         .collect();
 
     Ok(WbAdvertDailyListResult { items, total })
+}
+
+/// Максимум документов в одном CSV-отчёте (без тихой обрезки).
+pub const A026_REPORT_MAX_DOCUMENTS: usize = 2000;
+
+/// Верхняя граница строк позиций в отчёте (после фильтра по позиции), если фильтр пустой — по SUM(lines_count).
+pub const A026_REPORT_MAX_LINE_ROWS: i64 = 200_000;
+
+#[derive(Debug, Clone, Default)]
+pub struct WbAdvertDailyReportQuery {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub connection_id: Option<String>,
+    pub search_query: Option<String>,
+}
+
+fn build_report_where_clause(query: &WbAdvertDailyReportQuery) -> String {
+    let mut conditions = vec!["d.is_deleted = 0".to_string()];
+
+    if let Some(ref date_from) = query.date_from {
+        if !date_from.is_empty() {
+            conditions.push(format!("d.document_date >= '{}'", date_from));
+        }
+    }
+    if let Some(ref date_to) = query.date_to {
+        if !date_to.is_empty() {
+            conditions.push(format!("d.document_date <= '{}'", date_to));
+        }
+    }
+    if let Some(ref connection_id) = query.connection_id {
+        if !connection_id.is_empty() {
+            conditions.push(format!("d.connection_id = '{}'", connection_id));
+        }
+    }
+    if let Some(ref search) = query.search_query {
+        if !search.is_empty() {
+            let escaped = search.replace('\'', "''");
+            conditions.push(format!(
+                "(d.document_no LIKE '%{0}%' OR CAST(d.advert_id AS TEXT) LIKE '%{0}%' OR c.description LIKE '%{0}%' OR o.description LIKE '%{0}%')",
+                escaped
+            ));
+        }
+    }
+
+    conditions.join(" AND ")
+}
+
+/// Число документов и сумма `lines_count` по тем же фильтрам, что у списка.
+pub async fn report_preflight(query: &WbAdvertDailyReportQuery) -> Result<(usize, i64)> {
+    let db = get_connection();
+    let where_clause = build_report_where_clause(query);
+    let sql = format!(
+        "SELECT COUNT(*) as cnt, COALESCE(SUM(d.lines_count), 0) as line_sum
+         FROM a026_wb_advert_daily d
+         LEFT JOIN a006_connection_mp c ON c.id = d.connection_id
+         LEFT JOIN a002_organization o ON o.id = d.organization_id
+         WHERE {}",
+        where_clause
+    );
+
+    let row = db
+        .query_one(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+
+    let total = row
+        .as_ref()
+        .and_then(|r| r.try_get::<i64>("", "cnt").ok())
+        .unwrap_or(0) as usize;
+    let line_sum = row
+        .as_ref()
+        .and_then(|r| r.try_get::<i64>("", "line_sum").ok())
+        .unwrap_or(0);
+
+    Ok((total, line_sum))
+}
+
+/// Все документы по фильтру отчёта, порядок: дата документа, номер (без пагинации).
+pub async fn list_documents_for_report(
+    query: &WbAdvertDailyReportQuery,
+) -> Result<Vec<WbAdvertDaily>> {
+    let db = get_connection();
+    let where_clause = build_report_where_clause(query);
+    let ids_sql = format!(
+        "SELECT d.id
+         FROM a026_wb_advert_daily d
+         LEFT JOIN a006_connection_mp c ON c.id = d.connection_id
+         LEFT JOIN a002_organization o ON o.id = d.organization_id
+         WHERE {}
+         ORDER BY d.document_date ASC, d.document_no ASC",
+        where_clause
+    );
+
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            ids_sql,
+        ))
+        .await?;
+
+    let ids: Vec<String> = rows
+        .into_iter()
+        .filter_map(|row| row.try_get("", "id").ok())
+        .collect();
+
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let models = Entity::find()
+        .filter(Column::Id.is_in(ids.clone()))
+        .all(db)
+        .await?;
+
+    let mut by_id: HashMap<String, Model> = models.into_iter().map(|m| (m.id.clone(), m)).collect();
+    let mut ordered = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(m) = by_id.remove(&id) {
+            ordered.push(WbAdvertDaily::from(m));
+        }
+    }
+
+    Ok(ordered)
+}
+
+pub async fn list_by_advert_id(connection_id: &str, advert_id: i64) -> Result<Vec<WbAdvertDaily>> {
+    let db = get_connection();
+    let models = Entity::find()
+        .filter(Column::ConnectionId.eq(connection_id))
+        .filter(Column::AdvertId.eq(advert_id))
+        .filter(Column::IsDeleted.eq(false))
+        .order_by_asc(Column::DocumentDate)
+        .all(db)
+        .await?;
+    Ok(models.into_iter().map(Into::into).collect())
 }
 
 pub fn subtract_metrics(

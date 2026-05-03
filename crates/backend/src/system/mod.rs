@@ -1,5 +1,6 @@
 pub mod access;
 pub mod api;
+pub mod audit;
 pub mod auth;
 pub mod initialization;
 pub mod middleware;

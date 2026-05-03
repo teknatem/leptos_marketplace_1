@@ -31,6 +31,45 @@ impl AggregateId for LlmAgentId {
     }
 }
 
+/// Тип/роль агента LLM — определяет набор доступных инструментов и специализацию
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentType {
+    /// Бизнес-аналитик: работа с данными маркетплейсов, SQL, BI-отчёты
+    #[default]
+    BusinessAnalyst,
+    /// Системный администратор: мониторинг, производительность, безопасность
+    SystemAdmin,
+    /// Общий агент: доступ ко всем инструментам
+    General,
+}
+
+impl AgentType {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "system_admin" => AgentType::SystemAdmin,
+            "general" => AgentType::General,
+            _ => AgentType::BusinessAnalyst,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentType::BusinessAnalyst => "business_analyst",
+            AgentType::SystemAdmin => "system_admin",
+            AgentType::General => "general",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            AgentType::BusinessAnalyst => "Бизнес-аналитик",
+            AgentType::SystemAdmin => "Системный администратор",
+            AgentType::General => "Общий",
+        }
+    }
+}
+
 /// Тип провайдера LLM
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum LlmProviderType {
@@ -90,6 +129,9 @@ pub struct LlmAgent {
 
     /// Список доступных моделей (JSON)
     pub available_models: Option<String>,
+
+    /// Тип/роль агента — определяет набор инструментов
+    pub agent_type: AgentType,
 }
 
 impl LlmAgent {
@@ -118,6 +160,7 @@ impl LlmAgent {
             system_prompt,
             is_primary,
             available_models,
+            agent_type: AgentType::default(),
         }
     }
 
@@ -147,6 +190,7 @@ impl LlmAgent {
             system_prompt,
             is_primary,
             available_models,
+            agent_type: AgentType::default(),
         }
     }
 

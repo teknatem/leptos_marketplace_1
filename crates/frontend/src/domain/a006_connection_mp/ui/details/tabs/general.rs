@@ -19,6 +19,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
     let vm_mp_view = vm.clone();
     let vm_org_picker = vm.clone();
     let vm_test_result = vm.clone();
+    let vm_seller_info_result = vm.clone();
     let vm_marketplace_name = vm.clone();
     let vm_marketplace_disabled = vm.clone();
     let vm_organization_name = vm.clone();
@@ -449,7 +450,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                 </label>
             </div>
 
-            // Результат теста (упрощенная версия)
+            // Результат теста
             {move || {
                 vm_test_result.test_result.get().map(|result| {
                     let class = if result.success { "success" } else { "error" };
@@ -469,6 +470,35 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                                     <div style="margin-top: 8px; padding: 10px; background: rgba(255,193,7,0.1); border-left: 3px solid #ffc107; border-radius: 4px; font-size: 12px;">
                                         {details.clone()}
                                     </div>
+                                }.into_any()
+                            } else {
+                                view! { <div></div> }.into_any()
+                            }}
+                        </div>
+                    }
+                })
+            }}
+
+            // Информация о продавце
+            {move || {
+                vm_seller_info_result.seller_info_result.get().map(|result| {
+                    let class = if result.success { "success" } else { "error" };
+                    view! {
+                        <div class=format!("test-result {}", class) style="margin-top: 16px; padding: 12px; border-radius: 8px; background: var(--color-bg-subtle);">
+                            <h4 class="test-result__title" style="margin: 0 0 8px 0;">
+                                {if result.success { "ℹ️ Информация о продавце" } else { "❌ Ошибка получения информации" }}
+                            </h4>
+                            <div style="margin-bottom: 6px;">
+                                <strong>{"Статус: "}</strong>
+                                {result.message.clone()}
+                                {" "}
+                                <span style="color: #666; font-size: 11px;">{"("}{result.duration_ms}{"ms)"}</span>
+                            </div>
+                            {if let Some(details) = result.details.as_ref() {
+                                view! {
+                                    <pre style="margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.05); border-left: 3px solid var(--colorBrandBackground); border-radius: 4px; font-size: 12px; white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 400px;">
+                                        {details.clone()}
+                                    </pre>
                                 }.into_any()
                             } else {
                                 view! { <div></div> }.into_any()

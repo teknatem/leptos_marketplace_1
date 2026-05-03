@@ -7,7 +7,7 @@ use axum::{
 };
 
 use super::handlers;
-use crate::system::auth::middleware::{check_scope, check_scope_read, require_auth};
+use crate::system::auth::middleware::{check_scope, check_scope_read};
 
 /// Business routes configuration.
 /// Each aggregate group is wrapped with require_scope_auto for its scope.
@@ -43,10 +43,33 @@ pub fn configure_business_routes() -> Router {
         .merge(a027_routes())
         .merge(a028_routes())
         .merge(a029_routes())
-        .merge(usecase_routes())
-        .merge(projection_routes())
+        .merge(a030_routes())
+        // External integrations (API-key auth, no JWT required)
+        .merge(ext_1c_routes())
+        // Usecases — each with their own scope
+        .merge(u501_routes())
+        .merge(u502_routes())
+        .merge(u503_routes())
+        .merge(u504_routes())
+        .merge(u505_routes())
+        .merge(u506_routes())
+        .merge(u507_routes())
+        .merge(u508_routes())
+        // Projections — each with their own scope
+        .merge(p900_routes())
+        .merge(p901_routes())
+        .merge(p902_routes())
+        .merge(p903_routes())
+        .merge(p904_routes())
+        .merge(p905_routes())
+        .merge(p906_routes())
+        .merge(p907_routes())
+        .merge(p908_routes())
+        .merge(p912_routes())
+        // System views with scopes
         .merge(dashboard_routes())
         .merge(data_view_routes())
+        .merge(general_ledger_routes())
         .merge(misc_routes())
 }
 
@@ -190,6 +213,10 @@ fn a006_routes() -> Router {
         .route(
             "/api/connection_mp/test",
             post(handlers::a006_connection_mp::test_connection),
+        )
+        .route(
+            "/api/connection_mp/seller_info",
+            post(handlers::a006_connection_mp::seller_info),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
@@ -730,6 +757,10 @@ fn a026_routes() -> Router {
             get(handlers::a026_wb_advert_daily::list_paginated),
         )
         .route(
+            "/api/a026/wb-advert-daily/report.csv",
+            get(handlers::a026_wb_advert_daily::report_csv),
+        )
+        .route(
             "/api/a026/wb-advert-daily/:id",
             get(handlers::a026_wb_advert_daily::get_by_id),
         )
@@ -976,11 +1007,36 @@ fn a029_routes() -> Router {
         ))
 }
 
+fn a030_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a030/wb-advert-campaign/list",
+            get(handlers::a030_wb_advert_campaign::list),
+        )
+        .route(
+            "/api/a030/wb-advert-campaign/:id",
+            get(handlers::a030_wb_advert_campaign::get_by_id),
+        )
+        .route(
+            "/api/a030/wb-advert-campaign/:id/nm-positions",
+            get(handlers::a030_wb_advert_campaign::nm_positions),
+        )
+        .route(
+            "/api/a030/wb-advert-campaign/:id/advert-stats",
+            get(handlers::a030_wb_advert_campaign::advert_stats),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("a030_wb_advert_campaign", req, next).await
+            },
+        ))
+}
+
 // ============================================================================
-// Use Cases (U501–U508) — require auth, no scope check in Phase 1
+// Use Cases U501–U508 — each with its own scope
 // ============================================================================
 
-fn usecase_routes() -> Router {
+fn u501_routes() -> Router {
     Router::new()
         .route(
             "/api/u501/import/start",
@@ -990,6 +1046,15 @@ fn usecase_routes() -> Router {
             "/api/u501/import/:session_id/progress",
             get(handlers::usecases::u501_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u501_import_from_ut", req, next).await
+            },
+        ))
+}
+
+fn u502_routes() -> Router {
+    Router::new()
         .route(
             "/api/u502/import/start",
             post(handlers::usecases::u502_start_import),
@@ -998,6 +1063,15 @@ fn usecase_routes() -> Router {
             "/api/u502/import/:session_id/progress",
             get(handlers::usecases::u502_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u502_import_from_ozon", req, next).await
+            },
+        ))
+}
+
+fn u503_routes() -> Router {
+    Router::new()
         .route(
             "/api/u503/import/start",
             post(handlers::usecases::u503_start_import),
@@ -1006,6 +1080,15 @@ fn usecase_routes() -> Router {
             "/api/u503/import/:session_id/progress",
             get(handlers::usecases::u503_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u503_import_from_yandex", req, next).await
+            },
+        ))
+}
+
+fn u504_routes() -> Router {
+    Router::new()
         .route(
             "/api/u504/import/start",
             post(handlers::usecases::u504_start_import),
@@ -1014,6 +1097,15 @@ fn usecase_routes() -> Router {
             "/api/u504/import/:session_id/progress",
             get(handlers::usecases::u504_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u504_import_from_wildberries", req, next).await
+            },
+        ))
+}
+
+fn u505_routes() -> Router {
+    Router::new()
         .route(
             "/api/u505/match/start",
             post(handlers::usecases::u505_start_matching),
@@ -1022,6 +1114,15 @@ fn usecase_routes() -> Router {
             "/api/u505/match/:session_id/progress",
             get(handlers::usecases::u505_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u505_match_nomenclature", req, next).await
+            },
+        ))
+}
+
+fn u506_routes() -> Router {
+    Router::new()
         .route(
             "/api/u506/import/start",
             post(handlers::usecases::u506_start_import),
@@ -1030,6 +1131,15 @@ fn usecase_routes() -> Router {
             "/api/u506/import/:session_id/progress",
             get(handlers::usecases::u506_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u506_import_from_lemanapro", req, next).await
+            },
+        ))
+}
+
+fn u507_routes() -> Router {
+    Router::new()
         .route(
             "/api/u507/import/start",
             post(handlers::usecases::u507_start_import),
@@ -1038,6 +1148,15 @@ fn usecase_routes() -> Router {
             "/api/u507/import/:session_id/progress",
             get(handlers::usecases::u507_get_progress),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u507_import_from_erp", req, next).await
+            },
+        ))
+}
+
+fn u508_routes() -> Router {
+    Router::new()
         .route(
             "/api/u508/repost/projections",
             get(handlers::usecases::u508_get_projections),
@@ -1058,16 +1177,19 @@ fn usecase_routes() -> Router {
             "/api/u508/repost/:session_id/progress",
             get(handlers::usecases::u508_get_progress),
         )
-        .layer(middleware::from_fn(require_auth))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("u508_repost_documents", req, next).await
+            },
+        ))
 }
 
 // ============================================================================
-// Projections (P900–P908) — require auth, no scope check in Phase 1
+// Projections P900–P912 — each with its own scope
 // ============================================================================
 
-fn projection_routes() -> Router {
+fn p900_routes() -> Router {
     Router::new()
-        // P900 Sales Register
         .route(
             "/api/p900/sales-register",
             get(handlers::p900_mp_sales_register::list_sales),
@@ -1092,7 +1214,15 @@ fn projection_routes() -> Router {
             "/api/projections/p900/:registrator_ref",
             get(handlers::p900_mp_sales_register::get_by_registrator),
         )
-        // P901 Nomenclature Barcodes
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("p900_mp_sales_register", req, next).await
+            },
+        ))
+}
+
+fn p901_routes() -> Router {
+    Router::new()
         .route(
             "/api/p901/barcode/:barcode",
             get(handlers::p901_nomenclature_barcodes::get_by_barcode),
@@ -1105,7 +1235,15 @@ fn projection_routes() -> Router {
             "/api/p901/barcodes",
             get(handlers::p901_nomenclature_barcodes::list_barcodes),
         )
-        // P902 OZON Finance Realization
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p901_nomenclature_barcodes", req, next).await
+            },
+        ))
+}
+
+fn p902_routes() -> Router {
+    Router::new()
         .route(
             "/api/p902/finance-realization",
             get(handlers::p902_ozon_finance_realization::list_finance_realization),
@@ -1118,7 +1256,15 @@ fn projection_routes() -> Router {
             "/api/p902/stats",
             get(handlers::p902_ozon_finance_realization::get_stats),
         )
-        // P903 WB Finance Report
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p902_ozon_finance_realization", req, next).await
+            },
+        ))
+}
+
+fn p903_routes() -> Router {
+    Router::new()
         .route(
             "/api/p903/finance-report",
             get(handlers::p903_wb_finance_report::list_reports),
@@ -1147,9 +1293,25 @@ fn projection_routes() -> Router {
             "/api/p903/finance-report/by-id/:id/raw",
             get(handlers::p903_wb_finance_report::get_raw_json_by_id),
         )
-        // P904 Sales Data
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("p903_wb_finance_report", req, next).await
+            },
+        ))
+}
+
+fn p904_routes() -> Router {
+    Router::new()
         .route("/api/p904/sales-data", get(handlers::p904_sales_data::list))
-        // P905 WB Commission History
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p904_sales_data", req, next).await
+            },
+        ))
+}
+
+fn p905_routes() -> Router {
+    Router::new()
         .route(
             "/api/p905-commission/list",
             get(handlers::p905_wb_commission_history::list_commissions),
@@ -1168,7 +1330,15 @@ fn projection_routes() -> Router {
             "/api/p905-commission",
             post(handlers::p905_wb_commission_history::save_commission),
         )
-        // P906 Nomenclature Prices
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("p905_wb_commission_history", req, next).await
+            },
+        ))
+}
+
+fn p906_routes() -> Router {
+    Router::new()
         .route(
             "/api/p906/nomenclature-prices",
             get(handlers::p906_nomenclature_prices::list),
@@ -1181,7 +1351,15 @@ fn projection_routes() -> Router {
             "/api/p906/import-excel",
             post(handlers::p906_nomenclature_prices::import_excel),
         )
-        // P907 YM Payment Report
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("p906_nomenclature_prices", req, next).await
+            },
+        ))
+}
+
+fn p907_routes() -> Router {
+    Router::new()
         .route(
             "/api/p907/payment-report",
             get(handlers::p907_ym_payment_report::list_reports),
@@ -1190,7 +1368,15 @@ fn projection_routes() -> Router {
             "/api/p907/payment-report/:record_key",
             get(handlers::p907_ym_payment_report::get_report),
         )
-        // P908 WB Goods Prices
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p907_ym_payment_report", req, next).await
+            },
+        ))
+}
+
+fn p908_routes() -> Router {
+    Router::new()
         .route(
             "/api/p908/goods-prices",
             get(handlers::p908_wb_goods_prices::list_goods_prices),
@@ -1199,11 +1385,24 @@ fn projection_routes() -> Router {
             "/api/p908/goods-prices/:nm_id",
             get(handlers::p908_wb_goods_prices::get_goods_price),
         )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p908_wb_goods_prices", req, next).await
+            },
+        ))
+}
+
+fn p912_routes() -> Router {
+    Router::new()
         .route(
             "/api/p912/nomenclature-costs",
             get(handlers::p912_nomenclature_costs::list),
         )
-        .layer(middleware::from_fn(require_auth))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p912_nomenclature_costs", req, next).await
+            },
+        ))
 }
 
 // ============================================================================
@@ -1392,11 +1591,13 @@ fn dashboard_routes() -> Router {
                 .put(handlers::ds02_mp_sales_register::update_config)
                 .delete(handlers::ds02_mp_sales_register::delete_config),
         )
-        .layer(middleware::from_fn(require_auth))
+        .layer(middleware::from_fn(|req: Request<Body>, next: Next| async move {
+            check_scope("dashboard", req, next).await
+        }))
 }
 
 // ============================================================================
-// DataView semantic layer + misc (sys-drilldown, debug)
+// DataView semantic layer — scope: data_view
 // ============================================================================
 
 fn data_view_routes() -> Router {
@@ -1423,20 +1624,32 @@ fn data_view_routes() -> Router {
             "/api/data-view/:id/drilldown-capabilities",
             axum::routing::post(handlers::data_view::drilldown_capabilities),
         )
-        .layer(middleware::from_fn(require_auth))
+        // Drilldown session store is tied to data_view usage
+        .route(
+            "/api/sys-drilldown",
+            axum::routing::post(handlers::sys_drilldown::create),
+        )
+        .route(
+            "/api/sys-drilldown/:id",
+            axum::routing::get(handlers::sys_drilldown::get_by_id),
+        )
+        .route(
+            "/api/sys-drilldown/:id/data",
+            axum::routing::get(handlers::sys_drilldown::get_data),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("data_view", req, next).await
+            },
+        ))
 }
 
-fn misc_routes() -> Router {
+// ============================================================================
+// General Ledger — scope: general_ledger
+// ============================================================================
+
+fn general_ledger_routes() -> Router {
     Router::new()
-        .route(
-            "/api/llm-knowledge",
-            axum::routing::get(handlers::llm_knowledge::list),
-        )
-        .route(
-            "/api/llm-knowledge/:id",
-            axum::routing::get(handlers::llm_knowledge::get_by_id),
-        )
-        // Общий журнал операций
         .route(
             "/api/general-ledger",
             axum::routing::get(handlers::general_ledger::list),
@@ -1481,20 +1694,54 @@ fn misc_routes() -> Router {
             "/api/general-ledger/:id",
             axum::routing::get(handlers::general_ledger::get_by_id),
         )
-        // Drilldown session store (sys_drilldown)
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("general_ledger", req, next).await
+            },
+        ))
+}
+
+// ============================================================================
+// External integration API — authenticated via X-Api-Key header (no JWT)
+// ============================================================================
+
+fn ext_1c_routes() -> Router {
+    Router::new()
         .route(
-            "/api/sys-drilldown",
-            axum::routing::post(handlers::sys_drilldown::create),
+            "/api/ext/v1/wb-supplies",
+            get(handlers::ext_1c_wb_supply::list_supplies),
         )
         .route(
-            "/api/sys-drilldown/:id",
-            axum::routing::get(handlers::sys_drilldown::get_by_id),
+            "/api/ext/v1/wb-supplies/:id",
+            get(handlers::ext_1c_wb_supply::get_supply_detail),
+        )
+        .layer(middleware::from_fn(
+            crate::system::auth::middleware::check_api_key,
+        ))
+}
+
+// ============================================================================
+// Misc routes — LLM knowledge (tied to a018_llm_chat scope) + debug
+// ============================================================================
+
+fn misc_routes() -> Router {
+    let llm_knowledge = Router::new()
+        .route(
+            "/api/llm-knowledge",
+            axum::routing::get(handlers::llm_knowledge::list),
         )
         .route(
-            "/api/sys-drilldown/:id/data",
-            axum::routing::get(handlers::sys_drilldown::get_data),
+            "/api/llm-knowledge/:id",
+            axum::routing::get(handlers::llm_knowledge::get_by_id),
         )
-        .layer(middleware::from_fn(require_auth))
-        // Debug endpoints (open, dev only)
-        .route("/api/debug/tool-test", get(handlers::debug::tool_test))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("a018_llm_chat", req, next).await
+            },
+        ));
+
+    // Debug endpoints (open, dev only)
+    let debug = Router::new().route("/api/debug/tool-test", get(handlers::debug::tool_test));
+
+    llm_knowledge.merge(debug)
 }

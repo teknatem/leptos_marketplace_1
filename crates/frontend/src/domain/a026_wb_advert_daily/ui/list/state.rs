@@ -9,6 +9,8 @@ pub struct WbAdvertDailyListState {
     pub date_to: String,
     pub selected_connection_id: Option<String>,
     pub search_query: String,
+    /// Фильтр строк отчёта CSV (nm_id, название WB, артикул/наименование номенклатуры).
+    pub position_query: String,
     pub sort_field: String,
     pub sort_ascending: bool,
     pub is_loaded: bool,
@@ -41,6 +43,7 @@ impl Default for WbAdvertDailyListState {
             date_to: month_end.format("%Y-%m-%d").to_string(),
             selected_connection_id: None,
             search_query: String::new(),
+            position_query: String::new(),
             sort_field: "document_date".to_string(),
             sort_ascending: false,
             is_loaded: false,

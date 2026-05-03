@@ -27,4 +27,5 @@ pub mod a026_wb_advert_daily;
 pub mod a027_wb_documents;
 pub mod a028_missing_cost_registry;
 pub mod a029_wb_supply;
+pub mod a030_wb_advert_campaign;
 pub mod common;

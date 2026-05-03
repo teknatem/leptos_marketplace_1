@@ -379,7 +379,7 @@ pub fn SalesRegisterList() -> impl IntoView {
                             disabled=Signal::derive(move || loading.get() || state.get().sales.is_empty())
                         >
                             {icon("download")}
-                            "Excel"
+                            "Excel (csv)"
                         </UiButton>
                         {move || {
                             if !loading.get() && !state.get().sales.is_empty() {

@@ -56,6 +56,8 @@ use crate::domain::a028_missing_cost_registry::ui::details::MissingCostRegistryD
 use crate::domain::a028_missing_cost_registry::ui::list::MissingCostRegistryList;
 use crate::domain::a029_wb_supply::ui::details::WbSupplyDetails;
 use crate::domain::a029_wb_supply::ui::list::WbSupplyList;
+use crate::domain::a030_wb_advert_campaign::ui::details::WbAdvertCampaignDetails;
+use crate::domain::a030_wb_advert_campaign::ui::list::WbAdvertCampaignList;
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerReportPage,
     GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
@@ -393,6 +395,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         "a026_wb_advert_daily" => view! { <WbAdvertDailyList /> }.into_any(),
+        "report_a026_wb_advert_daily" => view! { <WbAdvertDailyList /> }.into_any(),
         k if k.starts_with("a026_wb_advert_daily_details_") => {
             let id = k
                 .strip_prefix("a026_wb_advert_daily_details_")
@@ -460,6 +463,26 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             leptos::logging::log!("✅ Creating WbSupplyDetails with id: {}", id);
             view! {
                 <WbSupplyDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        "a030_wb_advert_campaign" => view! { <WbAdvertCampaignList /> }.into_any(),
+        k if k.starts_with("a030_wb_advert_campaign_details_") => {
+            let id = k
+                .strip_prefix("a030_wb_advert_campaign_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbAdvertCampaignDetails
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
@@ -912,19 +935,19 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "sys_roles_matrix" => {
             view! { <crate::system::roles::ui::matrix::RoleMatrixPage /> }.into_any()
         }
+        "sys_audit" => view! { <crate::system::audit::AuditPage /> }.into_any(),
         k if k.starts_with("sys_role_details_") => {
             let id = k.strip_prefix("sys_role_details_").unwrap().to_string();
             view! { <crate::system::roles::ui::details::RoleDetailsPage role_id=id /> }.into_any()
         }
-        "sys_scheduled_tasks" => view! { <ScheduledTaskList /> }.into_any(),
-        "sys_scheduled_task_details" => {
-            view! { <ScheduledTaskDetails id="new".to_string() /> }.into_any()
+        "sys_tasks" => view! { <ScheduledTaskList /> }.into_any(),
+        "sys_task_type_registry" => view! {
+            <crate::system::tasks::ui::type_registry::TaskTypeRegistryPage />
         }
-        k if k.starts_with("sys_scheduled_task_details_") => {
-            let id = k
-                .strip_prefix("sys_scheduled_task_details_")
-                .unwrap()
-                .to_string();
+        .into_any(),
+        "sys_task_details" => view! { <ScheduledTaskDetails id="new".to_string() /> }.into_any(),
+        k if k.starts_with("sys_task_details_") => {
+            let id = k.strip_prefix("sys_task_details_").unwrap().to_string();
             view! { <ScheduledTaskDetails id=id /> }.into_any()
         }
         "sys_thaw_test" => {

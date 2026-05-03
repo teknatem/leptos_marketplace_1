@@ -29,10 +29,23 @@ impl ProgressTracker {
         sessions.get(session_id).cloned()
     }
 
-    /// Добавить агрегат для отслеживания
+    /// Снимок всех сессий под одним чтением `RwLock` (только для мониторинга).
+    pub fn snapshot_sessions(&self) -> Vec<ImportProgress> {
+        let sessions = self.sessions.read().unwrap();
+        sessions.values().cloned().collect()
+    }
+
+    /// Добавить агрегат для отслеживания (идемпотентно по `aggregate_index`).
     pub fn add_aggregate(&self, session_id: &str, aggregate_index: String, aggregate_name: String) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {
+            if progress
+                .aggregates
+                .iter()
+                .any(|a| a.aggregate_index == aggregate_index)
+            {
+                return;
+            }
             progress.aggregates.push(AggregateProgress {
                 aggregate_index,
                 aggregate_name,

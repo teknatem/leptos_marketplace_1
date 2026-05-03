@@ -72,12 +72,17 @@ pub struct ScheduledTask {
 
     /// Путь к лог-файлу последнего запуска
     pub last_run_log_file: Option<String>,
+
+    /// Дата последнего *успешного* завершения — watermark для инкрементальной загрузки.
+    /// Обновляется только когда задача завершилась статусом Completed.
+    pub last_successful_run_at: Option<DateTime<Utc>>,
 }
 
 impl ScheduledTask {
     pub fn new_for_insert(
         code: String,
         description: String,
+        comment: Option<String>,
         task_type: String,
         schedule_cron: Option<String>,
         is_enabled: bool,
@@ -85,8 +90,11 @@ impl ScheduledTask {
     ) -> Self {
         let id = ScheduledTaskId::new_v4();
 
+        let mut base = BaseAggregate::new(id, code, description);
+        base.comment = comment;
+
         Self {
-            base: BaseAggregate::new(id, code, description),
+            base,
             task_type,
             schedule_cron,
             config_json,
@@ -95,6 +103,7 @@ impl ScheduledTask {
             next_run_at: None,
             last_run_status: None,
             last_run_log_file: None,
+            last_successful_run_at: None,
         }
     }
 }
@@ -131,11 +140,11 @@ impl AggregateRoot for ScheduledTask {
     }
 
     fn aggregate_index() -> &'static str {
-        "sys_scheduled_task"
+        "sys_task"
     }
 
     fn collection_name() -> &'static str {
-        "sys_scheduled_tasks"
+        "sys_tasks"
     }
 
     fn element_name() -> &'static str {

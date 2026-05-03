@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "sys_tasks")]
@@ -15,6 +15,7 @@ pub struct Model {
     pub id: String,
     pub code: String,
     pub description: Option<String>,
+    pub comment: Option<String>,
     pub task_type: String,
     pub schedule_cron: Option<String>,
     pub config_json: Option<String>,
@@ -23,6 +24,7 @@ pub struct Model {
     pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_run_status: Option<String>,
     pub last_run_log_file: Option<String>,
+    pub last_successful_run_at: Option<chrono::DateTime<chrono::Utc>>,
     pub is_deleted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -49,7 +51,7 @@ impl From<Model> for ScheduledTask {
                 ScheduledTaskId(uuid),
                 m.code,
                 m.description.unwrap_or_default(),
-                None, // comment
+                m.comment,
                 metadata,
             ),
             task_type: m.task_type,
@@ -60,6 +62,7 @@ impl From<Model> for ScheduledTask {
             next_run_at: m.next_run_at,
             last_run_status: m.last_run_status,
             last_run_log_file: m.last_run_log_file,
+            last_successful_run_at: m.last_successful_run_at,
         }
     }
 }
@@ -120,6 +123,7 @@ pub async fn save(task: &ScheduledTask) -> Result<(), DbErr> {
 
     active.code = Set(task.base.code.clone());
     active.description = Set(Some(task.base.description.clone()));
+    active.comment = Set(task.base.comment.clone());
     active.task_type = Set(task.task_type.clone());
     active.schedule_cron = Set(task.schedule_cron.clone());
     active.config_json = Set(Some(task.config_json.clone()));
@@ -128,6 +132,7 @@ pub async fn save(task: &ScheduledTask) -> Result<(), DbErr> {
     active.next_run_at = Set(task.next_run_at);
     active.last_run_status = Set(task.last_run_status.clone());
     active.last_run_log_file = Set(task.last_run_log_file.clone());
+    active.last_successful_run_at = Set(task.last_successful_run_at);
     active.is_deleted = Set(task.base.metadata.is_deleted);
     active.updated_at = Set(Some(Utc::now()));
 
@@ -148,5 +153,25 @@ pub async fn soft_delete(id: Uuid) -> Result<(), DbErr> {
         .filter(Column::Id.eq(id.to_string()))
         .exec(db)
         .await?;
+    Ok(())
+}
+
+/// Используется только через `service::reset_stale_task_statuses`.
+pub(super) async fn set_failed_if_status_running(task_ids: &[String]) -> Result<(), DbErr> {
+    if task_ids.is_empty() {
+        return Ok(());
+    }
+    let db = get_connection();
+    for tid in task_ids {
+        let model = Entity::find_by_id(tid.as_str()).one(db).await?;
+        if let Some(m) = model {
+            if m.last_run_status.as_deref() == Some("Running") {
+                let mut active: ActiveModel = m.into();
+                active.last_run_status = Set(Some("Failed".to_string()));
+                active.updated_at = Set(Some(Utc::now()));
+                active.update(db).await?;
+            }
+        }
+    }
     Ok(())
 }

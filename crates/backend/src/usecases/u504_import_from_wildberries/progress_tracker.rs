@@ -29,10 +29,23 @@ impl ProgressTracker {
         sessions.get(session_id).cloned()
     }
 
-    /// Добавить агрегат для отслеживания
+    /// Снимок всех сессий под одним чтением `RwLock` (только для мониторинга).
+    pub fn snapshot_sessions(&self) -> Vec<ImportProgress> {
+        let sessions = self.sessions.read().unwrap();
+        sessions.values().cloned().collect()
+    }
+
+    /// Добавить агрегат для отслеживания (идемпотентно по `aggregate_index`).
     pub fn add_aggregate(&self, session_id: &str, aggregate_index: String, aggregate_name: String) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {
+            if progress
+                .aggregates
+                .iter()
+                .any(|a| a.aggregate_index == aggregate_index)
+            {
+                return;
+            }
             progress.aggregates.push(AggregateProgress {
                 aggregate_index,
                 aggregate_name,
@@ -138,6 +151,26 @@ impl ProgressTracker {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {
             progress.add_error(aggregate_index, message, details);
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
+    /// Учёт одного HTTP-обмена (запрос + размер тела ответа) для сессии импорта.
+    pub fn record_http_exchange(
+        &self,
+        session_id: &str,
+        request_body_len: u64,
+        response_body_len: u64,
+    ) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.http_request_count = progress.http_request_count.saturating_add(1);
+            progress.http_bytes_sent = progress
+                .http_bytes_sent
+                .saturating_add(request_body_len as i64);
+            progress.http_bytes_received = progress
+                .http_bytes_received
+                .saturating_add(response_body_len as i64);
             progress.updated_at = chrono::Utc::now();
         }
     }

@@ -1,5 +1,38 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+static EXT_API_KEY: OnceLock<String> = OnceLock::new();
+
+/// Set the external API key once at application startup.
+pub fn set_ext_api_key(key: String) {
+    let _ = EXT_API_KEY.set(key);
+}
+
+/// Returns the configured external API key, or `None` if not set or empty.
+pub fn get_ext_api_key() -> Option<&'static str> {
+    EXT_API_KEY
+        .get()
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ExternalApiConfig {
+    /// Статический API-ключ для внешних интеграций (1С и др.).
+    /// Передаётся клиентом в заголовке X-Api-Key.
+    /// Пустая строка = внешний API отключён.
+    #[serde(default)]
+    pub api_key: String,
+}
+
+impl Default for ExternalApiConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -8,6 +41,8 @@ pub struct Config {
     pub scheduled_tasks: ScheduledTasksConfig,
     #[serde(default)]
     pub llm: LlmConfig,
+    #[serde(default)]
+    pub external_api: ExternalApiConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -43,8 +43,13 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
         call.arguments
     );
 
-    let raw_result =
-        crate::shared::llm::execute_tool_call(&call, "debug-chat-id", "debug-agent-id").await;
+    let raw_result = crate::shared::llm::execute_tool_call(
+        &call,
+        "debug-chat-id",
+        "debug-agent-id",
+        &contracts::domain::a017_llm_agent::aggregate::AgentType::General,
+    )
+    .await;
 
     tracing::info!(
         "[debug/tool-test] result preview: {}",
