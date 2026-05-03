@@ -42,6 +42,7 @@
   --table-header-fg: #ffffff;
   --table-row-odd: #ffffff;
   --table-row-even: hsl(210, 20%, 97%);
+  --color-surface-alt: hsl(210, 20%, 97%);
   --table-row-hover: hsl(210, 30%, 94%);
   --table-row-selected: hsl(45, 100%, 90%);
   

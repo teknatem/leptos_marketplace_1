@@ -76,6 +76,48 @@ pub async fn save_form(dto: &ConnectionMPDto) -> Result<(), String> {
     Ok(())
 }
 
+/// Получить информацию о продавце (WB seller-info)
+pub async fn fetch_seller_info(dto: &ConnectionMPDto) -> Result<ConnectionTestResult, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let json_data = serde_json::to_string(&dto).map_err(|e| format!("{e}"))?;
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+    let body = wasm_bindgen::JsValue::from_str(&json_data);
+    opts.set_body(&body);
+
+    let url = format!("{}/api/connection_mp/seller_info", api_base());
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    let result: ConnectionTestResult = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    Ok(result)
+}
+
 /// Тестировать подключение
 pub async fn test_connection(dto: &ConnectionMPDto) -> Result<ConnectionTestResult, String> {
     use wasm_bindgen::JsCast;

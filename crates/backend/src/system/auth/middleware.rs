@@ -99,6 +99,26 @@ async fn check_scope_with_mode(
     Ok(next.run(req).await)
 }
 
+/// Middleware for external API routes: validates the `X-Api-Key` header against
+/// the static key configured in `[external_api].api_key` in config.toml.
+/// Returns 503 if the external API is not configured, 401 if the key is wrong.
+pub async fn check_api_key(req: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+    let expected =
+        crate::shared::config::get_ext_api_key().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let provided = req
+        .headers()
+        .get("X-Api-Key")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if provided != expected {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(next.run(req).await)
+}
+
 /// Extract Bearer token string from Authorization header (returns owned String, no borrow issues).
 fn extract_bearer_token(req: &Request<Body>) -> Result<String, StatusCode> {
     let auth_header = req

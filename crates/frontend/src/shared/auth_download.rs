@@ -30,7 +30,18 @@ pub async fn download_authenticated_file(url: &str, fallback_filename: &str) -> 
         .map_err(|e| format!("Failed to parse response: {e:?}"))?;
 
     if !response.ok() {
-        return Err(format!("HTTP {}", response.status()));
+        let status = response.status();
+        let detail = match response.text() {
+            Ok(p) => match JsFuture::from(p).await {
+                Ok(js) => js.as_string().filter(|s| !s.trim().is_empty()),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        };
+        return Err(match detail {
+            Some(msg) => format!("HTTP {}: {}", status, msg),
+            None => format!("HTTP {}", status),
+        });
     }
 
     let filename = response

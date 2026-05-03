@@ -227,6 +227,7 @@ mod tests {
             WbAdvertDailyHeader {
                 document_no: "WB-ADV-TEST".to_string(),
                 document_date: "2026-02-12".to_string(),
+                advert_id: 999,
                 connection_id: "conn-1".to_string(),
                 organization_id: "org-1".to_string(),
                 marketplace_id: "wb".to_string(),
@@ -250,6 +251,7 @@ mod tests {
                 nomenclature_ref: Some("nom-1".to_string()),
                 advert_ids: vec![1],
                 app_types: vec![32],
+                placements: vec!["search".to_string()],
                 metrics: WbAdvertDailyMetrics {
                     sum: 10.0,
                     ..WbAdvertDailyMetrics::default()
@@ -261,6 +263,7 @@ mod tests {
                 nomenclature_ref: None,
                 advert_ids: vec![2],
                 app_types: vec![64],
+                placements: vec![],
                 metrics: WbAdvertDailyMetrics {
                     sum: 5.0,
                     ..WbAdvertDailyMetrics::default()

@@ -75,6 +75,7 @@ fn Header(vm: ConnectionMPDetailsVm, id: Option<String>, on_close: Callback<()>)
 
     let vm_save = vm.clone();
     let vm_test = vm.clone();
+    let vm_info = vm.clone();
 
     let handle_save = move |_| {
         let on_saved = Rc::new(move |_| {
@@ -85,6 +86,10 @@ fn Header(vm: ConnectionMPDetailsVm, id: Option<String>, on_close: Callback<()>)
 
     let handle_test = move |_| {
         vm_test.test_command();
+    };
+
+    let handle_info = move |_| {
+        vm_info.seller_info_command();
     };
 
     view! {
@@ -100,6 +105,17 @@ fn Header(vm: ConnectionMPDetailsVm, id: Option<String>, on_close: Callback<()>)
                 >
                     {icon("test")}
                     {move || if vm.is_testing.get() { " Тест..." } else { " Тест" }}
+                </Button>
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    on_click=handle_info
+                    disabled=Signal::derive({
+                        let vm = vm.clone();
+                        move || vm.is_fetching_info.get()
+                    })
+                >
+                    {icon("info")}
+                    {move || if vm.is_fetching_info.get() { " Информация..." } else { " Информация" }}
                 </Button>
                 <Button
                     appearance=ButtonAppearance::Primary

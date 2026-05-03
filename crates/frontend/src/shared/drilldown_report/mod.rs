@@ -13,6 +13,7 @@ use crate::data_view::types::{
 };
 use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
+use crate::shared::icons::icon;
 use contracts::shared::data_view::ViewContext;
 use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, MetricValues};
 use gloo_net::http::Request;
@@ -600,7 +601,8 @@ pub fn DrilldownReportPage(
                                 export_drilldown_csv(&resp, &base);
                             }
                         >
-                            "↓ Excel"
+                            {icon("download")}
+                            "Excel (csv)"
                         </Button>
                     </Show>
                     <Button

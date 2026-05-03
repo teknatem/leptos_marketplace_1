@@ -467,7 +467,7 @@ pub fn YmReturnsList() -> impl IntoView {
                         on_click=export_excel
                     >
                         {icon("download")}
-                        " Excel"
+                        "Excel (csv)"
                     </Button>
                 </div>
             </div>

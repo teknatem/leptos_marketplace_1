@@ -5,6 +5,7 @@ use super::{
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
+use contracts::system::tasks::progress::TaskProgress;
 use contracts::usecases::u503_import_from_yandex::{
     progress::ImportStatus,
     request::ImportRequest,
@@ -25,6 +26,16 @@ impl ImportExecutor {
             api_client: Arc::new(YandexApiClient::new()),
             progress_tracker,
         }
+    }
+
+    /// Только память: активные (`Running`) сессии для лёгкого мониторинга, без БД и без диска.
+    pub fn list_live_task_progress(&self) -> Vec<TaskProgress> {
+        self.progress_tracker
+            .snapshot_sessions()
+            .into_iter()
+            .filter(|p| matches!(p.status, ImportStatus::Running))
+            .map(Into::into)
+            .collect()
     }
 
     /// Запустить импорт (создает async task и возвращает session_id)
@@ -106,6 +117,54 @@ impl ImportExecutor {
     ) -> Result<()> {
         tracing::info!("Starting Yandex Market import for session: {}", session_id);
 
+        if self.progress_tracker.get_progress(session_id).is_none() {
+            self.progress_tracker.create_session(session_id.to_string());
+            for aggregate_index in &request.target_aggregates {
+                let aggregate_name = match aggregate_index.as_str() {
+                    "a007_marketplace_product" => "Товары маркетплейса",
+                    "a013_ym_order" => "Заказы Yandex Market",
+                    "a016_ym_returns" => "Возвраты Yandex Market",
+                    "p907_ym_payment_report" => "Отчёт по платежам YM",
+                    _ => "Unknown",
+                };
+                self.progress_tracker.add_aggregate(
+                    session_id,
+                    aggregate_index.clone(),
+                    aggregate_name.to_string(),
+                );
+            }
+        }
+
+        let work_result = self.run_aggregates(session_id, request, connection).await;
+
+        let final_status = if let Err(ref e) = work_result {
+            self.progress_tracker
+                .add_error(session_id, None, e.to_string(), None);
+            ImportStatus::Failed
+        } else if self
+            .progress_tracker
+            .get_progress(session_id)
+            .map(|p| p.total_errors > 0)
+            .unwrap_or(false)
+        {
+            ImportStatus::CompletedWithErrors
+        } else {
+            ImportStatus::Completed
+        };
+
+        self.progress_tracker
+            .complete_session(session_id, final_status);
+        tracing::info!("Import completed for session: {}", session_id);
+
+        work_result
+    }
+
+    async fn run_aggregates(
+        &self,
+        session_id: &str,
+        request: &ImportRequest,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<()> {
         for aggregate_index in &request.target_aggregates {
             match aggregate_index.as_str() {
                 "a007_marketplace_product" => {
@@ -151,23 +210,6 @@ impl ImportExecutor {
                 }
             }
         }
-
-        // Завершить импорт
-        let final_status = if self
-            .progress_tracker
-            .get_progress(session_id)
-            .map(|p| p.total_errors > 0)
-            .unwrap_or(false)
-        {
-            ImportStatus::CompletedWithErrors
-        } else {
-            ImportStatus::Completed
-        };
-
-        self.progress_tracker
-            .complete_session(session_id, final_status);
-        tracing::info!("Import completed for session: {}", session_id);
-
         Ok(())
     }
 

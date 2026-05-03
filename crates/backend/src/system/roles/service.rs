@@ -77,3 +77,30 @@ pub async fn get_permissions(role_id: &str) -> Result<Vec<RoleScopeAccess>> {
 
     repository::get_scope_access(role_id).await
 }
+
+/// Replace all custom scope grants for a role.
+/// System roles cannot be edited via this API.
+pub async fn update_permissions(role_id: &str, grants: Vec<RoleScopeAccess>) -> Result<()> {
+    let role = repository::get_by_id(role_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Role not found"))?;
+
+    if role.is_system {
+        return Err(anyhow::anyhow!(
+            "Cannot edit permissions for system role '{}' — modify primary_roles.rs instead",
+            role.code
+        ));
+    }
+
+    // Validate access_mode values
+    for grant in &grants {
+        if grant.access_mode != "read" && grant.access_mode != "all" {
+            return Err(anyhow::anyhow!(
+                "Invalid access_mode '{}' — must be 'read' or 'all'",
+                grant.access_mode
+            ));
+        }
+    }
+
+    repository::replace_all_scope_access(role_id, &grants).await
+}

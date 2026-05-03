@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod auth;
 pub mod form_settings;
 pub mod logs;

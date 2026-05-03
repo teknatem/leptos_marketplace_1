@@ -67,6 +67,8 @@ pub struct SupplyOrderDto {
     pub warehouse_id: Option<i64>,
     pub part_a: Option<i64>,
     pub part_b: Option<i64>,
+    pub nomenclature_ref: Option<String>,
+    pub base_nomenclature_ref: Option<String>,
     pub color_code: Option<String>,
     pub status: Option<String>,
 }
@@ -100,6 +102,12 @@ pub struct ConnectionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrganizationInfo {
     pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NomenclatureInfo {
+    pub description: String,
+    pub article: String,
 }
 
 /// Fetch supply by its internal UUID.
@@ -288,6 +296,38 @@ pub async fn fetch_organization(id: &str) -> Result<OrganizationInfo, String> {
     Ok(OrganizationInfo {
         description: json
             .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+pub async fn fetch_nomenclature(id: &str) -> Result<NomenclatureInfo, String> {
+    let url = format!("{}/api/nomenclature/{}", api_base(), id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch nomenclature: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+
+    Ok(NomenclatureInfo {
+        description: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        article: json
+            .get("article")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),

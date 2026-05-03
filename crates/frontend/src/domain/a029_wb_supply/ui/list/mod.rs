@@ -3,6 +3,7 @@ pub mod state;
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::TableCrosshairHighlight;
@@ -296,7 +297,7 @@ pub fn WbSupplyList() -> impl IntoView {
                             disabled=Signal::derive(move || loading.get() || state.get().supplies.is_empty())
                         >
                             {icon("download")}
-                            "Excel"
+                            "Excel (csv)"
                         </Button>
                         <Button
                             appearance=ButtonAppearance::Primary
@@ -305,6 +306,7 @@ pub fn WbSupplyList() -> impl IntoView {
                         >
                             {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
                         </Button>
+                        <ClosePageButton />
                     </Space>
                 </div>
             </div>

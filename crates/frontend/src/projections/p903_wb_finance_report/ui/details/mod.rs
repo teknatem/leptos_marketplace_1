@@ -30,6 +30,13 @@ enum GlFieldRole {
     ResourceAndCondition,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FinancialResultRole {
+    Income,
+    Expense,
+    Info,
+}
+
 const EXCLUDED_PAYMENT_PROCESSING_VALUE: &str = "Комиссия за организацию платежа с НДС";
 
 fn extra_string_field(item: &WbFinanceReportDto, field: &str) -> Option<String> {
@@ -227,6 +234,104 @@ fn gl_role_badge_style(role: GlFieldRole) -> &'static str {
         GlFieldRole::ResourceAndCondition => {
             "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #1d4ed8; color: #eff6ff; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
         }
+    }
+}
+
+fn gl_role_sort_label(role: Option<GlFieldRole>) -> &'static str {
+    match role {
+        Some(role) => gl_role_badge_label(role),
+        None => "—",
+    }
+}
+
+fn financial_result_badge_label(role: FinancialResultRole) -> &'static str {
+    match role {
+        FinancialResultRole::Income => "Доход",
+        FinancialResultRole::Expense => "Расход",
+        FinancialResultRole::Info => "info",
+    }
+}
+
+fn financial_result_sort_order(role: FinancialResultRole) -> u8 {
+    match role {
+        FinancialResultRole::Income => 0,
+        FinancialResultRole::Expense => 1,
+        FinancialResultRole::Info => 2,
+    }
+}
+
+fn financial_result_badge_style(role: FinancialResultRole) -> &'static str {
+    match role {
+        FinancialResultRole::Income => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #166534; color: #f0fdf4; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+        FinancialResultRole::Expense => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #b91c1c; color: #fef2f2; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+        FinancialResultRole::Info => {
+            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: var(--color-bg-secondary); color: var(--color-text-secondary); border: 1px solid var(--color-border); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
+        }
+    }
+}
+
+fn parse_field_value(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .replace(' ', "")
+        .replace(',', ".")
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.abs() > f64::EPSILON)
+}
+
+fn turnover_financial_result(turnover_code: &str) -> Option<FinancialResultRole> {
+    match turnover_code {
+        "customer_revenue" | "voluntary_return_compensation" | "mp_penalty_storno" => {
+            Some(FinancialResultRole::Income)
+        }
+        "customer_return"
+        | "mp_commission"
+        | "mp_commission_adjustment"
+        | "mp_commission_adjustment_nm"
+        | "mp_acquiring"
+        | "mp_logistics"
+        | "mp_rebill_logistic_cost"
+        | "mp_rebill_logistic_cost_nm"
+        | "mp_ppvz_reward"
+        | "mp_ppvz_reward_nm"
+        | "mp_storage"
+        | "acceptance"
+        | "mp_penalty" => Some(FinancialResultRole::Expense),
+        _ => None,
+    }
+}
+
+fn field_financial_result_role(
+    row: &FieldRow,
+    entries: &[GeneralLedgerEntryDto],
+) -> FinancialResultRole {
+    for turnover_code in gl_resource_turnovers(&row.field_id) {
+        if has_turnover(entries, turnover_code) {
+            if let Some(role) = turnover_financial_result(turnover_code) {
+                return role;
+            }
+        }
+    }
+
+    match row.field_id.as_str() {
+        "additional_payment" => match parse_field_value(&row.value) {
+            Some(value) if value > 0.0 => FinancialResultRole::Income,
+            Some(_) => FinancialResultRole::Expense,
+            None => FinancialResultRole::Info,
+        },
+        "cashback_amount" => {
+            if parse_field_value(&row.value).is_some() {
+                FinancialResultRole::Expense
+            } else {
+                FinancialResultRole::Info
+            }
+        }
+        _ => FinancialResultRole::Info,
     }
 }
 
@@ -618,12 +723,23 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                 .unwrap_or_else(|| "-".to_string()),
         });
 
+        let gl_entries = general_ledger_entries.get();
         let sort_field = sort_by.get();
         let is_desc = sort_desc.get();
 
         rows.sort_by(|a, b| {
             let cmp = match &*sort_field {
                 "field_id" => a.field_id.cmp(&b.field_id),
+                "gl_role" => gl_role_sort_label(field_gl_role(&a.field_id, &gl_entries))
+                    .cmp(gl_role_sort_label(field_gl_role(&b.field_id, &gl_entries))),
+                "financial_result" => {
+                    financial_result_sort_order(field_financial_result_role(a, &gl_entries))
+                        .cmp(&financial_result_sort_order(field_financial_result_role(
+                            b,
+                            &gl_entries,
+                        )))
+                        .then_with(|| a.description.cmp(&b.description))
+                }
                 "value" => a.value.cmp(&b.value),
                 _ => a.description.cmp(&b.description),
             };
@@ -659,12 +775,18 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
         let mut csv = String::from("\u{FEFF}");
 
         // Заголовок с точкой с запятой как разделитель
-        csv.push_str("Описание;Идентификатор;Значение\n");
+        csv.push_str("Описание;Роль;Результат;Идентификатор;Значение\n");
 
+        let gl_entries = general_ledger_entries.get_untracked();
         for row in field_rows {
+            let gl_role = gl_role_sort_label(field_gl_role(&row.field_id, &gl_entries));
+            let result_role =
+                financial_result_badge_label(field_financial_result_role(&row, &gl_entries));
             csv.push_str(&format!(
-                "\"{}\";\"{}\";\"{}\"\n",
+                "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\"\n",
                 row.description.replace('\"', "\"\""),
+                gl_role.replace('\"', "\"\""),
+                result_role.replace('\"', "\"\""),
                 row.field_id.replace('\"', "\"\""),
                 row.value.replace('\"', "\"\"")
             ));
@@ -819,8 +941,8 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                             appearance=ButtonAppearance::Primary
                                             on_click=move |_| export_excel()
                                         >
-                                            <span>{vec![icon("download").into_view()]}</span>
-                                            <span>" Export Excel"</span>
+                                            {icon("download")}
+                                            "Excel (csv)"
                                         </Button>
                                     }
                                 }
@@ -832,7 +954,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                     let field_rows = get_field_rows();
                                     let gl_entries = general_ledger_entries.get();
                                     view! {
-                                        <div style="width: 100%; overflow-x: hidden;">
+                                        <div style="width: 100%; overflow-x: auto;">
                                             <Table attr:style="width: 100%; table-layout: fixed;">
                                                 <TableHeader>
                                                     <TableRow>
@@ -847,6 +969,21 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                         </TableHeaderCell>
                                                         <TableHeaderCell resizable=true min_width=120.0>
                                                             "Роль"
+                                                            <span
+                                                                class={move || get_sort_class("gl_role", &sort_by.get())}
+                                                                on:click=move |_| handle_column_sort("gl_role")
+                                                            >
+                                                                {move || get_sort_indicator("gl_role", &sort_by.get(), !sort_desc.get())}
+                                                            </span>
+                                                        </TableHeaderCell>
+                                                        <TableHeaderCell resizable=true min_width=120.0>
+                                                            "Результат"
+                                                            <span
+                                                                class={move || get_sort_class("financial_result", &sort_by.get())}
+                                                                on:click=move |_| handle_column_sort("financial_result")
+                                                            >
+                                                                {move || get_sort_indicator("financial_result", &sort_by.get(), !sort_desc.get())}
+                                                            </span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell resizable=true min_width=150.0>
                                                             "Идентификатор"
@@ -875,6 +1012,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                             let description = display_field_description(&row);
                                                             let note = display_field_note(&row.field_id).map(str::to_string);
                                                             let gl_role = field_gl_role(&row.field_id, &gl_entries);
+                                                            let result_role = field_financial_result_role(&row, &gl_entries);
                                                             let emphasized_value =
                                                                 is_emphasized_string_field(&row.field_id);
                                                             view! {
@@ -907,6 +1045,15 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                                         </span>
                                                                                     }.into_any()
                                                                                 }}
+                                                                            </div>
+                                                                        </TableCellLayout>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <TableCellLayout>
+                                                                            <div style="display: flex; justify-content: center; align-items: center; min-height: 100%;">
+                                                                                <span style={financial_result_badge_style(result_role)}>
+                                                                                    {financial_result_badge_label(result_role)}
+                                                                                </span>
                                                                             </div>
                                                                         </TableCellLayout>
                                                                     </TableCell>

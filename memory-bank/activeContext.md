@@ -1,6 +1,6 @@
 # Active Context
 
-_Последнее обновление: 2026-03-28_
+_Последнее обновление: 2026-04-26_
 
 ## 🎯 Текущий фокус
 
@@ -8,6 +8,7 @@ _Последнее обновление: 2026-03-28_
 
 ## 📝 Ключевые реализованные системы
 
+- **WB Advert Campaigns a030** (2026-04-26): отдельный справочник рекламных кампаний WB (`a030_wb_advert_campaign`) с сырым `info_json` из Advert API; `task012_wb_advert_campaigns` обновляет его ежедневно, `task011_wb_advert` берёт `advert_id` из a030 для `fullstats`. Внутри задач WB Advert используются локальные паузы между запросами (`task012`: 250 мс после списка и 3 сек между info-чанками; `task011`: 21 сек между fullstats-чанками), при `429` пишется диагностика с X-Ratelimit и дальнейшие info-чанки в запуске не отправляются. Добавлен UI: список и детали в сайдбаре `Справочники`.
 - **DataView** (2026-03-12): `dv001_revenue`, самодостаточный, LLM tool `list_data_views`
 - **Формальные миграции БД** (2026-02-18): `migrations/`, `sqlx::migrate::Migrator`, `_sqlx_migrations`
 - **Field Metadata System** (POC): `a001_connection_1c`, JSON → `build.rs` → `metadata_gen.rs`

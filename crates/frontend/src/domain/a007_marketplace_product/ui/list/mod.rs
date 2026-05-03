@@ -457,7 +457,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                         on_click=move |_| handle_export(())
                     >
                         {icon("excel")}
-                        " Excel"
+                        "Excel (csv)"
                     </thaw::Button>
                     <thaw::Button
                         appearance=ButtonAppearance::Secondary

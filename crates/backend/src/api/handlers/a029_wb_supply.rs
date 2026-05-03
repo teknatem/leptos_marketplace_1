@@ -1,10 +1,13 @@
 use axum::{extract::Query, Json};
 use contracts::domain::a029_wb_supply::aggregate::{WbSupply, WbSupplyOrderRow};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::domain::a029_wb_supply;
 use crate::shared::data::raw_storage;
+
+const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
 /// Parse the numeric income_id from a WB supply ID like "WB-GI-32319994" → 32319994.
 fn parse_income_id_from_supply_id(supply_id: &str) -> Option<i64> {
@@ -13,6 +16,91 @@ fn parse_income_id_from_supply_id(supply_id: &str) -> Option<i64> {
         .next()
         .and_then(|s| s.parse::<i64>().ok())
         .filter(|&v| v > 0)
+}
+
+#[derive(Clone)]
+struct OrderNomenclatureLinks {
+    nomenclature_ref: Option<String>,
+    base_nomenclature_ref: Option<String>,
+}
+
+fn sanitize_ref(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != ZERO_UUID)
+        .map(ToOwned::to_owned)
+}
+
+fn build_order_links_index(
+    orders: &[contracts::domain::a015_wb_orders::aggregate::WbOrders],
+) -> (
+    HashMap<i64, OrderNomenclatureLinks>,
+    HashMap<String, OrderNomenclatureLinks>,
+) {
+    let mut by_order_id = HashMap::new();
+    let mut by_order_uid = HashMap::new();
+
+    for order in orders {
+        let links = OrderNomenclatureLinks {
+            nomenclature_ref: sanitize_ref(order.nomenclature_ref.as_deref()),
+            base_nomenclature_ref: sanitize_ref(order.base_nomenclature_ref.as_deref()),
+        };
+
+        if let Ok(order_id) = order.line.line_id.parse::<i64>() {
+            if order_id > 0 {
+                by_order_id.insert(order_id, links.clone());
+            }
+        }
+
+        if let Some(order_uid) = order
+            .source_meta
+            .g_number
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            by_order_uid.insert(order_uid.to_string(), links);
+        }
+    }
+
+    (by_order_id, by_order_uid)
+}
+
+fn apply_order_links(
+    row: &mut WbSupplyOrderRow,
+    by_order_id: &HashMap<i64, OrderNomenclatureLinks>,
+    by_order_uid: &HashMap<String, OrderNomenclatureLinks>,
+) {
+    let links = if row.order_id > 0 {
+        by_order_id.get(&row.order_id)
+    } else {
+        None
+    }
+    .or_else(|| {
+        row.order_uid
+            .as_ref()
+            .and_then(|order_uid| by_order_uid.get(order_uid))
+    });
+
+    if let Some(links) = links {
+        row.nomenclature_ref = links.nomenclature_ref.clone();
+        row.base_nomenclature_ref = links.base_nomenclature_ref.clone();
+    }
+}
+
+async fn enrich_orders_with_a015_links(supply_id: &str, rows: &mut [WbSupplyOrderRow]) {
+    let Some(income_id) = parse_income_id_from_supply_id(supply_id) else {
+        return;
+    };
+    let Ok(orders) = crate::domain::a015_wb_orders::service::list_by_income_id(income_id).await
+    else {
+        return;
+    };
+
+    let (by_order_id, by_order_uid) = build_order_links_index(&orders);
+    for row in rows {
+        apply_order_links(row, &by_order_id, &by_order_uid);
+    }
 }
 
 /// Build WbSupplyOrderRow list from a015_wb_orders for supplies that have no stored orders.
@@ -56,6 +144,8 @@ async fn orders_from_a015(supply_id: &str) -> Vec<WbSupplyOrderRow> {
                     warehouse_id: None,
                     part_a,
                     part_b,
+                    nomenclature_ref: sanitize_ref(o.nomenclature_ref.as_deref()),
+                    base_nomenclature_ref: sanitize_ref(o.base_nomenclature_ref.as_deref()),
                     color_code: o.source_meta.sticker.clone(),
                     status: if o.state.is_cancel {
                         Some("cancel".to_string())
@@ -215,6 +305,8 @@ pub async fn get_supply_detail(
 
     if item.supply_orders.is_empty() {
         item.supply_orders = orders_from_a015(&item.header.supply_id).await;
+    } else {
+        enrich_orders_with_a015_links(&item.header.supply_id, &mut item.supply_orders).await;
     }
 
     Ok(Json(item))
@@ -236,6 +328,8 @@ pub async fn get_supply_by_wb_id(
 
     if item.supply_orders.is_empty() {
         item.supply_orders = orders_from_a015(&wb_id).await;
+    } else {
+        enrich_orders_with_a015_links(&item.header.supply_id, &mut item.supply_orders).await;
     }
 
     Ok(Json(item))
@@ -248,11 +342,14 @@ pub async fn get_supply_orders(
 ) -> Result<Json<Vec<WbSupplyOrderRow>>, axum::http::StatusCode> {
     let supply = resolve_supply(&id).await?;
 
-    let orders = if supply.supply_orders.is_empty() {
+    let mut orders = if supply.supply_orders.is_empty() {
         orders_from_a015(&supply.header.supply_id).await
     } else {
         supply.supply_orders
     };
+    if !orders.is_empty() {
+        enrich_orders_with_a015_links(&supply.header.supply_id, &mut orders).await;
+    }
 
     Ok(Json(orders))
 }
@@ -263,6 +360,8 @@ pub struct StickersQuery {
     /// Sticker format: "png" | "svg" | "zplv" | "zplh". Query param: ?type=
     #[serde(rename = "type")]
     pub sticker_type: Option<String>,
+    /// When true, response omits sticker file payloads and returns only metadata.
+    pub metadata_only: Option<bool>,
     pub width: Option<i32>,
     pub height: Option<i32>,
     /// Comma-separated numeric WB order IDs to fetch stickers for.
@@ -305,6 +404,8 @@ pub async fn get_supply_stickers(
     // Fall back to a015_wb_orders if no stored orders in supply aggregate
     if supply.supply_orders.is_empty() {
         supply.supply_orders = orders_from_a015(&supply.header.supply_id).await;
+    } else {
+        enrich_orders_with_a015_links(&supply.header.supply_id, &mut supply.supply_orders).await;
     }
 
     // If caller specified specific order IDs, filter to only those rows
@@ -335,7 +436,8 @@ pub async fn get_supply_stickers(
         }));
     }
 
-    let sticker_type = query.sticker_type.as_deref().unwrap_or("png");
+    let sticker_type = query.sticker_type.as_deref().unwrap_or("zplv");
+    let metadata_only = query.metadata_only.unwrap_or(false);
     let width = query.width.unwrap_or(58);
     let height = query.height.unwrap_or(40);
 
@@ -400,7 +502,7 @@ pub async fn get_supply_stickers(
                             row.part_a = wb.part_a;
                             row.part_b = wb.part_b;
                             row.barcode = wb.barcode.clone().or_else(|| row.barcode.clone());
-                            row.file = wb.file.clone();
+                            row.file = if metadata_only { None } else { wb.file.clone() };
                             row.from_wb = true;
                         }
                     }

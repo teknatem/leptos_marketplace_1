@@ -26,6 +26,7 @@
 
 use crate::shared::clipboard::copy_to_clipboard_with_callback;
 use crate::shared::icons::icon;
+use crate::system::access::{find_ui_policy, role_label, ui_access_allowed};
 use leptos::prelude::*;
 use thaw::Card;
 
@@ -49,6 +50,23 @@ pub fn CardAnimated(
     nav_id: String,
     children: Children,
 ) -> impl IntoView {
+    let nav_id = nav_id.trim().to_string();
+    let has_nav_id = !nav_id.is_empty();
+
+    // ── Access policy check ──────────────────────────────────────────────────
+    if has_nav_id {
+        if let Some(auth_state) =
+            use_context::<ReadSignal<crate::system::auth::context::AuthState>>()
+        {
+            let user_info = auth_state.with_untracked(|s| s.user_info.clone());
+            if let Some(user) = user_info {
+                if !ui_access_allowed(&nav_id, &user.primary_role, user.is_admin) {
+                    return ().into_any();
+                }
+            }
+        }
+    }
+
     let full_style = if style.is_empty() {
         format!("animation: card-appear 0.28s ease-out {}ms both;", delay_ms)
     } else {
@@ -57,10 +75,16 @@ pub fn CardAnimated(
             delay_ms, style
         )
     };
+
     let menu_open = RwSignal::new(false);
     let copied = RwSignal::new(false);
-    let nav_id = nav_id.trim().to_string();
-    let has_nav_id = !nav_id.is_empty();
+
+    // Viewport-relative position of the menu (top_px, right_from_viewport_right_px).
+    // card-appear now uses only opacity — no transform, so no containing-block is
+    // created for position:fixed children. The menu can safely live inside <Card>.
+    let menu_pos: RwSignal<(f64, f64)> = RwSignal::new((0.0, 0.0));
+    let trigger_ref = NodeRef::<leptos::html::Button>::new();
+
     let nav_id_attr = nav_id.clone();
     let nav_id_dom = nav_id.clone();
 
@@ -69,6 +93,13 @@ pub fn CardAnimated(
     } else {
         "card-animated__content"
     };
+
+    let policy_info: StoredValue<Option<(&'static str, Vec<&'static str>)>> =
+        StoredValue::new(if has_nav_id {
+            find_ui_policy(&nav_id).map(|p| (p.reason, p.allowed_roles.to_vec()))
+        } else {
+            None
+        });
 
     view! {
         <div
@@ -86,9 +117,20 @@ pub fn CardAnimated(
                                 class="card-animated__nav-trigger"
                                 title="Info"
                                 aria-label="Info"
+                                node_ref=trigger_ref
                                 on:click=move |ev| {
                                     ev.stop_propagation();
                                     copied.set(false);
+                                    if !menu_open.get() {
+                                        if let Some(el) = trigger_ref.get() {
+                                            let rect = el.get_bounding_client_rect();
+                                            let vw = web_sys::window()
+                                                .and_then(|w| w.inner_width().ok())
+                                                .and_then(|v| v.as_f64())
+                                                .unwrap_or(1024.0);
+                                            menu_pos.set((rect.bottom() + 4.0, vw - rect.right()));
+                                        }
+                                    }
                                     menu_open.update(|open| *open = !*open);
                                 }
                             >
@@ -110,6 +152,10 @@ pub fn CardAnimated(
                                     ></button>
                                     <div
                                         class="card-animated__nav-menu"
+                                        style=move || {
+                                            let (top, right) = menu_pos.get();
+                                            format!("position:fixed;top:{top:.1}px;right:{right:.1}px;z-index:10001;")
+                                        }
                                         on:click=move |ev| ev.stop_propagation()
                                     >
                                         <div class="card-animated__nav-header">
@@ -127,9 +173,12 @@ pub fn CardAnimated(
                                                 {icon("x")}
                                             </button>
                                         </div>
+
                                         <div class="card-animated__nav-row">
                                             <span class="card-animated__nav-key">"id"</span>
-                                            <code class="card-animated__nav-code">{move || nav_id_value.get_value()}</code>
+                                            <code class="card-animated__nav-code">
+                                                {move || nav_id_value.get_value()}
+                                            </code>
                                             <button
                                                 type="button"
                                                 class="card-animated__nav-copy"
@@ -142,14 +191,29 @@ pub fn CardAnimated(
                                                 }
                                             >
                                                 {move || {
-                                                    if copied.get() {
-                                                        icon("check")
-                                                    } else {
-                                                        icon("copy")
-                                                    }
+                                                    if copied.get() { icon("check") } else { icon("copy") }
                                                 }}
                                             </button>
                                         </div>
+
+                                        {move || policy_info.get_value().map(|(_reason, allowed)| {
+                                            let roles_str = allowed
+                                                .iter()
+                                                .map(|r| role_label(r))
+                                                .collect::<Vec<_>>()
+                                                .join(", ");
+                                            view! {
+                                                <div class="card-animated__nav-row card-animated__nav-row--policy">
+                                                    <span class="card-animated__nav-key card-animated__nav-key--lock">
+                                                        {icon("lock")}
+                                                        " Доступ"
+                                                    </span>
+                                                    <span class="card-animated__nav-code card-animated__nav-code--roles">
+                                                        {roles_str}
+                                                    </span>
+                                                </div>
+                                            }
+                                        })}
                                     </div>
                                 </>
                             </Show>
@@ -163,5 +227,5 @@ pub fn CardAnimated(
                 </div>
             </Card>
         </div>
-    }
+    }.into_any()
 }

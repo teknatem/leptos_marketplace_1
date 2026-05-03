@@ -2,7 +2,7 @@ use super::repository;
 use crate::domain::a017_llm_agent::repository as agent_repository;
 use crate::shared::llm::openai_provider::OpenAiProvider;
 use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole, LlmProvider};
-use crate::shared::llm::{execute_tool_call, metadata_tool_definitions};
+use crate::shared::llm::{execute_tool_call, tool_definitions_for};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
@@ -31,9 +31,11 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 /// (search_knowledge → get_knowledge → get_entity_schema) перед финальным ответом.
 const MAX_TOOL_ITERATIONS: usize = 6;
 
-/// Системный промпт по умолчанию — используется когда у агента не задан system_prompt в БД.
-/// Файл: prompts/default_agent.md (рядом с этим модулем)
+/// Системный промпт по умолчанию (бизнес-аналитик).
 const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompts/default_agent.md");
+
+/// Системный промпт для агента-администратора системы.
+const SYSTEM_ADMIN_PROMPT: &str = include_str!("prompts/system_admin_agent.md");
 
 /// Максимальное число не-системных сообщений в контексте (sliding window)
 const MAX_HISTORY_MESSAGES: usize = 20;
@@ -315,11 +317,13 @@ pub async fn send_message(
     // 7. Преобразовать историю в формат для LLM
     let mut llm_messages: Vec<ChatMessage> = Vec::new();
 
-    // Системный промпт: из агента в БД, иначе — файл prompts/default_agent.md
-    let system_prompt = agent
-        .system_prompt
-        .as_deref()
-        .unwrap_or(DEFAULT_SYSTEM_PROMPT);
+    // Системный промпт: из агента в БД, иначе — файл по типу агента
+    use contracts::domain::a017_llm_agent::aggregate::AgentType;
+    let fallback_prompt = match agent.agent_type {
+        AgentType::SystemAdmin => SYSTEM_ADMIN_PROMPT,
+        _ => DEFAULT_SYSTEM_PROMPT,
+    };
+    let system_prompt = agent.system_prompt.as_deref().unwrap_or(fallback_prompt);
     llm_messages.push(ChatMessage::system(system_prompt.to_string()));
 
     // Добавить историю
@@ -347,7 +351,7 @@ pub async fn send_message(
     );
 
     // 9. Tool calling цикл: LLM вызывает инструменты метаданных по мере необходимости
-    let tool_defs = metadata_tool_definitions();
+    let tool_defs = tool_definitions_for(&agent.agent_type);
     let start = std::time::Instant::now();
     let mut final_response = None;
     let mut artifact_to_attach: Option<LlmArtifactId> = None;
@@ -401,7 +405,13 @@ pub async fn send_message(
                 tool_call.name,
                 utf8_truncate(&tool_call.arguments, 200)
             );
-            let result = execute_tool_call(tool_call, chat_id, &chat.agent_id.as_string()).await;
+            let result = execute_tool_call(
+                tool_call,
+                chat_id,
+                &chat.agent_id.as_string(),
+                &agent.agent_type,
+            )
+            .await;
             let call_ms = call_start.elapsed().as_millis() as u64;
 
             tracing::info!(

@@ -10,10 +10,21 @@ path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 # path = "data/app.db"
 
 [scheduled_tasks]
-enabled = false
+enabled = true
 
 [llm]
 # Директория с Obsidian-совместимыми MD-файлами базы знаний.
 # Относительный путь разрешается от директории бинарника.
 # Для dev-режима: E:/dev/rust/leptos_marketplace_1/data/knowledge
 knowledge_base_path = "E:/dev/rust/2/leptos_marketplace_1/data/knowledge"
+
+[external_api]
+# Статический API-ключ для внешних интеграций (например, 1С).
+# Передаётся в заголовке: X-Api-Key: <значение>
+# Если пустая строка — внешний API отключён (возвращает 503).
+api_key = "y0_AgAAAABkJ4GBAAvrHQAAAAEQsZkqAABVtSftDHlKwIjwLgY5I5fzxIHpQw"
+
+[ui]
+# Смещение часового пояса для отображения времени в интерфейсе.
+# Константа дублируется в frontend/src/shared/tz.rs (TZ_OFFSET_HOURS).
+timezone_offset_hours = 3

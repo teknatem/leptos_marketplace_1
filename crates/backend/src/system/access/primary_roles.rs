@@ -4,8 +4,9 @@
 //! but their grants are the authoritative source here, not sys_role_scope_access).
 
 /// Default scope grants for the `manager` role.
-/// Managers get full access to all aggregates.
+/// Managers get full access to all aggregates, projections, usecases, and system views.
 pub const MANAGER_GRANTS: &[(&str, &str)] = &[
+    // Aggregates
     ("a001_connection_1c", "all"),
     ("a002_organization", "all"),
     ("a003_counterparty", "all"),
@@ -34,11 +35,39 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a026_wb_advert_daily", "all"),
     ("a027_wb_documents", "all"),
     ("a028_missing_cost_registry", "all"),
+    ("a029_wb_supply", "all"),
+    ("a030_wb_advert_campaign", "all"),
+    // Projections
+    ("p900_mp_sales_register", "all"),
+    ("p901_nomenclature_barcodes", "all"),
+    ("p902_ozon_finance_realization", "all"),
+    ("p903_wb_finance_report", "all"),
+    ("p904_sales_data", "all"),
+    ("p905_wb_commission_history", "all"),
+    ("p906_nomenclature_prices", "all"),
+    ("p907_ym_payment_report", "all"),
+    ("p908_wb_goods_prices", "all"),
+    ("p912_nomenclature_costs", "all"),
+    // Usecases
+    ("u501_import_from_ut", "all"),
+    ("u502_import_from_ozon", "all"),
+    ("u503_import_from_yandex", "all"),
+    ("u504_import_from_wildberries", "all"),
+    ("u505_match_nomenclature", "all"),
+    ("u506_import_from_lemanapro", "all"),
+    ("u507_import_from_erp", "all"),
+    ("u508_repost_documents", "all"),
+    // System views
+    ("general_ledger", "all"),
+    ("data_view", "all"),
+    ("dashboard", "all"),
 ];
 
 /// Default scope grants for the `operator` role.
-/// Operators get read access to references, full access to operational data.
+/// Operators get read access to references, full access to marketplace operational data.
+/// No access to: production, AI/LLM, imports, system views.
 pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
+    // Aggregates — references: read only
     ("a001_connection_1c", "read"),
     ("a002_organization", "read"),
     ("a003_counterparty", "read"),
@@ -46,6 +75,7 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a005_marketplace", "read"),
     ("a006_connection_mp", "read"),
     ("a007_marketplace_product", "read"),
+    // Aggregates — marketplace operational data: full access
     ("a008_marketplace_sales", "all"),
     ("a009_ozon_returns", "all"),
     ("a010_ozon_fbs_posting", "all"),
@@ -55,21 +85,31 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a014_ozon_transactions", "all"),
     ("a015_wb_orders", "all"),
     ("a016_ym_returns", "all"),
-    ("a018_llm_chat", "read"),
     ("a020_wb_promotion", "all"),
-    ("a021_production_output", "all"),
-    ("a022_kit_variant", "all"),
-    ("a023_purchase_of_goods", "all"),
     ("a024_bi_indicator", "read"),
     ("a025_bi_dashboard", "all"),
     ("a026_wb_advert_daily", "all"),
     ("a027_wb_documents", "all"),
-    ("a028_missing_cost_registry", "all"),
+    ("a029_wb_supply", "all"),
+    ("a030_wb_advert_campaign", "all"),
+    // Projections — read access to analytics
+    ("p900_mp_sales_register", "read"),
+    ("p901_nomenclature_barcodes", "read"),
+    ("p902_ozon_finance_realization", "read"),
+    ("p903_wb_finance_report", "read"),
+    ("p904_sales_data", "read"),
+    ("p905_wb_commission_history", "all"),
+    ("p906_nomenclature_prices", "all"),
+    ("p907_ym_payment_report", "read"),
+    ("p908_wb_goods_prices", "read"),
+    ("p912_nomenclature_costs", "read"),
 ];
 
 /// Default scope grants for the `viewer` role.
-/// Viewers get read-only access to analytics and core references.
+/// Viewers get read-only access to marketplace analytics and core references.
+/// No access to: production, AI/LLM, imports, system views.
 pub const VIEWER_GRANTS: &[(&str, &str)] = &[
+    // Aggregates — references and marketplace data: read only
     ("a002_organization", "read"),
     ("a004_nomenclature", "read"),
     ("a005_marketplace", "read"),
@@ -81,7 +121,11 @@ pub const VIEWER_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "read"),
     ("a026_wb_advert_daily", "read"),
     ("a027_wb_documents", "read"),
-    ("a028_missing_cost_registry", "read"),
+    ("a030_wb_advert_campaign", "read"),
+    // Projections — key analytics views
+    ("p900_mp_sales_register", "read"),
+    ("p904_sales_data", "read"),
+    ("p912_nomenclature_costs", "read"),
 ];
 
 /// `admin` primary role: all access is granted via `is_admin=true` bypass.

@@ -74,6 +74,16 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // 3.1 Reset stale Running rows from previous server process (sys_task_runs)
+    match system::tasks::runs_service::reset_stale_running_runs("Server restarted").await {
+        Ok(n) if n > 0 => println!(
+            "✓ Reset {} stale scheduled task run(s) (were Running after restart)\n",
+            n
+        ),
+        Ok(_) => {}
+        Err(e) => println!("⚠ Could not reset stale task runs: {}\n", e),
+    }
+
     // 4. Ensure admin user exists
     println!("Step 4: Checking admin user...");
     match system::initialization::ensure_admin_user_exists().await {
@@ -84,9 +94,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 4.1. Scheduled task worker startup mode
+    // 4.1. Scheduled task worker startup mode + external API key
     let scheduled_task_worker_enabled = match shared::config::load_config() {
-        Ok(cfg) => cfg.scheduled_tasks.enabled,
+        Ok(cfg) => {
+            shared::config::set_ext_api_key(cfg.external_api.api_key.clone());
+            if cfg.external_api.api_key.is_empty() {
+                println!("⚠  External API: disabled (api_key not set in config.toml)\n");
+            } else {
+                println!("✓ External API: enabled (X-Api-Key configured)\n");
+            }
+            cfg.scheduled_tasks.enabled
+        }
         Err(e) => {
             println!(
                 "✗ ERROR: Failed to load config for scheduled tasks: {}\n",

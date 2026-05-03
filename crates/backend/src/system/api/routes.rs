@@ -65,11 +65,25 @@ pub fn configure_system_routes() -> Router {
         .route(
             "/api/system/roles/:id/permissions",
             get(handlers::roles::get_role_permissions)
+                .put(handlers::roles::update_role_permissions)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         .route(
             "/api/system/scopes",
-            get(handlers::roles::list_scopes)
+            get(handlers::audit::list_scopes)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        // ========================================
+        // AUDIT (admin only)
+        // ========================================
+        .route(
+            "/api/system/audit/routes",
+            get(handlers::audit::list_routes)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/system/audit/violations",
+            get(handlers::audit::list_violations)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         .route(
@@ -78,33 +92,73 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         // ========================================
-        // SYSTEM SCHEDULED TASKS ROUTES
+        // SYSTEM TASKS (sys_tasks) ROUTES
         // ========================================
         .route(
-            "/api/sys/scheduled_tasks",
+            "/api/sys/tasks",
             get(handlers::tasks::list_scheduled_tasks)
                 .post(handlers::tasks::create_scheduled_task)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         .route(
-            "/api/sys/scheduled_tasks/:id",
+            "/api/sys/tasks/task_types",
+            get(handlers::tasks::list_task_types)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/tasks/runs/recent",
+            get(handlers::tasks::list_recent_runs)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/tasks/runs/active/progress",
+            get(handlers::tasks::list_active_runs_with_progress)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/tasks/runs/active",
+            get(handlers::tasks::list_active_runs)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/tasks/:id",
             get(handlers::tasks::get_scheduled_task)
                 .put(handlers::tasks::update_scheduled_task)
                 .delete(handlers::tasks::delete_scheduled_task)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         .route(
-            "/api/sys/scheduled_tasks/:id/toggle_enabled",
+            "/api/sys/tasks/:id/toggle_enabled",
             post(handlers::tasks::toggle_scheduled_task_enabled)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         .route(
-            "/api/sys/scheduled_tasks/:id/progress/:session_id",
+            "/api/sys/tasks/:id/run",
+            post(handlers::tasks::run_task_now)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/tasks/:id/watermark",
+            post(handlers::tasks::set_watermark)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/tasks/:id/runs",
+            get(handlers::tasks::list_task_runs)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/tasks/runs/:session_id/abort",
+            post(handlers::tasks::abort_task_run)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/tasks/:id/progress/:session_id",
             get(handlers::tasks::get_task_progress)
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         .route(
-            "/api/sys/scheduled_tasks/:id/log/:session_id",
+            "/api/sys/tasks/:id/log/:session_id",
             get(handlers::tasks::get_task_log)
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )

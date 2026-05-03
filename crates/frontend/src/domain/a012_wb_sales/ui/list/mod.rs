@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::{create_state, WbSalesTotals};
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::ui::badge::Badge as UiBadge;
@@ -974,7 +975,7 @@ pub fn WbSalesList() -> impl IntoView {
                             disabled=Signal::derive(move || loading.get() || state.get().sales.is_empty())
                         >
                             {icon("download")}
-                            "Excel"
+                            "Excel (csv)"
                         </UiButton>
                         <UiButton
                             variant="ghost".to_string()
@@ -1003,6 +1004,7 @@ pub fn WbSalesList() -> impl IntoView {
                         {move || save_notification.get().map(|msg| view! {
                             <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">{msg}</span>
                         })}
+                        <ClosePageButton />
                     </Space>
                 </div>
             </div>

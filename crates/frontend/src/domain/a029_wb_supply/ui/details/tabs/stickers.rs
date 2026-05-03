@@ -1,10 +1,10 @@
 //! Stickers tab — select rows, then batch-download from WB API
 
-use super::super::model::{fetch_stickers_for_ids, StickerDto, SupplyOrderDto};
+use super::super::model::{fetch_stickers_for_ids, NomenclatureInfo, StickerDto, SupplyOrderDto};
 use super::super::view_model::WbSupplyDetailsVm;
-use crate::shared::components::card_animated::CardAnimated;
+use crate::layout::global_context::AppGlobalContext;
 use leptos::prelude::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use thaw::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, BlobPropertyBag, HtmlAnchorElement, Url};
@@ -159,12 +159,16 @@ body{{margin:0;padding:6px;font-family:Arial,sans-serif;font-size:8pt;}}
 // Helpers for order rows
 // ---------------------------------------------------------------------------
 
-fn order_sticker_ab(o: &SupplyOrderDto) -> String {
-    match (o.part_a, o.part_b) {
+fn sticker_ab(part_a: Option<i64>, part_b: Option<i64>) -> String {
+    match (part_a, part_b) {
         (Some(a), Some(b)) => format!("{}-{}", a, b),
         (Some(a), None) => a.to_string(),
         _ => "—".to_string(),
     }
+}
+
+fn order_sticker_ab(o: &SupplyOrderDto) -> String {
+    sticker_ab(o.part_a, o.part_b)
 }
 
 fn order_barcode(o: &SupplyOrderDto) -> String {
@@ -173,6 +177,65 @@ fn order_barcode(o: &SupplyOrderDto) -> String {
         .clone()
         .or_else(|| o.barcodes.first().cloned())
         .unwrap_or_else(|| "—".to_string())
+}
+
+const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
+fn effective_base_nomenclature_ref(order: &SupplyOrderDto) -> Option<String> {
+    order
+        .base_nomenclature_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|base_ref| {
+            !base_ref.is_empty()
+                && *base_ref != ZERO_UUID
+                && Some(*base_ref) != order.nomenclature_ref.as_deref()
+        })
+        .map(ToOwned::to_owned)
+}
+
+fn nomenclature_label(info_map: &HashMap<String, NomenclatureInfo>, nom_ref: &str) -> String {
+    info_map
+        .get(nom_ref)
+        .map(|info| {
+            if info.article.trim().is_empty() {
+                info.description.clone()
+            } else {
+                format!("{} (арт. {})", info.description, info.article)
+            }
+        })
+        .unwrap_or_else(|| nom_ref.to_string())
+}
+
+fn nomenclature_link(
+    tabs_store: AppGlobalContext,
+    nomenclatures_info: RwSignal<HashMap<String, NomenclatureInfo>>,
+    nom_ref: Option<String>,
+    tab_title: &'static str,
+) -> impl IntoView {
+    if let Some(nom_ref_value) = nom_ref {
+        let nom_ref_for_click = nom_ref_value.clone();
+        let title = nom_ref_value.clone();
+        view! {
+            <a
+                href="#"
+                title=title
+                on:click=move |ev: web_sys::MouseEvent| {
+                    ev.prevent_default();
+                    tabs_store.open_tab(
+                        &format!("a004_nomenclature_details_{}", nom_ref_for_click),
+                        tab_title,
+                    );
+                }
+                style="color: #0078d4; text-decoration: underline; cursor: pointer;"
+            >
+                {move || nomenclature_label(&nomenclatures_info.get(), &nom_ref_value)}
+            </a>
+        }
+        .into_any()
+    } else {
+        view! { <span>"—"</span> }.into_any()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +247,9 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
     let supply_sig = vm.supply;
     let sticker_type = vm.sticker_type;
     let id_sig = vm.id;
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let nomenclatures_info = vm.nomenclatures_info;
 
     // Component-local state
     let checked: RwSignal<HashSet<i64>> = RwSignal::new(HashSet::new());
@@ -233,7 +299,6 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
             .unwrap_or_default()
     });
 
-    // ── Select all / deselect all ────────────────────────────────────────────
     let select_all = move |_| {
         let ids = selectable_ids.get();
         checked.update(|c| {
@@ -247,7 +312,7 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
         checked.update(|c| c.clear());
     };
 
-    // ── Download selected ────────────────────────────────────────────────────
+    // Download selected
     let do_download = move || {
         let ids: Vec<i64> = checked.get().into_iter().collect();
         if ids.is_empty() {
@@ -293,9 +358,9 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
     };
 
     view! {
-        <CardAnimated nav_id="a029_wb_supply_details_stickers">
+        <div style="width: 100%; min-width: 0;">
 
-            // ── Header ───────────────────────────────────────────────────────
+            // Header
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
                 <h3 class="details-section__title" style="margin:0;">"Стикеры WB"</h3>
 
@@ -313,9 +378,9 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                             }
                         }
                     >
-                        <option value="png" selected=true>"PNG (58×40 мм)"</option>
+                        <option value="png">"PNG (58×40 мм)"</option>
                         <option value="svg">"SVG (масштабируемый)"</option>
-                        <option value="zplv">"ZPL вертикальный"</option>
+                        <option value="zplv" selected=true>"ZPL вертикальный"</option>
                         <option value="zplh">"ZPL горизонтальный"</option>
                     </select>
 
@@ -377,21 +442,21 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                 </div>
             </div>
 
-            // ── Error / warning ──────────────────────────────────────────────
+            // Error / warning
             {move || download_error.get().map(|err| view! {
                 <div style="color:var(--color-warning, #b45309); padding:8px 10px; border-radius:var(--radius-sm); background:var(--color-warning-bg, #fffbeb); border-left:3px solid var(--color-warning, #b45309); margin-bottom:10px; font-size:var(--font-size-sm); white-space:pre-wrap;">
                     {err}
                 </div>
             })}
 
-            // ── Loading indicator ────────────────────────────────────────────
+            // Loading indicator
             {move || downloading.get().then(|| view! {
                 <div style="padding:6px 0; color:var(--color-text-secondary); font-size:var(--font-size-sm);">
                     "Загрузка стикеров из WB..."
                 </div>
             })}
 
-            // ── Table ────────────────────────────────────────────────────────
+            // Table
             {move || {
                 let rows = orders.get();
                 let total = rows.len();
@@ -421,11 +486,11 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                             }}
                         </div>
 
-                        <div class="table-wrapper">
-                            <Table>
+                        <div class="table-wrapper" style="width: 100%; min-width: 0; overflow-x: auto;">
+                            <Table attr:style="width: 100%; min-width: 970px;">
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHeaderCell resizable=false min_width=44.0>
+                                        <TableHeaderCell resizable=false min_width=40.0 class="fixed-checkbox-column">
                                             // Header checkbox — toggles all selectable
                                             <input
                                                 type="checkbox"
@@ -443,11 +508,13 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                                                 }
                                             />
                                         </TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=40.0>"#"</TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=140.0>"Артикул"</TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=110.0>"Стикер A-B"</TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=130.0>"Баркод"</TableHeaderCell>
-                                        <TableHeaderCell resizable=false min_width=70.0>"WB ID"</TableHeaderCell>
+                                        <TableHeaderCell resizable=false min_width=40.0 class="width-40px">"#"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=140.0>"Артикул"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=110.0>"Стикер A-B"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=130.0>"Баркод"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=220.0>"Номенклатура 1С"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=220.0>"Базовая номенклатура"</TableHeaderCell>
+                                        <TableHeaderCell resizable=true min_width=70.0>"WB ID"</TableHeaderCell>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -458,6 +525,8 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                                             .unwrap_or_else(|| "—".to_string());
                                         let ab = order_sticker_ab(&order);
                                         let barcode = order_barcode(&order);
+                                        let nomenclature_ref = order.nomenclature_ref.clone();
+                                        let base_nomenclature_ref = effective_base_nomenclature_ref(&order);
 
                                         let row_style = if has_id {
                                             ""
@@ -467,7 +536,7 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
 
                                         view! {
                                             <TableRow>
-                                                <TableCell>
+                                                <TableCell class="fixed-checkbox-column">
                                                     <TableCellLayout>
                                                         <input
                                                             type="checkbox"
@@ -488,7 +557,7 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                                                     </TableCellLayout>
                                                 </TableCell>
 
-                                                <TableCell><TableCellLayout>
+                                                <TableCell class="width-40px"><TableCellLayout>
                                                     <span style=format!("color:var(--color-text-secondary); font-size:0.8em; {}", row_style)>
                                                         {i + 1}
                                                     </span>
@@ -508,6 +577,24 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                                                     <code style=format!("font-size:0.8em; {}", row_style)>
                                                         {barcode}
                                                     </code>
+                                                </TableCellLayout></TableCell>
+
+                                                <TableCell><TableCellLayout truncate=true>
+                                                    {nomenclature_link(
+                                                        tabs_store.clone(),
+                                                        nomenclatures_info,
+                                                        nomenclature_ref,
+                                                        "Номенклатура",
+                                                    )}
+                                                </TableCellLayout></TableCell>
+
+                                                <TableCell><TableCellLayout truncate=true>
+                                                    {nomenclature_link(
+                                                        tabs_store.clone(),
+                                                        nomenclatures_info,
+                                                        base_nomenclature_ref,
+                                                        "Базовая номенклатура",
+                                                    )}
                                                 </TableCellLayout></TableCell>
 
                                                 <TableCell><TableCellLayout>
@@ -539,6 +626,6 @@ pub fn StickersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                 }.into_any()
             }}
 
-        </CardAnimated>
+        </div>
     }
 }

@@ -1,6 +1,18 @@
-/// Utilities for date and time formatting
-///
-/// Provides consistent date/time formatting across the application
+/// Utilities for date, time and size formatting
+use chrono::{DateTime, FixedOffset, Utc};
+
+/// Смещение часового пояса для отображения времени в UI (МСК = UTC+3).
+/// Дублирует значение `[ui].timezone_offset_hours` из `config.toml`.
+/// При смене часового пояса меняется только это значение.
+pub const TZ_OFFSET_HOURS: i32 = 3;
+
+/// Форматирует UTC-время с учётом локального смещения (`TZ_OFFSET_HOURS`).
+/// Пример: `format_utc_local(&dt, "%H:%M:%S")` → "17:05:32"
+pub fn format_utc_local(dt: &DateTime<Utc>, fmt: &str) -> String {
+    let offset = FixedOffset::east_opt(TZ_OFFSET_HOURS * 3600)
+        .unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    dt.with_timezone(&offset).format(fmt).to_string()
+}
 
 /// Format ISO datetime string to DD.MM.YYYY HH:MM:SS format
 /// Example: "2024-03-15T14:02:26.123Z" -> "15.03.2024 14:02:26"
@@ -126,5 +138,47 @@ mod tests {
         assert_eq!(format_datetime("invalid"), "invalid");
         assert_eq!(format_datetime_space("invalid"), "invalid");
         assert_eq!(format_date("invalid"), "invalid");
+    }
+}
+
+/// Человекочитаемая длительность из миллисекунд.
+pub fn format_duration_ms(ms: i64) -> String {
+    if ms < 1000 {
+        format!("{}мс", ms)
+    } else if ms < 60_000 {
+        format!("{:.1}с", ms as f64 / 1000.0)
+    } else {
+        let mins = ms / 60_000;
+        let secs = (ms % 60_000) / 1000;
+        format!("{}м {}с", mins, secs)
+    }
+}
+
+/// Компактный размер в байтах (B / KiB / MiB / GiB).
+pub fn format_bytes_compact(n: u64) -> String {
+    const KB: f64 = 1024.0;
+    if n < 1024 {
+        format!("{} B", n)
+    } else if n < 1024 * 1024 {
+        format!("{:.1} KiB", n as f64 / KB)
+    } else if n < 1024_u64 * 1024 * 1024 {
+        format!("{:.1} MiB", n as f64 / KB / KB)
+    } else {
+        format!("{:.2} GiB", n as f64 / KB / KB / KB)
+    }
+}
+
+/// Строка «↑{up} ↓{down}» из байт (пусто если оба 0).
+pub fn format_http_traffic(bytes_sent: i64, bytes_received: i64) -> Option<String> {
+    let up = bytes_sent.max(0) as u64;
+    let down = bytes_received.max(0) as u64;
+    if up == 0 && down == 0 {
+        None
+    } else {
+        Some(format!(
+            "↑{} ↓{}",
+            format_bytes_compact(up),
+            format_bytes_compact(down)
+        ))
     }
 }

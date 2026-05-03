@@ -4,6 +4,7 @@ use crate::general_ledger::api::{
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::icons::icon;
 use crate::shared::modal_frame::ModalFrame;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
@@ -356,7 +357,8 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                             }
                         }
                     >
-                        "Скачать CSV"
+                        {icon("download")}
+                        "Excel (csv)"
                     </Button>
                 </div>
             </div>

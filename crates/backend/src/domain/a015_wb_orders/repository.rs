@@ -211,6 +211,99 @@ pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
     Ok(orders)
 }
 
+pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let numeric_ids: Vec<i64> = order_ids.iter().copied().filter(|&id| id > 0).collect();
+    if numeric_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let db = get_connection();
+    let ids_sql = numeric_ids
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT * FROM a015_wb_orders \
+         WHERE CAST(json_extract(line_json, '$.line_id') AS INTEGER) IN ({}) \
+           AND is_deleted = 0 \
+         ORDER BY document_date",
+        ids_sql
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let query_results = db.query_all(stmt).await?;
+
+    let mut orders = Vec::with_capacity(query_results.len());
+    for row in query_results {
+        let id: String = row.try_get("", "id").unwrap_or_default();
+        let code: String = row.try_get("", "code").unwrap_or_default();
+        let description: String = row.try_get("", "description").unwrap_or_default();
+        let comment: Option<String> = row.try_get("", "comment").ok().flatten();
+        let document_no: String = row.try_get("", "document_no").unwrap_or_default();
+        let document_date: Option<String> = row.try_get("", "document_date").ok().flatten();
+        let g_number: Option<String> = row.try_get("", "g_number").ok().flatten();
+        let spp: Option<f64> = row.try_get("", "spp").ok().flatten();
+        let is_cancel: Option<bool> = row
+            .try_get::<Option<i32>>("", "is_cancel")
+            .ok()
+            .flatten()
+            .map(|v| v != 0);
+        let cancel_date: Option<String> = row.try_get("", "cancel_date").ok().flatten();
+        let header_json: String = row.try_get("", "header_json").unwrap_or_default();
+        let line_json: String = row.try_get("", "line_json").unwrap_or_default();
+        let state_json: String = row.try_get("", "state_json").unwrap_or_default();
+        let warehouse_json: String = row.try_get("", "warehouse_json").unwrap_or_default();
+        let geography_json: String = row.try_get("", "geography_json").unwrap_or_default();
+        let source_meta_json: String = row.try_get("", "source_meta_json").unwrap_or_default();
+        let marketplace_product_ref: Option<String> =
+            row.try_get("", "marketplace_product_ref").ok().flatten();
+        let nomenclature_ref: Option<String> = row.try_get("", "nomenclature_ref").ok().flatten();
+        let base_nomenclature_ref: Option<String> =
+            row.try_get("", "base_nomenclature_ref").ok().flatten();
+        let is_deleted: bool = row
+            .try_get::<i32>("", "is_deleted")
+            .map(|v| v != 0)
+            .unwrap_or(false);
+        let is_posted: bool = row
+            .try_get::<i32>("", "is_posted")
+            .map(|v| v != 0)
+            .unwrap_or(false);
+        let version: i32 = row.try_get("", "version").unwrap_or(0);
+
+        let model = Model {
+            id,
+            code,
+            description,
+            comment,
+            document_no,
+            document_date,
+            g_number,
+            spp,
+            is_cancel,
+            cancel_date,
+            header_json,
+            line_json,
+            state_json,
+            warehouse_json,
+            geography_json,
+            source_meta_json,
+            marketplace_product_ref,
+            nomenclature_ref,
+            base_nomenclature_ref,
+            is_deleted,
+            is_posted,
+            created_at: None,
+            updated_at: None,
+            version,
+        };
+        orders.push(WbOrders::from(model));
+    }
+
+    Ok(orders)
+}
+
 /// Update income_id in source_meta_json for a specific order (by document_no / srid).
 /// Only updates if income_id is currently NULL or 0 — does not overwrite existing data.
 /// Returns true if a row was updated.
@@ -232,6 +325,39 @@ pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) 
     let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
     db.execute(stmt).await?;
     Ok(true)
+}
+
+/// Set the current income_id exactly as provided by Marketplace API.
+/// `None` means the order is currently not assigned to any supply.
+pub async fn set_income_id_by_document_no(
+    document_no: &str,
+    income_id: Option<i64>,
+) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let escaped_document_no = document_no.replace('\'', "''");
+    let sql = match income_id.filter(|&value| value > 0) {
+        Some(value) => format!(
+            "UPDATE a015_wb_orders \
+             SET source_meta_json = json_set(source_meta_json, '$.income_id', {}), \
+                 updated_at = datetime('now') \
+             WHERE document_no = '{}' \
+               AND is_deleted = 0",
+            value, escaped_document_no
+        ),
+        None => format!(
+            "UPDATE a015_wb_orders \
+             SET source_meta_json = json_remove(source_meta_json, '$.income_id'), \
+                 updated_at = datetime('now') \
+             WHERE document_no = '{}' \
+               AND is_deleted = 0",
+            escaped_document_no
+        ),
+    };
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let result = db.execute(stmt).await?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// Update line_id (numeric WB order ID) for an existing order.
@@ -505,7 +631,8 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
         if !search_query.is_empty() {
             let escaped = search_query.replace('\'', "''");
             conditions.push(format!(
-                "(json_extract(w.line_json, '$.supplier_article') LIKE '%{0}%' OR \
+                "(w.document_no LIKE '%{0}%' OR \
+                 json_extract(w.line_json, '$.supplier_article') LIKE '%{0}%' OR \
                  EXISTS (SELECT 1 FROM a004_nomenclature n \
                          WHERE n.id = COALESCE( \
                              NULLIF(NULLIF((SELECT src.base_nomenclature_ref FROM a004_nomenclature src WHERE src.id = w.nomenclature_ref), ''), '00000000-0000-0000-0000-000000000000'), \

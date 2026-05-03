@@ -489,7 +489,7 @@ pub fn OzonTransactionsList() -> impl IntoView {
                         disabled=Signal::derive(move || loading.get() || all_transactions.get().is_empty())
                     >
                         {icon("download")}
-                        " Excel"
+                        "Excel (csv)"
                     </Button>
                     <Button
                         appearance=ButtonAppearance::Secondary

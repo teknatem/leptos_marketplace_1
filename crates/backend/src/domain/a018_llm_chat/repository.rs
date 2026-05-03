@@ -212,6 +212,7 @@ struct ChatWithStats {
     description: String,
     agent_id: String,
     agent_name: Option<String>,
+    agent_type: Option<String>,
     model_name: String,
     created_at: Option<chrono::DateTime<chrono::Utc>>,
     message_count: Option<i64>,
@@ -227,6 +228,7 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
             c.description,
             c.agent_id,
             a.description as agent_name,
+            a.agent_type as agent_type,
             c.model_name,
             c.created_at,
             COUNT(m.id) as message_count,
@@ -235,7 +237,7 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
         LEFT JOIN a017_llm_agent a ON c.agent_id = a.id
         LEFT JOIN a018_llm_chat_message m ON c.id = m.chat_id
         WHERE c.is_deleted = 0
-        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, c.model_name, c.created_at
+        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at
         ORDER BY c.created_at DESC
     "#;
 
@@ -262,6 +264,7 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
                 description: r.description,
                 agent_id: r.agent_id,
                 agent_name: r.agent_name,
+                agent_type: r.agent_type,
                 model_name: r.model_name,
                 created_at: r.created_at.unwrap_or_else(Utc::now),
                 message_count: r.message_count,

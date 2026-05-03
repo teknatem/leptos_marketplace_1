@@ -1,10 +1,14 @@
 use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
+use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::TaskProgressResponse;
 use contracts::system::tasks::request::{
-    CreateScheduledTaskDto, ToggleScheduledTaskEnabledDto, UpdateScheduledTaskDto,
+    CreateScheduledTaskDto, SetWatermarkDto, ToggleScheduledTaskEnabledDto, UpdateScheduledTaskDto,
 };
 use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
+use contracts::system::tasks::runs::{
+    LiveMemoryProgressResponse, RecentRunsResponse, RunTaskResponse, TaskRun, TaskRunListResponse,
+};
 use gloo_net::http::Request;
 
 fn get_auth_header() -> Option<String> {
@@ -15,7 +19,7 @@ fn get_auth_header() -> Option<String> {
 pub async fn fetch_scheduled_tasks() -> Result<Vec<ScheduledTaskResponse>, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::get(&format!("{}/api/sys/scheduled_tasks", api_base()))
+    let response = Request::get(&format!("{}/api/sys/tasks", api_base()))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -40,7 +44,7 @@ pub async fn fetch_scheduled_tasks() -> Result<Vec<ScheduledTaskResponse>, Strin
 pub async fn get_scheduled_task(id: &str) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::get(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
+    let response = Request::get(&format!("{}/api/sys/tasks/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .send()
         .await
@@ -65,7 +69,7 @@ pub async fn create_scheduled_task(
 ) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::post(&format!("{}/api/sys/scheduled_tasks", api_base()))
+    let response = Request::post(&format!("{}/api/sys/tasks", api_base()))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -93,7 +97,7 @@ pub async fn update_scheduled_task(
 ) -> Result<ScheduledTaskResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let response = Request::put(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
+    let response = Request::put(&format!("{}/api/sys/tasks/{}", api_base(), id))
         .header("Authorization", &auth_header)
         .json(&dto)
         .map_err(|e| format!("Failed to serialize request: {}", e))?
@@ -114,26 +118,6 @@ pub async fn update_scheduled_task(
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-/// Delete scheduled task
-pub async fn delete_scheduled_task(id: &str) -> Result<(), String> {
-    let auth_header = get_auth_header().ok_or("Not authenticated")?;
-
-    let response = Request::delete(&format!("{}/api/sys/scheduled_tasks/{}", api_base(), id))
-        .header("Authorization", &auth_header)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
-
-    if !response.ok() {
-        return Err(format!(
-            "Failed to delete scheduled task: {}",
-            response.status()
-        ));
-    }
-
-    Ok(())
-}
-
 /// Toggle enabled status
 pub async fn toggle_scheduled_task_enabled(
     id: &str,
@@ -143,7 +127,7 @@ pub async fn toggle_scheduled_task_enabled(
     let dto = ToggleScheduledTaskEnabledDto { is_enabled };
 
     let response = Request::post(&format!(
-        "{}/api/sys/scheduled_tasks/{}/toggle_enabled",
+        "{}/api/sys/tasks/{}/toggle_enabled",
         api_base(),
         id
     ))
@@ -175,7 +159,7 @@ pub async fn get_task_progress(
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
     let response = Request::get(&format!(
-        "{}/api/sys/scheduled_tasks/{}/progress/{}",
+        "{}/api/sys/tasks/{}/progress/{}",
         api_base(),
         task_id,
         session_id
@@ -198,15 +182,52 @@ pub async fn get_task_progress(
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-/// Get task log
-pub async fn get_task_log(task_id: &str, session_id: &str) -> Result<String, String> {
+/// Результат ручного запуска: новая сессия или конфликт (уже выполняется).
+#[derive(Debug, Clone)]
+pub enum RunTaskNowOutcome {
+    Started(RunTaskResponse),
+    /// HTTP 409 — в теле текущий `TaskRun` со статусом Running
+    AlreadyRunning(TaskRun),
+}
+
+/// Run task manually
+pub async fn run_task_now(task_id: &str) -> Result<RunTaskNowOutcome, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::post(&format!("{}/api/sys/tasks/{}/run", api_base(), task_id))
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    let status = response.status();
+
+    if status == 409 {
+        let run: TaskRun = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse conflict body: {}", e))?;
+        return Ok(RunTaskNowOutcome::AlreadyRunning(run));
+    }
+
+    if !response.ok() {
+        return Err(format!("Failed to run task: {}", status));
+    }
+
+    let body: RunTaskResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    Ok(RunTaskNowOutcome::Started(body))
+}
+
+/// Сессии Running в памяти трекеров (без БД и без чтения логов)
+pub async fn get_active_runs_with_progress() -> Result<LiveMemoryProgressResponse, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
     let response = Request::get(&format!(
-        "{}/api/sys/scheduled_tasks/{}/log/{}",
-        api_base(),
-        task_id,
-        session_id
+        "{}/api/sys/tasks/runs/active/progress",
+        api_base()
     ))
     .header("Authorization", &auth_header)
     .send()
@@ -214,11 +235,132 @@ pub async fn get_task_log(task_id: &str, session_id: &str) -> Result<String, Str
     .map_err(|e| format!("Failed to send request: {}", e))?;
 
     if !response.ok() {
-        return Err(format!("Failed to fetch task log: {}", response.status()));
+        return Err(format!(
+            "Failed to fetch active runs with progress: {}",
+            response.status()
+        ));
     }
 
     response
-        .text()
+        .json()
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get run history for a specific task
+pub async fn get_task_runs(
+    task_id: &str,
+    limit: Option<u32>,
+) -> Result<TaskRunListResponse, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+    let url = match limit {
+        Some(l) => format!("{}/api/sys/tasks/{}/runs?limit={}", api_base(), task_id, l),
+        None => format!("{}/api/sys/tasks/{}/runs", api_base(), task_id),
+    };
+
+    let response = Request::get(&url)
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Failed to fetch task runs: {}", response.status()));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get recent runs across all tasks
+pub async fn get_recent_runs(limit: Option<u32>) -> Result<RecentRunsResponse, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+    let url = match limit {
+        Some(l) => format!("{}/api/sys/tasks/runs/recent?limit={}", api_base(), l),
+        None => format!("{}/api/sys/tasks/runs/recent", api_base()),
+    };
+
+    let response = Request::get(&url)
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Failed to fetch recent runs: {}",
+            response.status()
+        ));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get task type metadata
+pub async fn get_task_types() -> Result<Vec<TaskMetadataDto>, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::get(&format!("{}/api/sys/tasks/task_types", api_base()))
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Failed to fetch task types: {}", response.status()));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Abort a running task by session_id
+pub async fn abort_task_run(session_id: &str) -> Result<(), String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::post(&format!(
+        "{}/api/sys/tasks/runs/{}/abort",
+        api_base(),
+        session_id
+    ))
+    .header("Authorization", &auth_header)
+    .send()
+    .await
+    .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if response.status() == 404 {
+        return Err("Задача не найдена (уже завершилась?)".to_string());
+    }
+    if !response.ok() {
+        return Err(format!("Ошибка прерывания: {}", response.status()));
+    }
+    Ok(())
+}
+
+/// Set or reset the watermark (last_successful_run_at) for a task.
+/// `date` = "YYYY-MM-DD" to set a specific date, `None` to reset to NULL.
+pub async fn set_watermark(id: &str, date: Option<String>) -> Result<(), String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let dto = SetWatermarkDto { date };
+    let response = Request::post(&format!("{}/api/sys/tasks/{}/watermark", api_base(), id))
+        .header("Authorization", &auth_header)
+        .json(&dto)
+        .map_err(|e| format!("Failed to serialize: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("Set watermark failed: {}", response.status()))
+    }
 }

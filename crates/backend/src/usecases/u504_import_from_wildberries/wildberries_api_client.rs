@@ -4,10 +4,90 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::{Arc, Mutex};
+
+use super::progress_tracker::ProgressTracker;
+
+#[derive(Debug, Clone, Default)]
+struct WbRateLimitHeaders {
+    retry_seconds: Option<u64>,
+    limit: Option<u64>,
+    reset_seconds: Option<u64>,
+    remaining: Option<u64>,
+}
+
+impl WbRateLimitHeaders {
+    fn from_headers(headers: &HeaderMap) -> Self {
+        fn parse_header(headers: &HeaderMap, name: &str) -> Option<u64> {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+        }
+
+        Self {
+            retry_seconds: parse_header(headers, "X-Ratelimit-Retry"),
+            limit: parse_header(headers, "X-Ratelimit-Limit"),
+            reset_seconds: parse_header(headers, "X-Ratelimit-Reset"),
+            remaining: parse_header(headers, "X-Ratelimit-Remaining"),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.retry_seconds.is_none()
+            && self.limit.is_none()
+            && self.reset_seconds.is_none()
+            && self.remaining.is_none()
+    }
+
+    fn to_log_fields(&self) -> String {
+        if self.is_empty() {
+            return "not provided".to_string();
+        }
+
+        format!(
+            "retry={}s, reset={}s, limit={}, remaining={}",
+            self.retry_seconds
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            self.reset_seconds
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            self.limit
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            self.remaining
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+        )
+    }
+
+    fn to_error_suffix(&self) -> String {
+        if self.is_empty() {
+            String::new()
+        } else {
+            format!(" | X-Ratelimit: {}", self.to_log_fields())
+        }
+    }
+}
 
 /// HTTP-РєР»РёРµРЅС‚ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ Wildberries Supplier API
 pub struct WildberriesApiClient {
     client: reqwest::Client,
+    /// Привязка к сессии импорта: учёт HTTP для `sys_task_runs` / UI «Активные».
+    http_track: Arc<Mutex<Option<(Arc<ProgressTracker>, String)>>>,
+}
+
+pub struct HttpTrackingGuard {
+    http_track: Arc<Mutex<Option<(Arc<ProgressTracker>, String)>>>,
+}
+
+impl Drop for HttpTrackingGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.http_track.lock() {
+            *guard = None;
+        }
+    }
 }
 
 impl WildberriesApiClient {
@@ -25,7 +105,59 @@ impl WildberriesApiClient {
                 .redirect(reqwest::redirect::Policy::limited(10)) // РЎР»РµРґРѕРІР°С‚СЊ СЂРµРґРёСЂРµРєС‚Р°Рј
                 .build()
                 .expect("Failed to create HTTP client"),
+            http_track: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Включает учёт трафика для текущей сессии импорта.
+    /// Каждый `ImportExecutor` принадлежит ровно одному менеджеру задачи, поэтому
+    /// параллельный вызов невозможен — планировщик не запускает одну задачу дважды.
+    pub fn bind_http_tracking(
+        &self,
+        tracker: Arc<ProgressTracker>,
+        session_id: String,
+    ) -> HttpTrackingGuard {
+        if let Ok(mut g) = self.http_track.lock() {
+            if g.is_some() {
+                tracing::warn!(
+                    "bind_http_tracking: overwriting existing tracking for session {}",
+                    session_id
+                );
+            }
+            *g = Some((tracker, session_id));
+        }
+        HttpTrackingGuard {
+            http_track: Arc::clone(&self.http_track),
+        }
+    }
+
+    pub fn clear_http_tracking(&self) {
+        if let Ok(mut g) = self.http_track.lock() {
+            *g = None;
+        }
+    }
+
+    /// Читает тело ответа и при активной привязке увеличивает счётчики HTTP в трекере.
+    pub(crate) async fn read_body_tracked(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<String, reqwest::Error> {
+        self.read_body_tracked_with_request_bytes(response, 0).await
+    }
+
+    pub(crate) async fn read_body_tracked_with_request_bytes(
+        &self,
+        response: reqwest::Response,
+        request_body_len: u64,
+    ) -> Result<String, reqwest::Error> {
+        let text = response.text().await?;
+        let response_bytes = text.len() as u64;
+        if let Ok(guard) = self.http_track.lock() {
+            if let Some((tracker, sid)) = guard.as_ref() {
+                tracker.record_http_exchange(sid, request_body_len, response_bytes);
+            }
+        }
+        Ok(text)
     }
 
     /// Р”РёР°РіРЅРѕСЃС‚РёС‡РµСЃРєР°СЏ С„СѓРЅРєС†РёСЏ РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ СЂР°Р·Р»РёС‡РЅС‹С… РІР°СЂРёР°РЅС‚РѕРІ Р·Р°РїСЂРѕСЃР°
@@ -186,6 +318,7 @@ impl WildberriesApiClient {
         };
 
         self.log_to_file(&format!("Request body: {}", body));
+        let request_body_len = body.len() as u64;
 
         let response = match self
             .client
@@ -216,7 +349,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response headers: {:?}", headers));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -228,7 +364,10 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self
+            .read_body_tracked_with_request_bytes(response, request_body_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -300,6 +439,7 @@ impl WildberriesApiClient {
         // РњРёРЅРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїСЂРѕСЃ - С‚РѕР»СЊРєРѕ limit
         let body = format!(r#"{{"limit":{}}}"#, limit);
         self.log_to_file(&format!("Minimal request body: {}", body));
+        let request_body_len = body.len() as u64;
 
         let response = match self
             .client
@@ -329,7 +469,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -341,7 +484,10 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self
+            .read_body_tracked_with_request_bytes(response, request_body_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -430,7 +576,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response headers: {:?}", headers));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
 
             // 404 РёР»Рё 405 РѕР·РЅР°С‡Р°РµС‚ С‡С‚Рѕ endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё РјРµС‚РѕРґ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ
@@ -455,7 +601,7 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self.read_body_tracked(response).await {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -549,7 +695,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response headers: {:?}", headers));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
 
             if status.as_u16() == 404 {
@@ -573,7 +719,7 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self.read_body_tracked(response).await {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -685,7 +831,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -697,7 +843,7 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self.read_body_tracked(response).await {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -838,6 +984,7 @@ impl WildberriesApiClient {
                 };
             }
         };
+        let request_body1_len = body1.len() as u64;
 
         let response1 = match self
             .client
@@ -862,7 +1009,10 @@ impl WildberriesApiClient {
             }
         };
 
-        let body1_text = match response1.text().await {
+        let body1_text = match self
+            .read_body_tracked_with_request_bytes(response1, request_body1_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -925,6 +1075,7 @@ impl WildberriesApiClient {
         };
 
         self.log_to_file(&format!("Second request body: {}", body2));
+        let request_body2_len = body2.len() as u64;
 
         let response2 = match self
             .client
@@ -954,7 +1105,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Second response status: {}", status2));
 
         if !status2.is_success() {
-            let body = response2.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response2, request_body2_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -969,7 +1123,10 @@ impl WildberriesApiClient {
             };
         }
 
-        let body2_text = match response2.text().await {
+        let body2_text = match self
+            .read_body_tracked_with_request_bytes(response2, request_body2_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -1088,6 +1245,7 @@ impl WildberriesApiClient {
         };
 
         self.log_to_file(&format!("Request body: {}", body));
+        let request_body_len = body.len() as u64;
 
         let response = match self
             .client
@@ -1118,7 +1276,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response headers: {:?}", headers));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -1130,7 +1291,10 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self
+            .read_body_tracked_with_request_bytes(response, request_body_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -1229,6 +1393,7 @@ impl WildberriesApiClient {
         // РџРѕРїСЂРѕР±СѓРµРј РЎРћР’РЎР•Рњ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїСЂРѕСЃ - Р±РµР· cursor РІРѕРѕР±С‰Рµ
         let body = format!(r#"{{"limit":{}}}"#, limit);
         self.log_to_file(&format!("Minimal request (no cursor at all): {}", body));
+        let request_body_len = body.len() as u64;
 
         let response = match self
             .client
@@ -1258,7 +1423,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("Error response body: {}", body));
             return DiagnosticResult {
                 test_name: test_name.to_string(),
@@ -1270,7 +1438,10 @@ impl WildberriesApiClient {
             };
         }
 
-        let body = match response.text().await {
+        let body = match self
+            .read_body_tracked_with_request_bytes(response, request_body_len)
+            .await
+        {
             Ok(b) => b,
             Err(e) => {
                 return DiagnosticResult {
@@ -1393,6 +1564,7 @@ impl WildberriesApiClient {
             "=== REQUEST ===\nPOST {}\nAuthorization: ****\nBody: {}",
             url, body
         ));
+        let request_body_len = body.len() as u64;
 
         let response = match self
             .client
@@ -1426,7 +1598,10 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
+                .await
+                .unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("Wildberries API request failed: {}", body);
             anyhow::bail!(
@@ -1436,7 +1611,9 @@ impl WildberriesApiClient {
             );
         }
 
-        let body = response.text().await?;
+        let body = self
+            .read_body_tracked_with_request_bytes(response, request_body_len)
+            .await?;
         self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
 
         let preview: String = body.chars().take(500).collect::<String>();
@@ -1583,7 +1760,7 @@ impl WildberriesApiClient {
             self.log_to_file(&format!("Response status: {}", status));
 
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!("Wildberries Sales API request failed: {}", body);
                 anyhow::bail!(
@@ -1593,7 +1770,7 @@ impl WildberriesApiClient {
                 );
             }
 
-            let body = response.text().await?;
+            let body = self.read_body_tracked(response).await?;
             let body_preview = if body.chars().count() > 5000 {
                 let preview: String = body.chars().take(5000).collect();
                 format!("{}... (total {} chars)", preview, body.len())
@@ -1806,7 +1983,7 @@ impl WildberriesApiClient {
             }
 
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!("Wildberries Finance Report API request failed: {}", body);
                 anyhow::bail!(
@@ -1816,7 +1993,7 @@ impl WildberriesApiClient {
                 );
             }
 
-            let body = response.text().await?;
+            let body = self.read_body_tracked(response).await?;
 
             // РџСѓСЃС‚РѕР№ РѕС‚РІРµС‚ - РєРѕРЅРµС† РґР°РЅРЅС‹С…
             if body.trim().is_empty() || body.trim() == "[]" {
@@ -2088,7 +2265,7 @@ impl WildberriesApiClient {
             }
 
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!(
                     "Wildberries Orders API request failed for cursor {}: {}",
@@ -2121,7 +2298,7 @@ impl WildberriesApiClient {
             }
 
             // Р§РёС‚Р°РµРј С‚РµР»Рѕ РѕС‚РІРµС‚Р°
-            let body = match response.text().await {
+            let body = match self.read_body_tracked(response).await {
                 Ok(b) => b,
                 Err(e) => {
                     self.log_to_file(&format!("в”‚ вљ пёЏ Failed to read response body: {}", e));
@@ -2249,6 +2426,20 @@ impl WildberriesApiClient {
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
     ) -> Result<Vec<WbDocumentListItem>> {
+        // WB Documents List API: empirical limit ~1 req/10 s (burst 5).
+        // We add an inter-page delay of 11 s.
+        //
+        // ВАЖНО: API не гарантирует фильтрацию по дате через beginTime/endTime.
+        // Сортировка desc по дате позволяет сделать early-exit: как только видим документ
+        // старше date_from — дальше не идём, т.к. всё остальное ещё старше.
+        const PAGE_DELAY_SECS: u64 = 11;
+        // Максимум попыток на одну страницу при 429 (защита от вечной петли).
+        const MAX_RETRIES_PER_PAGE: u32 = 3;
+        const RATE_LIMIT_DEFAULT_WAIT_SECS: u64 = 15;
+        // Если API говорит ждать больше этого порога — исчерпана дневная квота;
+        // немедленно возвращаем ошибку, чтобы не ждать часами.
+        const QUOTA_EXHAUSTED_THRESHOLD_SECS: u64 = 300; // 5 минут
+
         let url = "https://documents-api.wildberries.ru/api/v1/documents/list";
 
         if connection.api_key.trim().is_empty() {
@@ -2261,42 +2452,119 @@ impl WildberriesApiClient {
         let mut offset = 0usize;
         let mut all_documents = Vec::new();
 
-        loop {
-            let response = self
-                .client
-                .get(url)
-                .header("Authorization", &connection.api_key)
-                .query(&[
-                    ("locale", "ru"),
-                    ("beginTime", begin_time.as_str()),
-                    ("endTime", end_time.as_str()),
-                    ("sort", "date"),
-                    ("order", "desc"),
-                    ("limit", &limit.to_string()),
-                    ("offset", &offset.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to fetch WB documents list: {}", e))?;
-
-            let status = response.status();
-            if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
-                anyhow::bail!(
-                    "Wildberries documents list failed with status {}: {}",
-                    status,
-                    body
-                );
+        'pages: loop {
+            // Delay before every page except the very first.
+            if offset > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(PAGE_DELAY_SECS)).await;
             }
 
-            let body = response.text().await?;
-            let parsed: WbDocumentsListResponse = serde_json::from_str(&body).map_err(|e| {
-                anyhow::anyhow!("Failed to parse WB documents list response: {}", e)
-            })?;
+            let mut retries = 0u32;
+            let batch = loop {
+                let response = self
+                    .client
+                    .get(url)
+                    .header("Authorization", &connection.api_key)
+                    .query(&[
+                        ("locale", "ru"),
+                        ("beginTime", begin_time.as_str()),
+                        ("endTime", end_time.as_str()),
+                        ("sort", "date"),
+                        ("order", "desc"),
+                        ("limit", &limit.to_string()),
+                        ("offset", &offset.to_string()),
+                    ])
+                    .send()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to fetch WB documents list: {}", e))?;
 
-            let batch = parsed.data.documents;
+                let status = response.status();
+
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    let retry_after = response
+                        .headers()
+                        .get("X-Ratelimit-Retry")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(RATE_LIMIT_DEFAULT_WAIT_SECS);
+
+                    // Если API просит ждать слишком долго — дневная квота исчерпана.
+                    // Немедленно возвращаем ошибку вместо многочасового ожидания.
+                    // Префикс QUOTA_EXHAUSTED: позволяет worker-у отложить следующий запуск на 24ч.
+                    if retry_after > QUOTA_EXHAUSTED_THRESHOLD_SECS {
+                        anyhow::bail!(
+                            "QUOTA_EXHAUSTED: WB Documents API: дневная квота исчерпана. \
+                             API требует ждать {} с (~{} ч). \
+                             Следующий запуск автоматически перенесён на 24 ч.",
+                            retry_after,
+                            retry_after / 3600
+                        );
+                    }
+
+                    retries += 1;
+                    if retries > MAX_RETRIES_PER_PAGE {
+                        anyhow::bail!(
+                            "WB Documents List API: превышено {} попыток при rate-limit (offset={}). \
+                             Задача остановлена.",
+                            MAX_RETRIES_PER_PAGE, offset
+                        );
+                    }
+                    let wait_secs = retry_after.max(RATE_LIMIT_DEFAULT_WAIT_SECS);
+                    tracing::warn!(
+                        "WB Documents API 429 (попытка {}/{}): ждём {} с (offset={}).",
+                        retries,
+                        MAX_RETRIES_PER_PAGE,
+                        wait_secs,
+                        offset
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
+                    continue;
+                }
+
+                if !status.is_success() {
+                    let body = self.read_body_tracked(response).await.unwrap_or_default();
+                    anyhow::bail!(
+                        "Wildberries documents list failed with status {}: {}",
+                        status,
+                        body
+                    );
+                }
+
+                let body = self.read_body_tracked(response).await?;
+                let parsed: WbDocumentsListResponse = serde_json::from_str(&body).map_err(|e| {
+                    anyhow::anyhow!("Failed to parse WB documents list response: {}", e)
+                })?;
+                break parsed.data.documents;
+            };
+
             let batch_len = batch.len();
-            all_documents.extend(batch);
+
+            // Применяем клиентскую фильтрацию по дате и early-exit.
+            // API сортирует desc, поэтому первый документ старше date_from = конец диапазона.
+            for doc in batch {
+                // creation_time может быть "YYYY-MM-DD" или "YYYY-MM-DDTHH:MM:SSZ"
+                let doc_date = doc
+                    .creation_time
+                    .get(..10)
+                    .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+
+                if let Some(d) = doc_date {
+                    if d > date_to {
+                        // Документ новее окна — пропускаем (API мог вернуть лишнее)
+                        continue;
+                    }
+                    if d < date_from {
+                        // Документ старше окна — дальше всё ещё старше, останавливаемся
+                        tracing::debug!(
+                            "WB Documents: early-exit на дате {} (date_from={}), offset={}",
+                            d,
+                            date_from,
+                            offset
+                        );
+                        break 'pages;
+                    }
+                }
+                all_documents.push(doc);
+            }
 
             if batch_len < limit {
                 break;
@@ -2331,7 +2599,7 @@ impl WildberriesApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             anyhow::bail!(
                 "Wildberries document download failed with status {}: {}",
                 status,
@@ -2339,7 +2607,7 @@ impl WildberriesApiClient {
             );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         let parsed: WbDocumentDownloadResponse = serde_json::from_str(&body)
             .map_err(|e| anyhow::anyhow!("Failed to parse WB document download response: {}", e))?;
 
@@ -2405,7 +2673,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!(
                 "Wildberries Commission Tariffs API request failed: {}",
@@ -2418,7 +2686,7 @@ impl WildberriesApiClient {
             );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
 
         // Parse JSON response
@@ -2488,7 +2756,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("Wildberries Prices API request failed: {}", body);
             anyhow::bail!(
@@ -2498,7 +2766,7 @@ impl WildberriesApiClient {
             );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         self.log_to_file(&format!(
             "=== RESPONSE BODY ===\n{}\n",
             &body[..body.len().min(2000)]
@@ -2570,7 +2838,7 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("Response status: {}", status));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
             tracing::error!("WB Promotion API request failed: {}", body);
             anyhow::bail!(
@@ -2580,7 +2848,7 @@ impl WildberriesApiClient {
             );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         let body_preview: String = body.chars().take(2000).collect();
         self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
 
@@ -2657,12 +2925,12 @@ impl WildberriesApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let err_body = response.text().await.unwrap_or_default();
+            let err_body = self.read_body_tracked(response).await.unwrap_or_default();
             tracing::warn!("WB Promotion Details API failed: {} - {}", status, err_body);
             return Ok(vec![]);
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         let body_preview: String = body.chars().take(500).collect();
         self.log_to_file(&format!("=== DETAILS RESPONSE ===\n{}\n", body_preview));
 
@@ -2744,7 +3012,7 @@ impl WildberriesApiClient {
                 self.log_to_file(&format!("Response status: {}", status));
 
                 if !status.is_success() {
-                    let err_body = response.text().await.unwrap_or_default();
+                    let err_body = self.read_body_tracked(response).await.unwrap_or_default();
                     self.log_to_file(&format!("ERROR Response body:\n{}", err_body));
                     tracing::warn!(
                         "WB Promotion Nomenclatures API failed for promotionID={} inAction={}: {} - {}",
@@ -2753,7 +3021,7 @@ impl WildberriesApiClient {
                     break;
                 }
 
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 let body_preview: String = body.chars().take(500).collect();
                 self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
 
@@ -2823,20 +3091,37 @@ impl WildberriesApiClient {
         };
 
         let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
         self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!(
+            "Response X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
-            tracing::error!("WB Advert campaign list failed: {} - {}", status, body);
-            anyhow::bail!(
-                "WB Advert campaign list failed with status {}: {}",
+            tracing::error!(
+                "WB Advert campaign list failed: {} - {}{}",
                 status,
-                body
+                body,
+                rate_limit.to_error_suffix()
+            );
+            let body_preview: String = body.chars().take(120).collect();
+            let body_preview = body_preview.trim();
+            anyhow::bail!(
+                "WB Advert API: {} — {}{}",
+                status,
+                if body_preview.is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview
+                },
+                rate_limit.to_error_suffix()
             );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         let body_preview: String = body.chars().take(1000).collect();
         self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body_preview));
 
@@ -2855,6 +3140,7 @@ impl WildberriesApiClient {
 
         let ids: Vec<i64> = parsed
             .adverts
+            .clone()
             .unwrap_or_default()
             .into_iter()
             .flat_map(|g| g.advert_list.into_iter().map(|e| e.advert_id))
@@ -2864,6 +3150,194 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("вњ“ Found {} advertIds", ids.len()));
 
         Ok(ids)
+    }
+
+    pub async fn fetch_advert_campaign_summaries(
+        &self,
+        connection: &ConnectionMP,
+    ) -> Result<Vec<WbAdvertCampaignSummary>> {
+        let url = "https://advert-api.wildberries.ru/adv/v1/promotion/count";
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for Wildberries Advert API");
+        }
+
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Connection error for advert campaign list: {}", e))?;
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!(
+            "WB Advert campaign summaries X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+        if !status.is_success() {
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            let body_preview: String = body.chars().take(120).collect();
+            anyhow::bail!(
+                "WB Advert API: {} — {}{}",
+                status,
+                if body_preview.trim().is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview.trim()
+                },
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let body = self.read_body_tracked(response).await?;
+        let parsed: WbAdvertCampaignListResponse = serde_json::from_str(&body).map_err(|e| {
+            let snippet: String = body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB advert campaign list: {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        let mut result = Vec::new();
+        for group in parsed.adverts.unwrap_or_default() {
+            for entry in group.advert_list {
+                result.push(WbAdvertCampaignSummary {
+                    advert_id: entry.advert_id,
+                    campaign_type: group.campaign_type,
+                    status: group.status,
+                    change_time: entry.change_time,
+                });
+            }
+        }
+        Ok(result)
+    }
+
+    /// GET /api/advert/v2/adverts — настройки кампаний, включая места размещения.
+    pub async fn fetch_advert_campaigns(
+        &self,
+        connection: &ConnectionMP,
+        ids: &[i64],
+    ) -> Result<Vec<WbAdvertCampaign>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids_str = ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let url = format!(
+            "https://advert-api.wildberries.ru/api/advert/v2/adverts?ids={}",
+            ids_str
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Connection error for advert campaigns: {}", e))?;
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!(
+            "WB Advert campaigns X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+        if !status.is_success() {
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            tracing::warn!(
+                "WB Advert campaigns failed: {} - {}{}",
+                status,
+                body,
+                rate_limit.to_error_suffix()
+            );
+            anyhow::bail!(
+                "WB Advert campaigns failed with status {}: {}{}",
+                status,
+                body,
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let body = self.read_body_tracked(response).await?;
+        let parsed: WbAdvertCampaignsResponse = serde_json::from_str(&body).map_err(|e| {
+            let snippet: String = body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB advert campaigns: {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        Ok(parsed.adverts)
+    }
+
+    pub async fn fetch_advert_campaign_info_values(
+        &self,
+        connection: &ConnectionMP,
+        ids: &[i64],
+    ) -> Result<Vec<serde_json::Value>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids_str = ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let url = format!(
+            "https://advert-api.wildberries.ru/api/advert/v2/adverts?ids={}",
+            ids_str
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Connection error for advert campaigns: {}", e))?;
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!(
+            "WB Advert campaigns info X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+        if !status.is_success() {
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            anyhow::bail!(
+                "WB Advert campaigns failed with status {}: {}{}",
+                status,
+                body,
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let body = self.read_body_tracked(response).await?;
+        let parsed: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+            let snippet: String = body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB advert campaigns info: {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        if let Some(adverts) = parsed.get("adverts").and_then(|v| v.as_array()) {
+            Ok(adverts.clone())
+        } else if let Some(items) = parsed.as_array() {
+            Ok(items.clone())
+        } else {
+            Ok(vec![parsed])
+        }
     }
 
     /// GET /adv/v3/fullstats вЂ” СЃС‚Р°С‚РёСЃС‚РёРєР° СЂРµРєР»Р°РјРЅС‹С… РєР°РјРїР°РЅРёР№ (РјР°РєСЃ 50 ID Р·Р° Р·Р°РїСЂРѕСЃ)
@@ -2909,25 +3383,55 @@ impl WildberriesApiClient {
         };
 
         let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
         self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!(
+            "Response X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             self.log_to_file(&format!("ERROR Response body:\n{}", body));
-            tracing::warn!("WB Advert fullstats failed: {} - {}", status, body);
-            return Ok(vec![]);
+            tracing::warn!(
+                "WB Advert fullstats failed: {} - {}{}",
+                status,
+                body,
+                rate_limit.to_error_suffix()
+            );
+            let body_preview: String = body.chars().take(120).collect();
+            let body_preview = body_preview.trim();
+            anyhow::bail!(
+                "WB Advert API fullstats: {} — {}{}",
+                status,
+                if body_preview.is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview
+                },
+                rate_limit.to_error_suffix()
+            );
         }
 
-        let body = response.text().await?;
+        let body = self.read_body_tracked(response).await?;
         let body_preview: String = body.chars().take(2000).collect();
         self.log_to_file(&format!("=== FULLSTATS RESPONSE ===\n{}\n", body_preview));
+
+        if body.trim() == "null" {
+            tracing::warn!("WB Advert fullstats returned null for ids=[{}]", ids_str);
+            anyhow::bail!("WB Advert fullstats returned null for ids=[{}]", ids_str);
+        }
 
         let parsed: Vec<WbAdvertFullStat> = match serde_json::from_str(&body) {
             Ok(p) => p,
             Err(e) => {
                 let snippet: String = body.chars().take(400).collect();
                 tracing::error!("WB Advert fullstats parse error: {} | body: {}", e, snippet);
-                return Ok(vec![]);
+                anyhow::bail!(
+                    "Failed to parse WB advert fullstats: {} | body: {}",
+                    e,
+                    snippet
+                );
             }
         };
 
@@ -3788,6 +4292,42 @@ pub struct WbAdvertCampaignEntry {
     pub change_time: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaignSummary {
+    pub advert_id: i64,
+    pub campaign_type: Option<i32>,
+    pub status: Option<i32>,
+    pub change_time: Option<String>,
+}
+
+/// РЎС‚Р°С‚РёСЃС‚РёРєР° РЅР° СѓСЂРѕРІРЅРµ РѕРґРЅРѕРіРѕ С‚РѕРІР°СЂР° (nmId) РІРЅСѓС‚СЂРё РґРЅСЏ Рё С‚РёРїР° РїСЂРёР»РѕР¶РµРЅРёСЏ
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaignsResponse {
+    #[serde(default)]
+    pub adverts: Vec<WbAdvertCampaign>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertCampaign {
+    pub id: i64,
+    #[serde(default)]
+    pub settings: WbAdvertCampaignSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WbAdvertCampaignSettings {
+    #[serde(default)]
+    pub placements: WbAdvertCampaignPlacements,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WbAdvertCampaignPlacements {
+    #[serde(default)]
+    pub search: bool,
+    #[serde(default)]
+    pub recommendations: bool,
+}
+
 /// РЎС‚Р°С‚РёСЃС‚РёРєР° РЅР° СѓСЂРѕРІРЅРµ РѕРґРЅРѕРіРѕ С‚РѕРІР°СЂР° (nmId) РІРЅСѓС‚СЂРё РґРЅСЏ Рё С‚РёРїР° РїСЂРёР»РѕР¶РµРЅРёСЏ
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertFullStatNm {
@@ -3948,39 +4488,9 @@ struct WbSuppliesResponse {
 
 /// Р—Р°РєР°Р· РІРЅСѓС‚СЂРё РїРѕСЃС‚Р°РІРєРё РёР· /api/v3/supplies/{id}/orders
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSupplyOrderApiRow {
-    #[serde(default)]
-    pub id: i64,
-    #[serde(rename = "orderUid", default)]
-    pub order_uid: Option<String>,
-    #[serde(default)]
-    pub article: Option<String>,
-    #[serde(rename = "nmId", default)]
-    pub nm_id: Option<i64>,
-    #[serde(rename = "chrtId", default)]
-    pub chrt_id: Option<i64>,
-    #[serde(default)]
-    pub barcodes: Option<Vec<String>>,
-    #[serde(default)]
-    pub price: Option<i64>,
-    #[serde(rename = "createdAt", default)]
-    pub created_at: Option<String>,
-    #[serde(rename = "warehouseId", default)]
-    pub warehouse_id: Option<i64>,
-    #[serde(rename = "partA", default)]
-    pub part_a: Option<i64>,
-    #[serde(rename = "partB", default)]
-    pub part_b: Option<i64>,
-    #[serde(rename = "colorCode", default)]
-    pub color_code: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct WbSupplyOrdersResponse {
-    #[serde(default)]
-    pub orders: Vec<WbSupplyOrderApiRow>,
+struct WbSupplyOrderIdsResponse {
+    #[serde(rename = "orderIds", default)]
+    pub order_ids: Vec<i64>,
 }
 
 /// РЎС‚РёРєРµСЂ РёР· /api/v3/orders/stickers
@@ -4051,6 +4561,45 @@ struct WbStickersResponse {
     pub stickers: Vec<WbStickerRow>,
 }
 
+fn parse_wb_supply_datetime(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S")
+                .ok()
+                .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
+        })
+}
+
+fn supply_matches_window(
+    supply: &WbSupplyRow,
+    range_start: chrono::DateTime<chrono::Utc>,
+    range_end: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let created_at = supply
+        .created_at
+        .as_deref()
+        .and_then(parse_wb_supply_datetime);
+    let closed_at = supply
+        .closed_at
+        .as_deref()
+        .and_then(parse_wb_supply_datetime);
+    let scan_dt = supply.scan_dt.as_deref().and_then(parse_wb_supply_datetime);
+
+    let in_range = |value: Option<chrono::DateTime<chrono::Utc>>| {
+        value
+            .map(|dt| dt >= range_start && dt <= range_end)
+            .unwrap_or(false)
+    };
+
+    if in_range(created_at) || in_range(closed_at) || in_range(scan_dt) {
+        return true;
+    }
+
+    !supply.done.unwrap_or(false) && created_at.map(|dt| dt <= range_end).unwrap_or(true)
+}
+
 impl WildberriesApiClient {
     pub async fn fetch_supplies(
         &self,
@@ -4061,8 +4610,18 @@ impl WildberriesApiClient {
         let url = "https://marketplace-api.wildberries.ru/api/v3/supplies";
         let mut all_supplies: Vec<WbSupplyRow> = Vec::new();
         let mut next_cursor: i64 = 0;
-        let date_from_str = format!("{}T00:00:00Z", date_from);
-        let date_to_str = format!("{}T23:59:59Z", date_to);
+        let range_start = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            date_from
+                .and_hms_opt(0, 0, 0)
+                .expect("valid start of day for supplies import"),
+            chrono::Utc,
+        );
+        let range_end = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            date_to
+                .and_hms_opt(23, 59, 59)
+                .expect("valid end of day for supplies import"),
+            chrono::Utc,
+        );
 
         loop {
             let next_str = next_cursor.to_string();
@@ -4088,7 +4647,7 @@ impl WildberriesApiClient {
 
             if !response.status().is_success() {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 return Err(anyhow::anyhow!(
                     "WB supplies API error {}: {}",
                     status,
@@ -4105,8 +4664,7 @@ impl WildberriesApiClient {
             let new_next = parsed.next;
 
             for supply in page_supplies {
-                let supply_date = supply.created_at.as_deref().unwrap_or("");
-                if supply_date >= date_from_str.as_str() && supply_date <= date_to_str.as_str() {
+                if supply_matches_window(&supply, range_start, range_end) {
                     all_supplies.push(supply);
                 }
             }
@@ -4132,9 +4690,9 @@ impl WildberriesApiClient {
         &self,
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
         supply_id: &str,
-    ) -> anyhow::Result<Vec<WbSupplyOrderApiRow>> {
+    ) -> anyhow::Result<Vec<i64>> {
         let url = format!(
-            "https://marketplace-api.wildberries.ru/api/v3/supplies/{}/orders",
+            "https://marketplace-api.wildberries.ru/api/marketplace/v3/supplies/{}/order-ids",
             supply_id
         );
 
@@ -4144,13 +4702,13 @@ impl WildberriesApiClient {
             .header("Authorization", &connection.api_key)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to fetch supply orders: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to fetch supply order ids: {}", e))?;
 
         let status = response.status();
 
         // 404 means WB has no orders for this supply (expected for old/closed supplies)
         if status == reqwest::StatusCode::NOT_FOUND {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             tracing::info!(
                 "WB supply orders 404 for supply {} — body: {}",
                 supply_id,
@@ -4160,9 +4718,9 @@ impl WildberriesApiClient {
         }
 
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             return Err(anyhow::anyhow!(
-                "WB supply orders API error {}: {}",
+                "WB supply order ids API error {}: {}",
                 status,
                 body
             ));
@@ -4171,22 +4729,85 @@ impl WildberriesApiClient {
         let body = response
             .text()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to read supply orders response: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read supply order ids response: {}", e))?;
         tracing::info!(
-            "WB supply orders raw response for {}: {}",
+            "WB supply order ids raw response for {}: {}",
             supply_id,
             &body[..body.len().min(500)]
         );
 
-        let parsed: WbSupplyOrdersResponse = serde_json::from_str(&body).map_err(|e| {
+        let parsed: WbSupplyOrderIdsResponse = serde_json::from_str(&body).map_err(|e| {
             anyhow::anyhow!(
-                "Failed to parse supply orders response: {}\nBody: {}",
+                "Failed to parse supply order ids response: {}\nBody: {}",
                 e,
                 &body[..body.len().min(300)]
             )
         })?;
 
-        Ok(parsed.orders)
+        Ok(parsed.order_ids)
+    }
+
+    pub async fn fetch_supply_order_ids(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        supply_id: &str,
+    ) -> anyhow::Result<Vec<i64>> {
+        let url = format!(
+            "https://marketplace-api.wildberries.ru/api/marketplace/v3/supplies/{}/order-ids",
+            supply_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch supply order ids: {}", e))?;
+
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            tracing::info!(
+                "WB supply order ids 404 for supply {} — body: {}",
+                supply_id,
+                body
+            );
+            return Ok(vec![]);
+        }
+
+        if !status.is_success() {
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "WB supply order ids API error {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read supply order ids response: {}", e))?;
+        tracing::info!(
+            "WB supply order ids raw response for {}: {}",
+            supply_id,
+            &body[..body.len().min(500)]
+        );
+
+        let parsed: WbSupplyOrderIdsResponse = serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse supply order ids response: {}\nBody: {}",
+                e,
+                &body[..body.len().min(300)]
+            )
+        })?;
+
+        Ok(parsed
+            .order_ids
+            .into_iter()
+            .filter(|&order_id| order_id > 0)
+            .collect())
     }
 
     pub async fn fetch_order_stickers(
@@ -4208,6 +4829,8 @@ impl WildberriesApiClient {
 
         for chunk in order_ids.chunks(BATCH_SIZE) {
             let body = serde_json::json!({ "orders": chunk });
+            let request_body = body.to_string();
+            let request_body_len = request_body.len() as u64;
 
             let response = self
                 .client
@@ -4219,14 +4842,17 @@ impl WildberriesApiClient {
                     ("width", &width.to_string()),
                     ("height", &height.to_string()),
                 ])
-                .body(body.to_string())
+                .body(request_body)
                 .send()
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to fetch stickers: {}", e))?;
 
             if !response.status().is_success() {
                 let status = response.status();
-                let body_text = response.text().await.unwrap_or_default();
+                let body_text = self
+                    .read_body_tracked_with_request_bytes(response, request_body_len)
+                    .await
+                    .unwrap_or_default();
                 return Err(anyhow::anyhow!(
                     "WB stickers API error {}: {}",
                     status,
@@ -4234,8 +4860,8 @@ impl WildberriesApiClient {
                 ));
             }
 
-            let body_text = response
-                .text()
+            let body_text = self
+                .read_body_tracked_with_request_bytes(response, request_body_len)
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to read stickers response body: {}", e))?;
 
@@ -4278,7 +4904,7 @@ impl WildberriesApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = self.read_body_tracked(response).await.unwrap_or_default();
             return Err(anyhow::anyhow!(
                 "WB /api/v3/orders/new error {}: {}",
                 status,
@@ -4286,8 +4912,8 @@ impl WildberriesApiClient {
             ));
         }
 
-        let body = response
-            .text()
+        let body = self
+            .read_body_tracked(response)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read new orders response: {}", e))?;
 
@@ -4337,7 +4963,7 @@ impl WildberriesApiClient {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = self.read_body_tracked(response).await.unwrap_or_default();
                 return Err(anyhow::anyhow!(
                     "WB marketplace orders API error {}: {}",
                     status,
@@ -4345,7 +4971,7 @@ impl WildberriesApiClient {
                 ));
             }
 
-            let body = response.text().await.map_err(|e| {
+            let body = self.read_body_tracked(response).await.map_err(|e| {
                 anyhow::anyhow!("Failed to read marketplace orders response: {}", e)
             })?;
 

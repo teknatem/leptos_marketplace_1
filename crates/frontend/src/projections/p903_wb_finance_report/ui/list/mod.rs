@@ -443,7 +443,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
                         disabled=move || state.get().total_count == 0 || is_exporting.get()
                     >
                         {icon("download")}
-                        {move || if is_exporting.get() { " Выгрузка..." } else { " Export Excel" }}
+                        {move || if is_exporting.get() { "Выгрузка…" } else { "Excel (csv)" }}
                     </Button>
                 </div>
             </div>

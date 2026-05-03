@@ -1,5 +1,7 @@
 use chrono::Utc;
-use contracts::domain::a017_llm_agent::aggregate::{LlmAgent, LlmAgentId, LlmProviderType};
+use contracts::domain::a017_llm_agent::aggregate::{
+    AgentType, LlmAgent, LlmAgentId, LlmProviderType,
+};
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -27,6 +29,7 @@ pub struct Model {
     pub system_prompt: Option<String>,
     pub is_primary: bool,
     pub available_models: Option<String>,
+    pub agent_type: String,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -69,6 +72,7 @@ impl From<Model> for LlmAgent {
             system_prompt: m.system_prompt,
             is_primary: m.is_primary,
             available_models: m.available_models,
+            agent_type: AgentType::from_str(&m.agent_type),
         }
     }
 }
@@ -197,6 +201,7 @@ pub async fn insert(agent: &LlmAgent) -> anyhow::Result<()> {
         system_prompt: Set(agent.system_prompt.clone()),
         is_primary: Set(agent.is_primary),
         available_models: Set(agent.available_models.clone()),
+        agent_type: Set(agent.agent_type.as_str().to_string()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -224,6 +229,7 @@ pub async fn update(agent: &LlmAgent) -> anyhow::Result<()> {
         system_prompt: Set(agent.system_prompt.clone()),
         is_primary: Set(agent.is_primary),
         available_models: Set(agent.available_models.clone()),
+        agent_type: Set(agent.agent_type.as_str().to_string()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(agent.base.metadata.created_at)),

@@ -1,4 +1,5 @@
-use contracts::system::roles::{CreateRoleDto, Role, RoleScopeAccess, ScopeInfo, UpdateRoleDto};
+use contracts::system::access::ScopeDescriptorDto;
+use contracts::system::roles::{CreateRoleDto, Role, RoleScopeAccess, UpdateRoleDto};
 use gloo_net::http::Request;
 
 use crate::shared::api_utils::api_base;
@@ -110,7 +111,7 @@ pub async fn fetch_role_permissions(role_id: &str) -> Result<Vec<RoleScopeAccess
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-pub async fn fetch_scopes() -> Result<Vec<ScopeInfo>, String> {
+pub async fn fetch_scopes() -> Result<Vec<ScopeDescriptorDto>, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
     let response = Request::get(&format!("{}/api/system/scopes", api_base()))
@@ -124,7 +125,35 @@ pub async fn fetch_scopes() -> Result<Vec<ScopeInfo>, String> {
     }
 
     response
-        .json::<Vec<ScopeInfo>>()
+        .json::<Vec<ScopeDescriptorDto>>()
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+pub async fn update_role_permissions(
+    role_id: &str,
+    grants: Vec<RoleScopeAccess>,
+) -> Result<(), String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::put(&format!(
+        "{}/api/system/roles/{}/permissions",
+        api_base(),
+        role_id
+    ))
+    .header("Authorization", &auth_header)
+    .json(&grants)
+    .map_err(|e| format!("Failed to serialize request: {}", e))?
+    .send()
+    .await
+    .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Failed to update permissions: {}",
+            response.status()
+        ));
+    }
+
+    Ok(())
 }

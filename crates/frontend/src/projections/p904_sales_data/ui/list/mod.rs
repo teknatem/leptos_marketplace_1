@@ -1,6 +1,7 @@
 use crate::projections::p904_sales_data::state::create_state;
 use crate::shared::components::date_input::DateInput;
 use crate::shared::components::month_selector::MonthSelector;
+use crate::shared::icons::icon;
 use crate::shared::list_utils::format_number;
 use chrono::Datelike;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
@@ -700,10 +701,11 @@ pub fn SalesDataList() -> impl IntoView {
                             }
                         }
                         class="action-button action-button-primary"
-                        style="height: 32px; padding: 0 16px; background: #217346; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px;"
+                        style="height: 32px; padding: 0 16px; background: #217346; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center;"
                         disabled=move || loading.get() || state.with(|s| s.sales.is_empty())
                     >
-                        "📑 Excel"
+                        {icon("download")}
+                        "Excel (csv)"
                     </button>
                 </div>
             </div>

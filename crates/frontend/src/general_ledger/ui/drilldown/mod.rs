@@ -4,6 +4,7 @@ use crate::general_ledger::api::{
     fetch_gl_drilldown, fetch_gl_drilldown_session, fetch_gl_drilldown_session_data,
 };
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
 use contracts::general_ledger::{
@@ -372,7 +373,8 @@ pub fn GlDrilldownPage(
                                                 download_gl_drilldown_csv(&export_query, &resp);
                                             }
                                         }>
-                                            "Скачать CSV"
+                                            {icon("download")}
+                                            "Excel (csv)"
                                         </Button>
                                     </div>
                                 </div>
