@@ -2,6 +2,7 @@
 
 use super::super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -38,7 +39,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let margin_pro = order_data.header.margin_pro;
 
             view! {
-                <Card>
+                <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_lines_main">
                     <h4 class="details-section__title">"Строки заказа"</h4>
                     <Flex gap=FlexGap::Medium style="margin-bottom: var(--spacing-md); flex-wrap: wrap;">
                         <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
@@ -220,7 +221,7 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                             </TableBody>
                         </Table>
                     </div>
-                </Card>
+                </CardAnimated>
             }
             .into_any()
         }}

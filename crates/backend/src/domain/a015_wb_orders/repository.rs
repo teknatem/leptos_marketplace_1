@@ -327,6 +327,29 @@ pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) 
     Ok(true)
 }
 
+/// Stores a separate raw payload reference for Marketplace API (/api/v3/orders).
+/// Statistics API continues to own `raw_payload_ref`.
+pub async fn update_marketplace_raw_payload_ref_by_document_no(
+    document_no: &str,
+    raw_payload_ref: &str,
+) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let sql = format!(
+        "UPDATE a015_wb_orders \
+         SET source_meta_json = json_set(source_meta_json, '$.marketplace_raw_payload_ref', '{}'), \
+             updated_at = datetime('now') \
+         WHERE document_no = '{}' \
+           AND is_deleted = 0",
+        raw_payload_ref.replace('\'', "''"),
+        document_no.replace('\'', "''")
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let result = db.execute(stmt).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Set the current income_id exactly as provided by Marketplace API.
 /// `None` means the order is currently not assigned to any supply.
 pub async fn set_income_id_by_document_no(

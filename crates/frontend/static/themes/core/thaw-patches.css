@@ -107,6 +107,13 @@
   height: unset !important;
 }
 
+/* Indicator explanation textarea — tall multiline field.
+   Targets the last form__group in the description card (the explanation field). */
+#a024_bi_indicator_details_general_description .form__group:last-child .thaw-textarea__textarea {
+  min-height: 420px !important;
+  resize: vertical;
+}
+
 /* THAW Input/Textarea placeholder styling - italic and lighter */
 .thaw-input__input::placeholder,
 .thaw-textarea__textarea::placeholder {

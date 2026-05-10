@@ -42,6 +42,7 @@ impl From<Model> for TaskRun {
             task_id: m.task_id,
             task_code: None,
             task_description: None,
+            task_comment: None,
             session_id: m.session_id,
             triggered_by: m.triggered_by,
             started_at: m.started_at,
@@ -82,6 +83,7 @@ struct TaskRunJoinRow {
     http_bytes_received: Option<i64>,
     task_code: Option<String>,
     task_description: Option<String>,
+    task_comment: Option<String>,
 }
 
 fn join_row_to_task_run(row: TaskRunJoinRow) -> TaskRun {
@@ -90,6 +92,7 @@ fn join_row_to_task_run(row: TaskRunJoinRow) -> TaskRun {
         task_id: row.task_id,
         task_code: row.task_code,
         task_description: row.task_description,
+        task_comment: row.task_comment,
         session_id: row.session_id,
         triggered_by: row.triggered_by,
         started_at: row.started_at,
@@ -127,7 +130,8 @@ const RUN_JOIN_SELECT: &str = r#"SELECT
   r.http_bytes_sent AS http_bytes_sent,
   r.http_bytes_received AS http_bytes_received,
   t.code AS task_code,
-  t.description AS task_description
+  t.description AS task_description,
+  t.comment AS task_comment
 FROM sys_task_runs r
 LEFT JOIN sys_tasks t ON t.id = r.task_id"#;
 

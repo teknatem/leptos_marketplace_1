@@ -16,6 +16,7 @@ pub mod task009_wb_promotions;
 pub mod task010_wb_documents;
 pub mod task011_wb_advert;
 pub mod task012_wb_advert_campaigns;
+pub mod task013_ym_orders_polling;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -33,3 +34,4 @@ pub use task009_wb_promotions::Task009WbPromotionsManager;
 pub use task010_wb_documents::Task010WbDocumentsManager;
 pub use task011_wb_advert::Task011WbAdvertManager;
 pub use task012_wb_advert_campaigns::Task012WbAdvertCampaignsManager;
+pub use task013_ym_orders_polling::Task013YmOrdersPollingManager;

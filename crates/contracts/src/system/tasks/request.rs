@@ -35,3 +35,9 @@ pub struct SetWatermarkDto {
     /// "YYYY-MM-DD" или null для полного сброса
     pub date: Option<String>,
 }
+
+/// Статус глобального планировщика задач (включён / выключен).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerStatusDto {
+    pub enabled: bool,
+}

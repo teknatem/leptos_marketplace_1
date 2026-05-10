@@ -73,4 +73,7 @@ pub trait TaskManager: Send + Sync {
     fn list_live_progress_sessions(&self) -> Vec<TaskProgress> {
         Vec::new()
     }
+
+    /// Синхронизирует in-memory прогресс при принудительной отмене через UI.
+    fn cancel_progress(&self, _session_id: &str) {}
 }

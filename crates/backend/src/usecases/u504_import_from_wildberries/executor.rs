@@ -11,6 +11,7 @@ use super::{
         WildberriesApiClient,
     },
 };
+use crate::shared::marketplaces::wildberries::datetime::{wb_day_end_utc, wb_day_start_utc};
 use anyhow::{Context, Result};
 use contracts::domain::a026_wb_advert_daily::aggregate::{
     WbAdvertDaily, WbAdvertDailyHeader, WbAdvertDailyLine, WbAdvertDailyMetrics,
@@ -54,6 +55,19 @@ struct AdvertDayAccumulator {
 const WB_ADVERT_MIN_REQUEST_INTERVAL_MS: u64 = 250;
 const WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS: u64 = 21;
 const WB_ADVERT_FULLSTATS_CHUNK_SIZE: usize = 50;
+const WB_ADVERT_RATE_LIMIT_MARKER: &str = "WB Advert API fullstats: 429";
+
+fn is_wb_advert_fullstats_rate_limit(error: &str) -> bool {
+    error.contains(WB_ADVERT_RATE_LIMIT_MARKER) || error.contains("429 Too Many Requests")
+}
+
+fn extract_wb_rate_limit_retry_seconds(error: &str) -> Option<u64> {
+    let marker = "retry=";
+    let start = error.find(marker)? + marker.len();
+    let rest = &error[start..];
+    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
 
 fn normalize_day_date(value: &str) -> String {
     if value.len() >= 10 {
@@ -276,13 +290,18 @@ impl ImportExecutor {
         // Трекер ВСЕГДА получает финальный статус — не только в happy path.
         let final_status = match &work_result {
             Err(e) => {
+                let error_message = e.to_string();
                 self.progress_tracker.add_error(
                     session_id,
                     None,
-                    format!("Import failed: {}", e),
+                    format!("Import failed: {}", error_message),
                     None,
                 );
-                ImportStatus::Failed
+                if error_message.starts_with("WB_RATE_LIMIT_DEFERRED:") {
+                    ImportStatus::CompletedWithErrors
+                } else {
+                    ImportStatus::Failed
+                }
             }
             Ok(flags) => {
                 let tracker_errors = self
@@ -568,6 +587,17 @@ impl ImportExecutor {
             date_to
         );
 
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 0, None, 0, 0);
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Запрос WB Statistics /api/v1/supplier/sales за период {}..{}",
+                date_from, date_to
+            )),
+        );
+
         // Получаем ID организации по UUID-ссылке из подключения
         let organization_id = match Uuid::parse_str(&connection.organization_ref) {
             Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
@@ -578,11 +608,10 @@ impl ImportExecutor {
                         connection.organization_ref
                     );
                     tracing::error!("{}", error_msg);
-                    self.progress_tracker.add_error(
+                    self.progress_tracker.fail_aggregate(
                         session_id,
-                        Some(aggregate_index.to_string()),
+                        aggregate_index,
                         error_msg.clone(),
-                        None,
                     );
                     anyhow::bail!("{}", error_msg);
                 }
@@ -593,27 +622,77 @@ impl ImportExecutor {
                     connection.organization_ref
                 );
                 tracing::error!("{}", error_msg);
-                self.progress_tracker.add_error(
+                self.progress_tracker.fail_aggregate(
                     session_id,
-                    Some(aggregate_index.to_string()),
+                    aggregate_index,
                     error_msg.clone(),
-                    None,
                 );
                 anyhow::bail!("{}", error_msg);
             }
         };
 
         // Получаем продажи из API WB
-        let sales_rows = self
+        let sales_rows = match self
             .api_client
             .fetch_sales(connection, date_from, date_to)
-            .await?;
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                let error_msg = format!(
+                    "Не удалось получить продажи WB за период {}..{}: {}",
+                    date_from, date_to, e
+                );
+                self.progress_tracker.fail_aggregate(
+                    session_id,
+                    aggregate_index,
+                    error_msg.clone(),
+                );
+                anyhow::bail!("{}", error_msg);
+            }
+        };
 
         tracing::info!("Received {} sale rows from WB API", sales_rows.len());
+        let sales_total = sales_rows.len() as i32;
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!("Обработка продаж WB: {}", sales_total)),
+        );
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            0,
+            Some(sales_total),
+            0,
+            0,
+        );
+
+        // Pre-load existing sale_ids in one batch query to avoid per-row SELECTs.
+        let all_sale_ids: Vec<String> = sales_rows
+            .iter()
+            .filter_map(|(row, _)| row.sale_id.clone())
+            .collect();
+        let existing_sale_ids =
+            crate::domain::a012_wb_sales::repository::list_existing_sale_ids(&all_sale_ids)
+                .await
+                .unwrap_or_default();
+
+        // Shared cache across all rows — avoids repeating product/org/price lookups.
+        let mut shared_cache =
+            crate::domain::a012_wb_sales::service::PostingPreparationCache::default();
 
         // Обрабатываем каждую продажу
         for (sale_row, raw_json) in sales_rows {
-            match sales::process_sale_row(connection, &organization_id, &sale_row, &raw_json).await
+            match sales::process_sale_row(
+                connection,
+                &organization_id,
+                &sale_row,
+                &raw_json,
+                &existing_sale_ids,
+                &mut shared_cache,
+            )
+            .await
             {
                 Ok(is_new) => {
                     total_processed += 1;
@@ -638,12 +717,14 @@ impl ImportExecutor {
                 session_id,
                 aggregate_index,
                 total_processed,
-                None,
+                Some(sales_total),
                 total_inserted,
                 total_updated,
             );
         }
 
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
 
@@ -715,12 +796,43 @@ impl ImportExecutor {
         };
 
         // Получаем заказы из API WB
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_processed,
+            None,
+            total_inserted,
+            total_updated,
+        );
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "WB Orders API: загрузка заказов за период {} - {}",
+                date_from, date_to
+            )),
+        );
+
         let order_rows = self
             .api_client
             .fetch_orders(connection, date_from, date_to)
             .await?;
 
         tracing::info!("Received {} order rows from WB API", order_rows.len());
+        let orders_total = order_rows.len() as i32;
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!("Обработка заказов WB: {}", orders_total)),
+        );
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            total_processed,
+            Some(orders_total),
+            total_inserted,
+            total_updated,
+        );
 
         // Обрабатываем каждый заказ
         for order_row in order_rows {
@@ -748,12 +860,14 @@ impl ImportExecutor {
                 session_id,
                 aggregate_index,
                 total_processed,
-                None,
+                Some(orders_total),
                 total_inserted,
                 total_updated,
             );
         }
 
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
 
@@ -1073,14 +1187,22 @@ impl ImportExecutor {
         let mut total_processed = 0i32;
         let mut total_inserted = 0i32;
         let mut total_updated = 0i32;
+        let mut had_fetch_error = false;
 
         self.progress_tracker.add_aggregate(
             session_id,
             aggregate_index.to_string(),
             "Новые заказы WB (Оперативно)".to_string(),
         );
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 0, Some(2), 0, 0);
 
         // Step 1: fetch brand-new orders
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Запрос WB /api/v3/orders/new".to_string()),
+        );
         let new_orders = match self
             .api_client
             .fetch_new_marketplace_orders(connection)
@@ -1088,11 +1210,21 @@ impl ImportExecutor {
         {
             Ok(orders) => orders,
             Err(e) => {
-                tracing::warn!("Failed to fetch /api/v3/orders/new: {}", e);
+                let msg = format!("Не удалось получить WB /api/v3/orders/new: {}", e);
+                tracing::warn!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg,
+                    None,
+                );
+                had_fetch_error = true;
                 vec![]
             }
         };
         tracing::info!("New marketplace orders (/new): {}", new_orders.len());
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 1, Some(2), 0, 0);
 
         // Step 2: fetch recent orders in date range (includes supplyId for assigned orders)
         let organization_id = match Uuid::parse_str(&connection.organization_ref) {
@@ -1129,21 +1261,21 @@ impl ImportExecutor {
             }
         };
 
-        let date_from_ts = date_from
-            .and_hms_opt(0, 0, 0)
-            .map(|dt| {
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
-                    .timestamp()
-            })
+        let date_from_ts = wb_day_start_utc(date_from)
+            .map(|dt| dt.timestamp())
             .unwrap_or(0);
-        let date_to_ts = date_to
-            .and_hms_opt(23, 59, 59)
-            .map(|dt| {
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
-                    .timestamp()
-            })
+        let date_to_ts = wb_day_end_utc(date_to)
+            .map(|dt| dt.timestamp())
             .unwrap_or(0);
 
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Запрос WB /api/v3/orders за период {}..{}",
+                date_from, date_to
+            )),
+        );
         let recent_orders = match self
             .api_client
             .fetch_marketplace_orders(connection, date_from_ts, date_to_ts)
@@ -1151,7 +1283,15 @@ impl ImportExecutor {
         {
             Ok(orders) => orders,
             Err(e) => {
-                tracing::warn!("Failed to fetch /api/v3/orders: {}", e);
+                let msg = format!("Не удалось получить WB /api/v3/orders: {}", e);
+                tracing::warn!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg,
+                    None,
+                );
+                had_fetch_error = true;
                 vec![]
             }
         };
@@ -1159,10 +1299,17 @@ impl ImportExecutor {
             "Recent marketplace orders (/orders): {}",
             recent_orders.len()
         );
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 2, Some(2), 0, 0);
 
         // Merge: /new orders first, then recent (dedup by id handled naturally via document_no)
         let all_orders: Vec<_> = new_orders.into_iter().chain(recent_orders).collect();
         tracing::info!("Total marketplace orders to process: {}", all_orders.len());
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!("Обработка заказов WB: {}", all_orders.len())),
+        );
 
         for order in &all_orders {
             match marketplace_order::process_marketplace_order(connection, &organization_id, order)
@@ -1217,6 +1364,15 @@ impl ImportExecutor {
             total_updated
         );
 
+        if had_fetch_error {
+            tracing::warn!(
+                "Marketplace orders import completed with fetch errors: processed={}, inserted={}, updated={}",
+                total_processed,
+                total_inserted,
+                total_updated
+            );
+        }
+
         Ok(())
     }
 
@@ -1248,19 +1404,11 @@ impl ImportExecutor {
             "Связь заказов с поставками".to_string(),
         );
 
-        let date_from_ts = date_from
-            .and_hms_opt(0, 0, 0)
-            .map(|dt| {
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
-                    .timestamp()
-            })
+        let date_from_ts = wb_day_start_utc(date_from)
+            .map(|dt| dt.timestamp())
             .unwrap_or(0);
-        let date_to_ts = date_to
-            .and_hms_opt(23, 59, 59)
-            .map(|dt| {
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
-                    .timestamp()
-            })
+        let date_to_ts = wb_day_end_utc(date_to)
+            .map(|dt| dt.timestamp())
             .unwrap_or(0);
 
         let marketplace_orders = match self
@@ -2363,17 +2511,55 @@ impl ImportExecutor {
                 }
                 Err(e) => {
                     had_fetch_errors = true;
+                    let error_text = e.to_string();
                     tracing::warn!(
-                        "Failed to fetch fullstats for chunk {}: {}",
+                        "Failed to fetch fullstats for connection={} period={}..{} chunk {}/{} campaigns={} first_advert_id={} error={}",
+                        connection.to_string_id(),
+                        begin_date,
+                        end_date,
                         chunk_idx + 1,
-                        e
+                        total_chunks,
+                        chunk.len(),
+                        chunk.first().copied().unwrap_or_default(),
+                        error_text
                     );
                     self.progress_tracker.add_error(
                         session_id,
                         Some(aggregate_index.to_string()),
-                        format!("Chunk {} failed: {}", chunk_idx + 1, e),
-                        Some(e.to_string()),
+                        format!(
+                            "WB Advert fullstats: чанк {}/{} не загружен для кабинета {}",
+                            chunk_idx + 1,
+                            total_chunks,
+                            connection.to_string_id()
+                        ),
+                        Some(error_text.clone()),
                     );
+
+                    if is_wb_advert_fullstats_rate_limit(&error_text) {
+                        let retry_seconds = extract_wb_rate_limit_retry_seconds(&error_text);
+                        let retry_hint = retry_seconds
+                            .map(|seconds| format!(" Рекомендованный повтор через {seconds} сек."))
+                            .unwrap_or_default();
+                        let diagnostic = format!(
+                            "WB Advert fullstats остановлен после 429 Too Many Requests: кабинет={}, период={}..{}, чанк {}/{}, успешно обработано кампаний={}/{}.{}",
+                            connection.to_string_id(),
+                            begin_date,
+                            end_date,
+                            chunk_idx + 1,
+                            total_chunks,
+                            processed_campaigns,
+                            advert_ids.len(),
+                            retry_hint
+                        );
+                        tracing::warn!("{}", diagnostic);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            diagnostic,
+                            Some(error_text),
+                        );
+                        break;
+                    }
                 }
             }
 

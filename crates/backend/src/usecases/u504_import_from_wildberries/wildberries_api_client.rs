@@ -7,6 +7,11 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use super::progress_tracker::ProgressTracker;
+use crate::shared::marketplaces::wildberries::datetime::{
+    format_wb_cursor_datetime, parse_wb_datetime, wb_day_end_utc, wb_day_start_utc,
+};
+
+const WB_ORDERS_MAX_RATE_LIMIT_SLEEP_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Default)]
 struct WbRateLimitHeaders {
@@ -157,6 +162,39 @@ impl WildberriesApiClient {
                 tracker.record_http_exchange(sid, request_body_len, response_bytes);
             }
         }
+        Ok(text)
+    }
+
+    fn record_http_request_attempt(&self, request_body_len: u64) {
+        if let Ok(guard) = self.http_track.lock() {
+            if let Some((tracker, sid)) = guard.as_ref() {
+                tracker.record_http_request_attempt(sid, request_body_len);
+            }
+        }
+    }
+
+    fn record_http_response_body(&self, response_body_len: u64) {
+        if let Ok(guard) = self.http_track.lock() {
+            if let Some((tracker, sid)) = guard.as_ref() {
+                tracker.record_http_response_body(sid, response_body_len);
+            }
+        }
+    }
+
+    fn set_tracked_current_item(&self, aggregate_index: &str, label: impl Into<String>) {
+        if let Ok(guard) = self.http_track.lock() {
+            if let Some((tracker, sid)) = guard.as_ref() {
+                tracker.set_current_item(sid, aggregate_index, Some(label.into()));
+            }
+        }
+    }
+
+    async fn read_body_for_recorded_request(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<String, reqwest::Error> {
+        let text = response.text().await?;
+        self.record_http_response_body(text.len() as u64);
         Ok(text)
     }
 
@@ -1725,6 +1763,7 @@ impl WildberriesApiClient {
                 url, date_from_str, date_to_str, page_flag
             ));
 
+            self.record_http_request_attempt(0);
             let response = match self
                 .client
                 .get(url)
@@ -1760,7 +1799,10 @@ impl WildberriesApiClient {
             self.log_to_file(&format!("Response status: {}", status));
 
             if !status.is_success() {
-                let body = self.read_body_tracked(response).await.unwrap_or_default();
+                let body = self
+                    .read_body_for_recorded_request(response)
+                    .await
+                    .unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!("Wildberries Sales API request failed: {}", body);
                 anyhow::bail!(
@@ -1770,7 +1812,7 @@ impl WildberriesApiClient {
                 );
             }
 
-            let body = self.read_body_tracked(response).await?;
+            let body = self.read_body_for_recorded_request(response).await?;
             let body_preview = if body.chars().count() > 5000 {
                 let preview: String = body.chars().take(5000).collect();
                 format!("{}... (total {} chars)", preview, body.len())
@@ -1983,7 +2025,10 @@ impl WildberriesApiClient {
             }
 
             if !status.is_success() {
-                let body = self.read_body_tracked(response).await.unwrap_or_default();
+                let body = self
+                    .read_body_for_recorded_request(response)
+                    .await
+                    .unwrap_or_default();
                 self.log_to_file(&format!("ERROR Response body:\n{}", body));
                 tracing::error!("Wildberries Finance Report API request failed: {}", body);
                 anyhow::bail!(
@@ -2142,23 +2187,8 @@ impl WildberriesApiClient {
         let mut all_orders = Vec::new();
         let mut page_num = 1;
         let mut cursor = format!("{}T00:00:00", date_from.format("%Y-%m-%d"));
-        let soft_stop = date_to
-            .and_hms_milli_opt(23, 59, 59, 999)
-            .ok_or_else(|| anyhow::anyhow!("Invalid date_to value"))?;
-
-        fn parse_wb_dt(value: &str) -> Option<chrono::NaiveDateTime> {
-            chrono::DateTime::parse_from_rfc3339(value)
-                .ok()
-                .map(|dt| dt.naive_utc())
-                .or_else(|| {
-                    chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f").ok()
-                })
-                .or_else(|| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S").ok())
-        }
-
-        fn format_cursor(dt: chrono::NaiveDateTime) -> String {
-            dt.format("%Y-%m-%dT%H:%M:%S%.3f").to_string()
-        }
+        let soft_stop =
+            wb_day_end_utc(date_to).ok_or_else(|| anyhow::anyhow!("Invalid date_to value"))?;
 
         self.log_to_file(&format!(
             "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
@@ -2187,6 +2217,12 @@ impl WildberriesApiClient {
                 url, cursor
             ));
 
+            self.set_tracked_current_item(
+                "a015_wb_orders",
+                format!("WB Orders API: запрос страницы {page_num}, dateFrom={cursor}"),
+            );
+            self.record_http_request_attempt(0);
+
             let response = match self
                 .client
                 .get(url)
@@ -2197,46 +2233,40 @@ impl WildberriesApiClient {
             {
                 Ok(resp) => resp,
                 Err(e) => {
-                    let error_msg = format!("HTTP request to Orders API failed: {:?}", e);
+                    let error_debug = format!("{e:?}");
+                    let error_msg = format!("HTTP request to Orders API failed: {error_debug}");
                     self.log_to_file(&error_msg);
-                    tracing::error!("вќЊ Wildberries Orders API connection error: {}", e);
+                    tracing::error!("Wildberries Orders API request error: {}", error_debug);
+                    self.set_tracked_current_item(
+                        "a015_wb_orders",
+                        format!("WB Orders API: ошибка запроса страницы {page_num}"),
+                    );
 
-                    // РџСЂРѕРІРµСЂСЏРµРј РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚РёРїС‹ РѕС€РёР±РѕРє
                     if e.is_timeout() {
                         anyhow::bail!(
-                            "вЏ±пёЏ Request timeout: Orders API РЅРµ РѕС‚РІРµС‚РёР» РІ С‚РµС‡РµРЅРёРµ 60 СЃРµРєСѓРЅРґ.\n\n\
-                            вљ пёЏ Р’Р•Р РћРЇРўРќРђРЇ РџР РР§РРќРђ: API endpoint /api/v1/supplier/orders РјРѕР¶РµС‚ РЅРµ СЃСѓС‰РµСЃС‚РІРѕРІР°С‚СЊ РІ Wildberries API.\n\
-                            рџ’Ў Р Р•РљРћРњР•РќР”РђР¦РРЇ: РџРѕРїСЂРѕР±СѓР№С‚Рµ РѕС‚РєР»СЋС‡РёС‚СЊ РёРјРїРѕСЂС‚ Р·Р°РєР°Р·РѕРІ (a015_wb_orders) Рё РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ С‚РѕР»СЊРєРѕ:\n\
-                               - a007_marketplace_product (С‚РѕРІР°СЂС‹)\n\
-                               - a012_wb_sales (РїСЂРѕРґР°Р¶Рё)\n\
-                               - p903_wb_finance_report (С„РёРЅР°РЅСЃС‹)\n\n\
-                            рџ“љ РџСЂРѕРІРµСЂСЊС‚Рµ Р°РєС‚СѓР°Р»СЊРЅСѓСЋ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ: https://openapi.wb.ru/statistics/api/ru/\n\
-                            рџ”— URL: {}", 
-                            url
+                            "WB Orders API timeout: сервер не ответил за 60 секунд.\n\
+                             URL: {url}?dateFrom={cursor}&flag=0\n\
+                             Детали: {error_debug}"
                         );
                     } else if e.is_connect() {
                         anyhow::bail!(
-                            "рџ”Њ Connection error: РЅРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє WB Orders API.\n\n\
-                            вљ пёЏ Р’Р•Р РћРЇРўРќРђРЇ РџР РР§РРќРђ: API endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё Р±С‹Р» РёР·РјРµРЅС‘РЅ.\n\
-                            Р’РѕР·РјРѕР¶РЅС‹Рµ СЂРµС€РµРЅРёСЏ:\n\
-                            1. рџ“љ РџСЂРѕРІРµСЂСЊС‚Рµ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ Wildberries API\n\
-                            2. рџЊђ РЈР±РµРґРёС‚РµСЃСЊ РІ РЅР°Р»РёС‡РёРё РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёСЏ\n\
-                            3. рџ”‘ РџСЂРѕРІРµСЂСЊС‚Рµ РїСЂР°РІР° API РєР»СЋС‡Р°\n\
-                            4. вљ™пёЏ РћС‚РєР»СЋС‡РёС‚Рµ РёРјРїРѕСЂС‚ Р·Р°РєР°Р·РѕРІ Рё РёСЃРїРѕР»СЊР·СѓР№С‚Рµ Sales API (a012)\n\n\
-                            рџ”— URL: {}\n\
-                            Error: {}",
-                            url,
-                            e
+                            "WB Orders API connection failed: не удалось установить соединение с statistics-api.wildberries.ru.\n\
+                             Это сетевая ошибка до HTTP-ответа, не ответ 429 и не ошибка формата данных.\n\
+                             URL: {url}?dateFrom={cursor}&flag=0\n\
+                             Проверьте доступ к хосту, DNS/proxy/firewall/VPN и TLS-соединение.\n\
+                             Детали: {error_debug}"
                         );
                     } else if e.is_request() {
-                        anyhow::bail!("рџ“¤ Request error РїСЂРё Р·Р°РіСЂСѓР·РєРµ orders: {}", e);
+                        anyhow::bail!(
+                            "WB Orders API request build/send error.\n\
+                             URL: {url}?dateFrom={cursor}&flag=0\n\
+                             Детали: {error_debug}"
+                        );
                     } else {
                         anyhow::bail!(
-                            "вќ“ Unknown error РїСЂРё Р·Р°РїСЂРѕСЃРµ orders: {}.\n\n\
-                            вљ пёЏ Р’РћР—РњРћР–РќРћ: API endpoint РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ РёР»Рё РЅРµ РґРѕСЃС‚СѓРїРµРЅ.\n\
-                            рџ“ќ РџСЂРѕРІРµСЂСЊС‚Рµ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЋ Wildberries API РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ endpoint Р·Р°РєР°Р·РѕРІ.\n\
-                            рџ”— URL: {}", 
-                            e, url
+                            "WB Orders API request failed before receiving a response.\n\
+                             URL: {url}?dateFrom={cursor}&flag=0\n\
+                             Детали: {error_debug}"
                         );
                     }
                 }
@@ -2248,11 +2278,53 @@ impl WildberriesApiClient {
             self.log_to_file(&format!("Final URL: {}", final_url));
 
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let rate_headers = WbRateLimitHeaders::from_headers(response.headers());
+                let wait_secs = rate_headers.retry_seconds.unwrap_or(65).max(1);
+                let rate_fields = rate_headers.to_log_fields();
+                let body = self
+                    .read_body_for_recorded_request(response)
+                    .await
+                    .unwrap_or_default();
                 self.log_to_file(&format!(
-                    "в”‚ вљ пёЏ Rate limit hit (429). Waiting 65 seconds before retry..."
+                    "в”‚ вљ пёЏ Rate limit hit (429). Waiting {} seconds before retry. X-Ratelimit: {}",
+                    wait_secs, rate_fields
                 ));
-                tracing::warn!("WB Orders API rate limit hit. Waiting 65 seconds...");
-                tokio::time::sleep(tokio::time::Duration::from_secs(65)).await;
+                if !body.trim().is_empty() {
+                    self.log_to_file(&format!("Rate limit response body:\n{}", body));
+                }
+
+                if wait_secs > WB_ORDERS_MAX_RATE_LIMIT_SLEEP_SECS {
+                    let message = format!(
+                        "WB Orders API rate limit returned a long retry window: {} seconds. \
+                         The task will finish now and can be retried by the next scheduled/manual run. \
+                         X-Ratelimit: {}",
+                        wait_secs, rate_fields
+                    );
+                    self.log_to_file(&message);
+                    self.set_tracked_current_item(
+                        "a015_wb_orders",
+                        format!(
+                            "WB Orders API: лимит запросов (429), WB просит ждать {} сек.; задача завершена",
+                            wait_secs
+                        ),
+                    );
+                    tracing::warn!("{}", message);
+                    anyhow::bail!("WB_RATE_LIMIT_DEFERRED: {}", message);
+                }
+
+                self.set_tracked_current_item(
+                    "a015_wb_orders",
+                    format!(
+                        "WB Orders API: лимит запросов (429), ожидание {} сек. {}",
+                        wait_secs, rate_fields
+                    ),
+                );
+                tracing::warn!(
+                    "WB Orders API rate limit hit. Waiting {} seconds. X-Ratelimit: {}",
+                    wait_secs,
+                    rate_fields
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                 continue;
             }
 
@@ -2298,7 +2370,7 @@ impl WildberriesApiClient {
             }
 
             // Р§РёС‚Р°РµРј С‚РµР»Рѕ РѕС‚РІРµС‚Р°
-            let body = match self.read_body_tracked(response).await {
+            let body = match self.read_body_for_recorded_request(response).await {
                 Ok(b) => b,
                 Err(e) => {
                     self.log_to_file(&format!("в”‚ вљ пёЏ Failed to read response body: {}", e));
@@ -2346,10 +2418,11 @@ impl WildberriesApiClient {
                         "в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”"
                     ));
 
-                    let mut max_last_change = None::<chrono::NaiveDateTime>;
+                    let mut max_last_change = None::<chrono::DateTime<chrono::Utc>>;
                     let mut kept_rows = 0usize;
                     for row in page_data {
-                        let row_last_change = row.last_change_date.as_deref().and_then(parse_wb_dt);
+                        let row_last_change =
+                            row.last_change_date.as_deref().and_then(parse_wb_datetime);
 
                         if let Some(parsed) = row_last_change {
                             if max_last_change.map(|v| parsed > v).unwrap_or(true) {
@@ -2384,7 +2457,7 @@ impl WildberriesApiClient {
                     }
 
                     let next_cursor_dt = max_dt + chrono::Duration::milliseconds(1);
-                    cursor = format_cursor(next_cursor_dt);
+                    cursor = format_wb_cursor_datetime(&next_cursor_dt);
                     page_num += 1;
                 }
                 Err(e) => {
@@ -3418,8 +3491,11 @@ impl WildberriesApiClient {
         self.log_to_file(&format!("=== FULLSTATS RESPONSE ===\n{}\n", body_preview));
 
         if body.trim() == "null" {
-            tracing::warn!("WB Advert fullstats returned null for ids=[{}]", ids_str);
-            anyhow::bail!("WB Advert fullstats returned null for ids=[{}]", ids_str);
+            tracing::info!(
+                "WB Advert fullstats returned null for ids=[{}]; treating as empty stats",
+                ids_str
+            );
+            return Ok(Vec::new());
         }
 
         let parsed: Vec<WbAdvertFullStat> = match serde_json::from_str(&body) {
@@ -4561,31 +4637,14 @@ struct WbStickersResponse {
     pub stickers: Vec<WbStickerRow>,
 }
 
-fn parse_wb_supply_datetime(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&chrono::Utc))
-        .or_else(|| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-        })
-}
-
 fn supply_matches_window(
     supply: &WbSupplyRow,
     range_start: chrono::DateTime<chrono::Utc>,
     range_end: chrono::DateTime<chrono::Utc>,
 ) -> bool {
-    let created_at = supply
-        .created_at
-        .as_deref()
-        .and_then(parse_wb_supply_datetime);
-    let closed_at = supply
-        .closed_at
-        .as_deref()
-        .and_then(parse_wb_supply_datetime);
-    let scan_dt = supply.scan_dt.as_deref().and_then(parse_wb_supply_datetime);
+    let created_at = supply.created_at.as_deref().and_then(parse_wb_datetime);
+    let closed_at = supply.closed_at.as_deref().and_then(parse_wb_datetime);
+    let scan_dt = supply.scan_dt.as_deref().and_then(parse_wb_datetime);
 
     let in_range = |value: Option<chrono::DateTime<chrono::Utc>>| {
         value
@@ -4610,18 +4669,10 @@ impl WildberriesApiClient {
         let url = "https://marketplace-api.wildberries.ru/api/v3/supplies";
         let mut all_supplies: Vec<WbSupplyRow> = Vec::new();
         let mut next_cursor: i64 = 0;
-        let range_start = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-            date_from
-                .and_hms_opt(0, 0, 0)
-                .expect("valid start of day for supplies import"),
-            chrono::Utc,
-        );
-        let range_end = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-            date_to
-                .and_hms_opt(23, 59, 59)
-                .expect("valid end of day for supplies import"),
-            chrono::Utc,
-        );
+        let range_start =
+            wb_day_start_utc(date_from).ok_or_else(|| anyhow::anyhow!("Invalid date_from"))?;
+        let range_end =
+            wb_day_end_utc(date_to).ok_or_else(|| anyhow::anyhow!("Invalid date_to"))?;
 
         loop {
             let next_str = next_cursor.to_string();
@@ -4893,6 +4944,7 @@ impl WildberriesApiClient {
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
     ) -> anyhow::Result<Vec<WbMarketplaceOrderRow>> {
         let url = "https://marketplace-api.wildberries.ru/api/v3/orders/new";
+        self.record_http_request_attempt(0);
 
         let response = self
             .client
@@ -4904,7 +4956,10 @@ impl WildberriesApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let body = self.read_body_tracked(response).await.unwrap_or_default();
+            let body = self
+                .read_body_for_recorded_request(response)
+                .await
+                .unwrap_or_default();
             return Err(anyhow::anyhow!(
                 "WB /api/v3/orders/new error {}: {}",
                 status,
@@ -4913,7 +4968,7 @@ impl WildberriesApiClient {
         }
 
         let body = self
-            .read_body_tracked(response)
+            .read_body_for_recorded_request(response)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read new orders response: {}", e))?;
 
@@ -4947,6 +5002,7 @@ impl WildberriesApiClient {
 
         loop {
             let url = "https://marketplace-api.wildberries.ru/api/v3/orders";
+            self.record_http_request_attempt(0);
             let response = self
                 .client
                 .get(url)
@@ -4963,7 +5019,10 @@ impl WildberriesApiClient {
 
             let status = response.status();
             if !status.is_success() {
-                let body = self.read_body_tracked(response).await.unwrap_or_default();
+                let body = self
+                    .read_body_for_recorded_request(response)
+                    .await
+                    .unwrap_or_default();
                 return Err(anyhow::anyhow!(
                     "WB marketplace orders API error {}: {}",
                     status,
@@ -4971,9 +5030,12 @@ impl WildberriesApiClient {
                 ));
             }
 
-            let body = self.read_body_tracked(response).await.map_err(|e| {
-                anyhow::anyhow!("Failed to read marketplace orders response: {}", e)
-            })?;
+            let body = self
+                .read_body_for_recorded_request(response)
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to read marketplace orders response: {}", e)
+                })?;
 
             let parsed: WbMarketplaceOrdersResponse = serde_json::from_str(&body).map_err(|e| {
                 anyhow::anyhow!(
@@ -5026,10 +5088,22 @@ pub struct WbMarketplaceOrderRow {
     pub created_at: Option<String>,
     #[serde(rename = "warehouseId", default)]
     pub warehouse_id: Option<i64>,
+    #[serde(rename = "salePrice", default)]
+    pub sale_price: Option<i64>,
+    #[serde(rename = "scanPrice", default)]
+    pub scan_price: Option<i64>,
     #[serde(default)]
     pub price: Option<i64>,
+    #[serde(rename = "finalPrice", default)]
+    pub final_price: Option<i64>,
     #[serde(rename = "convertedPrice", default)]
     pub converted_price: Option<i64>,
+    #[serde(rename = "convertedFinalPrice", default)]
+    pub converted_final_price: Option<i64>,
+    #[serde(rename = "currencyCode", default)]
+    pub currency_code: Option<i32>,
+    #[serde(rename = "convertedCurrencyCode", default)]
+    pub converted_currency_code: Option<i32>,
     #[serde(rename = "cargoType", default)]
     pub cargo_type: Option<i32>,
     /// Supply ID in format "WB-GI-XXXXXXXX" — the key for linking orders to supplies.
@@ -5045,6 +5119,7 @@ pub struct WbMarketplaceOrderRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WbMarketplaceOrdersResponse {
+    #[serde(default)]
     pub next: i64,
     #[serde(default)]
     pub orders: Vec<WbMarketplaceOrderRow>,

@@ -1,5 +1,6 @@
 use super::repository;
 use anyhow::Result;
+use contracts::domain::a015_wb_orders::aggregate::WbOrders;
 use contracts::domain::a029_wb_supply::aggregate::WbSupply;
 use uuid::Uuid;
 
@@ -38,6 +39,10 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<WbSupply>> {
 
 pub async fn get_by_supply_id(supply_id: &str) -> Result<Option<WbSupply>> {
     repository::get_by_supply_id(supply_id).await
+}
+
+pub async fn get_for_order(order: &WbOrders) -> Result<Option<WbSupply>> {
+    repository::get_for_order(order).await
 }
 
 pub async fn delete(id: Uuid) -> Result<bool> {

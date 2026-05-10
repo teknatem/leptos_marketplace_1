@@ -65,6 +65,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("a025_bi_dashboard"),
                     "layout-dashboard",
                 ),
+                SidebarItem::with_scope(
+                    "bi_timeline",
+                    tab_label_for_key("bi_timeline"),
+                    "line-chart",
+                ),
                 SidebarItem::new("data_view", tab_label_for_key("data_view"), "layers"),
             ],
             admin_only: false,

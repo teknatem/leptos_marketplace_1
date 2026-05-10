@@ -162,6 +162,17 @@ pub fn configure_system_routes() -> Router {
             get(handlers::tasks::get_task_log)
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
+        .route(
+            "/api/sys/change-tokens",
+            get(handlers::tasks::get_change_tokens)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/sys/scheduler/status",
+            get(handlers::tasks::get_scheduler_status)
+                .post(handlers::tasks::set_scheduler_status)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
         // ========================================
         // UTILITIES
         // ========================================

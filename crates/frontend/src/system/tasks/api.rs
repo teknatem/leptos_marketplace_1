@@ -3,13 +3,15 @@ use crate::system::auth::storage;
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::TaskProgressResponse;
 use contracts::system::tasks::request::{
-    CreateScheduledTaskDto, SetWatermarkDto, ToggleScheduledTaskEnabledDto, UpdateScheduledTaskDto,
+    CreateScheduledTaskDto, SchedulerStatusDto, SetWatermarkDto, ToggleScheduledTaskEnabledDto,
+    UpdateScheduledTaskDto,
 };
 use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
 use contracts::system::tasks::runs::{
     LiveMemoryProgressResponse, RecentRunsResponse, RunTaskResponse, TaskRun, TaskRunListResponse,
 };
 use gloo_net::http::Request;
+use serde_json;
 
 fn get_auth_header() -> Option<String> {
     storage::get_access_token().map(|token| format!("Bearer {}", token))
@@ -180,6 +182,31 @@ pub async fn get_task_progress(
         .json()
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get task log by run session_id.
+pub async fn get_task_log(task_id: &str, session_id: &str) -> Result<String, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::get(&format!(
+        "{}/api/sys/tasks/{}/log/{}",
+        api_base(),
+        task_id,
+        session_id
+    ))
+    .header("Authorization", &auth_header)
+    .send()
+    .await
+    .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Failed to fetch task log: {}", response.status()));
+    }
+
+    response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))
 }
 
 /// Результат ручного запуска: новая сессия или конфликт (уже выполняется).
@@ -363,4 +390,84 @@ pub async fn set_watermark(id: &str, date: Option<String>) -> Result<(), String>
     } else {
         Err(format!("Set watermark failed: {}", response.status()))
     }
+}
+
+/// Текущие токены изменений по доменам (легковесный опрос).
+pub struct ChangeTokensDto {
+    pub sys_tasks: u64,
+}
+
+pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::get(&format!("{}/api/sys/change-tokens", api_base()))
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Change tokens request failed: {}",
+            response.status()
+        ));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(ChangeTokensDto {
+        sys_tasks: json["sys_tasks"].as_u64().unwrap_or(0),
+    })
+}
+
+/// Получить статус глобального планировщика (включён / выключен).
+pub async fn fetch_scheduler_status() -> Result<SchedulerStatusDto, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let response = Request::get(&format!("{}/api/sys/scheduler/status", api_base()))
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Scheduler status request failed: {}",
+            response.status()
+        ));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Включить или выключить глобальный планировщик.
+pub async fn set_scheduler_status(enabled: bool) -> Result<SchedulerStatusDto, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+
+    let dto = SchedulerStatusDto { enabled };
+    let response = Request::post(&format!("{}/api/sys/scheduler/status", api_base()))
+        .header("Authorization", &auth_header)
+        .json(&dto)
+        .map_err(|e| format!("Failed to serialize: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Set scheduler status failed: {}",
+            response.status()
+        ));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
 }

@@ -579,6 +579,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/bi-timeline/indicators",
+        scope_id: Some("bi_timeline"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/bi-timeline/series",
+        scope_id: Some("bi_timeline"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/a026/wb-advert-daily",
         scope_id: Some("a026_wb_advert_daily"),
         mode: PolicyMode::Auto,
@@ -634,6 +646,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     RoutePolicy {
         method: "*",
         path: "/api/a029/wb-supply/by-wb-id/:wb_id",
+        scope_id: Some("a029_wb_supply"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a029/wb-supply/by-order/:order_id",
         scope_id: Some("a029_wb_supply"),
         mode: PolicyMode::Auto,
     },

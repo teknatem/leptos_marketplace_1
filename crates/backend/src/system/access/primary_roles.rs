@@ -60,6 +60,7 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     // System views
     ("general_ledger", "all"),
     ("data_view", "all"),
+    ("bi_timeline", "all"),
     ("dashboard", "all"),
 ];
 
@@ -103,6 +104,7 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("p907_ym_payment_report", "read"),
     ("p908_wb_goods_prices", "read"),
     ("p912_nomenclature_costs", "read"),
+    ("bi_timeline", "read"),
 ];
 
 /// Default scope grants for the `viewer` role.
@@ -122,6 +124,7 @@ pub const VIEWER_GRANTS: &[(&str, &str)] = &[
     ("a026_wb_advert_daily", "read"),
     ("a027_wb_documents", "read"),
     ("a030_wb_advert_campaign", "read"),
+    ("bi_timeline", "read"),
     // Projections — key analytics views
     ("p900_mp_sales_register", "read"),
     ("p904_sales_data", "read"),

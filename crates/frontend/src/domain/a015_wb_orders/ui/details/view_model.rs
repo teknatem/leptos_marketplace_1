@@ -14,6 +14,10 @@ pub struct WbOrdersDetailsVm {
     pub raw_json_loaded: RwSignal<bool>,
     pub raw_json_loading: RwSignal<bool>,
 
+    pub marketplace_raw_json: RwSignal<Option<String>>,
+    pub marketplace_raw_json_loaded: RwSignal<bool>,
+    pub marketplace_raw_json_loading: RwSignal<bool>,
+
     pub finance_reports: RwSignal<Vec<WbFinanceReportDto>>,
     pub finance_reports_loaded: RwSignal<bool>,
     pub finance_reports_loading: RwSignal<bool>,
@@ -27,6 +31,9 @@ pub struct WbOrdersDetailsVm {
     pub marketplace_product_info: RwSignal<Option<MarketplaceProductInfo>>,
     pub nomenclature_info: RwSignal<Option<NomenclatureInfo>>,
     pub base_nomenclature_info: RwSignal<Option<NomenclatureInfo>>,
+    pub supply_link: RwSignal<Option<WbSupplyLinkInfo>>,
+    pub supply_link_loaded: RwSignal<bool>,
+    pub supply_link_loading: RwSignal<bool>,
     pub connection_info: RwSignal<Option<ConnectionInfo>>,
     pub organization_info: RwSignal<Option<OrganizationInfo>>,
     pub marketplace_info: RwSignal<Option<MarketplaceInfo>>,
@@ -47,6 +54,10 @@ impl WbOrdersDetailsVm {
             raw_json_loaded: RwSignal::new(false),
             raw_json_loading: RwSignal::new(false),
 
+            marketplace_raw_json: RwSignal::new(None),
+            marketplace_raw_json_loaded: RwSignal::new(false),
+            marketplace_raw_json_loading: RwSignal::new(false),
+
             finance_reports: RwSignal::new(Vec::new()),
             finance_reports_loaded: RwSignal::new(false),
             finance_reports_loading: RwSignal::new(false),
@@ -60,6 +71,9 @@ impl WbOrdersDetailsVm {
             marketplace_product_info: RwSignal::new(None),
             nomenclature_info: RwSignal::new(None),
             base_nomenclature_info: RwSignal::new(None),
+            supply_link: RwSignal::new(None),
+            supply_link_loaded: RwSignal::new(false),
+            supply_link_loading: RwSignal::new(false),
             connection_info: RwSignal::new(None),
             organization_info: RwSignal::new(None),
             marketplace_info: RwSignal::new(None),
@@ -105,12 +119,16 @@ impl WbOrdersDetailsVm {
         vm.id.set(Some(id.clone()));
         vm.loading.set(true);
         vm.error.set(None);
+        vm.supply_link.set(None);
+        vm.supply_link_loaded.set(false);
+        vm.supply_link_loading.set(false);
 
         spawn_local(async move {
             match fetch_by_id(&id).await {
                 Ok(data) => {
                     vm.order.set(Some(data.clone()));
                     vm.load_related_data(&data);
+                    vm.load_supply_link(&data.id);
                     vm.load_finance_reports();
                     vm.load_wb_sales();
                     vm.loading.set(false);
@@ -120,6 +138,23 @@ impl WbOrdersDetailsVm {
                     vm.loading.set(false);
                 }
             }
+        });
+    }
+
+    fn load_supply_link(&self, order_id: &str) {
+        let order_id = order_id.to_string();
+        let vm = self.clone();
+        vm.supply_link.set(None);
+        vm.supply_link_loaded.set(false);
+        vm.supply_link_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_supply_for_order(&order_id).await {
+                Ok(link) => vm.supply_link.set(link),
+                Err(e) => leptos::logging::log!("Failed to load WB supply link: {}", e),
+            }
+            vm.supply_link_loaded.set(true);
+            vm.supply_link_loading.set(false);
         });
     }
 
@@ -206,6 +241,33 @@ impl WbOrdersDetailsVm {
                 Err(e) => leptos::logging::log!("Failed to load raw JSON: {}", e),
             }
             vm.raw_json_loading.set(false);
+        });
+    }
+
+    pub fn load_marketplace_raw_json(&self) {
+        if self.marketplace_raw_json_loaded.get() || self.marketplace_raw_json_loading.get() {
+            return;
+        }
+        let Some(order) = self.order.get() else {
+            return;
+        };
+        let Some(raw_payload_ref) = order.source_meta.marketplace_raw_payload_ref.clone() else {
+            self.marketplace_raw_json_loaded.set(true);
+            return;
+        };
+
+        let vm = self.clone();
+        vm.marketplace_raw_json_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_raw_json(&raw_payload_ref).await {
+                Ok(json) => {
+                    vm.marketplace_raw_json.set(Some(json));
+                    vm.marketplace_raw_json_loaded.set(true);
+                }
+                Err(e) => leptos::logging::log!("Failed to load marketplace raw JSON: {}", e),
+            }
+            vm.marketplace_raw_json_loading.set(false);
         });
     }
 

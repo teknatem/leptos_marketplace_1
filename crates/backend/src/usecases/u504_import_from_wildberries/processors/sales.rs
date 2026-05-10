@@ -1,30 +1,42 @@
 use super::super::wildberries_api_client::WbSaleRow;
 use crate::domain::a012_wb_sales;
+use crate::domain::a012_wb_sales::service::PostingPreparationCache;
+use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a012_wb_sales::aggregate::{
     WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState, WbSalesWarehouse,
 };
 use contracts::domain::common::AggregateId;
+use std::collections::HashMap;
+use uuid::Uuid;
 
+/// Process a single WB sale row.
+///
+/// `existing_sale_ids` is a pre-loaded `HashMap<sale_id, existing_uuid>` for
+/// the current import batch.  Providing it avoids an individual SELECT per row.
+/// Pass an empty map to fall back to per-row DB lookups (legacy behaviour).
+///
+/// `cache` is shared across the whole batch so that repeated lookups for the
+/// same products / organisations / prices are served from memory.
 pub async fn process_sale_row(
     connection: &ConnectionMP,
     organization_id: &str,
     sale_row: &WbSaleRow,
     raw_json: &str,
+    existing_sale_ids: &HashMap<String, Uuid>,
+    cache: &mut PostingPreparationCache,
 ) -> Result<bool> {
-    // SRID - уникальный идентификатор строки продажи
+    // SRID — уникальный идентификатор строки продажи
     let document_no = sale_row
         .srid
         .clone()
         .unwrap_or_else(|| format!("WB_{}", chrono::Utc::now().timestamp()));
 
-    // sale_id - ГЛАВНЫЙ уникальный идентификатор для дедупликации
-    // Если нет от API - генерируем на основе SRID + event_type + supplier_article
+    // sale_id — ГЛАВНЫЙ ключ дедупликации
     let sale_id = if let Some(sid) = sale_row.sale_id.clone() {
         sid
     } else {
-        // Генерируем уникальный sale_id для гарантированной дедупликации
         let supplier_article = sale_row.supplier_article.clone().unwrap_or_default();
         let event_type = if sale_row.quantity.unwrap_or(0) < 0 {
             "return"
@@ -40,11 +52,17 @@ pub async fn process_sale_row(
         )
     };
 
-    // Проверяем, существует ли документ по sale_id (единственный способ дедупликации)
-    let existing = a012_wb_sales::service::get_by_sale_id(&sale_id).await?;
-    let is_new = existing.is_none();
+    // Lookup from the pre-loaded map (O(1)); fall back to DB only when the map
+    // was not populated (e.g., called from non-batch code paths).
+    let existing_uuid: Option<Uuid> = if existing_sale_ids.is_empty() {
+        a012_wb_sales::service::get_by_sale_id(&sale_id)
+            .await?
+            .map(|doc| doc.base.id.value())
+    } else {
+        existing_sale_ids.get(&sale_id).copied()
+    };
+    let is_new = existing_uuid.is_none();
 
-    // Создаем header (sale_id теперь всегда заполнен - используется для дедупликации)
     let header = WbSalesHeader {
         document_no: document_no.clone(),
         sale_id: Some(sale_id.clone()),
@@ -55,7 +73,6 @@ pub async fn process_sale_row(
 
     let supplier_article = sale_row.supplier_article.clone().unwrap_or_default();
 
-    // Создаем line
     let line = WbSalesLine {
         line_id: sale_row.srid.clone().unwrap_or_else(|| document_no.clone()),
         supplier_article: supplier_article.clone(),
@@ -76,7 +93,6 @@ pub async fn process_sale_row(
         discount_percent: sale_row.discount_percent,
         spp: sale_row.spp,
         finished_price: sale_row.finished_price,
-        // Финансовые поля (будут заполнены при проведении документа)
         is_fact: None,
         sell_out_plan: None,
         sell_out_fact: None,
@@ -94,32 +110,16 @@ pub async fn process_sale_row(
         dealer_price_ut: None,
     };
 
-    // Парсим даты
     let sale_dt = if let Some(date_str) = sale_row.sale_dt.as_ref() {
-        chrono::DateTime::parse_from_rfc3339(date_str)
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-            .unwrap_or_else(|_| chrono::Utc::now())
+        parse_wb_datetime(date_str).unwrap_or_else(chrono::Utc::now)
     } else {
         chrono::Utc::now()
     };
 
-    let last_change_dt = sale_row.last_change_date.as_ref().and_then(|date_str| {
-        chrono::DateTime::parse_from_rfc3339(date_str)
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-            .ok()
-    });
+    let last_change_dt = sale_row
+        .last_change_date
+        .as_ref()
+        .and_then(|date_str| parse_wb_datetime(date_str));
 
     let event_type = if sale_row.quantity.unwrap_or(0) < 0 {
         "return".to_string()
@@ -151,7 +151,7 @@ pub async fn process_sale_row(
         document_version: 1,
     };
 
-    let document = WbSales::new_for_insert(
+    let mut document = WbSales::new_for_insert(
         document_no.clone(),
         format!("WB {} {}", event_type, supplier_article),
         header,
@@ -162,7 +162,6 @@ pub async fn process_sale_row(
         true,
     );
 
-    // Диагностика перед сохранением
     tracing::debug!(
         "Processing WB sale: sale_id={}, document_no={}, event_type={}, supplier_article={}",
         sale_id,
@@ -171,8 +170,15 @@ pub async fn process_sale_row(
         supplier_article
     );
 
-    match a012_wb_sales::service::store_document_with_raw(document, raw_json).await {
-        Ok(_) => {
+    match a012_wb_sales::service::store_document_with_raw_shared_cache(
+        &mut document,
+        raw_json,
+        cache,
+        existing_uuid,
+    )
+    .await
+    {
+        Ok((_id, _)) => {
             if is_new {
                 tracing::debug!("Created new WB sale: sale_id={}", sale_id);
             } else {
@@ -187,7 +193,6 @@ pub async fn process_sale_row(
                 e
             );
 
-            // Дополнительная диагностика при UNIQUE constraint violation
             if e.to_string().contains("UNIQUE constraint failed") {
                 tracing::error!(
                     "UNIQUE constraint violation on sale_id: {}\n  \

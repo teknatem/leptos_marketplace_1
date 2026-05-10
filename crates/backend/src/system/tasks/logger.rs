@@ -14,7 +14,7 @@ pub struct TaskLogger {
 impl TaskLogger {
     pub fn new(base_log_dir: &str) -> Self {
         Self {
-            log_dir: format!("{}/task_logs", base_log_dir),
+            log_dir: base_log_dir.to_string(),
         }
     }
 
@@ -50,7 +50,12 @@ impl TaskLogger {
         if Path::new(&file_path).exists() {
             Ok(fs::read_to_string(&file_path)?)
         } else {
-            Ok(format!("Log file for session {} not found.", session_id))
+            let legacy_file_path = format!("{}/task_logs/{}.log", self.log_dir, session_id);
+            if Path::new(&legacy_file_path).exists() {
+                Ok(fs::read_to_string(&legacy_file_path)?)
+            } else {
+                Ok(format!("Log file for session {} not found.", session_id))
+            }
         }
     }
 
@@ -70,7 +75,7 @@ static GLOBAL_TASK_LOGGER: OnceLock<Arc<TaskLogger>> = OnceLock::new();
 
 /// Возвращает единственный экземпляр `TaskLogger` для всего процесса.
 ///
-/// При первом вызове создаёт логгер с путём `./task_logs`.  
+/// При первом вызове создаёт логгер с путём `./task_logs`.
 /// Если вызвать до `set_global_task_logger`, возвращает значение по умолчанию.
 pub fn get_global_task_logger() -> Arc<TaskLogger> {
     GLOBAL_TASK_LOGGER

@@ -82,7 +82,7 @@ pub async fn list_all() -> anyhow::Result<Vec<ConnectionMP>> {
     repository::list_all().await
 }
 
-/// Получение информации о продавце через WB API /api/v1/seller-info
+/// Получение информации о кабинете маркетплейса
 pub async fn seller_info(dto: ConnectionMPDto) -> anyhow::Result<ConnectionTestResult> {
     let start = std::time::Instant::now();
 
@@ -134,12 +134,25 @@ pub async fn seller_info(dto: ConnectionMPDto) -> anyhow::Result<ConnectionTestR
         };
 
     let mp_code = marketplace.base.code.to_lowercase();
+    if mp_code.contains("yandex") || mp_code.contains("яндекс") || mp_code.contains("ym") {
+        let info_result =
+            crate::shared::marketplaces::yandex_market::YandexMarketClient::seller_info(&dto).await;
+        let duration = start.elapsed();
+        return Ok(ConnectionTestResult {
+            success: info_result.success,
+            message: info_result.message,
+            duration_ms: duration.as_millis() as u64,
+            tested_at: Utc::now(),
+            details: info_result.details,
+        });
+    }
+
     if !mp_code.contains("wildberries") && !mp_code.contains("wb") {
         let duration = start.elapsed();
         return Ok(ConnectionTestResult {
             success: false,
             message: format!(
-                "Информация о продавце поддерживается только для Wildberries (маркетплейс: {})",
+                "Информация о кабинете поддерживается только для Wildberries и Яндекс.Маркет (маркетплейс: {})",
                 marketplace.base.description
             ),
             duration_ms: duration.as_millis() as u64,

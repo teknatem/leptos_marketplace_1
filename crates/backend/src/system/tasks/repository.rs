@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,7 @@ pub struct Model {
     pub last_run_status: Option<String>,
     pub last_run_log_file: Option<String>,
     pub last_successful_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub data_loaded_up_to: Option<String>,
     pub is_deleted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -63,6 +64,9 @@ impl From<Model> for ScheduledTask {
             last_run_status: m.last_run_status,
             last_run_log_file: m.last_run_log_file,
             last_successful_run_at: m.last_successful_run_at,
+            data_loaded_up_to: m
+                .data_loaded_up_to
+                .and_then(|value| NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok()),
         }
     }
 }
@@ -133,6 +137,7 @@ pub async fn save(task: &ScheduledTask) -> Result<(), DbErr> {
     active.last_run_status = Set(task.last_run_status.clone());
     active.last_run_log_file = Set(task.last_run_log_file.clone());
     active.last_successful_run_at = Set(task.last_successful_run_at);
+    active.data_loaded_up_to = Set(task.data_loaded_up_to.map(|date| date.to_string()));
     active.is_deleted = Set(task.base.metadata.is_deleted);
     active.updated_at = Set(Some(Utc::now()));
 

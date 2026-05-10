@@ -10,6 +10,7 @@ pub struct TaskRun {
     pub task_id: String,
     pub task_code: Option<String>,
     pub task_description: Option<String>,
+    pub task_comment: Option<String>,
     pub session_id: String,
     pub triggered_by: String,
     pub started_at: DateTime<Utc>,

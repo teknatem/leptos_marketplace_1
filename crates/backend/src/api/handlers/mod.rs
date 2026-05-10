@@ -46,6 +46,7 @@ pub mod p911_wb_advert_by_items;
 pub mod p912_nomenclature_costs;
 
 // DataView semantic layer handlers
+pub mod bi_timeline;
 pub mod data_view;
 
 // Drilldown session store

@@ -222,6 +222,8 @@ pub struct BiIndicator {
     #[serde(flatten)]
     pub base: BaseAggregate<BiIndicatorId>,
 
+    /// Подробное пользовательское описание индикатора.
+    pub explanation: Option<std::string::String>,
     /// Откуда и как получать данные
     pub data_spec: DataSpec,
     /// Параметры индикатора (типизированные, с дефолтами)
@@ -252,6 +254,7 @@ impl BiIndicator {
         let base = BaseAggregate::new(BiIndicatorId::new_v4(), code, description);
         Self {
             base,
+            explanation: None,
             data_spec: DataSpec::default(),
             params: vec![],
             view_spec: ViewSpec::default(),

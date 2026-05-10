@@ -75,6 +75,7 @@ use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesLi
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
+use crate::shared::bi_timeline::ui::{BiTimelineInitial, BiTimelinePage};
 use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
@@ -93,6 +94,46 @@ use crate::usecases::u508_repost_documents;
 use contracts::general_ledger::GlDrilldownQuery;
 use leptos::logging::log;
 use leptos::prelude::*;
+
+fn parse_bi_timeline_initial(key: &str) -> BiTimelineInitial {
+    let Some(raw) = key.strip_prefix("bi_timeline__") else {
+        return BiTimelineInitial::default();
+    };
+    let parts: Vec<&str> = raw.split("__").collect();
+    BiTimelineInitial {
+        indicator_id: parts
+            .first()
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string()),
+        date_from: parts
+            .get(1)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string()),
+        date_to: parts
+            .get(2)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string()),
+        period2_from: parts
+            .get(3)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string()),
+        period2_to: parts
+            .get(4)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string()),
+        connection_mp_refs: parts
+            .get(5)
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
 
 /// Рендерит контент таба по его ключу.
 ///
@@ -692,6 +733,15 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 <BiDashboardView id=id />
             }
             .into_any()
+        }
+
+        // BI Timeline
+        "bi_timeline" => {
+            view! { <BiTimelinePage initial=BiTimelineInitial::default() /> }.into_any()
+        }
+        k if k.starts_with("bi_timeline__") => {
+            let initial = parse_bi_timeline_initial(k);
+            view! { <BiTimelinePage initial=initial /> }.into_any()
         }
 
         // DataView semantic layer catalog

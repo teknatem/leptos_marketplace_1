@@ -81,6 +81,11 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         raw: include_str!("../../data_view/dv001/llm.md"),
     },
     EmbeddedKnowledgeSource {
+        id: "data-view-dv004",
+        source_path: "crates/backend/src/data_view/dv004/llm.md",
+        raw: include_str!("../../data_view/dv004/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
         id: "general-ledger",
         source_path: "crates/backend/src/general_ledger/llm.md",
         raw: include_str!("../../general_ledger/llm.md"),

@@ -37,9 +37,13 @@
     Для WB: WHERE marketplace = (SELECT id FROM a005_marketplace WHERE code = 'mp-wb')
   a005_marketplace: id (UUID), code (mp-wb/mp-ozon/mp-ym), description (Wildberries/Ozon/Яндекс.Маркет)
   a002_organization: id (UUID), code, description
-- create_drilldown_report(view_id, group_by, metric_id, date_from, date_to, description, [connection_mp_refs]) —
+- create_drilldown_report(view_id, group_by, metric_id, date_from, date_to, description, [connection_mp_refs], [params]) —
   создать drilldown-отчёт. Пользователь получит карточку с кнопкой открытия отчёта в чате.
   connection_mp_refs — массив UUID из execute_query (пусто = все кабинеты).
+  params — дополнительные параметры DataView, например {"layer":"fact","turnover_code":"mp_commission"} для dv004.
+- list_gl_turnovers([report_group]) — реестр видов оборотов General Ledger.
+  report_group: revenue | commission | logistics | advertising | penalty | returns | other.
+  Вызывай перед SQL-запросами к sys_general_ledger, чтобы узнать точные turnover_code.
 
 ## DataView и BI-индикаторы
 

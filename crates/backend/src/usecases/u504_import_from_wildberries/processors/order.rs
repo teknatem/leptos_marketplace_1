@@ -1,5 +1,6 @@
 use super::super::wildberries_api_client::WbOrderRow;
 use crate::domain::a015_wb_orders;
+use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::{
@@ -57,40 +58,20 @@ pub async fn process_order_row(
 
     // Парсим даты
     let order_dt = if let Some(date_str) = order_row.date.as_ref() {
-        chrono::DateTime::parse_from_rfc3339(date_str)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-            .unwrap_or_else(chrono::Utc::now)
+        parse_wb_datetime(date_str).unwrap_or_else(chrono::Utc::now)
     } else {
         chrono::Utc::now()
     };
 
-    let last_change_dt = order_row.last_change_date.as_ref().and_then(|date_str| {
-        chrono::DateTime::parse_from_rfc3339(date_str)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-    });
+    let last_change_dt = order_row
+        .last_change_date
+        .as_ref()
+        .and_then(|date_str| parse_wb_datetime(date_str));
 
-    let cancel_dt = order_row.cancel_date.as_ref().and_then(|date_str| {
-        chrono::DateTime::parse_from_rfc3339(date_str)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .or_else(|| {
-                chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-            })
-    });
+    let cancel_dt = order_row
+        .cancel_date
+        .as_ref()
+        .and_then(|date_str| parse_wb_datetime(date_str));
 
     let state = WbOrdersState {
         order_dt,
@@ -119,6 +100,7 @@ pub async fn process_order_row(
         sticker: order_row.sticker.clone().filter(|s| !s.is_empty()),
         g_number: order_row.g_number.clone().filter(|s| !s.is_empty()),
         raw_payload_ref: String::new(),
+        marketplace_raw_payload_ref: None,
         fetched_at: chrono::Utc::now(),
         document_version: 1,
     };

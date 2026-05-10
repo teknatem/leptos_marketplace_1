@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
+use contracts::domain::a015_wb_orders::aggregate::WbOrders;
 use contracts::domain::a029_wb_supply::aggregate::{
     WbSupply, WbSupplyHeader, WbSupplyId, WbSupplyInfo, WbSupplyOrderRow, WbSupplySourceMeta,
 };
@@ -113,6 +114,80 @@ pub async fn get_by_supply_id(supply_id: &str) -> Result<Option<WbSupply>> {
         .one(db)
         .await?;
     Ok(model.map(|m| m.into()))
+}
+
+pub async fn get_for_order(order: &WbOrders) -> Result<Option<WbSupply>> {
+    use sea_orm::{ConnectionTrait, FromQueryResult, Statement, Value};
+
+    let db = get_connection();
+    let mut conditions = Vec::new();
+    let mut params: Vec<Value> = Vec::new();
+
+    if let Ok(order_id) = order.line.line_id.parse::<i64>() {
+        if order_id > 0 {
+            conditions.push(
+                "EXISTS (
+                    SELECT 1
+                    FROM json_each(s.supply_orders_json) j
+                    WHERE CAST(json_extract(j.value, '$.order_id') AS INTEGER) = ?
+                )"
+                .to_string(),
+            );
+            params.push(order_id.into());
+        }
+    }
+
+    if let Some(order_uid) = order
+        .source_meta
+        .g_number
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conditions.push(
+            "EXISTS (
+                SELECT 1
+                FROM json_each(s.supply_orders_json) j
+                WHERE json_extract(j.value, '$.order_uid') = ?
+            )"
+            .to_string(),
+        );
+        params.push(order_uid.to_string().into());
+    }
+
+    if let Some(income_id) = order.source_meta.income_id.filter(|&value| value > 0) {
+        conditions.push("s.supply_id = ?".to_string());
+        params.push(format!("WB-GI-{}", income_id).into());
+    }
+
+    if conditions.is_empty() {
+        return Ok(None);
+    }
+
+    let sql = format!(
+        "SELECT s.*
+         FROM a029_wb_supply s
+         WHERE s.is_deleted = 0
+           AND ({})
+         ORDER BY s.updated_at DESC
+         LIMIT 1",
+        conditions.join(" OR ")
+    );
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            &sql,
+            params,
+        ))
+        .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let model = Model::from_query_result(&row, "")?;
+    Ok(Some(model.into()))
 }
 
 pub async fn upsert_document(document: &WbSupply) -> Result<Uuid> {

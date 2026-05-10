@@ -38,6 +38,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a020_wb_promotion" => A020.ui.list_name,
         "a024_bi_indicator" => A024.ui.list_name,
         "a025_bi_dashboard" => A025.ui.list_name,
+        "bi_timeline" => "BI Timeline",
         "a027_wb_documents" => A027.ui.list_name,
 
         "a003_counterparty" => "Контрагенты",
@@ -66,6 +67,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "gl_account_view__7609" => "Ведомость по кабинетам",
         "wb_weekly_reconciliation" => "Сверка weekly WB и GL 7609",
         k if k.starts_with("gl_drilldown__") => "Детализация GL",
+        k if k.starts_with("bi_timeline__") => "BI Timeline",
         k if k.starts_with("general_ledger_details_") => "Главная книга",
         "a021_production_output" => "Выпуск продукции",
         "a022_kit_variant" => "Варианты комплектации",

@@ -1,6 +1,7 @@
 pub mod access;
 pub mod accounting;
 pub mod analytics;
+pub mod bi_timeline;
 pub mod data_view;
 pub mod drilldown;
 pub mod form_settings;

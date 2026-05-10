@@ -1,7 +1,7 @@
 use crate::domain::common::{
     AggregateId, AggregateRoot, BaseAggregate, EntityMetadata, EventStore, Origin,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -73,9 +73,13 @@ pub struct ScheduledTask {
     /// Путь к лог-файлу последнего запуска
     pub last_run_log_file: Option<String>,
 
-    /// Дата последнего *успешного* завершения — watermark для инкрементальной загрузки.
+    /// Дата последнего *успешного* завершения задачи.
     /// Обновляется только когда задача завершилась статусом Completed.
     pub last_successful_run_at: Option<DateTime<Utc>>,
+
+    /// Данные загружены включительно по эту дату.
+    /// Используется как date-only watermark для последовательных импортов.
+    pub data_loaded_up_to: Option<NaiveDate>,
 }
 
 impl ScheduledTask {
@@ -104,6 +108,7 @@ impl ScheduledTask {
             last_run_status: None,
             last_run_log_file: None,
             last_successful_run_at: None,
+            data_loaded_up_to: None,
         }
     }
 }

@@ -1,0 +1,25 @@
+# Rust build output
+target/
+
+# Frontend build output
+dist/
+crates/frontend/dist/
+
+# Logs
+task_logs/
+*.log
+
+# Database files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Node.js
+node_modules/
+
+# Deploy artifacts
+deploy/
+
+# Downloads
+downloads/

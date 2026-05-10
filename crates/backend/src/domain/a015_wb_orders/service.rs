@@ -5,6 +5,8 @@ use contracts::domain::a015_wb_orders::aggregate::WbOrders;
 use contracts::domain::common::AggregateId;
 use uuid::Uuid;
 
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date;
+
 /// Автозаполнение marketplace_product_ref и nomenclature_ref
 pub async fn auto_fill_references(document: &mut WbOrders) -> Result<()> {
     // Автозаполнение marketplace_product_ref если пустой
@@ -97,7 +99,7 @@ pub async fn fill_dealer_price(document: &mut WbOrders) -> Result<()> {
         return Ok(());
     };
 
-    let order_date = document.state.order_dt.format("%Y-%m-%d").to_string();
+    let order_date = wb_business_date(&document.state.order_dt).to_string();
     let mut price_source = String::new();
 
     let mut price = crate::projections::p906_nomenclature_prices::repository::get_price_for_date(
@@ -219,7 +221,7 @@ pub async fn fill_dealer_price_resolved(document: &mut WbOrders) -> Result<()> {
         return Ok(());
     };
 
-    let order_date = document.state.order_dt.format("%Y-%m-%d").to_string();
+    let order_date = wb_business_date(&document.state.order_dt).to_string();
     let resolved =
         crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature(
             nom_ref,
@@ -295,6 +297,8 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
                     }
                 }
             }
+            document.source_meta.marketplace_raw_payload_ref =
+                existing.source_meta.marketplace_raw_payload_ref.clone();
             // Preserve numeric WB order ID stored by marketplace import
             if !current_line_id_is_numeric
                 && existing.line.line_id.chars().all(|c| c.is_ascii_digit())
@@ -324,6 +328,25 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
     }
 
     Ok(id)
+}
+
+pub async fn store_marketplace_raw_payload(
+    document_no: &str,
+    raw_json: &str,
+) -> Result<Option<String>> {
+    let raw_ref = crate::shared::data::raw_storage::save_raw_json(
+        "WB",
+        "WB_Orders_Marketplace",
+        document_no,
+        raw_json,
+        chrono::Utc::now(),
+    )
+    .await?;
+
+    let updated =
+        repository::update_marketplace_raw_payload_ref_by_document_no(document_no, &raw_ref)
+            .await?;
+    Ok(updated.then_some(raw_ref))
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbOrders>> {

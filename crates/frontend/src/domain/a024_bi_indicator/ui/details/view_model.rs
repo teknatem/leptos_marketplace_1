@@ -373,6 +373,7 @@ pub struct BiIndicatorDetailsVm {
     pub code: RwSignal<String>,
     pub description: RwSignal<String>,
     pub comment: RwSignal<String>,
+    pub explanation: RwSignal<String>,
     pub status: RwSignal<String>,
     pub owner_user_id: RwSignal<String>,
     pub is_public: RwSignal<bool>,
@@ -450,6 +451,7 @@ impl BiIndicatorDetailsVm {
             code: RwSignal::new(String::new()),
             description: RwSignal::new(String::new()),
             comment: RwSignal::new(String::new()),
+            explanation: RwSignal::new(String::new()),
             status: RwSignal::new("draft".to_string()),
             owner_user_id: RwSignal::new(String::new()),
             is_public: RwSignal::new(false),
@@ -476,7 +478,7 @@ impl BiIndicatorDetailsVm {
             created_by: RwSignal::new(String::new()),
             updated_by: RwSignal::new(String::new()),
 
-            active_tab: RwSignal::new("preview"),
+            active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
             saving: RwSignal::new(false),
             error: RwSignal::new(None),
@@ -1084,6 +1086,14 @@ impl BiIndicatorDetailsVm {
                     Some(c)
                 }
             },
+            explanation: {
+                let explanation = self.explanation.get();
+                if explanation.trim().is_empty() {
+                    None
+                } else {
+                    Some(explanation)
+                }
+            },
             status: self.status.get(),
             owner_user_id: self.owner_user_id.get(),
             is_public: self.is_public.get(),
@@ -1102,6 +1112,8 @@ impl BiIndicatorDetailsVm {
             .set(v["description"].as_str().unwrap_or("").to_string());
         self.comment
             .set(v["comment"].as_str().unwrap_or("").to_string());
+        self.explanation
+            .set(v["explanation"].as_str().unwrap_or("").to_string());
         self.status.set(normalized_loaded_status(&v["status"]));
         self.owner_user_id
             .set(v["owner_user_id"].as_str().unwrap_or("").to_string());

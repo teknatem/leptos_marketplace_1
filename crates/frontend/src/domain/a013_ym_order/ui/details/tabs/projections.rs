@@ -1,6 +1,7 @@
 //! Projections tab for YM Order
 
 use super::super::view_model::YmOrderDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -10,23 +11,23 @@ pub fn ProjectionsTab(vm: YmOrderDetailsVm) -> impl IntoView {
         {move || {
             if vm.projections_loading.get() {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_projections_loading">
                         <Flex gap=FlexGap::Small style="align-items: center; justify-content: center; padding: var(--spacing-xl);">
                             <Spinner />
                             <span>"Загрузка проекций..."</span>
                         </Flex>
-                    </Card>
+                    </CardAnimated>
                 }
                 .into_any();
             }
 
             let Some(proj_data) = vm.projections.get() else {
                 return view! {
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_projections_empty">
                         <div style="color: var(--color-text-secondary);">
                             "Проекции не загружены"
                         </div>
-                    </Card>
+                    </CardAnimated>
                 }
                 .into_any();
             };
@@ -39,7 +40,7 @@ pub fn ProjectionsTab(vm: YmOrderDetailsVm) -> impl IntoView {
 
             view! {
                 <div style="display: grid; grid-template-columns: 1fr; gap: var(--spacing-md);">
-                    <Card>
+                    <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_projections_p900">
                         <h4 class="details-section__title">
                             {format!("Sales Register (p900) - {} записей", p900_items.len())}
                         </h4>
@@ -84,9 +85,9 @@ pub fn ProjectionsTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                 </TableBody>
                             </Table>
                         </div>
-                    </Card>
+                    </CardAnimated>
 
-                    <Card>
+                    <CardAnimated delay_ms=40 nav_id="a013_ym_order_details_projections_p904">
                         <h4 class="details-section__title">
                             {format!("Sales Data (p904) - {} записей", p904_items.len())}
                         </h4>
@@ -131,7 +132,7 @@ pub fn ProjectionsTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                 </TableBody>
                             </Table>
                         </div>
-                    </Card>
+                    </CardAnimated>
                 </div>
             }
             .into_any()

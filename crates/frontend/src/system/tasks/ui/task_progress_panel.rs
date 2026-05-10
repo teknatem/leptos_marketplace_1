@@ -124,7 +124,7 @@ pub fn TaskProgressPanel(
             {http_line.map(|line| view! {
                 <div
                     style="font-size: 11px; font-family: monospace; color: var(--color-text-secondary); line-height: 1.35;"
-                    title="Количество прочитанных ответов API и объём тел запросов/ответов"
+                    title="Количество отправленных запросов API и объём тел запросов/ответов"
                 >
                     {line}
                 </div>

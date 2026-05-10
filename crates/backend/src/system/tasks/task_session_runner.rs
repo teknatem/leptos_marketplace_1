@@ -4,6 +4,7 @@
 //! Используется как воркером (плановый запуск), так и HTTP-хендлером (ручной запуск).
 //! Любое изменение политики завершения правится ровно здесь.
 
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,8 @@ use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use contracts::system::tasks::progress::TaskStatus;
 
 use super::{
-    abort_registry, logger::TaskLogger, registry::TaskManagerRegistry, runs_service, service,
+    abort_registry, change_token, logger::TaskLogger, registry::TaskManagerRegistry, runs_service,
+    service,
 };
 
 fn progress_to_run_metrics(
@@ -30,6 +32,38 @@ fn progress_to_run_metrics(
     }
 }
 
+fn next_run_from_cron(schedule_cron: &str, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let schedule = cron::Schedule::from_str(schedule_cron).ok()?;
+    schedule.after(&after).next()
+}
+
+fn effective_next_run_at(
+    task: &ScheduledTask,
+    proposed_next_run_at: DateTime<Utc>,
+    finished_at: DateTime<Utc>,
+    recompute_if_elapsed: bool,
+) -> DateTime<Utc> {
+    if !recompute_if_elapsed || proposed_next_run_at > finished_at {
+        return proposed_next_run_at;
+    }
+
+    let actual_next_run_at = task
+        .schedule_cron
+        .as_deref()
+        .and_then(|cron| next_run_from_cron(cron, finished_at))
+        .unwrap_or_else(|| finished_at + chrono::Duration::hours(1));
+
+    tracing::warn!(
+        "Task '{}' ({}) finished after precomputed next_run_at; next run shifted from {} to {}",
+        task.base.description,
+        task.base.id.as_string(),
+        proposed_next_run_at,
+        actual_next_run_at
+    );
+
+    actual_next_run_at
+}
+
 /// Параметры одного выполнения регламентного задания.
 pub struct TaskSessionParams {
     /// Полная запись задачи (нужна менеджеру для чтения конфига).
@@ -42,6 +76,10 @@ pub struct TaskSessionParams {
     /// - воркер вычисляет из cron-выражения;
     /// - ручной запуск сохраняет текущий `task.next_run_at`.
     pub next_run_at: DateTime<Utc>,
+    /// Для плановых запусков `next_run_at` мог быть рассчитан до выполнения задачи.
+    /// Если задача пересекла эту cron-границу, после завершения нужно сдвинуть
+    /// расписание на следующий слот, иначе worker запустит её повторно сразу.
+    pub recompute_next_run_if_elapsed: bool,
     pub logger: Arc<TaskLogger>,
     pub registry: Arc<TaskManagerRegistry>,
 }
@@ -56,6 +94,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
         session_id,
         started_at,
         next_run_at,
+        recompute_next_run_if_elapsed,
         logger,
         registry,
     } = params;
@@ -80,12 +119,20 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     task_description,
                     task_id.as_string()
                 );
+                let finished_at = Utc::now();
+                let next_run_actual = effective_next_run_at(
+                    &task,
+                    next_run_at,
+                    finished_at,
+                    recompute_next_run_if_elapsed,
+                );
                 let _ = service::update_run_status(
                     &task_id,
                     Some(started_at),
-                    Some(next_run_at),
+                    Some(next_run_actual),
                     None,
                     Some(TaskStatus::Failed.to_string()),
+                    None,
                     None,
                 )
                 .await;
@@ -97,6 +144,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                 )
                 .await;
                 abort_registry::remove(&session_id_clone);
+                change_token::TOKEN.bump();
                 return;
             }
         };
@@ -107,14 +155,12 @@ pub fn spawn_task_session(params: TaskSessionParams) {
         match timed {
             Ok(Ok(outcome)) => {
                 let lsra_opt = if outcome.advances_watermark() {
-                    let today = started_at.date_naive();
-                    Some(match outcome.loaded_to {
-                        Some(loaded_to) if loaded_to < today => loaded_to
-                            .and_hms_opt(23, 59, 59)
-                            .map(|t| t.and_utc())
-                            .unwrap_or(started_at),
-                        _ => started_at,
-                    })
+                    Some(started_at)
+                } else {
+                    None
+                };
+                let data_loaded_up_to_opt = if outcome.advances_watermark() {
+                    outcome.loaded_to
                 } else {
                     None
                 };
@@ -130,18 +176,27 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                 let metrics = manager
                     .get_progress(&session_id_clone)
                     .map(progress_to_run_metrics);
+                let finished_at = Utc::now();
+                let next_run_actual = effective_next_run_at(
+                    &task,
+                    next_run_at,
+                    finished_at,
+                    recompute_next_run_if_elapsed,
+                );
 
                 let _ = service::update_run_status(
                     &task_id,
                     Some(started_at),
-                    Some(next_run_at),
+                    Some(next_run_actual),
                     None,
                     Some(outcome.status.to_string()),
                     lsra_opt,
+                    data_loaded_up_to_opt,
                 )
                 .await;
                 let _ = runs_service::finish_run(&session_id_clone, outcome.status, metrics, None)
                     .await;
+                change_token::TOKEN.bump();
             }
 
             Ok(Err(e)) => {
@@ -154,7 +209,13 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     );
                     started_at + chrono::Duration::hours(24)
                 } else {
-                    next_run_at
+                    let finished_at = Utc::now();
+                    effective_next_run_at(
+                        &task,
+                        next_run_at,
+                        finished_at,
+                        recompute_next_run_if_elapsed,
+                    )
                 };
 
                 tracing::error!(
@@ -171,6 +232,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     None,
                     Some(TaskStatus::Failed.to_string()),
                     None,
+                    None,
                 )
                 .await;
                 let _ = runs_service::finish_run(
@@ -182,6 +244,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     Some(error_str),
                 )
                 .await;
+                change_token::TOKEN.bump();
             }
 
             Err(_timeout) => {
@@ -192,12 +255,20 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     session_id_clone,
                     timeout_secs
                 );
+                let finished_at = Utc::now();
+                let next_run_actual = effective_next_run_at(
+                    &task,
+                    next_run_at,
+                    finished_at,
+                    recompute_next_run_if_elapsed,
+                );
                 let _ = service::update_run_status(
                     &task_id,
                     Some(started_at),
-                    Some(next_run_at),
+                    Some(next_run_actual),
                     None,
                     Some(TaskStatus::Failed.to_string()),
+                    None,
                     None,
                 )
                 .await;
@@ -212,6 +283,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
                     )),
                 )
                 .await;
+                change_token::TOKEN.bump();
             }
         }
 

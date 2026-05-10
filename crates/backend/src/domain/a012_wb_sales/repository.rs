@@ -8,9 +8,11 @@ use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, Statement};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
+use crate::shared::marketplaces::wildberries::datetime::format_wb_local_datetime_seconds;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "a012_wb_sales")]
@@ -359,6 +361,36 @@ pub async fn get_by_sale_id(sale_id: &str) -> Result<Option<WbSales>> {
     Ok(result.map(Into::into))
 }
 
+/// Batch-load existing sale_id → UUID mapping in a single query.
+/// Used by the import loop to avoid per-row SELECT queries.
+pub async fn list_existing_sale_ids(sale_ids: &[String]) -> Result<HashMap<String, Uuid>> {
+    if sale_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut result: HashMap<String, Uuid> = HashMap::with_capacity(sale_ids.len());
+    for chunk in sale_ids.chunks(500) {
+        let placeholders = std::iter::repeat("?")
+            .take(chunk.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT id, sale_id FROM a012_wb_sales WHERE sale_id IN ({}) AND is_deleted = 0",
+            placeholders
+        );
+        let params: Vec<sea_orm::Value> = chunk.iter().map(|id| id.clone().into()).collect();
+        let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        for row in conn().query_all(stmt).await? {
+            let id_str: String = row.try_get("", "id")?;
+            let sid: String = row.try_get("", "sale_id")?;
+            if let Ok(uuid) = Uuid::parse_str(&id_str) {
+                result.insert(sid, uuid);
+            }
+        }
+    }
+    Ok(result)
+}
+
 /// Get by composite unique key (document_no, event_type, supplier_article)
 pub async fn get_by_composite_key(
     document_no: &str,
@@ -374,10 +406,29 @@ pub async fn get_by_composite_key(
     Ok(result.map(Into::into))
 }
 
+/// Upsert without a pre-known existence hint.  Performs an extra SELECT to find
+/// the existing document's UUID.  Prefer `upsert_document_knowing_existence` in
+/// hot paths where the caller already has this information.
 pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
+    let sale_id = aggregate
+        .header
+        .sale_id
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("sale_id is required for upsert_document"))?;
+    let existing_uuid = get_by_sale_id(sale_id)
+        .await?
+        .map(|doc| doc.base.id.value());
+    upsert_document_knowing_existence(aggregate, existing_uuid).await
+}
+
+/// Upsert with a pre-known `existing_uuid`.  Pass `Some(uuid)` when you already
+/// know the record exists (avoids an extra SELECT), or `None` to insert fresh.
+pub async fn upsert_document_knowing_existence(
+    aggregate: &WbSales,
+    existing_uuid: Option<Uuid>,
+) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
 
-    // УПРОЩЕННАЯ ЛОГИКА: Поиск только по sale_id (единственный уникальный ключ)
     let sale_id = aggregate
         .header
         .sale_id
@@ -390,9 +441,6 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
         aggregate.header.document_no
     );
 
-    // Поиск существующего документа только по sale_id
-    let existing = get_by_sale_id(sale_id).await?;
-
     let header_json = serde_json::to_string(&aggregate.header)?;
     let line_json = serde_json::to_string(&aggregate.line)?;
     let state_json = serde_json::to_string(&aggregate.state)?;
@@ -400,7 +448,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let source_meta_json = serde_json::to_string(&aggregate.source_meta)?;
 
     // Denormalized fields for fast queries
-    let sale_date = Some(aggregate.state.sale_dt.to_rfc3339());
+    let sale_date = Some(format_wb_local_datetime_seconds(&aggregate.state.sale_dt));
     let organization_id = Some(aggregate.header.organization_id.clone());
     let connection_id = Some(aggregate.header.connection_id.clone());
     let supplier_article = Some(aggregate.line.supplier_article.clone());
@@ -433,8 +481,7 @@ pub async fn upsert_document(aggregate: &WbSales) -> Result<Uuid> {
     let prod_cost_problem_message = aggregate.prod_cost_problem_message.clone();
     let prod_cost_resolved_total = aggregate.prod_cost_resolved_total;
 
-    if let Some(existing_doc) = existing {
-        let existing_uuid = existing_doc.base.id.value();
+    if let Some(existing_uuid) = existing_uuid {
         tracing::debug!(
             "[REPOSITORY] Updating existing record: id={}, sale_id='{}'",
             existing_uuid,

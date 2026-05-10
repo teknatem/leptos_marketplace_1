@@ -324,7 +324,15 @@ pub async fn send_message(
         _ => DEFAULT_SYSTEM_PROMPT,
     };
     let system_prompt = agent.system_prompt.as_deref().unwrap_or(fallback_prompt);
-    llm_messages.push(ChatMessage::system(system_prompt.to_string()));
+    let now = chrono::Local::now();
+    let system_with_date = format!(
+        "{}\n\n---\nСегодня: {}. Текущий месяц: {}. Текущий год: {}.",
+        system_prompt,
+        now.format("%Y-%m-%d"),
+        now.format("%m.%Y"),
+        now.format("%Y")
+    );
+    llm_messages.push(ChatMessage::system(system_with_date));
 
     // Добавить историю
     for msg in &history {

@@ -175,6 +175,30 @@ impl ProgressTracker {
         }
     }
 
+    /// Учитывает попытку HTTP-запроса до получения ответа.
+    /// Это важно для долгих `send()`/таймаутов: UI сразу показывает, что внешний API был вызван.
+    pub fn record_http_request_attempt(&self, session_id: &str, request_body_len: u64) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.http_request_count = progress.http_request_count.saturating_add(1);
+            progress.http_bytes_sent = progress
+                .http_bytes_sent
+                .saturating_add(request_body_len as i64);
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
+    /// Добавляет размер тела ответа к уже учтённой попытке запроса.
+    pub fn record_http_response_body(&self, session_id: &str, response_body_len: u64) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.http_bytes_received = progress
+                .http_bytes_received
+                .saturating_add(response_body_len as i64);
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
     /// Завершить сессию импорта
     pub fn complete_session(&self, session_id: &str, status: ImportStatus) {
         let mut sessions = self.sessions.write().unwrap();
@@ -183,6 +207,14 @@ impl ProgressTracker {
             progress.completed_at = Some(chrono::Utc::now());
             progress.updated_at = chrono::Utc::now();
         }
+    }
+
+    /// Отметить сессию как отмененную пользователем.
+    ///
+    /// При `AbortHandle::abort()` future импорта дропается и обычный `complete_session`
+    /// внутри executor уже не выполняется, поэтому cancel нужно фиксировать извне.
+    pub fn cancel_session(&self, session_id: &str) {
+        self.complete_session(session_id, ImportStatus::Cancelled);
     }
 
     /// Удалить старые сессии (для очистки памяти)

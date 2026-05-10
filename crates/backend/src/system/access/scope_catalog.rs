@@ -288,6 +288,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         read_label: "Просмотр дашбордов",
         all_label: "Создание и редактирование дашбордов",
     },
+    ScopeDescriptor {
+        scope_id: "bi_timeline",
+        scope_type: ScopeType::System,
+        label: "BI Timeline",
+        description: "Проверка динамики BI-индикаторов по дневным рядам и двум периодам",
+        icon: "line-chart",
+        category: "analytics",
+        read_label: "Просмотр BI Timeline",
+        all_label: "Просмотр и настройка BI Timeline",
+    },
     // ========================================================================
     // AGGREGATES — AI / LLM
     // ========================================================================

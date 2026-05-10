@@ -1,6 +1,8 @@
 //! Main page component for YM Order details (MVVM Standard)
 
-use super::tabs::{CampaignTab, GeneralTab, JsonTab, LinesTab, LinksTab, ProjectionsTab};
+use super::tabs::{
+    CampaignTab, DetailTab, GeneralTab, JsonTab, LinesTab, LinksTab, ProjectionsTab,
+};
 use super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -30,11 +32,17 @@ pub fn YmOrderDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 
     Effect::new({
         let vm = vm.clone();
-        move || match vm.active_tab.get() {
-            "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
-            "projections" if !vm.projections_loaded.get() => vm.load_projections(),
-            "links" if !vm.payment_reports_loaded.get() => vm.load_payment_reports(),
-            _ => {}
+        move || {
+            let active_tab = vm.active_tab.get();
+            if matches!(active_tab, "json" | "detail") && !vm.raw_json_loaded.get() {
+                vm.load_raw_json();
+            }
+            if active_tab == "projections" && !vm.projections_loaded.get() {
+                vm.load_projections();
+            }
+            if matches!(active_tab, "links" | "detail") && !vm.payment_reports_loaded.get() {
+                vm.load_payment_reports();
+            }
         }
     });
 
@@ -196,6 +204,17 @@ fn TabBar(vm: YmOrderDetailsVm) -> impl IntoView {
 
             <button
                 class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "detail"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("detail")
+                }
+            >
+                {icon("bar-chart-3")} "Подробно"
+            </button>
+
+            <button
+                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "campaign"
                 on:click={
                     let vm = vm.clone();
@@ -273,6 +292,7 @@ fn TabContent(vm: YmOrderDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let vm_general = vm.clone();
     let vm_lines = vm.clone();
+    let vm_detail = vm.clone();
     let vm_campaign = vm.clone();
     let vm_links = vm.clone();
     let vm_json = vm.clone();
@@ -282,6 +302,7 @@ fn TabContent(vm: YmOrderDetailsVm) -> impl IntoView {
         {move || match active_tab.get() {
             "general"     => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
             "lines"       => view! { <LinesTab       vm=vm_lines.clone()       /> }.into_any(),
+            "detail"      => view! { <DetailTab      vm=vm_detail.clone()      /> }.into_any(),
             "campaign"    => view! { <CampaignTab    vm=vm_campaign.clone()    /> }.into_any(),
             "links"       => view! { <LinksTab       vm=vm_links.clone()       /> }.into_any(),
             "json"        => view! { <JsonTab        vm=vm_json.clone()        /> }.into_any(),

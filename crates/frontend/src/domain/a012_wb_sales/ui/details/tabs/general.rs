@@ -3,7 +3,7 @@
 use super::super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::card_animated::CardAnimated;
-use crate::shared::date_utils::format_datetime;
+use crate::shared::date_utils::format_datetime_utc_local;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -42,12 +42,12 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let description = sale_data.description.clone();
             let event_type = sale_data.state.event_type.clone();
             let status_norm = sale_data.state.status_norm.clone();
-            let sale_dt = format_datetime(&sale_data.state.sale_dt);
+            let sale_dt = format_datetime_utc_local(&sale_data.state.sale_dt, "%d.%m.%Y %H:%M:%S");
             let last_change_dt = sale_data
                 .state
                 .last_change_dt
                 .as_ref()
-                .map(|d| format_datetime(d))
+                .map(|d| format_datetime_utc_local(d, "%d.%m.%Y %H:%M:%S"))
                 .unwrap_or_else(|| "—".to_string());
             let is_supply = sale_data.state.is_supply.unwrap_or(false);
             let is_realization = sale_data.state.is_realization.unwrap_or(false);
@@ -83,8 +83,10 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                 .warehouse_type
                 .clone()
                 .unwrap_or_else(|| "—".to_string());
-            let created_at = format_datetime(&sale_data.metadata.created_at);
-            let updated_at = format_datetime(&sale_data.metadata.updated_at);
+            let created_at =
+                format_datetime_utc_local(&sale_data.metadata.created_at, "%d.%m.%Y %H:%M:%S");
+            let updated_at =
+                format_datetime_utc_local(&sale_data.metadata.updated_at, "%d.%m.%Y %H:%M:%S");
             let version = sale_data.metadata.version.to_string();
             let mp_ref = sale_data.marketplace_product_ref.clone();
             let nom_ref = sale_data.nomenclature_ref.clone();
@@ -250,7 +252,7 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     <div class="detail-grid__col">
                         <CardAnimated delay_ms=40 nav_id="a012_wb_sales_details_general_status">
                             <h4 class="details-section__title">"Статус"</h4>
-                            <div style="margin: var(--spacing-sm); display: flex; flex-wrap: wrap; gap: var(--spacing-sm);">
+                            <div class="details-status-badges">
                                 <Badge
                                     appearance=BadgeAppearance::Filled
                                     color=if is_fact { BadgeColor::Success } else { BadgeColor::Informative }

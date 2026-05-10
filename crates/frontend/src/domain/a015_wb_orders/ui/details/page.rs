@@ -30,11 +30,20 @@ pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
 
     Effect::new({
         let vm = vm.clone();
-        move || match vm.active_tab.get() {
-            "json" if !vm.raw_json_loaded.get() => vm.load_raw_json(),
-            "links" | "line" if !vm.finance_reports_loaded.get() => vm.load_finance_reports(),
-            "sales" if !vm.wb_sales_loaded.get() => vm.load_wb_sales(),
-            _ => {}
+        move || {
+            let active_tab = vm.active_tab.get();
+            if matches!(active_tab, "json" | "line") && !vm.raw_json_loaded.get() {
+                vm.load_raw_json();
+            }
+            if active_tab == "line" && !vm.marketplace_raw_json_loaded.get() {
+                vm.load_marketplace_raw_json();
+            }
+            if matches!(active_tab, "links" | "line") && !vm.finance_reports_loaded.get() {
+                vm.load_finance_reports();
+            }
+            if active_tab == "sales" && !vm.wb_sales_loaded.get() {
+                vm.load_wb_sales();
+            }
         }
     });
 

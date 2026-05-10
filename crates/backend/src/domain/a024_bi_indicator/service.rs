@@ -16,6 +16,7 @@ pub struct BiIndicatorDto {
     pub code: Option<String>,
     pub description: String,
     pub comment: Option<String>,
+    pub explanation: Option<String>,
 
     /// JSON-представление DataSpec
     pub data_spec: Option<DataSpec>,
@@ -73,6 +74,7 @@ pub async fn create(dto: BiIndicatorDto) -> anyhow::Result<Uuid> {
 
     // Применяем поля из DTO
     indicator.base.comment = dto.comment;
+    indicator.explanation = dto.explanation;
 
     if let Some(data_spec) = dto.data_spec {
         indicator.data_spec = data_spec;
@@ -147,6 +149,7 @@ pub async fn update(dto: BiIndicatorDto) -> anyhow::Result<()> {
     }
     indicator.base.description = description;
     indicator.base.comment = dto.comment;
+    indicator.explanation = dto.explanation;
 
     if let Some(data_spec) = dto.data_spec {
         indicator.data_spec = data_spec;
@@ -413,8 +416,9 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
 
     const TEST_OWNER: &str = "f2fc6986-855d-492b-acff-70c7cd8cdd34";
 
-    // (id, code, description, comment, data_spec, params, view_spec, status)
+    // (id, code, description, comment, explanation, data_spec, params, view_spec, status)
     let records: Vec<(
+        &str,
         &str,
         &str,
         &str,
@@ -428,7 +432,13 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0001-4001-a001-000000000001",
             "IND-REVENUE-WB",
             "Выручка WB",
-            "Сквозной пример: суммарная выручка по выбранным кабинетам WB за период. DataView=dv001_revenue.",
+            "Суммарная выручка по кабинетам Wildberries за выбранный период.",
+            "Источник данных: таблица p904_sales_data. \
+             Формула: SUM(customer_in + customer_out) по всем строкам за период. \
+             Фильтр по кабинетам МП задаётся параметром connection_ids. \
+             Сравнительный период вычисляется автоматически как предыдущий месяц \
+             или задаётся явно через period2_from / period2_to. \
+             DataView: dv001_revenue, metric=revenue.",
             DataSpec {
                 view_id: Some("dv001_revenue".to_string()),
                 metric_id: Some("revenue".to_string()),
@@ -450,7 +460,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0002-4001-a001-000000000002",
             "IND-MARGIN",
             "Маржинальность",
-            "Тестовый индикатор: процент маржи. Кольцеобразный дизайн, пороги зелёный/красный.",
+            "Маржинальность в процентах (тестовый индикатор без источника данных).",
+            "Draft-индикатор для демонстрации кольцевого стиля карточки и порогового раскрашивания: \
+             зелёный при значении выше 25%, красный при значении ниже 10%. \
+             Источник данных не задан — значение не вычисляется до настройки DataSpec.",
             DataSpec::default(),
             vec![],
             custom_view_spec(
@@ -476,7 +489,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0003-4001-a001-000000000003",
             "IND-ORDERS",
             "Количество заказов",
-            "Тестовый индикатор: количество заказов за период. DataView=dv001_revenue, metric=order_count.",
+            "Количество уникальных заказов по кабинетам WB за выбранный период.",
+            "Источник данных: таблица p904_sales_data. \
+             Формула: COUNT(DISTINCT registrator_ref). \
+             Каждый уникальный registrator_ref соответствует отдельному документу-регистратору. \
+             DataView: dv001_revenue, metric=order_count.",
             DataSpec {
                 view_id: Some("dv001_revenue".to_string()),
                 metric_id: Some("order_count".to_string()),
@@ -494,7 +511,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0004-4001-a001-000000000004",
             "IND-REVENUE-OZON",
             "Выручка Ozon",
-            "Тестовый индикатор (draft): выручка Ozon.",
+            "Выручка Ozon за период (заготовка, источник не подключён).",
+            "Draft-индикатор — шаблон для будущего подключения данных Ozon. \
+             DataSpec пустой, вычисление не производится. \
+             Стиль карточки и формат аналогичны IND-REVENUE-WB.",
             DataSpec::default(),
             default_date_params(false),
             custom_view_spec(
@@ -513,7 +533,12 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0006-4001-a001-000000000006",
             "IND-PROFIT-D",
             "Прибыль (дилер)",
-            "Тестовый индикатор: dealer profit за период. DataView=dv001_revenue, metric=profit_d.",
+            "Дилерская прибыль: выручка плюс себестоимость по кабинетам WB.",
+            "Источник данных: таблица p904_sales_data. \
+             Формула: SUM(customer_in + customer_out + cost). \
+             Себестоимость в p904_sales_data хранится со знаком минус, \
+             поэтому сложение с выручкой даёт разницу выручка минус себестоимость. \
+             DataView: dv001_revenue, metric=profit_d.",
             DataSpec {
                 view_id: Some("dv001_revenue".to_string()),
                 metric_id: Some("profit_d".to_string()),
@@ -535,7 +560,12 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0007-4001-a001-000000000007",
             "IND-AVG-CHECK",
             "Средний чек",
-            "Тестовый индикатор: средний чек за период. Формула согласована с revenue / order_count. DataView=dv001_revenue, metric=avg_check.",
+            "Средний чек: отношение реализации по прайсу к количеству заказов.",
+            "DataView: dv006_indicator_ratio_percent, metric=ratio. \
+             Числитель: IND-MP-REV-PRICE (GL-оборот customer_revenue_pl, слой oper). \
+             Знаменатель: IND-ORDERS (COUNT DISTINCT registrator_ref из p904_sales_data). \
+             Результат выражен в рублях. \
+             При нулевом знаменателе значение не вычисляется.",
             DataSpec {
                 view_id: Some("dv006_indicator_ratio_percent".to_string()),
                 metric_id: Some("ratio".to_string()),
@@ -574,7 +604,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0005-4001-a001-000000000005",
             "IND-EMPTY",
             "Новый индикатор (без шаблона)",
-            "Тестовый индикатор без HTML/CSS — для проверки empty-state на вкладке Превью.",
+            "Пустой индикатор-заготовка для тестирования пустого состояния интерфейса.",
+            "Нет ни HTML/CSS-шаблона, ни источника данных. \
+             Используется для проверки отображения вкладки Превью при полностью незаполненной конфигурации. \
+             Статус: draft.",
             DataSpec::default(),
             vec![],
             ViewSpec {
@@ -591,7 +624,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0016-4001-a001-000000000016",
             "IND-GL-MP-ACQ-FACT",
             "MP acquiring (fact)",
-            "Test indicator for dv004_general_ledger_turnovers with turnover_code=mp_acquiring and layer=fact.",
+            "Сумма эквайринга маркетплейса по факту из главной книги.",
+            "DataView: dv004_general_ledger_turnovers, metric=amount. \
+             Источник: таблица sys_general_ledger, оборот mp_acquiring, слой fact. \
+             Слой fact соответствует строкам из официального финансового отчёта маркетплейса. \
+             В отличие от IND-MP-ACQUIRING (слой oper), этот индикатор отражает окончательно зачтённые суммы.",
             DataSpec {
                 view_id: Some("dv004_general_ledger_turnovers".to_string()),
                 metric_id: Some("amount".to_string()),
@@ -632,7 +669,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0017-4001-a001-000000000017",
             "IND-GL-MP-PENALTY-FACT",
             "MP penalty (fact)",
-            "Test indicator for dv004_general_ledger_turnovers with turnover_code=mp_penalty and layer=fact.",
+            "Сумма штрафов и удержаний маркетплейса по факту из главной книги.",
+            "DataView: dv004_general_ledger_turnovers, metric=amount. \
+             Источник: sys_general_ledger, оборот mp_penalty, слой fact. \
+             Штрафы — удержания за нарушения SLA, ненадлежащую упаковку и другие условия договора с маркетплейсом.",
             DataSpec {
                 view_id: Some("dv004_general_ledger_turnovers".to_string()),
                 metric_id: Some("amount".to_string()),
@@ -673,7 +713,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0018-4001-a001-000000000018",
             "IND-GL-MP-LOGISTICS-FACT",
             "MP logistics (fact)",
-            "Ready-to-use BI indicator on DataView dv004_general_ledger_turnovers with turnover_items=mp_ppvz_reward, mp_ppvz_reward_nm, mp_rebill_logistic_cost, mp_rebill_logistic_cost_nm and layer=fact.",
+            "Суммарные логистические расходы маркетплейса по факту из главной книги.",
+            "DataView: dv004_general_ledger_turnovers, metric=amount. \
+             Формула по нескольким оборотам: mp_ppvz_reward + mp_ppvz_reward_nm + mp_rebill_logistic_cost + mp_rebill_logistic_cost_nm, слой fact. \
+             Охватывает вознаграждение WB за логистику и начисления за хранение и доставку из финансового отчёта.",
             DataSpec {
                 view_id: Some("dv004_general_ledger_turnovers".to_string()),
                 metric_id: Some("amount".to_string()),
@@ -725,7 +768,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0019-4001-a001-000000000019",
             "IND-GL-7609-MAIN-BALANCE",
             "Итог 7609 (основные обороты)",
-            "Ready-to-use BI indicator on DataView dv005_gl_account_view_total with account=7609, section=main, metric=balance.",
+            "Итоговое сальдо счёта 7609 по основным оборотам за период.",
+            "DataView: dv005_gl_account_view_total, metric=balance. Параметры: account=7609, section=main. \
+             Счёт 7609 используется для учёта взаиморасчётов с маркетплейсами. \
+             Секция main включает основные операционные обороты, исключая информационные строки секции info. \
+             Сальдо рассчитывается как разница дебетовых и кредитовых оборотов за период.",
             DataSpec {
                 view_id: Some("dv005_gl_account_view_total".to_string()),
                 metric_id: Some("balance".to_string()),
@@ -766,7 +813,12 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0020-4001-a001-000000000020",
             "IND-REV-TO-PRICE-PCT",
             "Выручка к прайсу, %",
-            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=REVENUE and denominator=IND-MP-REV-PRICE.",
+            "Доля фактической выручки к прайсовой цене реализации, в процентах.",
+            "DataView: dv006_indicator_ratio_percent, metric=ratio_percent. \
+             Формула: REVENUE / IND-MP-REV-PRICE * 100. \
+             Числитель REVENUE — выручка из p904_sales_data (dv001). \
+             Знаменатель IND-MP-REV-PRICE — GL-оборот customer_revenue_pl/oper из главной книги. \
+             Показывает, какую долю от максимально возможной выручки по прайсу фактически получил продавец после всех скидок и возвратов.",
             DataSpec {
                 view_id: Some("dv006_indicator_ratio_percent".to_string()),
                 metric_id: Some("ratio_percent".to_string()),
@@ -803,7 +855,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0021-4001-a001-000000000021",
             "IND-GL-7609-TO-PRICE-PCT",
             "7609 к прайсу, %",
-            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=IND-GL-7609-MAIN-BALANCE and denominator=IND-MP-REV-PRICE.",
+            "Доля итога счёта 7609 к реализации по прайсу, в процентах.",
+            "DataView: dv006_indicator_ratio_percent, metric=ratio_percent. \
+             Формула: IND-GL-7609-MAIN-BALANCE / IND-MP-REV-PRICE * 100. \
+             Числитель — сальдо счёта 7609 по основным оборотам, знаменатель — реализация по ценам прайса. \
+             Используется для анализа, какая доля прайсовой выручки осела на счёте взаиморасчётов с МП.",
             DataSpec {
                 view_id: Some("dv006_indicator_ratio_percent".to_string()),
                 metric_id: Some("ratio_percent".to_string()),
@@ -840,7 +896,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0024-4001-a001-000000000024",
             "IND-REV-TO-PRICE-COMPLEMENT-PCT",
             "100% - Выручка к прайсу, %",
-            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=REVENUE and denominator=IND-MP-REV-PRICE, metric=ratio_percent_complement.",
+            "Дополнение к 100%: доля потерь выручки относительно прайса.",
+            "DataView: dv006_indicator_ratio_percent, metric=ratio_percent_complement. \
+             Формула: 100 - (REVENUE / IND-MP-REV-PRICE * 100). \
+             Показывает, какой процент прайсовой выручки был потерян из-за скидок, возвратов и прочих удержаний. \
+             Является зеркальным дополнением к IND-REV-TO-PRICE-PCT.",
             DataSpec {
                 view_id: Some("dv006_indicator_ratio_percent".to_string()),
                 metric_id: Some("ratio_percent_complement".to_string()),
@@ -877,7 +937,11 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             "a024a024-0025-4001-a001-000000000025",
             "IND-GL-7609-TO-PRICE-COMPLEMENT-PCT",
             "100% - 7609 к прайсу, %",
-            "Ready-to-use BI indicator on DataView dv006_indicator_ratio_percent with numerator=IND-GL-7609-MAIN-BALANCE and denominator=IND-MP-REV-PRICE, metric=ratio_percent_complement.",
+            "Дополнение к 100% для доли счёта 7609 к прайсовой реализации.",
+            "DataView: dv006_indicator_ratio_percent, metric=ratio_percent_complement. \
+             Формула: 100 - (IND-GL-7609-MAIN-BALANCE / IND-MP-REV-PRICE * 100). \
+             Зеркальный показатель к IND-GL-7609-TO-PRICE-PCT: \
+             отражает долю прайсовой выручки, не прошедшей через счёт 7609.",
             DataSpec {
                 view_id: Some("dv006_indicator_ratio_percent".to_string()),
                 metric_id: Some("ratio_percent_complement".to_string()),
@@ -913,8 +977,13 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         (
             "a024a024-0022-4001-a001-000000000022",
             "IND-MP-RETURNS-COUNT",
-            "РљРѕР»РёС‡РµСЃС‚РІРѕ РІРѕР·РІСЂР°С‚РѕРІ",
-            "Ready-to-use BI indicator on DataView dv004_general_ledger_turnovers with metric=entry_count, turnover_code=customer_revenue_pl_storno and layer=oper.",
+            "Количество возвратов",
+            "Количество операций возврата покупателей за период.",
+            "DataView: dv004_general_ledger_turnovers, metric=entry_count. \
+             Источник: sys_general_ledger, оборот customer_revenue_pl_storno, слой oper. \
+             Каждая строка GL с этим оборотом соответствует одному возврату. \
+             Используется для мониторинга количества возвратных операций независимо от их суммы — \
+             в отличие от индикатора IND-MP-RETURNS, который отражает сумму.",
             DataSpec {
                 view_id: Some("dv004_general_ledger_turnovers".to_string()),
                 metric_id: Some("entry_count".to_string()),
@@ -950,8 +1019,9 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         (
             "a024a024-0023-4001-a001-000000000023",
             "IND-MP-RETURNS-TO-REV-PCT",
-            "Р’РѕР·РІСЂР°С‚С‹ Рє СЂРµР°Р»РёР·Р°С†РёРё, %",
-            "Ready-to-use BI indicator on DataView dv007_gl_turnover_ratio_percent with numerator=customer_revenue_pl_storno/oper and denominator=customer_revenue_pl/oper.",
+            "Возвраты к реализации, %",
+            "Доля суммы возвратов к реализации по ценам прайса, в процентах.",
+            "DataView: dv007_gl_turnover_ratio_percent, metric=ratio_percent. Числитель: оборот -customer_revenue_pl_storno (стоимость возвратов с инверсией знака) на слое oper. Знаменатель: оборот customer_revenue_pl на том же слое. Показывает, какой процент стоимости реализации был возвращён покупателями. Ориентир: значение выше 10-15% требует анализа причин.",
             DataSpec {
                 view_id: Some("dv007_gl_turnover_ratio_percent".to_string()),
                 metric_id: Some("ratio_percent".to_string()),
@@ -1010,16 +1080,18 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         ),
     ];
 
-    for (id, code, description, comment, data_spec, params, view_spec, status) in records {
+    for (id, code, description, comment, explanation, data_spec, params, view_spec, status) in
+        records
+    {
         let data_spec_json = serialize_json(&data_spec)?;
         let params_json = serialize_json(&params)?;
         let view_spec_json = serialize_json(&view_spec)?;
         let sql = format!(
             "INSERT OR REPLACE INTO a024_bi_indicator \
-            (id, code, description, comment, data_spec_json, params_json, view_spec_json, \
+            (id, code, description, comment, explanation, data_spec_json, params_json, view_spec_json, \
              status, owner_user_id, is_public, created_at, updated_at, version) \
-            VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', 1, datetime('now'), datetime('now'), 1)",
-            id, code, description, comment, data_spec_json, params_json, view_spec_json,
+            VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', 1, datetime('now'), datetime('now'), 1)",
+            id, code, description, comment, explanation, data_spec_json, params_json, view_spec_json,
             status, TEST_OWNER
         );
         db.execute(Statement::from_string(DbBackend::Sqlite, sql))
@@ -1239,6 +1311,7 @@ mod tests {
             code: Some("IND-TEST".to_string()),
             description: "Старое имя".to_string(),
             comment: None,
+            explanation: None,
             data_spec: Some(DataSpec::default()),
             params: None,
             view_spec: Some(ViewSpec {
@@ -1266,6 +1339,7 @@ mod tests {
             code: Some("IND-TEST".to_string()),
             description: "Выручка".to_string(),
             comment: None,
+            explanation: None,
             data_spec: Some(DataSpec::default()),
             params: None,
             view_spec: Some(ViewSpec {
