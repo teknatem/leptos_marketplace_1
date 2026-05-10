@@ -1,9 +1,13 @@
 use crate::app_shell::AppShell;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::modal_stack::{KeydownGuard, ModalHost, ModalStackService};
 use crate::system::auth::context::AuthProvider;
+use crate::system::tasks::api as tasks_api;
+use gloo_timers::future::TimeoutFuture;
 use js_sys::Function;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use thaw::{ConfigProvider, Theme};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -19,6 +23,19 @@ pub fn App() -> impl IntoView {
     provide_context(AppGlobalContext::new());
     // Provide centralized modal stack for CRUD-details modals
     provide_context(ModalStackService::new());
+    // Provide change token context and start the global polling loop
+    let ct = ChangeTokenContext::new();
+    provide_context(ct);
+    spawn_local(async move {
+        loop {
+            TimeoutFuture::new(4000).await;
+            if let Ok(tokens) = tasks_api::fetch_change_tokens().await {
+                if tokens.sys_tasks != ct.sys_tasks.get_untracked() {
+                    ct.sys_tasks.set(tokens.sys_tasks);
+                }
+            }
+        }
+    });
 
     let tabs_store = use_context::<AppGlobalContext>().unwrap();
     let modal_svc = use_context::<ModalStackService>().unwrap();

@@ -130,6 +130,9 @@ pub struct WbOrdersSourceMeta {
     pub g_number: Option<String>,
     /// Ссылка на сырой JSON (ID в document_raw_storage)
     pub raw_payload_ref: String,
+    /// Ссылка на сырой JSON Marketplace API /api/v3/orders, если заказ приходил оттуда.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marketplace_raw_payload_ref: Option<String>,
     /// Дата/время получения из API
     pub fetched_at: DateTime<Utc>,
     /// Версия документа (для отслеживания изменений)

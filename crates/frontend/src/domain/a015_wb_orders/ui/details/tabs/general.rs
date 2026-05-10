@@ -3,7 +3,7 @@
 use super::super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::card_animated::CardAnimated;
-use crate::shared::date_utils::format_datetime;
+use crate::shared::date_utils::format_datetime_utc_local;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -11,6 +11,9 @@ use thaw::*;
 pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
     let tabs_store =
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let supply_link = vm.supply_link;
+    let supply_link_loaded = vm.supply_link_loaded;
+    let supply_link_loading = vm.supply_link_loading;
 
     view! {
         {move || {
@@ -24,18 +27,19 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let document_no = order_data.header.document_no.clone();
             let code = order_data.code.clone();
             let description = order_data.description.clone();
-            let order_dt = format_datetime(&order_data.state.order_dt);
+            let order_dt =
+                format_datetime_utc_local(&order_data.state.order_dt, "%d.%m.%Y %H:%M:%S");
             let last_change_dt = order_data
                 .state
                 .last_change_dt
                 .as_ref()
-                .map(|d| format_datetime(d))
+                .map(|d| format_datetime_utc_local(d, "%d.%m.%Y %H:%M:%S"))
                 .unwrap_or_else(|| "—".to_string());
             let cancel_dt = order_data
                 .state
                 .cancel_dt
                 .as_ref()
-                .map(|d| format_datetime(d))
+                .map(|d| format_datetime_utc_local(d, "%d.%m.%Y %H:%M:%S"))
                 .unwrap_or_else(|| "—".to_string());
             let is_cancel = order_data.state.is_cancel;
             let is_supply = order_data.state.is_supply.unwrap_or(false);
@@ -65,15 +69,15 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                 .oblast_okrug_name
                 .clone()
                 .unwrap_or_else(|| "—".to_string());
-            let created_at = format_datetime(&order_data.metadata.created_at);
-            let updated_at = format_datetime(&order_data.metadata.updated_at);
+            let created_at =
+                format_datetime_utc_local(&order_data.metadata.created_at, "%d.%m.%Y %H:%M:%S");
+            let updated_at =
+                format_datetime_utc_local(&order_data.metadata.updated_at, "%d.%m.%Y %H:%M:%S");
             let version = order_data.metadata.version.to_string();
             let income_id_raw = order_data.source_meta.income_id.filter(|&v| v != 0);
             let income_id = income_id_raw
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "—".to_string());
-            // Supply ID is "WB-GI-{income_id}" — used to navigate to the supply
-            let supply_id_from_income = income_id_raw.map(|v| format!("WB-GI-{}", v));
             let sticker = order_data
                 .source_meta
                 .sticker
@@ -129,31 +133,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"№ поставки (incomeID)"</label>
-                                    {if let Some(ref sid) = supply_id_from_income {
-                                        let sid_clone = sid.clone();
-                                        let sid_text = sid.clone();
-                                        view! {
-                                            <a
-                                                href="#"
-                                                on:click={
-                                                    move |ev: web_sys::MouseEvent| {
-                                                        ev.prevent_default();
-                                                        tabs_store.open_tab(
-                                                            &format!("a029_wb_supply_details_{}", sid_clone),
-                                                            &format!("Поставка {}", sid_clone),
-                                                        );
-                                                    }
-                                                }
-                                                style="display: block; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 4px; color: #0078d4; text-decoration: underline; cursor: pointer; font-size: var(--font-size-sm);"
-                                            >
-                                                {sid_text}
-                                            </a>
-                                        }.into_any()
-                                    } else {
-                                        view! {
-                                            <Input value=RwSignal::new(income_id) attr:readonly=true />
-                                        }.into_any()
-                                    }}
+                                    <Input value=RwSignal::new(income_id) attr:readonly=true />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"G-номер"</label>
@@ -168,6 +148,48 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
 
                         <CardAnimated delay_ms=80 nav_id="a015_wb_orders_details_general_links">
                             <h4 class="details-section__title">"Связанные объекты"</h4>
+                            <div class="form__group">
+                                <label class="form__label">"Поставка"</label>
+                                {move || {
+                                    if supply_link_loading.get() {
+                                        return view! { <span>"Загрузка..."</span> }.into_any();
+                                    }
+
+                                    if let Some(supply) = supply_link.get() {
+                                        let supply_id = supply.supply_id.clone();
+                                        let link_text = supply
+                                            .name
+                                            .clone()
+                                            .filter(|name| !name.trim().is_empty())
+                                            .unwrap_or_else(|| supply.supply_id.clone());
+                                        let tab_title = format!("Поставка {}", link_text);
+                                        let tabs_store = tabs_store.clone();
+
+                                        return view! {
+                                            <a
+                                                href="#"
+                                                on:click=move |ev: web_sys::MouseEvent| {
+                                                    ev.prevent_default();
+                                                    tabs_store.open_tab(
+                                                        &format!("a029_wb_supply_details_{}", supply_id),
+                                                        &tab_title,
+                                                    );
+                                                }
+                                                style="color: #0078d4; text-decoration: underline; cursor: pointer;"
+                                            >
+                                                {link_text}
+                                            </a>
+                                        }
+                                        .into_any();
+                                    }
+
+                                    if supply_link_loaded.get() {
+                                        view! { <span>"Поставка не найдена"</span> }.into_any()
+                                    } else {
+                                        view! { <span>"Загрузка..."</span> }.into_any()
+                                    }
+                                }}
+                            </div>
                             <div class="form__group">
                                 <label class="form__label">"Товар маркетплейса"</label>
                                 <a
@@ -321,7 +343,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                     <div class="detail-grid__col">
                         <CardAnimated delay_ms=40 nav_id="a015_wb_orders_details_general_status">
                             <h4 class="details-section__title">"Статус и склад"</h4>
-                            <Flex gap=FlexGap::Small style="margin-bottom: var(--spacing-md); flex-wrap: wrap;">
+                            <div class="details-status-badges">
                                 <Badge appearance=BadgeAppearance::Tint color=if is_cancel { BadgeColor::Danger } else { BadgeColor::Success }>
                                     {if is_cancel { "Отменен" } else { "Активен" }}
                                 </Badge>
@@ -331,7 +353,7 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 <Badge appearance=BadgeAppearance::Outline color=if is_realization { BadgeColor::Success } else { BadgeColor::Danger }>
                                     {if is_realization { "Realization: Yes" } else { "Realization: No" }}
                                 </Badge>
-                            </Flex>
+                            </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Warehouse"</label>

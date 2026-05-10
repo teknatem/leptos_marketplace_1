@@ -7,6 +7,7 @@ pub mod filter_panel;
 pub mod month_selector;
 pub mod page_header;
 pub mod pagination_controls;
+pub mod popover;
 pub mod sql_viewer;
 pub mod table;
 pub mod table_checkbox;

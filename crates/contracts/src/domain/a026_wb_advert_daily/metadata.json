@@ -1,0 +1,291 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbAdvertDaily",
+  "entity_index": "a026",
+  "collection_name": "wb_advert_daily",
+  "table_name": "a026_wb_advert_daily",
+
+  "ui": {
+    "element_name": "Статистика рекламы WB",
+    "element_name_en": "WB Advert Daily",
+    "list_name": "Статистика рекламы WB по дням",
+    "list_name_en": "WB Advert Daily Stats",
+    "icon": "megaphone"
+  },
+
+  "ai": {
+    "description": "Ежедневная статистика рекламных кампаний Wildberries. Одна запись — один кабинет WB, одна дата и один advert_id. Содержит показы, клики, заказы, расходы на рекламу и JSON детализацию по товарам. Используется для анализа рекламных расходов, ДРР и связи рекламы с продажами через p911_wb_advert_by_items и General Ledger.",
+    "questions": [
+      "Сколько потрачено на рекламу WB за период?",
+      "Какие рекламные кампании WB дали наибольшие расходы?",
+      "Какой CTR, CPC и CR по рекламе WB за период?",
+      "Какие рекламные расходы по кабинету WB?",
+      "Какие товары получили рекламные показы и заказы?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a030_wb_advert_campaign",
+      "p911_wb_advert_by_items"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbAdvertDailyId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Внутренний код документа статистики рекламы WB."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Описание",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 260
+      },
+      "validation": { "required": true },
+      "ai_hint": "Человекочитаемое описание документа: advert_id и дата статистики."
+    },
+    {
+      "name": "advert_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Advert ID",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Числовой идентификатор рекламной кампании WB Advert API. Для связи с кампаниями используй a030_wb_advert_campaign.advert_id."
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Технический номер документа статистики рекламы."
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "date",
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата рекламной статистики WB. Для периода используй document_date >= 'YYYY-MM-DD' AND document_date < 'YYYY-MM-DD'."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": {
+        "label": "Подключение (магазин WB)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения магазина WB из a006_connection_mp. Для названия кабинета: JOIN a006_connection_mp ON a026_wb_advert_daily.connection_id = a006_connection_mp.id."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 180
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса из a005_marketplace. Для WB обычно marketplace code = 'mp-wb'."
+    },
+    {
+      "name": "lines_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Строк",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": { "required": true },
+      "ai_hint": "Количество товарных строк в JSON детализации lines_json."
+    },
+    {
+      "name": "total_views",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Показы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарные показы рекламы за дату и advert_id."
+    },
+    {
+      "name": "total_clicks",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Клики",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарные клики рекламы за дату и advert_id."
+    },
+    {
+      "name": "total_orders",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Заказы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": true },
+      "ai_hint": "Количество заказов, атрибутированных рекламной статистикой WB."
+    },
+    {
+      "name": "total_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Расход",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарные расходы на рекламу WB в рублях. Для суммы рекламных расходов используй SUM(total_sum)."
+    },
+    {
+      "name": "total_sum_price",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма заказов",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": { "required": true },
+      "ai_hint": "Сумма заказов, связанных с рекламной статистикой WB. Для ДРР: SUM(total_sum) / SUM(total_sum_price) * 100, если total_sum_price не равна 0."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Строки JSON",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "textarea"
+      },
+      "validation": { "required": true },
+      "ai_hint": "JSON детализация по товарам: nm_id, nm_name, advert_ids, placements и метрики по строкам. Для аналитики по товарам предпочтительнее использовать projection p911_wb_advert_by_items."
+    },
+    {
+      "name": "fetched_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "datetime",
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата и время получения данных из WB Advert API."
+    }
+  ],
+
+  "access": {
+    "scope_id": "a026_wb_advert_daily",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

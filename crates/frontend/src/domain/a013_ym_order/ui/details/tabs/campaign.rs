@@ -1,6 +1,7 @@
 //! Campaign tab for YM Order
 
 use super::super::view_model::YmOrderDetailsVm;
+use crate::shared::components::card_animated::CardAnimated;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -23,7 +24,7 @@ pub fn CampaignTab(vm: YmOrderDetailsVm) -> impl IntoView {
             let currency = order_data.header.currency.clone().unwrap_or_default();
 
             view! {
-                <Card>
+                <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_campaign_main">
                     <h4 class="details-section__title">"Кампания и суммы"</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                         <div class="form__group">
@@ -84,7 +85,7 @@ pub fn CampaignTab(vm: YmOrderDetailsVm) -> impl IntoView {
                         <label class="form__label">"Fetched At"</label>
                         <Input value=RwSignal::new(order_data.source_meta.fetched_at) attr:readonly=true />
                     </div>
-                </Card>
+                </CardAnimated>
             }
             .into_any()
         }}

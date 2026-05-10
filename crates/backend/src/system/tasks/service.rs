@@ -1,8 +1,24 @@
+use crate::system::tasks::change_token;
 use crate::system::tasks::repository;
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{DateTime, NaiveDate, Utc};
 use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use contracts::system::tasks::request::{CreateScheduledTaskDto, UpdateScheduledTaskDto};
+use std::str::FromStr;
+
+fn next_run_from_cron(schedule_cron: &str, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let schedule = cron::Schedule::from_str(schedule_cron).ok()?;
+    schedule.after(&after).next()
+}
+
+fn next_run_for_enabled_schedule(
+    schedule_cron: &Option<String>,
+    now: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    schedule_cron
+        .as_deref()
+        .and_then(|cron| next_run_from_cron(cron, now))
+}
 
 pub async fn list_all() -> Result<Vec<ScheduledTask>> {
     repository::list_all()
@@ -23,7 +39,7 @@ pub async fn get_by_id(id: &ScheduledTaskId) -> Result<Option<ScheduledTask>> {
 }
 
 pub async fn create(dto: CreateScheduledTaskDto) -> Result<ScheduledTaskId> {
-    let task = ScheduledTask::new_for_insert(
+    let mut task = ScheduledTask::new_for_insert(
         dto.code,
         dto.description,
         dto.comment,
@@ -32,9 +48,13 @@ pub async fn create(dto: CreateScheduledTaskDto) -> Result<ScheduledTaskId> {
         dto.is_enabled,
         dto.config_json,
     );
+    if task.is_enabled {
+        task.next_run_at = next_run_for_enabled_schedule(&task.schedule_cron, Utc::now());
+    }
     repository::save(&task)
         .await
         .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    change_token::TOKEN.bump();
     Ok(task.base.id)
 }
 
@@ -42,6 +62,8 @@ pub async fn update(id: &ScheduledTaskId, dto: UpdateScheduledTaskDto) -> Result
     let mut task = get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Scheduled task not found"))?;
+    let was_enabled = task.is_enabled;
+    let old_schedule_cron = task.schedule_cron.clone();
 
     task.base.code = dto.code;
     task.base.description = dto.description;
@@ -50,17 +72,24 @@ pub async fn update(id: &ScheduledTaskId, dto: UpdateScheduledTaskDto) -> Result
     task.schedule_cron = dto.schedule_cron;
     task.is_enabled = dto.is_enabled;
     task.config_json = dto.config_json;
+    if task.is_enabled && (!was_enabled || task.schedule_cron != old_schedule_cron) {
+        task.next_run_at = next_run_for_enabled_schedule(&task.schedule_cron, Utc::now());
+    }
     task.base.metadata.updated_at = Utc::now();
 
     repository::save(&task)
         .await
-        .map_err(|e| anyhow::anyhow!("Database error: {}", e))
+        .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    change_token::TOKEN.bump();
+    Ok(())
 }
 
 pub async fn delete(id: &ScheduledTaskId) -> Result<()> {
     repository::soft_delete(id.0)
         .await
-        .map_err(|e| anyhow::anyhow!("Database error: {}", e))
+        .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    change_token::TOKEN.bump();
+    Ok(())
 }
 
 pub async fn toggle_enabled(id: &ScheduledTaskId, is_enabled: bool) -> Result<()> {
@@ -68,10 +97,15 @@ pub async fn toggle_enabled(id: &ScheduledTaskId, is_enabled: bool) -> Result<()
         .await?
         .ok_or_else(|| anyhow::anyhow!("Scheduled task not found"))?;
     task.is_enabled = is_enabled;
+    if is_enabled {
+        task.next_run_at = next_run_for_enabled_schedule(&task.schedule_cron, Utc::now());
+    }
     task.base.metadata.updated_at = Utc::now();
     repository::save(&task)
         .await
-        .map_err(|e| anyhow::anyhow!("Database error: {}", e))
+        .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    change_token::TOKEN.bump();
+    Ok(())
 }
 
 pub async fn update_run_status(
@@ -81,6 +115,7 @@ pub async fn update_run_status(
     last_run_log_file: Option<String>,
     last_run_status: Option<String>,
     last_successful_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    data_loaded_up_to: Option<NaiveDate>,
 ) -> Result<()> {
     let mut task = get_by_id(id)
         .await?
@@ -90,19 +125,24 @@ pub async fn update_run_status(
     task.next_run_at = next_run_at;
     task.last_run_log_file = last_run_log_file;
     task.last_run_status = last_run_status;
-    // Only overwrite watermark when a successful timestamp is provided.
+    // Only overwrite success fields when a successful run provides them.
     if let Some(ts) = last_successful_run_at {
         task.last_successful_run_at = Some(ts);
+    }
+    if let Some(date) = data_loaded_up_to {
+        task.data_loaded_up_to = Some(date);
     }
     task.base.metadata.updated_at = Utc::now();
 
     repository::save(&task)
         .await
-        .map_err(|e| anyhow::anyhow!("Database error: {}", e))
+        .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    change_token::TOKEN.bump();
+    Ok(())
 }
 
-/// Устанавливает или сбрасывает watermark (last_successful_run_at) задачи.
-/// `date_str` = "YYYY-MM-DD" → watermark = указанная дата 23:59:59 UTC.
+/// Устанавливает или сбрасывает date-only watermark данных (`data_loaded_up_to`) задачи.
+/// `date_str` = "YYYY-MM-DD" → данные считаются загруженными включительно по указанную дату.
 /// `None` → watermark сбрасывается в NULL, следующий запуск начнёт с work_start_date.
 /// Синхронизирует `last_run_status` в `sys_tasks` после сброса зомби-запусков.
 ///
@@ -118,17 +158,16 @@ pub async fn set_watermark(id: &ScheduledTaskId, date_str: Option<&str>) -> Resu
         .await?
         .ok_or_else(|| anyhow::anyhow!("Scheduled task not found"))?;
 
-    task.last_successful_run_at = match date_str {
-        None => None,
+    task.data_loaded_up_to = match date_str {
+        None => {
+            task.last_successful_run_at = None;
+            None
+        }
         Some(s) => {
-            let date = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| {
+            let date = NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| {
                 anyhow::anyhow!("Invalid date format: expected YYYY-MM-DD, got {s}")
             })?;
-            Some(
-                date.and_hms_opt(23, 59, 59)
-                    .map(|t| t.and_utc())
-                    .ok_or_else(|| anyhow::anyhow!("Date overflow"))?,
-            )
+            Some(date)
         }
     };
     task.base.metadata.updated_at = Utc::now();

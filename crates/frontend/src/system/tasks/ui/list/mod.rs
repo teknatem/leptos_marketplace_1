@@ -2,9 +2,11 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::date_utils::{
     format_duration_ms, format_http_traffic, format_utc_local, TZ_OFFSET_HOURS,
 };
+use chrono::Utc;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::system::tasks::api::{self, RunTaskNowOutcome};
@@ -63,7 +65,35 @@ fn monitoring_http_traffic(run: &TaskRun) -> String {
     .unwrap_or_else(|| "—".to_string())
 }
 
+/// CSS-класс BEM-бейджа для статуса запуска задачи.
+/// Использует классы из components.css: `badge badge--*`
+fn task_run_status_badge_class(status: &str) -> &'static str {
+    match status {
+        "Completed" => "badge badge--success",
+        "CompletedWithErrors" => "badge badge--warning",
+        "Running" => "badge badge--primary",
+        "Failed" => "badge badge--error",
+        "Cancelled" => "badge badge--neutral",
+        _ => "badge badge--neutral",
+    }
+}
+
+fn task_run_status_label(status: &str) -> &'static str {
+    match status {
+        "Completed" => "Успешно",
+        "CompletedWithErrors" => "С ошибками",
+        "Running" => "Выполняется",
+        "Failed" => "Ошибка",
+        "Cancelled" => "Отменено",
+        _ => "—",
+    }
+}
+
 fn live_progress_caption(p: &TaskProgressResponse) -> String {
+    if let Some(current_item) = p.current_item.as_ref().filter(|s| !s.trim().is_empty()) {
+        return current_item.clone();
+    }
+
     p.detail
         .as_ref()
         .map(task_progress_detail_caption_ru)
@@ -177,7 +207,37 @@ impl Sortable for ScheduledTaskResponse {
                 .to_lowercase()
                 .cmp(&other.task_type.to_lowercase()),
             "last_run_at" => self.last_run_at.cmp(&other.last_run_at),
+            "last_run_status" => self
+                .last_run_status
+                .as_deref()
+                .unwrap_or("")
+                .cmp(other.last_run_status.as_deref().unwrap_or("")),
             "is_enabled" => other.is_enabled.cmp(&self.is_enabled),
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+impl Sortable for TaskRun {
+    fn compare_by_field(&self, other: &Self, field: &str) -> Ordering {
+        match field {
+            "task_description" => self
+                .task_description
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .cmp(
+                    &other
+                        .task_description
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase(),
+                ),
+            "started_at" => self.started_at.cmp(&other.started_at),
+            "finished_at" => self.finished_at.cmp(&other.finished_at),
+            "status" => self.status.cmp(&other.status),
+            "triggered_by" => self.triggered_by.cmp(&other.triggered_by),
+            "duration_ms" => self.duration_ms.cmp(&other.duration_ms),
             _ => Ordering::Equal,
         }
     }
@@ -188,12 +248,13 @@ fn SortHeaderCell(
     label: &'static str,
     field: &'static str,
     min_width: f32,
+    #[prop(default = true)] resizable: bool,
     sort_field: ReadSignal<String>,
     sort_ascending: ReadSignal<bool>,
     on_toggle: Callback<&'static str>,
 ) -> impl IntoView {
     view! {
-        <TableHeaderCell resizable=true min_width=min_width>
+        <TableHeaderCell resizable=resizable min_width=min_width>
             <div
                 class="table__sortable-header"
                 style="cursor:pointer;display:flex;align-items:center;gap:4px;user-select:none;"
@@ -309,8 +370,10 @@ fn MonitoringRow(run: TaskRun) -> impl IntoView {
         .finished_at
         .map(|d| format_utc_local(&d, "%d.%m.%y %H:%M:%S"))
         .unwrap_or_else(|| "—".to_string());
-    let task_title = run.task_code.clone().unwrap_or_else(|| run.task_id.clone());
-    let task_sub = run.task_description.clone().unwrap_or_default();
+    let task_title = run
+        .task_description
+        .clone()
+        .unwrap_or_else(|| run.task_id.clone());
     let duration = run
         .duration_ms
         .map(format_duration_ms)
@@ -331,17 +394,13 @@ fn MonitoringRow(run: TaskRun) -> impl IntoView {
         .total_errors
         .map(|v| v.to_string())
         .unwrap_or_else(|| "0".to_string());
+    let task_comment = run.task_comment.clone().unwrap_or_else(|| "—".to_string());
     let status = run.status.clone();
     let mon_http_calls = monitoring_http_calls(&run);
     let mon_http_traffic = monitoring_http_traffic(&run);
 
-    let (status_style, status_label) = match status.as_str() {
-        "Completed" => ("padding:2px 8px;border-radius:999px;background:var(--colorSuccessBackground2);color:var(--colorSuccessForeground1);font-size:12px;font-weight:600;", "Успешно"),
-        "CompletedWithErrors" => ("padding:2px 8px;border-radius:999px;background:var(--colorPaletteYellowBackground2);color:var(--colorPaletteDarkOrangeForeground2);font-size:12px;font-weight:600;", "С ошибками"),
-        "Running"   => ("padding:2px 8px;border-radius:999px;background:var(--colorBrandBackground2);color:var(--colorBrandForeground1);font-size:12px;font-weight:600;",   "В работе"),
-        "Failed"    => ("padding:2px 8px;border-radius:999px;background:var(--colorPaletteRedBackground2);color:var(--color-error);font-size:12px;font-weight:600;",         "Ошибка"),
-        _           => ("padding:2px 8px;border-radius:999px;background:var(--colorNeutralBackground3);color:var(--color-text-secondary);font-size:12px;font-weight:600;",  "—"),
-    };
+    let status_badge_class = task_run_status_badge_class(&status);
+    let status_label = task_run_status_label(&status);
 
     let triggered_style = match run.triggered_by.as_str() {
         "Manual" => "padding:2px 8px;border-radius:999px;background:var(--colorPaletteYellowBackground2);color:var(--colorPaletteDarkOrangeForeground2);font-size:12px;font-weight:600;",
@@ -355,14 +414,12 @@ fn MonitoringRow(run: TaskRun) -> impl IntoView {
     view! {
         <TableRow>
             <TableCell>
-                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-                    <span style="font-size:13px;font-weight:600;font-family:monospace;">{task_title}</span>
-                    {if !task_sub.is_empty() {
-                        view! { <span style="font-size:11px;color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title=task_sub.clone()>{task_sub.clone()}</span> }.into_any()
-                    } else {
-                        view! { <span style="font-size:11px;color:var(--color-text-tertiary);">"—"</span> }.into_any()
-                    }}
-                </div>
+                <TableCellLayout truncate=true>
+                    <span style="font-size:13px;">{task_title}</span>
+                </TableCellLayout>
+            </TableCell>
+            <TableCell>
+                <span style="font-size:12px;color:var(--color-text-tertiary);">{task_comment}</span>
             </TableCell>
             <TableCell>
                 <span style="font-size:12px;color:var(--color-text-secondary);">{started}</span>
@@ -374,21 +431,21 @@ fn MonitoringRow(run: TaskRun) -> impl IntoView {
                 <span style={triggered_style}>{triggered_label}</span>
             </TableCell>
             <TableCell>
-                <span style={status_style}>{status_label}</span>
+                <span class=status_badge_class>{status_label}</span>
             </TableCell>
             <TableCell>
                 <span style="font-size:12px;">{duration}</span>
             </TableCell>
-            <TableCell>
+            <TableCell attr:style="text-align:right;">
                 <span style="font-size:12px;">{processed}</span>
             </TableCell>
-            <TableCell>
+            <TableCell attr:style="text-align:right;">
                 <span style="font-size:12px;color:var(--colorPaletteGreenForeground1);">{inserted}</span>
             </TableCell>
-            <TableCell>
+            <TableCell attr:style="text-align:right;">
                 <span style="font-size:12px;color:var(--colorBrandForeground1);">{updated}</span>
             </TableCell>
-            <TableCell>
+            <TableCell attr:style="text-align:right;">
                 <span style={format!("font-size:12px;{}", if errors != "0" { "color:var(--color-error);" } else { "" })}>
                     {errors.clone()}
                 </span>
@@ -422,6 +479,31 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     let (selected_ids, set_selected_ids) = signal(HashSet::<String>::new());
 
+    // Scheduler global on/off state
+    let scheduler_enabled = RwSignal::new(true);
+
+    // Дата последнего действия со планировщиком (сохраняется в localStorage)
+    const LS_KEY: &str = "sys_tasks_scheduler_last_action";
+    let saved_ts = web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(LS_KEY).ok().flatten());
+    let scheduler_last_action = RwSignal::new(saved_ts);
+
+    /// Возвращает текущее время в МСК как строку "dd.mm.yyyy HH:MM:SS".
+    fn current_msk_str() -> String {
+        let now_ms = js_sys::Date::now() as i64;
+        let now_utc = chrono::DateTime::from_timestamp_millis(now_ms).unwrap_or(Utc::now());
+        format_utc_local(&now_utc, "%d.%m.%Y %H:%M:%S")
+    }
+
+    fn ls_save_scheduler_ts(val: &str) {
+        if let Some(storage) = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+        {
+            let _ = storage.set_item("sys_tasks_scheduler_last_action", val);
+        }
+    }
+
     // Sorting state
     let (sort_field, set_sort_field) = signal("description".to_string());
     let (sort_ascending, set_sort_ascending) = signal(true);
@@ -438,6 +520,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
     // Filter state
     let (filter_type, set_filter_type) = signal(String::new());
     let (filter_text, set_filter_text) = signal(String::new());
+    let (filter_status, set_filter_status) = signal(String::new());
 
     // Unique task types for filter dropdown (computed from loaded tasks)
     let unique_task_types = Signal::derive(move || {
@@ -458,6 +541,15 @@ pub fn ScheduledTaskList() -> impl IntoView {
         let ft = filter_type.get();
         if !ft.is_empty() {
             tasks.retain(|t| t.task_type == ft);
+        }
+
+        let fs = filter_status.get();
+        if !fs.is_empty() {
+            if fs == "__none__" {
+                tasks.retain(|t| t.last_run_status.is_none());
+            } else {
+                tasks.retain(|t| t.last_run_status.as_deref() == Some(fs.as_str()));
+            }
         }
 
         let fx = filter_text.get().to_lowercase();
@@ -488,6 +580,18 @@ pub fn ScheduledTaskList() -> impl IntoView {
     let (mon_filter_status, set_mon_filter_status) = signal(String::new());
     let (mon_filter_text, set_mon_filter_text) = signal(String::new());
 
+    // Monitoring sort (по умолчанию — новые сверху)
+    let (mon_sort_field, set_mon_sort_field) = signal("started_at".to_string());
+    let (mon_sort_ascending, set_mon_sort_ascending) = signal(false);
+    let toggle_mon_sort = Callback::new(move |field: &'static str| {
+        if mon_sort_field.get_untracked() == field {
+            set_mon_sort_ascending.update(|v| *v = !*v);
+        } else {
+            set_mon_sort_field.set(field.to_string());
+            set_mon_sort_ascending.set(true);
+        }
+    });
+
     let filtered_runs = Signal::derive(move || {
         let mut runs = recent_runs.get();
 
@@ -499,19 +603,15 @@ pub fn ScheduledTaskList() -> impl IntoView {
         let fx = mon_filter_text.get().to_lowercase();
         if !fx.is_empty() {
             runs.retain(|r| {
-                r.task_code
+                r.task_description
                     .as_deref()
                     .unwrap_or("")
                     .to_lowercase()
                     .contains(&fx)
-                    || r.task_description
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .contains(&fx)
             });
         }
 
+        sort_list(&mut runs, &mon_sort_field.get(), mon_sort_ascending.get());
         runs
     });
 
@@ -573,22 +673,63 @@ pub fn ScheduledTaskList() -> impl IntoView {
         }
     });
 
-    Effect::new(move |_| match active_tab.get().as_str() {
-        "active" => {
-            fetch_live_memory(true);
-            spawn_local(async move {
-                loop {
-                    TimeoutFuture::new(LIVE_MEMORY_POLL_MS).await;
-                    if active_tab.get_untracked().as_str() != "active" {
-                        break;
-                    }
-                    match api::get_active_runs_with_progress().await {
-                        Ok(resp) => set_live_memory_items.set(resp.items),
-                        Err(e) => log!("Live memory poll failed: {}", e),
-                    }
-                }
-            });
+    // Загружаем начальное состояние планировщика один раз при монтировании.
+    spawn_local(async move {
+        if let Ok(status) = api::fetch_scheduler_status().await {
+            scheduler_enabled.set(status.enabled);
+            // Если в localStorage ещё нет сохранённой даты — записываем текущее время.
+            if scheduler_last_action.get_untracked().is_none() {
+                let ts = current_msk_str();
+                ls_save_scheduler_ts(&ts);
+                scheduler_last_action.set(Some(ts));
+            }
         }
+    });
+
+    // Сохраняем в БД при изменении пользователем; пропускаем первый вызов (инициализацию).
+    Effect::new(move |prev: Option<bool>| {
+        let enabled = scheduler_enabled.get();
+        if let Some(prev_val) = prev {
+            if prev_val != enabled {
+                let ts = current_msk_str();
+                ls_save_scheduler_ts(&ts);
+                scheduler_last_action.set(Some(ts));
+                spawn_local(async move {
+                    if let Err(e) = api::set_scheduler_status(enabled).await {
+                        log!("Failed to set scheduler status: {}", e);
+                    }
+                });
+            }
+        }
+        enabled
+    });
+
+    // Автообновление списка «Задания» при изменении токена на сервере.
+    // prev=None при первом вызове — пропускаем, чтобы не делать двойную загрузку.
+    let ct = use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
+    Effect::new(move |prev: Option<u64>| {
+        let token = ct.sys_tasks.get();
+        if prev.is_some() {
+            load_tasks();
+        }
+        token
+    });
+
+    // Фоновый поллинг живой памяти — всегда, независимо от активной вкладки.
+    // Нужен чтобы счётчик в ярлыке «Активные задачи (N)» обновлялся на любой вкладке.
+    spawn_local(async move {
+        loop {
+            TimeoutFuture::new(LIVE_MEMORY_POLL_MS).await;
+            match api::get_active_runs_with_progress().await {
+                Ok(resp) => set_live_memory_items.set(resp.items),
+                Err(e) => log!("Live memory background poll failed: {}", e),
+            }
+        }
+    });
+
+    Effect::new(move |_| match active_tab.get().as_str() {
+        // При открытии вкладки — немедленная загрузка со спиннером (не ждём следующего тика).
+        "active" => fetch_live_memory(true),
         "monitoring" => load_monitoring_recent(),
         _ => {}
     });
@@ -631,7 +772,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                     Ok(RunTaskNowOutcome::AlreadyRunning(r)) => {
                         warns.push(format!(
                             "Уже выполняется (запущено {})",
-                            r.started_at.format("%d.%m.%Y %H:%M:%S")
+                            format_utc_local(&r.started_at, "%d.%m.%Y %H:%M:%S")
                         ));
                     }
                     Err(e) => warns.push(e),
@@ -668,8 +809,38 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     view! {
         <div id="sys_tasks--list" data-page-category="legacy" class="scheduled-task-list" style="padding: 20px;">
-            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center style="margin-bottom: 16px;">
-                <h2 style="margin: 0; font-size: 24px; font-weight: bold;">"Регламентные задания"</h2>
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                // Левая колонка: заголовок
+                <h2 style="margin:0;font-size:24px;font-weight:bold;flex-shrink:0;">"Регламентные задания"</h2>
+
+                // Центральная зона: занимает всё свободное место, MessageBar внутри — по центру
+                <div style="flex:1;display:flex;justify-content:center;">
+                {move || {
+                    let intent = if scheduler_enabled.get() {
+                        MessageBarIntent::Success
+                    } else {
+                        MessageBarIntent::Warning
+                    };
+                    let label = if scheduler_enabled.get() { "Планировщик включён" } else { "Планировщик выключен" };
+                    let ts = scheduler_last_action.get();
+                    view! {
+                        <MessageBar intent>
+                            <div style="display:flex;align-items:center;gap:10px;padding:0 8px;">
+                                <Switch checked=scheduler_enabled/>
+                                <span style="font-size:13px;font-weight:500;user-select:none;">{label}</span>
+                                {ts.map(|dt| view! {
+                                    <span style="font-size:12px;opacity:0.7;user-select:none;">
+                                        {dt}
+                                    </span>
+                                })}
+                            </div>
+                        </MessageBar>
+                    }
+                }}
+                </div>
+
+                // Правая колонка: кнопки действий
+                <div style="flex-shrink:0;">
                 {move || match active_tab.get().as_str() {
                     "tasks" => view! {
                         <Space gap=SpaceGap::Small>
@@ -735,12 +906,22 @@ pub fn ScheduledTaskList() -> impl IntoView {
                     }.into_any(),
                     _ => view! { <></> }.into_any(),
                 }}
-            </Flex>
+                </div>
+            </div>
 
             <div style="margin-bottom: 16px;">
                 <TabList selected_value=active_tab>
                     <Tab value="tasks".to_string()>"Задания"</Tab>
-                    <Tab value="active".to_string()>"Активные задачи"</Tab>
+                    <Tab value="active".to_string()>
+                        {move || {
+                            let count = live_memory_items.get().len();
+                            if count > 0 {
+                                format!("Активные задачи ({})", count)
+                            } else {
+                                "Активные задачи".to_string()
+                            }
+                        }}
+                    </Tab>
                     <Tab value="monitoring".to_string()>"Мониторинг запусков"</Tab>
                 </TabList>
             </div>
@@ -787,8 +968,22 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     view! { <option value=tv>{t}</option> }
                                 }).collect_view()}
                             </select>
+                            <select
+                                style="padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;cursor:pointer;"
+                                prop:value=move || filter_status.get()
+                                on:change=move |ev| set_filter_status.set(event_target_value(&ev))
+                            >
+                                <option value="">"Все статусы"</option>
+                                <option value="Running">"Выполняется"</option>
+                                <option value="Completed">"Успешно"</option>
+                                <option value="CompletedWithErrors">"С ошибками"</option>
+                                <option value="Failed">"Ошибка"</option>
+                                <option value="__none__">"Не запускалась"</option>
+                            </select>
                             {move || {
-                                let has_filter = !filter_text.get().is_empty() || !filter_type.get().is_empty();
+                                let has_filter = !filter_text.get().is_empty()
+                                    || !filter_type.get().is_empty()
+                                    || !filter_status.get().is_empty();
                                 if has_filter {
                                     view! {
                                         <button
@@ -796,6 +991,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                             on:click=move |_| {
                                                 set_filter_text.set(String::new());
                                                 set_filter_type.set(String::new());
+                                                set_filter_status.set(String::new());
                                             }
                                         >"✕ Сбросить"</button>
                                     }.into_any()
@@ -806,7 +1002,9 @@ pub fn ScheduledTaskList() -> impl IntoView {
                             {move || {
                                 let total = state.get().tasks.len();
                                 let shown = sorted_tasks.get().len();
-                                let has_filter = !filter_text.get().is_empty() || !filter_type.get().is_empty();
+                                let has_filter = !filter_text.get().is_empty()
+                                    || !filter_type.get().is_empty()
+                                    || !filter_status.get().is_empty();
                                 if has_filter {
                                     view! {
                                         <span style="font-size:12px;color:var(--color-text-secondary);">
@@ -833,17 +1031,19 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                             title="Выбрать все / снять выбор"
                                         />
                                     </TableHeaderCell>
-                                    <SortHeaderCell label="Описание" field="description" min_width=220.0
+                                    <SortHeaderCell label="Задача" field="description" min_width=180.0
                                         sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort />
-                                    <SortHeaderCell label="Комментарий" field="comment" min_width=180.0
+                                    <SortHeaderCell label="Комментарий" field="comment" min_width=150.0
                                         sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort />
-                                    <SortHeaderCell label="Тип" field="task_type" min_width=140.0
+                                    <SortHeaderCell label="Тип" field="task_type" min_width=120.0
                                         sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort />
-                                    <TableHeaderCell resizable=true min_width=150.0>"Расписание"</TableHeaderCell>
-                                    <SortHeaderCell label="Последний запуск" field="last_run_at" min_width=140.0
+                                    <TableHeaderCell resizable=true min_width=130.0>"Расписание"</TableHeaderCell>
+                                    <SortHeaderCell label="Последний запуск" field="last_run_at" min_width=120.0
                                         sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort />
-                                    <TableHeaderCell resizable=true min_width=100.0>"Статус"</TableHeaderCell>
-                                    <SortHeaderCell label="Вкл" field="is_enabled" min_width=60.0
+                                    <SortHeaderCell label="Статус" field="last_run_status" min_width=100.0
+                                        sort_field sort_ascending on_toggle=toggle_sort />
+                                    <SortHeaderCell label="Авто" field="is_enabled" min_width=70.0
+                                        resizable=false
                                         sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort />
                                 </TableRow>
                             </TableHeader>
@@ -887,13 +1087,12 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                     .map(describe_cron)
                                                     .unwrap_or_else(|| "—".to_string());
 
-                                                let status_view = match task.last_run_status.as_deref() {
-                                                    Some("Completed") => view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>"Успешно"</Badge> }.into_any(),
-                                                    Some("CompletedWithErrors") => view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Warning>"С ошибками"</Badge> }.into_any(),
-                                                    Some("Running")   => view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>"Запуск"</Badge> }.into_any(),
-                                                    Some("Failed")    => view! { <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>"Ошибка"</Badge> }.into_any(),
-                                                    _                 => view! { <Badge appearance=BadgeAppearance::Tint>"—"</Badge> }.into_any(),
-                                                };
+                                                let status_class = task_run_status_badge_class(
+                                                    task.last_run_status.as_deref().unwrap_or(""),
+                                                );
+                                                let status_label = task_run_status_label(
+                                                    task.last_run_status.as_deref().unwrap_or(""),
+                                                );
 
                                                 let type_text = task.task_type.clone();
 
@@ -965,12 +1164,12 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                         // Тип — truncated
                                                         <TableCell>
                                                             <TableCellLayout truncate=true>
-                                                                <code
+                                                                <span
                                                                     title=type_text.clone()
-                                                                    style="background:var(--colorNeutralBackground3);padding:2px 4px;border-radius:4px;font-size:0.82em;"
+                                                                    style="font-size:var(--font-size-sm);color:var(--color-text-secondary);"
                                                                 >
                                                                     {type_text.clone()}
-                                                                </code>
+                                                                </span>
                                                             </TableCellLayout>
                                                         </TableCell>
 
@@ -994,7 +1193,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                         </TableCell>
 
                                                         // Статус
-                                                        <TableCell>{status_view}</TableCell>
+                                                        <TableCell><span class=status_class>{status_label}</span></TableCell>
 
                                                         // Вкл
                                                         <TableCell>
@@ -1030,9 +1229,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                 view! {
                     <div>
                         <div style="margin-bottom:12px;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--color-text-secondary);background:var(--colorNeutralBackground2);border:1px solid var(--color-border);border-radius:var(--radius-md);">
-                            "Только in-memory: без запросов к БД и без чтения логов с диска. Таблица обновляется каждые 2 с, пока открыта вкладка. Показаны сессии «Running» в трекерах. История завершённых запусков — во вкладке «Мониторинг запусков» (БД) и в карточке "
-                            <strong>"задачи"</strong>
-                            "."
+                               "Все серверные задачи. Обновляется каждые 2 с, пока открыта вкладка. Показаны сессии «Running» в трекерах. История во вкладке «Мониторинг запусков»"
                         </div>
                         {move || if runs_loading.get() {
                             view! {
@@ -1083,7 +1280,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                         <TableHeaderCell attr:style="width:70px;">"Длит."</TableHeaderCell>
                                                         <TableHeaderCell min_width=240.0>"Прогресс"</TableHeaderCell>
                                                         <TableHeaderCell attr:style="width:72px;">
-                                                            <span title="Число прочитанных HTTP-ответов внешнего API">"HTTP"</span>
+                                                            <span title="Число отправленных HTTP-запросов внешнего API">"HTTP"</span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell min_width=140.0>
                                                             <span title="Суммарный размер тел запросов и ответов, без сетевых заголовков">"Трафик"</span>
@@ -1203,16 +1400,23 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHeaderCell min_width=200.0>"Задача"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:140px;">"Начало"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:140px;">"Конец"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:110px;">"Источник"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:90px;">"Статус"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:80px;">"Длит."</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:72px;">"Обраб."</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:72px;">"Новые"</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:72px;">"Изм."</TableHeaderCell>
-                                                    <TableHeaderCell attr:style="width:60px;">"Ошибки"</TableHeaderCell>
+                                                    <SortHeaderCell label="Задача" field="task_description" min_width=180.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <TableHeaderCell min_width=150.0>"Комментарий"</TableHeaderCell>
+                                                    <SortHeaderCell label="Начало" field="started_at" min_width=130.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <SortHeaderCell label="Конец" field="finished_at" min_width=130.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <SortHeaderCell label="Источник" field="triggered_by" min_width=110.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <SortHeaderCell label="Статус" field="status" min_width=100.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <SortHeaderCell label="Длит." field="duration_ms" min_width=80.0
+                                                        sort_field=mon_sort_field sort_ascending=mon_sort_ascending on_toggle=toggle_mon_sort />
+                                                    <TableHeaderCell attr:style="width:72px;text-align:right;">"Обраб."</TableHeaderCell>
+                                                    <TableHeaderCell attr:style="width:72px;text-align:right;">"Новые"</TableHeaderCell>
+                                                    <TableHeaderCell attr:style="width:72px;text-align:right;">"Изм."</TableHeaderCell>
+                                                    <TableHeaderCell attr:style="width:60px;text-align:right;">"Ошибки"</TableHeaderCell>
                                                     <TableHeaderCell attr:style="width:72px;">"HTTP"</TableHeaderCell>
                                                     <TableHeaderCell min_width=132.0>"Трафик"</TableHeaderCell>
                                                 </TableRow>

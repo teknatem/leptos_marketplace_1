@@ -5,6 +5,7 @@ use contracts::system::tasks::metadata::{
     ExternalApiInfo, TaskConfigField, TaskConfigFieldType, TaskMetadata,
 };
 use contracts::system::tasks::progress::TaskProgress;
+use contracts::usecases::u504_import_from_wildberries::progress::ImportStatus;
 use contracts::usecases::u504_import_from_wildberries::request::{ImportMode, ImportRequest};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -56,7 +57,7 @@ static METADATA: TaskMetadata = TaskMetadata {
     constraints: &[
         "Требует API-токена WB с доступом к Statistics API",
         "overlap_days (по умолчанию 1) — запас назад от watermark для надёжности границ",
-        "chunk_days (по умолчанию 30) — максимальный диапазон за один запуск при догоняющей загрузке",
+        "chunk_days (по умолчанию 7) — максимальный диапазон за один запуск при догоняющей загрузке",
         "Сбросьте watermark в карточке задачи для перезагрузки истории с work_start_date",
     ],
     config_fields: &[
@@ -93,7 +94,7 @@ static METADATA: TaskMetadata = TaskMetadata {
         TaskConfigField {
             key: "chunk_days",
             label: "Размер порции (дн)",
-            hint: "Максимальный диапазон за один запуск при догоняющей загрузке истории",
+            hint: "Максимальный диапазон за один запуск. При первичной загрузке истории увеличьте до 30–90 дней для ускорения догона.",
             field_type: TaskConfigFieldType::Integer,
             required: false,
             default_value: Some("7"),
@@ -170,6 +171,24 @@ impl TaskManager for Task004WbSalesManager {
             .await?;
 
         logger.write_log(session_id, "task004: WB Sales completed")?;
+        let completed_with_errors = self
+            .executor
+            .get_progress(session_id)
+            .map(|p| {
+                p.total_errors > 0
+                    || matches!(
+                        p.status,
+                        ImportStatus::CompletedWithErrors | ImportStatus::Failed
+                    )
+            })
+            .unwrap_or(false);
+        if completed_with_errors {
+            logger.write_log(
+                session_id,
+                "task004 completed with errors; watermark will not be moved.",
+            )?;
+            return Ok(TaskRunOutcome::completed_with_errors());
+        }
         Ok(TaskRunOutcome::completed_loaded_to(date_to))
     }
 

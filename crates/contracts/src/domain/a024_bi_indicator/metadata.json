@@ -102,6 +102,25 @@
       }
     },
     {
+      "name": "explanation",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Подробное описание",
+        "label_en": "Explanation",
+        "placeholder": "Опишите смысл индикатора, формулу, источник данных и как интерпретировать результат",
+        "hint": "Подробное описание для пользователя: назначение, логика расчета, источник данных и особенности интерпретации",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Подробное человекочитаемое описание индикатора: что показывает, как считается, по каким данным и как трактовать значение"
+    },
+    {
       "name": "status",
       "rust_type": "String",
       "field_type": "enum",

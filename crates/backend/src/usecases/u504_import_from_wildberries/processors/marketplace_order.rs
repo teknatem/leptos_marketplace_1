@@ -1,5 +1,6 @@
 use super::super::wildberries_api_client::WbMarketplaceOrderRow;
 use crate::domain::a015_wb_orders;
+use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::{
@@ -51,6 +52,9 @@ pub async fn process_marketplace_order(
                     .await?;
             }
         }
+        let raw_json = serde_json::to_string(order)?;
+        let _ =
+            a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json).await?;
         return Ok(false);
     }
 
@@ -71,9 +75,6 @@ pub async fn process_marketplace_order(
         .cloned()
         .unwrap_or_default();
 
-    // Marketplace API price is in kopecks — convert to rubles for consistency
-    let price_rubles = order.price.map(|p| p as f64 / 100.0);
-
     let line = WbOrdersLine {
         // Store the numeric WB order ID so the sticker API can use it later.
         // Statistics API will try to overwrite this with srid; service.rs preserves it.
@@ -90,11 +91,11 @@ pub async fn process_marketplace_order(
         brand: None,
         tech_size: None,
         qty: 1.0,
-        total_price: price_rubles,
+        total_price: None,
         discount_percent: None,
         spp: None,
-        finished_price: price_rubles,
-        price_with_disc: price_rubles,
+        finished_price: None,
+        price_with_disc: None,
         dealer_price_ut: None,
         margin_pro: None,
     };
@@ -102,11 +103,7 @@ pub async fn process_marketplace_order(
     let order_dt = order
         .created_at
         .as_ref()
-        .and_then(|s| {
-            chrono::DateTime::parse_from_rfc3339(s)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-        })
+        .and_then(|s| parse_wb_datetime(s))
         .unwrap_or_else(chrono::Utc::now);
 
     // Determine if cancelled based on status field
@@ -148,6 +145,7 @@ pub async fn process_marketplace_order(
         sticker: None,
         g_number: None,
         raw_payload_ref: String::new(),
+        marketplace_raw_payload_ref: None,
         fetched_at: chrono::Utc::now(),
         document_version: 1,
     };
@@ -174,6 +172,7 @@ pub async fn process_marketplace_order(
     // Store without raw JSON (marketplace API doesn't provide full analytics payload)
     let raw_json = serde_json::to_string(order)?;
     a015_wb_orders::service::store_document_with_raw(document, &raw_json).await?;
+    let _ = a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json).await?;
 
     Ok(true)
 }

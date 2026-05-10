@@ -56,6 +56,11 @@ impl ScheduledTaskWorker {
     }
 
     async fn process_due_tasks(&self) -> Result<()> {
+        if !crate::system::settings::service::get_scheduler_enabled().await? {
+            info!("Scheduler is disabled — skipping task check");
+            return Ok(());
+        }
+
         let now = Utc::now();
         let tasks = service::list_enabled_tasks().await?;
 
@@ -108,6 +113,7 @@ impl ScheduledTaskWorker {
                 Some(log_file_path),
                 Some(TaskStatus::Running.to_string()),
                 None,
+                None,
             )
             .await?;
 
@@ -116,6 +122,7 @@ impl ScheduledTaskWorker {
                 session_id,
                 started_at: now,
                 next_run_at: next_run,
+                recompute_next_run_if_elapsed: true,
                 logger: Arc::clone(&self.logger),
                 registry: Arc::clone(&self.registry),
             });

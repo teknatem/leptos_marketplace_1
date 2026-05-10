@@ -1,6 +1,6 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::card_animated::CardAnimated;
-use crate::shared::date_utils::{format_duration_ms, format_http_traffic};
+use crate::shared::date_utils::{format_duration_ms, format_http_traffic, format_utc_local};
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::system::tasks::api;
@@ -107,7 +107,7 @@ fn TriggeredBadge(triggered_by: String) -> impl IntoView {
 
 #[component]
 fn RunHistoryRow(run: TaskRun) -> impl IntoView {
-    let started = run.started_at.format("%d.%m.%y %H:%M:%S").to_string();
+    let started = format_utc_local(&run.started_at, "%d.%m.%y %H:%M:%S");
     let duration = run
         .duration_ms
         .map(format_duration_ms)
@@ -191,12 +191,14 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
 
     let (saving, set_saving) = signal(false);
     let (saved, set_saved) = signal(false);
+    let (refreshing, set_refreshing) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (task_loaded, set_task_loaded) = signal(false);
     let (is_running, set_is_running) = signal(false);
     let (watermark_saving, set_watermark_saving) = signal(false);
     let (watermark_saved, set_watermark_saved) = signal(false);
     let last_successful_run_at = RwSignal::new(None::<chrono::DateTime<chrono::Utc>>);
+    let data_loaded_up_to = RwSignal::new(None::<chrono::NaiveDate>);
     let watermark_date_input = RwSignal::new(String::new());
 
     let code = RwSignal::new(String::new());
@@ -244,10 +246,11 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                     config_json.set(t.config_json.clone());
                     comment.set(t.comment.clone().unwrap_or_default());
                     last_successful_run_at.set(t.last_successful_run_at);
-                    // Pre-fill watermark input with current date (or today)
+                    data_loaded_up_to.set(t.data_loaded_up_to);
+                    // Pre-fill watermark input with the explicit data watermark.
                     let date_str = t
-                        .last_successful_run_at
-                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                        .data_loaded_up_to
+                        .map(|date| date.to_string())
                         .unwrap_or_default();
                     watermark_date_input.set(date_str);
                     set_task_loaded.set(true);
@@ -292,6 +295,45 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
         });
     });
 
+    // Load the latest run log when the Logs tab is opened. Polling fills this
+    // only for the currently watched session, so existing completed runs need
+    // an explicit load.
+    let logs_task_id = id.clone();
+    Effect::new(move |_| {
+        if active_tab.get() != "logs" {
+            return;
+        }
+        if is_new {
+            return;
+        }
+
+        let tid = logs_task_id.clone();
+        let sid = session_id.get();
+        spawn_local(async move {
+            let sid = match sid {
+                Some(sid) => sid,
+                None => match api::get_task_runs(&tid, Some(1)).await {
+                    Ok(resp) => match resp.runs.first() {
+                        Some(run) => run.session_id.clone(),
+                        None => {
+                            log_content.set("История запусков пуста.".to_string());
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        log_content.set(format!("Не удалось загрузить историю запусков: {}", e));
+                        return;
+                    }
+                },
+            };
+
+            match api::get_task_log(&tid, &sid).await {
+                Ok(log) => log_content.set(log),
+                Err(e) => log_content.set(format!("Не удалось загрузить лог: {}", e)),
+            }
+        });
+    });
+
     // Poll progress when session_id is set
     let poll_task_id = id.clone();
     Effect::new(move |_| {
@@ -320,9 +362,10 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                             set_is_running.set(false);
                             if let Ok(t) = api::get_scheduled_task(&tid).await {
                                 last_successful_run_at.set(t.last_successful_run_at);
+                                data_loaded_up_to.set(t.data_loaded_up_to);
                                 watermark_date_input.set(
-                                    t.last_successful_run_at
-                                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                                    t.data_loaded_up_to
+                                        .map(|date| date.to_string())
                                         .unwrap_or_default(),
                                 );
                             }
@@ -344,6 +387,39 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                 }
                 gloo_timers::future::TimeoutFuture::new(2000).await;
             }
+        });
+    });
+
+    // ---- refresh ----
+    let refresh_id = id.clone();
+    let refresh_sv = StoredValue::new(move || {
+        if is_new {
+            return;
+        }
+        set_refreshing.set(true);
+        set_error.set(None);
+        let tid = refresh_id.clone();
+        spawn_local(async move {
+            match api::get_scheduled_task(&tid).await {
+                Ok(t) => {
+                    code.set(t.code.clone());
+                    description.set(t.description.clone());
+                    task_type.set(t.task_type.clone());
+                    schedule_cron.set(t.schedule_cron.clone().unwrap_or_default());
+                    is_enabled.set(t.is_enabled);
+                    config_json.set(t.config_json.clone());
+                    comment.set(t.comment.clone().unwrap_or_default());
+                    last_successful_run_at.set(t.last_successful_run_at);
+                    data_loaded_up_to.set(t.data_loaded_up_to);
+                    let date_str = t
+                        .data_loaded_up_to
+                        .map(|date| date.to_string())
+                        .unwrap_or_default();
+                    watermark_date_input.set(date_str);
+                }
+                Err(e) => set_error.set(Some(e)),
+            }
+            set_refreshing.set(false);
         });
     });
 
@@ -400,6 +476,10 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                     // Do NOT reset them from the server response —
                     // that would re-create TaskConfigEditor and reset the UI.
                     set_saved.set(true);
+                    spawn_local(async move {
+                        gloo_timers::future::TimeoutFuture::new(2000).await;
+                        set_saved.set(false);
+                    });
                 }
                 Err(e) => set_error.set(Some(e)),
             }
@@ -456,7 +536,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                 Ok(api::RunTaskNowOutcome::AlreadyRunning(r)) => {
                     set_error.set(Some(format!(
                         "Задание уже выполняется. Запущено: {}",
-                        r.started_at.format("%d.%m.%Y %H:%M:%S")
+                        format_utc_local(&r.started_at, "%d.%m.%Y %H:%M:%S")
                     )));
                     set_is_running.set(false);
                 }
@@ -496,6 +576,14 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                                 {icon("copy")}
                                 " Дублировать"
                             </Button>
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| refresh_sv.with_value(|f| f())
+                                disabled=Signal::derive(move || refreshing.get())
+                            >
+                                {icon("refresh")}
+                                {move || if refreshing.get() { " Обновление..." } else { " Обновить" }}
+                            </Button>
                         }.into_any()
                     } else { view! { <></> }.into_any() }}
                     <Button
@@ -503,17 +591,12 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                         on_click=save_task
                         disabled=Signal::derive(move || saving.get())
                     >
-                        {move || if saving.get() {
-                            view! { <>{icon("save")} " Сохранение..."</> }.into_any()
-                        } else {
-                            view! { <>{icon("save")} " Сохранить"</> }.into_any()
+                        {move || match (saving.get(), saved.get()) {
+                            (true, _) => view! { <>{icon("save")} " Сохранение..."</> }.into_any(),
+                            (_, true) => view! { <>"✓ Сохранено"</> }.into_any(),
+                            _         => view! { <>{icon("save")} " Сохранить"</> }.into_any(),
                         }}
                     </Button>
-                    {move || saved.get().then(|| view! {
-                        <span style="color:var(--colorPaletteGreenForeground1);font-size:13px;font-weight:500;">
-                            "✓ Сохранено"
-                        </span>
-                    })}
                     <Button
                         appearance=ButtonAppearance::Secondary
                         on_click=close_tab
@@ -553,7 +636,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
             }}
 
             // ---- Tab bar ----
-            <div style="display:flex;gap:4px;border-bottom:1px solid var(--color-border);">
+            <div class="page__tabs">
                 {["settings", "logs", "history", "metadata"].into_iter().map(|tab| {
                     let tab_s = tab.to_string();
                     let label = match tab {
@@ -565,13 +648,8 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                     };
                     view! {
                         <button
-                            style=move || {
-                                if active_tab.get() == tab_s {
-                                    "padding:8px 16px;border:none;border-bottom:2px solid var(--colorBrandForeground1);background:transparent;cursor:pointer;font-weight:600;color:var(--colorBrandForeground1);font-size:var(--font-size-base);"
-                                } else {
-                                    "padding:8px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;color:var(--color-text-secondary);font-size:var(--font-size-base);"
-                                }
-                            }
+                            class="page__tab"
+                            class:page__tab--active=move || active_tab.get() == tab_s
                             on:click={
                                 let tab_s2 = tab.to_string();
                                 move |_| set_active_tab.set(tab_s2.clone())
@@ -589,43 +667,65 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
             // the browser <select> cannot find the matching <option> before reactive options
             // are painted (timing race), Thaw then writes "" back into the signal.
             <div class="page__content" style=move || if active_tab.get() != "settings" { "display:none;" } else { "" }>
-                // 2-column grid: left = Конфигурация, right = Watermark + Параметры
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-md);align-items:start;">
+                // 2-column grid: left = Идентификация + Конфигурация, right = Watermark + Параметры
+                <div class="detail-grid">
 
-                    // ── Left: Конфигурация ─────────────────────────────────────────────
-                    <CardAnimated delay_ms=0 nav_id="sys_task_details_config">
-                        <h4 class="details-section__title">"Конфигурация"</h4>
-                        {move || {
-                            let schema = metadata.get()
-                                .map(|m| m.config_fields)
-                                .unwrap_or_default();
-                            let editor_ready = is_new || task_loaded.get();
+                    // ── Left column: Идентификация + Конфигурация ─────────────────────
+                    <div class="detail-grid__col">
 
-                            if !schema.is_empty() && editor_ready {
-                                view! {
-                                    <TaskConfigEditor
-                                        config_json=config_json
-                                        schema=schema
-                                    />
-                                }.into_any()
-                            } else {
-                                view! {
-                                    <Textarea
-                                        value=config_json
-                                        placeholder="{ ... }"
-                                        class="monospace-textarea"
-                                        attr:rows=10
-                                    />
-                                    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px;">
-                                        "JSON-конфигурация задачи. Структура зависит от типа обработчика."
-                                    </div>
-                                }.into_any()
-                            }
-                        }}
-                    </CardAnimated>
+                        <CardAnimated delay_ms=0 nav_id="sys_task_details_identity">
+                            <h4 class="details-section__title">"Идентификация"</h4>
+                            <div style="display:flex;flex-direction:column;gap:var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Код"</label>
+                                    <Input value=code placeholder="u501_import_ut" />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Описание"</label>
+                                    <Input value=description placeholder="Импорт из WB" />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Комментарий"</label>
+                                    <Input value=comment placeholder="..." />
+                                </div>
+                            </div>
+                        </CardAnimated>
+
+                        <CardAnimated delay_ms=40 nav_id="sys_task_details_config">
+                            <h4 class="details-section__title">"Конфигурация"</h4>
+                            {move || {
+                                let schema = metadata.get()
+                                    .map(|m| m.config_fields)
+                                    .unwrap_or_default();
+                                let editor_ready = is_new || task_loaded.get();
+
+                                if !schema.is_empty() && editor_ready {
+                                    view! {
+                                        <TaskConfigEditor
+                                            config_json=config_json
+                                            schema=schema
+                                        />
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <Textarea
+                                            value=config_json
+                                            placeholder="{ ... }"
+                                            class="monospace-textarea"
+                                            attr:rows=10
+                                        />
+                                        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px;">
+                                            "JSON-конфигурация задачи. Структура зависит от типа обработчика."
+                                        </div>
+                                    }.into_any()
+                                }
+                            }}
+                        </CardAnimated>
+
+                    </div>
 
                     // ── Right column: Watermark + Параметры ───────────────────────────
-                    <div style="display:flex;flex-direction:column;gap:var(--spacing-md);">
+                    <div class="detail-grid__col">
 
                         // Watermark (только для существующих задач)
                         {move || {
@@ -640,102 +740,130 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                             } else {
                                 "Последнее успешное обновление"
                             };
-                            let value_hint = if is_windowed_task {
-                                "last_successful_run_at:"
-                            } else {
-                                "last_successful_run_at:"
-                            };
                             view! {
                                 <CardAnimated delay_ms=80 nav_id="sys_task_details_watermark">
                                     <h4 class="details-section__title">{card_title}</h4>
-                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                                        <span style="font-size:12px;color:var(--color-text-secondary);white-space:nowrap;">
-                                            {value_hint}
-                                        </span>
-                                        <span style="font-family:monospace;font-size:12px;color:var(--color-text);">
-                                            {move || last_successful_run_at.get()
-                                                .map(|dt| dt.format("%d.%m.%Y %H:%M").to_string())
-                                                .unwrap_or_else(|| "не установлен".to_string())}
-                                        </span>
-                                    </div>
-                                    {if is_windowed_task {
-                                        view! {
-                                            <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
-                                                <input
-                                                    type="date"
-                                                    prop:value=move || watermark_date_input.get()
-                                                    on:input=move |ev| { watermark_date_input.set(event_target_value(&ev)); }
-                                                    style="padding:5px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--colorNeutralBackground1);color:var(--color-text);font-size:13px;"
-                                                />
-                                                <Button
-                                                    appearance=ButtonAppearance::Primary
-                                                    disabled=Signal::derive(move || watermark_saving.get())
-                                                    on_click={
-                                                        let wm_id = wm_task_id.clone();
-                                                        move |_| {
-                                                            let date_val = watermark_date_input.get_untracked();
-                                                            if date_val.is_empty() { return; }
-                                                            set_watermark_saving.set(true);
-                                                            set_watermark_saved.set(false);
-                                                            let tid = wm_id.clone();
-                                                            let dv = date_val.clone();
-                                                            spawn_local(async move {
-                                                                match api::set_watermark(&tid, Some(dv)).await {
-                                                                    Ok(_) => {
-                                                                        if let Ok(t) = api::get_scheduled_task(&tid).await {
-                                                                            last_successful_run_at.set(t.last_successful_run_at);
+                                    <div style="display:flex;flex-direction:column;gap:var(--spacing-sm);">
+                                        {if is_windowed_task {
+                                            view! {
+                                                <div class="form__group">
+                                                    <label class="form__label">"Данные загружены по"</label>
+                                                    <span style="font-size:var(--font-size-base);color:var(--color-text);">
+                                                        {move || data_loaded_up_to.get()
+                                                            .map(|date| date.format("%d.%m.%Y").to_string())
+                                                            .unwrap_or_else(|| "не установлен".to_string())}
+                                                    </span>
+                                                </div>
+                                                <div class="form__group">
+                                                    <label class="form__label">"Последний успешный запуск"</label>
+                                                    <span style="font-size:var(--font-size-base);color:var(--color-text);">
+                                                        {move || last_successful_run_at.get()
+                                                            .map(|dt| format_utc_local(&dt, "%d.%m.%Y %H:%M"))
+                                                            .unwrap_or_else(|| "не установлен".to_string())}
+                                                    </span>
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div class="form__group">
+                                                    <label class="form__label">"Последний успешный запуск"</label>
+                                                    <span style="font-size:var(--font-size-base);color:var(--color-text);">
+                                                        {move || last_successful_run_at.get()
+                                                            .map(|dt| format_utc_local(&dt, "%d.%m.%Y %H:%M"))
+                                                            .unwrap_or_else(|| "не установлен".to_string())}
+                                                    </span>
+                                                </div>
+                                            }.into_any()
+                                        }}
+                                        {if is_windowed_task {
+                                            view! {
+                                                <div class="form__group">
+                                                    <label class="form__label">"Установить watermark вручную"</label>
+                                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+                                                        <input
+                                                            type="date"
+                                                            prop:value=move || watermark_date_input.get()
+                                                            on:input=move |ev| { watermark_date_input.set(event_target_value(&ev)); }
+                                                            style="padding:5px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--colorNeutralBackground1);color:var(--color-text);font-size:var(--font-size-base);"
+                                                        />
+                                                        <Button
+                                                            appearance=ButtonAppearance::Primary
+                                                            disabled=Signal::derive(move || watermark_saving.get())
+                                                            on_click={
+                                                                let wm_id = wm_task_id.clone();
+                                                                move |_| {
+                                                                    let date_val = watermark_date_input.get_untracked();
+                                                                    if date_val.is_empty() { return; }
+                                                                    set_watermark_saving.set(true);
+                                                                    set_watermark_saved.set(false);
+                                                                    let tid = wm_id.clone();
+                                                                    let dv = date_val.clone();
+                                                                    spawn_local(async move {
+                                                                        match api::set_watermark(&tid, Some(dv)).await {
+                                                                            Ok(_) => {
+                                                                                if let Ok(t) = api::get_scheduled_task(&tid).await {
+                                                                                    last_successful_run_at.set(t.last_successful_run_at);
+                                                                                    data_loaded_up_to.set(t.data_loaded_up_to);
+                                                                                    watermark_date_input.set(
+                                                                                        t.data_loaded_up_to
+                                                                                            .map(|date| date.to_string())
+                                                                                            .unwrap_or_default(),
+                                                                                    );
+                                                                                }
+                                                                                set_watermark_saved.set(true);
+                                                                            }
+                                                                            Err(e) => set_error.set(Some(format!("Ошибка: {e}"))),
                                                                         }
-                                                                        set_watermark_saved.set(true);
-                                                                    }
-                                                                    Err(e) => set_error.set(Some(format!("Ошибка: {e}"))),
+                                                                        set_watermark_saving.set(false);
+                                                                    });
                                                                 }
-                                                                set_watermark_saving.set(false);
-                                                            });
-                                                        }
-                                                    }
-                                                >
-                                                    "Установить"
-                                                </Button>
-                                                <Button
-                                                    appearance=ButtonAppearance::Secondary
-                                                    disabled=Signal::derive(move || watermark_saving.get())
-                                                    on_click={
-                                                        let wm_id = wm_task_id.clone();
-                                                        move |_| {
-                                                            set_watermark_saving.set(true);
-                                                            set_watermark_saved.set(false);
-                                                            let tid = wm_id.clone();
-                                                            spawn_local(async move {
-                                                                match api::set_watermark(&tid, None).await {
-                                                                    Ok(_) => {
-                                                                        last_successful_run_at.set(None);
-                                                                        watermark_date_input.set(String::new());
-                                                                        set_watermark_saved.set(true);
-                                                                    }
-                                                                    Err(e) => set_error.set(Some(format!("Ошибка: {e}"))),
+                                                            }
+                                                        >
+                                                            "Установить"
+                                                        </Button>
+                                                        <Button
+                                                            appearance=ButtonAppearance::Secondary
+                                                            disabled=Signal::derive(move || watermark_saving.get())
+                                                            on_click={
+                                                                let wm_id = wm_task_id.clone();
+                                                                move |_| {
+                                                                    set_watermark_saving.set(true);
+                                                                    set_watermark_saved.set(false);
+                                                                    let tid = wm_id.clone();
+                                                                    spawn_local(async move {
+                                                                        match api::set_watermark(&tid, None).await {
+                                                                            Ok(_) => {
+                                                                                last_successful_run_at.set(None);
+                                                                                data_loaded_up_to.set(None);
+                                                                                watermark_date_input.set(String::new());
+                                                                                set_watermark_saved.set(true);
+                                                                            }
+                                                                            Err(e) => set_error.set(Some(format!("Ошибка: {e}"))),
+                                                                        }
+                                                                        set_watermark_saving.set(false);
+                                                                    });
                                                                 }
-                                                                set_watermark_saving.set(false);
-                                                            });
-                                                        }
-                                                    }
-                                                >
-                                                    "Сброс (NULL)"
-                                                </Button>
-                                                {move || watermark_saved.get().then(|| view! {
-                                                    <span style="color:var(--colorPaletteGreenForeground1);font-size:13px;font-weight:500;">"✓"</span>
-                                                })}
-                                            </div>
-                                            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">
-                                                "NULL → загрузка начнётся с work_start_date, по chunk_days дней за раз."
-                                            </div>
-                                        }.into_any()
-                                    } else {
-                                        view! {
-                                            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">
-                                                "Справочная задача: хронология по дням не используется, важна только дата последнего успешного обновления."
-                                            </div>
-                                        }.into_any()
-                                    }}
+                                                            }
+                                                        >
+                                                            "Сброс (NULL)"
+                                                        </Button>
+                                                        {move || watermark_saved.get().then(|| view! {
+                                                            <span style="color:var(--colorSuccessForeground1);font-size:var(--font-size-base);font-weight:600;">"✓ Сохранено"</span>
+                                                        })}
+                                                    </div>
+                                                    <div style="font-size:var(--font-size-sm);color:var(--color-text-tertiary);margin-top:4px;">
+                                                        "NULL — загрузка начнётся с work_start_date, по chunk_days дней за раз."
+                                                    </div>
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div style="font-size:var(--font-size-sm);color:var(--color-text-tertiary);">
+                                                    "Справочная задача: хронология по дням не используется, важна только дата последнего успешного обновления."
+                                                </div>
+                                            }.into_any()
+                                        }}
+                                    </div>
                                 </CardAnimated>
                             }.into_any()
                         }}
@@ -759,21 +887,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                                     <label class="form__label">"Расписание (Cron)"</label>
                                     <CronEditor value=schedule_cron />
                                 </div>
-                                <div class="details-grid--2col">
-                                    <div class="form__group">
-                                        <label class="form__label">"Код"</label>
-                                        <Input value=code placeholder="u501_import_ut" />
-                                    </div>
-                                    <div class="form__group">
-                                        <label class="form__label">"Описание"</label>
-                                        <Input value=description placeholder="Импорт из WB" />
-                                    </div>
-                                </div>
-                                <div class="form__group">
-                                    <label class="form__label">"Комментарий"</label>
-                                    <Input value=comment placeholder="..." />
-                                </div>
-                                <Checkbox checked=is_enabled label="Задача включена" />
+                                <Checkbox checked=is_enabled label="Автоматически запускать задачу" />
                             </div>
                         </CardAnimated>
 
@@ -853,7 +967,7 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
 
             // ---- Metadata tab ----
             <div class="page__content" style=move || if active_tab.get() != "metadata" { "display:none;" } else { "" }>
-                <div style="display:flex;flex-direction:column;gap:var(--spacing-md);">
+                <div style="display:grid;grid-template-columns:minmax(0,840px);justify-content:center;padding:var(--spacing-sm);gap:var(--spacing-md);">
                     {move || match metadata.get() {
                         None => view! {
                             <div style="padding:32px;text-align:center;color:var(--color-text-secondary);">
@@ -868,49 +982,45 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                             </div>
                         }.into_any(),
                         Some(m) => view! {
-                            <div class="card">
-                                <div class="card__header">
-                                    <h3 class="scheduled-task-details__card-title">{m.display_name.clone()}</h3>
-                                </div>
-                                <div class="card__body">
-                                    <div style="display:flex;flex-direction:column;gap:16px;">
-                                        <div>
-                                            <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:6px;">"Описание"</div>
-                                            <div style="font-size:var(--font-size-base);color:var(--color-text);line-height:1.6;">{m.description.clone()}</div>
-                                        </div>
-                                        {if !m.external_apis.is_empty() { view! {
-                                            <div>
-                                                <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Внешние API"</div>
-                                                <div style="display:flex;flex-direction:column;gap:8px;">
-                                                    {m.external_apis.iter().map(|api| {
-                                                        let name = api.name.clone();
-                                                        let url  = api.base_url.clone();
-                                                        let rate = api.rate_limit_desc.clone();
-                                                        view! {
-                                                            <div style="padding:10px 14px;border-radius:var(--radius-md);background:var(--colorNeutralBackground3);border-left:3px solid var(--colorBrandStroke1);">
-                                                                <div style="font-weight:600;font-size:var(--font-size-base);">{name}</div>
-                                                                <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px;font-family:monospace;">{url}</div>
-                                                                <div style="font-size:12px;color:var(--colorPaletteDarkOrangeForeground2);margin-top:4px;">"⏱ " {rate}</div>
-                                                            </div>
-                                                        }
-                                                    }).collect_view()}
-                                                </div>
-                                            </div>
-                                        }.into_any() } else { view! { <></> }.into_any() }}
-                                        {if !m.constraints.is_empty() { view! {
-                                            <div>
-                                                <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Ограничения"</div>
-                                                <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;">
-                                                    {m.constraints.iter().map(|c| {
-                                                        let c = c.clone();
-                                                        view! { <li style="font-size:var(--font-size-base);color:var(--color-text);line-height:1.5;">{c}</li> }
-                                                    }).collect_view()}
-                                                </ul>
-                                            </div>
-                                        }.into_any() } else { view! { <></> }.into_any() }}
+                            <CardAnimated delay_ms=0 nav_id="sys_task_details_metadata_info">
+                                <h4 class="details-section__title">{m.display_name.clone()}</h4>
+                                <div style="display:flex;flex-direction:column;gap:var(--spacing-md);">
+                                    <div>
+                                        <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:6px;">"Описание"</div>
+                                        <div style="font-size:var(--font-size-base);color:var(--color-text);line-height:1.6;">{m.description.clone()}</div>
                                     </div>
+                                    {if !m.external_apis.is_empty() { view! {
+                                        <div>
+                                            <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Внешние API"</div>
+                                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                                {m.external_apis.iter().map(|api| {
+                                                    let name = api.name.clone();
+                                                    let url  = api.base_url.clone();
+                                                    let rate = api.rate_limit_desc.clone();
+                                                    view! {
+                                                        <div style="padding:10px 14px;border-radius:var(--radius-md);background:var(--colorNeutralBackground3);border-left:3px solid var(--colorBrandStroke1);">
+                                                            <div style="font-weight:600;font-size:var(--font-size-base);">{name}</div>
+                                                            <div style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin-top:2px;font-family:monospace;">{url}</div>
+                                                            <div style="font-size:var(--font-size-sm);color:var(--colorPaletteDarkOrangeForeground2);margin-top:4px;">"⏱ " {rate}</div>
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        </div>
+                                    }.into_any() } else { view! { <></> }.into_any() }}
+                                    {if !m.constraints.is_empty() { view! {
+                                        <div>
+                                            <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Ограничения"</div>
+                                            <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;">
+                                                {m.constraints.iter().map(|c| {
+                                                    let c = c.clone();
+                                                    view! { <li style="font-size:var(--font-size-base);color:var(--color-text);line-height:1.5;">{c}</li> }
+                                                }).collect_view()}
+                                            </ul>
+                                        </div>
+                                    }.into_any() } else { view! { <></> }.into_any() }}
                                 </div>
-                            </div>
+                            </CardAnimated>
                         }.into_any(),
                     }}
                 </div>

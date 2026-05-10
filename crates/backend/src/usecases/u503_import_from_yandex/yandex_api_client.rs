@@ -1,6 +1,7 @@
 use anyhow::Result;
-use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::a006_connection_mp::aggregate::{AuthorizationType, ConnectionMP};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
+use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -39,6 +40,35 @@ impl YandexApiClient {
         }
     }
 
+    fn apply_auth(
+        &self,
+        request: RequestBuilder,
+        connection: &ConnectionMP,
+    ) -> Result<RequestBuilder> {
+        let token = connection.api_key.trim();
+        if token.is_empty() {
+            anyhow::bail!("Yandex Market API token is required");
+        }
+
+        match &connection.authorization_type {
+            AuthorizationType::ApiKey => Ok(request.header("Api-Key", token)),
+            AuthorizationType::OAuth2 => {
+                Ok(request.header("Authorization", format!("Bearer {}", token)))
+            }
+            AuthorizationType::BasicAuth => {
+                anyhow::bail!("Basic Auth is not supported for Yandex Market API")
+            }
+        }
+    }
+
+    fn auth_log_label(&self, connection: &ConnectionMP) -> &'static str {
+        match &connection.authorization_type {
+            AuthorizationType::ApiKey => "Api-Key: ****",
+            AuthorizationType::OAuth2 => "Authorization: Bearer ****",
+            AuthorizationType::BasicAuth => "Basic Auth: unsupported",
+        }
+    }
+
     /// Получить список товаров через Yandex Market API
     /// Endpoint: POST /v2/businesses/{businessId}/offer-mappings
     pub async fn fetch_product_list(
@@ -53,7 +83,7 @@ impl YandexApiClient {
         })?;
 
         if connection.api_key.trim().is_empty() {
-            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+            anyhow::bail!("Yandex Market API token is required");
         }
 
         let url = format!(
@@ -81,19 +111,20 @@ impl YandexApiClient {
             .map(|s| s.to_string());
 
         self.log_to_file(&format!(
-            "=== REQUEST ===\nPOST {}\nAuthorization: Bearer ****\nQuery: limit={}, page_token={:?}",
-            url, request_query.limit, token_preview
+            "=== REQUEST ===\nPOST {}\n{}\nQuery: limit={}, page_token={:?}",
+            url,
+            self.auth_log_label(connection),
+            request_query.limit,
+            token_preview
         ));
 
-        let response = match self
+        let request = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
             .header("Content-Type", "application/json")
-            .query(&request_query)
-            .send()
-            .await
-        {
+            .query(&request_query);
+
+        let response = match self.apply_auth(request, connection)?.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 let error_msg = format!("HTTP request failed: {:?}", e);
@@ -180,7 +211,7 @@ impl YandexApiClient {
         })?;
 
         if connection.api_key.trim().is_empty() {
-            anyhow::bail!("Bearer token is required for Yandex Market API");
+            anyhow::bail!("Yandex Market API token is required");
         }
 
         let url = format!(
@@ -192,19 +223,19 @@ impl YandexApiClient {
 
         let body = serde_json::to_string(&request_body)?;
         self.log_to_file(&format!(
-            "=== REQUEST ===\nPOST {}\nAuthorization: Bearer ****\nBody: {}",
-            url, body
+            "=== REQUEST ===\nPOST {}\n{}\nBody: {}",
+            url,
+            self.auth_log_label(connection),
+            body
         ));
 
-        let response = match self
+        let request = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
             .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await
-        {
+            .body(body);
+
+        let response = match self.apply_auth(request, connection)?.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 let error_msg = format!("HTTP request failed: {:?}", e);
@@ -482,7 +513,7 @@ impl YandexApiClient {
         })?;
 
         if connection.api_key.trim().is_empty() {
-            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+            anyhow::bail!("Yandex Market API token is required");
         }
 
         let url = format!(
@@ -509,18 +540,16 @@ impl YandexApiClient {
         };
 
         self.log_to_file(&format!(
-            "=== REQUEST PAGE {} ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
-            page, url, query
+            "=== REQUEST PAGE {} ===\nGET {}\n{}\nQuery: {:?}",
+            page,
+            url,
+            self.auth_log_label(connection),
+            query
         ));
 
-        let response = match self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
-            .query(&query)
-            .send()
-            .await
-        {
+        let request = self.client.get(&url).query(&query);
+
+        let response = match self.apply_auth(request, connection)?.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 let error_msg = format!("HTTP request failed: {:?}", e);
@@ -585,7 +614,7 @@ impl YandexApiClient {
         })?;
 
         if connection.api_key.trim().is_empty() {
-            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+            anyhow::bail!("Yandex Market API token is required");
         }
 
         let url = format!(
@@ -594,17 +623,14 @@ impl YandexApiClient {
         );
 
         self.log_to_file(&format!(
-            "=== REQUEST ===\nGET {}\nAuthorization: Bearer ****",
-            url
+            "=== REQUEST ===\nGET {}\n{}",
+            url,
+            self.auth_log_label(connection)
         ));
 
-        let response = match self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
-            .send()
-            .await
-        {
+        let request = self.client.get(&url);
+
+        let response = match self.apply_auth(request, connection)?.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 let error_msg = format!("HTTP request failed: {:?}", e);
@@ -1001,7 +1027,7 @@ impl YandexApiClient {
         })?;
 
         if connection.api_key.trim().is_empty() {
-            anyhow::bail!("Bearer token (API Key) is required for Yandex Market API");
+            anyhow::bail!("Yandex Market API token is required");
         }
 
         let url = format!(
@@ -1021,18 +1047,15 @@ impl YandexApiClient {
         }
 
         self.log_to_file(&format!(
-            "=== REQUEST RETURNS PAGE ===\nGET {}\nAuthorization: Bearer ****\nQuery: {:?}",
-            url, query_params
+            "=== REQUEST RETURNS PAGE ===\nGET {}\n{}\nQuery: {:?}",
+            url,
+            self.auth_log_label(connection),
+            query_params
         ));
 
-        let response = match self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
-            .query(&query_params)
-            .send()
-            .await
-        {
+        let request = self.client.get(&url).query(&query_params);
+
+        let response = match self.apply_auth(request, connection)?.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 let error_msg = format!("HTTP request failed: {:?}", e);
@@ -1131,12 +1154,14 @@ impl YandexApiClient {
             url, business_id, date_from, date_to
         ));
 
-        let response = self
+        let request = self
             .client
             .post(url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&body);
+
+        let response = self
+            .apply_auth(request, connection)?
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to request payment report generation: {}", e))?;
@@ -1185,10 +1210,10 @@ impl YandexApiClient {
             report_id
         );
 
+        let request = self.client.get(&url);
+
         let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", &connection.api_key))
+            .apply_auth(request, connection)?
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to poll report status: {}", e))?;

@@ -79,6 +79,8 @@ pub struct SourceMetaDto {
     pub sticker: Option<String>,
     pub g_number: Option<String>,
     pub raw_payload_ref: String,
+    #[serde(default)]
+    pub marketplace_raw_payload_ref: Option<String>,
     pub fetched_at: String,
     pub document_version: i32,
 }
@@ -117,6 +119,13 @@ pub struct OrganizationInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketplaceInfo {
     pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSupplyLinkInfo {
+    pub id: String,
+    pub supply_id: String,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,6 +241,27 @@ pub async fn fetch_wb_sales(document_no: &str) -> Result<Vec<WbSalesListItemDto>
         .json()
         .await
         .map_err(|e| format!("Failed to parse wb sales: {}", e))
+}
+
+pub async fn fetch_supply_for_order(order_id: &str) -> Result<Option<WbSupplyLinkInfo>, String> {
+    let url = format!("{}/api/a029/wb-supply/by-order/{}", api_base(), order_id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch supply link: {}", e))?;
+
+    if response.status() == 404 {
+        return Ok(None);
+    }
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    response
+        .json()
+        .await
+        .map(Some)
+        .map_err(|e| format!("Failed to parse supply link: {}", e))
 }
 
 pub async fn fetch_marketplace_product(id: &str) -> Result<MarketplaceProductInfo, String> {

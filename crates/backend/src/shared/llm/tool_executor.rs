@@ -213,6 +213,10 @@ fn analyst_tool_definitions() -> Vec<ToolDefinition> {
                     "description": { "type": "string", "description": "Человекочитаемое название отчёта." },
                     "period2_from": { "type": "string", "description": "Начало периода сравнения (опционально)." },
                     "period2_to": { "type": "string", "description": "Конец периода сравнения (опционально)." },
+                    "params": {
+                        "type": "object",
+                        "description": "Дополнительные параметры DataView, например {\"layer\":\"fact\",\"turnover_code\":\"mp_commission\"} для dv004."
+                    },
                     "connection_mp_refs": {
                         "type": "array",
                         "items": { "type": "string" },
@@ -583,6 +587,11 @@ async fn create_drilldown_report_tool(
                 .collect()
         })
         .unwrap_or_default();
+    let extra_params = args
+        .get("params")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
 
     // Validate DataView exists
     let registry = crate::data_view::DataViewRegistry::new();
@@ -607,7 +616,7 @@ async fn create_drilldown_report_tool(
         "period2_from": period2_from,
         "period2_to": period2_to,
         "connection_mp_refs": connection_mp_refs,
-        "params": {}
+        "params": extra_params
     });
 
     let params_json_str = params_json.to_string().replace('\'', "''");
@@ -642,6 +651,7 @@ async fn create_drilldown_report_tool(
         "metric_id": metric_id,
         "date_from": date_from,
         "date_to": date_to,
+        "params": extra_params,
     });
 
     let artifact_dto = crate::domain::a019_llm_artifact::service::LlmArtifactDto {

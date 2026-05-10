@@ -2,6 +2,8 @@ use super::{MarketplaceClient, TestConnectionResult};
 use async_trait::async_trait;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMPDto;
 
+pub mod datetime;
+
 /// Клиент для работы с API Wildberries
 pub struct WildberriesClient;
 

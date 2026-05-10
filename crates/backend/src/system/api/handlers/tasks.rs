@@ -1,4 +1,5 @@
 use crate::system::tasks::abort_registry;
+use crate::system::tasks::change_token;
 use crate::system::tasks::logger::get_global_task_logger;
 use crate::system::tasks::registry::get_global_registry;
 use crate::system::tasks::runs_service;
@@ -11,7 +12,8 @@ use contracts::system::tasks::aggregate::ScheduledTaskId;
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::{TaskProgressResponse, TaskStatus};
 use contracts::system::tasks::request::{
-    CreateScheduledTaskDto, SetWatermarkDto, ToggleScheduledTaskEnabledDto, UpdateScheduledTaskDto,
+    CreateScheduledTaskDto, SchedulerStatusDto, SetWatermarkDto, ToggleScheduledTaskEnabledDto,
+    UpdateScheduledTaskDto,
 };
 use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
 use contracts::system::tasks::runs::{
@@ -185,6 +187,7 @@ pub async fn run_task_now(
         Some(log_file_path),
         Some(TaskStatus::Running.to_string()),
         None,
+        None,
     )
     .await;
 
@@ -193,6 +196,7 @@ pub async fn run_task_now(
         session_id: session_id.clone(),
         started_at: now,
         next_run_at,
+        recompute_next_run_if_elapsed: false,
         logger,
         registry,
     });
@@ -402,6 +406,25 @@ pub async fn set_watermark(
 pub async fn abort_task_run(
     Path(session_id): Path<String>,
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
+    let run_before_finish = runs_service::get_run_by_session(&session_id)
+        .await
+        .ok()
+        .flatten();
+    let run_was_known = run_before_finish.is_some();
+    let task_id_for_status = run_before_finish
+        .as_ref()
+        .and_then(|run| ScheduledTaskId::from_string(&run.task_id).ok());
+
+    if let Some(task_id) = task_id_for_status.as_ref() {
+        if let Ok(Some(task)) = service::get_by_id(task_id).await {
+            if let Some(registry) = get_global_registry() {
+                if let Some(manager) = registry.get(&task.task_type) {
+                    manager.cancel_progress(&session_id);
+                }
+            }
+        }
+    }
+
     let aborted = abort_registry::abort(&session_id);
     if !aborted {
         // Задача уже завершилась или session_id неверен — всё равно чистим БД на случай «зависшей» записи.
@@ -418,23 +441,55 @@ pub async fn abort_task_run(
     .await;
 
     // Синхронизировать last_run_status в sys_tasks
-    if let Ok(Some(run)) = runs_service::get_run_by_session(&session_id).await {
-        if let Ok(task_id) = ScheduledTaskId::from_string(&run.task_id) {
-            let _ = service::update_run_status(
-                &task_id,
-                None,
-                None,
-                None,
-                Some("Cancelled".to_string()),
-                None,
-            )
-            .await;
-        }
+    if let Some(task_id) = task_id_for_status {
+        let _ = service::update_run_status(
+            &task_id,
+            None,
+            None,
+            None,
+            Some("Cancelled".to_string()),
+            None,
+            None,
+        )
+        .await;
     }
 
-    if aborted {
+    if aborted || run_was_known {
         Ok(axum::http::StatusCode::OK)
     } else {
         Err(axum::http::StatusCode::NOT_FOUND)
+    }
+}
+
+/// GET /api/sys/change-tokens
+pub async fn get_change_tokens() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "sys_tasks": change_token::TOKEN.get(),
+    }))
+}
+
+/// GET /api/sys/scheduler/status
+pub async fn get_scheduler_status() -> Result<Json<SchedulerStatusDto>, axum::http::StatusCode> {
+    match crate::system::settings::service::get_scheduler_enabled().await {
+        Ok(enabled) => Ok(Json(SchedulerStatusDto { enabled })),
+        Err(e) => {
+            tracing::error!("Failed to get scheduler status: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// POST /api/sys/scheduler/status
+pub async fn set_scheduler_status(
+    Json(dto): Json<SchedulerStatusDto>,
+) -> Result<Json<SchedulerStatusDto>, axum::http::StatusCode> {
+    match crate::system::settings::service::set_scheduler_enabled(dto.enabled).await {
+        Ok(_) => Ok(Json(SchedulerStatusDto {
+            enabled: dto.enabled,
+        })),
+        Err(e) => {
+            tracing::error!("Failed to set scheduler status: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }

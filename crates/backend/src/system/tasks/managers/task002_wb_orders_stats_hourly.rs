@@ -147,6 +147,14 @@ impl TaskManager for Task002WbOrdersStatsHourlyManager {
             session_id,
             &format!("task002 Statistics orders: {date_from} → {date_to}"),
         )?;
+        logger.write_log(
+            session_id,
+            &format!(
+                "WB request: GET https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom={}T00:00:00&flag=0; connection_id={}; Authorization=****",
+                date_from.format("%Y-%m-%d"),
+                config.connection_id
+            ),
+        )?;
 
         let request = ImportRequest {
             connection_id: config.connection_id.clone(),
@@ -156,9 +164,25 @@ impl TaskManager for Task002WbOrdersStatsHourlyManager {
             mode: ImportMode::Background,
         };
 
-        self.executor
+        if let Err(e) = self
+            .executor
             .execute_import(session_id, &request, &connection)
-            .await?;
+            .await
+        {
+            let error_message = e.to_string();
+            if error_message.starts_with("WB_RATE_LIMIT_DEFERRED:") {
+                logger.write_log(
+                    session_id,
+                    &format!(
+                        "task002 WB orders Statistics deferred by WB rate limit: {}",
+                        error_message
+                    ),
+                )?;
+                return Ok(TaskRunOutcome::completed_with_errors());
+            }
+
+            return Err(e);
+        }
 
         logger.write_log(session_id, "task002 WB orders Statistics completed.")?;
         Ok(TaskRunOutcome::completed_loaded_to(date_to))
@@ -173,5 +197,9 @@ impl TaskManager for Task002WbOrdersStatsHourlyManager {
 
     fn list_live_progress_sessions(&self) -> Vec<TaskProgress> {
         self.executor.list_live_task_progress()
+    }
+
+    fn cancel_progress(&self, session_id: &str) {
+        self.executor.progress_tracker.cancel_session(session_id);
     }
 }

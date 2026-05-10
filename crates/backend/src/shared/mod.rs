@@ -1,4 +1,6 @@
 pub mod analytics;
+pub mod bi_timeline;
+pub mod change_token;
 pub mod config;
 pub mod data;
 pub mod drilldown;

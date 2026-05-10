@@ -69,6 +69,7 @@ pub fn configure_business_routes() -> Router {
         // System views with scopes
         .merge(dashboard_routes())
         .merge(data_view_routes())
+        .merge(bi_timeline_routes())
         .merge(general_ledger_routes())
         .merge(misc_routes())
 }
@@ -981,6 +982,10 @@ fn a029_routes() -> Router {
             get(handlers::a029_wb_supply::get_supply_by_wb_id),
         )
         .route(
+            "/api/a029/wb-supply/by-order/:order_id",
+            get(handlers::a029_wb_supply::get_supply_for_order),
+        )
+        .route(
             "/api/a029/wb-supply/:id",
             get(handlers::a029_wb_supply::get_supply_detail),
         )
@@ -1640,6 +1645,27 @@ fn data_view_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope_read("data_view", req, next).await
+            },
+        ))
+}
+
+// ============================================================================
+// BI Timeline — scope: bi_timeline
+// ============================================================================
+
+fn bi_timeline_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/bi-timeline/indicators",
+            get(handlers::bi_timeline::indicators),
+        )
+        .route(
+            "/api/bi-timeline/series",
+            post(handlers::bi_timeline::series),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("bi_timeline", req, next).await
             },
         ))
 }

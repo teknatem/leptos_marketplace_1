@@ -17,12 +17,16 @@ use contracts::domain::a005_marketplace::{ENTITY_METADATA as A005_META, FIELDS a
 use contracts::domain::a006_connection_mp::{ENTITY_METADATA as A006_META, FIELDS as A006_FIELDS};
 use contracts::domain::a012_wb_sales::{ENTITY_METADATA as A012_META, FIELDS as A012_FIELDS};
 use contracts::domain::a013_ym_order::{ENTITY_METADATA as A013_META, FIELDS as A013_FIELDS};
+use contracts::domain::a015_wb_orders::{ENTITY_METADATA as A015_META, FIELDS as A015_FIELDS};
 use contracts::domain::a017_llm_agent::{ENTITY_METADATA as A017_META, FIELDS as A017_FIELDS};
 use contracts::domain::a018_llm_chat::{ENTITY_METADATA as A018_META, FIELDS as A018_FIELDS};
 use contracts::domain::a019_llm_artifact::{ENTITY_METADATA as A019_META, FIELDS as A019_FIELDS};
 use contracts::domain::a020_wb_promotion::{ENTITY_METADATA as A020_META, FIELDS as A020_FIELDS};
 use contracts::domain::a024_bi_indicator::{ENTITY_METADATA as A024_META, FIELDS as A024_FIELDS};
 use contracts::domain::a025_bi_dashboard::{ENTITY_METADATA as A025_META, FIELDS as A025_FIELDS};
+use contracts::domain::a026_wb_advert_daily::{
+    ENTITY_METADATA as A026_META, FIELDS as A026_FIELDS,
+};
 use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 use contracts::projections::p909_mp_order_line_turnovers::{
     ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
@@ -85,9 +89,19 @@ impl MetadataRegistry {
                     tags: &["wb", "sales"],
                 },
                 RegistryEntry {
+                    meta: &A015_META,
+                    fields: A015_FIELDS,
+                    tags: &["wb", "orders"],
+                },
+                RegistryEntry {
                     meta: &A020_META,
                     fields: A020_FIELDS,
                     tags: &["wb", "promotion"],
+                },
+                RegistryEntry {
+                    meta: &A026_META,
+                    fields: A026_FIELDS,
+                    tags: &["wb", "advertising"],
                 },
                 RegistryEntry {
                     meta: &A013_META,

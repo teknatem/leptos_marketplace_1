@@ -13,8 +13,8 @@ use super::{
         Task003WbProductsManager, Task004WbSalesManager, Task005WbSuppliesManager,
         Task006WbFinanceManager, Task007WbCommissionsManager, Task008WbPricesManager,
         Task009WbPromotionsManager, Task010WbDocumentsManager, Task011WbAdvertManager,
-        Task012WbAdvertCampaignsManager, U501ImportUtManager, U502ImportOzonManager,
-        U503ImportYandexManager,
+        Task012WbAdvertCampaignsManager, Task013YmOrdersPollingManager, U501ImportUtManager,
+        U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -26,6 +26,15 @@ macro_rules! wb_executor {
     () => {{
         let tracker = Arc::new(u504_import_from_wildberries::ProgressTracker::new());
         Arc::new(u504_import_from_wildberries::ImportExecutor::new(tracker))
+    }};
+}
+
+/// Создаёт пару (ProgressTracker, ImportExecutor) для атомарных u503/Yandex-задач.
+/// Каждая задача получает собственный трекер, чтобы live progress не смешивался.
+macro_rules! ym_executor {
+    () => {{
+        let tracker = Arc::new(u503_import_from_yandex::ProgressTracker::new());
+        Arc::new(u503_import_from_yandex::ImportExecutor::new(tracker))
     }};
 }
 
@@ -65,6 +74,10 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task010WbDocumentsManager::new(wb_executor!()));
     registry.register(Task011WbAdvertManager::new(wb_executor!()));
     registry.register(Task012WbAdvertCampaignsManager::new(wb_executor!()));
+
+    // ---- Yandex atomic task managers ----
+
+    registry.register(Task013YmOrdersPollingManager::new(ym_executor!()));
 
     let registry = Arc::new(registry);
     set_global_registry(Arc::clone(&registry));

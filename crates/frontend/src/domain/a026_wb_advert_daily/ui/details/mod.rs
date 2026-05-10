@@ -1,9 +1,13 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCrosshairHighlight;
+use crate::shared::export::{export_to_excel, ExcelExportable};
+use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
+use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDailyMetrics;
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use gloo_net::http::Request;
@@ -41,16 +45,8 @@ fn fmt_ratio(v: f64) -> String {
     format!("{:.2}", v)
 }
 
-fn fmt_int_list<T: ToString>(values: &[T]) -> String {
-    if values.is_empty() {
-        "—".to_string()
-    } else {
-        values
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
+fn fmt_csv_decimal(v: f64) -> String {
+    format!("{:.2}", v).replace('.', ",")
 }
 
 fn fmt_advert_id(advert_id: i64) -> String {
@@ -59,22 +55,6 @@ fn fmt_advert_id(advert_id: i64) -> String {
     } else {
         "—".to_string()
     }
-}
-
-fn fmt_placements(values: &[String]) -> String {
-    if values.is_empty() {
-        return "—".to_string();
-    }
-
-    values
-        .iter()
-        .map(|value| match value.as_str() {
-            "search" => "Поиск".to_string(),
-            "recommendations" => "Рекомендации".to_string(),
-            other => other.to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn cmp_text(a: &str, b: &str) -> Ordering {
@@ -95,6 +75,7 @@ fn cmp_float(a: f64, b: f64) -> Ordering {
 }
 
 const LINES_TABLE_ID: &str = "a026-wb-advert-daily-lines-table";
+const LINES_COLUMN_WIDTHS_KEY: &str = "a026_wb_advert_daily_details_lines_column_widths";
 
 #[derive(Debug, Clone, Deserialize)]
 struct LineDto {
@@ -102,10 +83,6 @@ struct LineDto {
     wb_name: String,
     nomenclature_ref: Option<String>,
     nomenclature_article: Option<String>,
-    nomenclature_name: Option<String>,
-    advert_ids: Vec<i64>,
-    app_types: Vec<i32>,
-    placements: Vec<String>,
     metrics: WbAdvertDailyMetrics,
 }
 
@@ -117,24 +94,6 @@ impl Sortable for LineDto {
             "nomenclature_article" => {
                 cmp_optional_text(&self.nomenclature_article, &other.nomenclature_article)
             }
-            "nomenclature_name" => {
-                cmp_optional_text(&self.nomenclature_name, &other.nomenclature_name)
-            }
-            "nomenclature_ref" => {
-                cmp_optional_text(&self.nomenclature_ref, &other.nomenclature_ref)
-            }
-            "advert_ids" => cmp_text(
-                &fmt_int_list(&self.advert_ids),
-                &fmt_int_list(&other.advert_ids),
-            ),
-            "app_types" => cmp_text(
-                &fmt_int_list(&self.app_types),
-                &fmt_int_list(&other.app_types),
-            ),
-            "placements" => cmp_text(
-                &fmt_placements(&self.placements),
-                &fmt_placements(&other.placements),
-            ),
             "views" => self.metrics.views.cmp(&other.metrics.views),
             "clicks" => self.metrics.clicks.cmp(&other.metrics.clicks),
             "ctr" => cmp_float(self.metrics.ctr, other.metrics.ctr),
@@ -148,6 +107,48 @@ impl Sortable for LineDto {
             "canceled" => self.metrics.canceled.cmp(&other.metrics.canceled),
             _ => Ordering::Equal,
         }
+    }
+}
+
+impl ExcelExportable for LineDto {
+    fn headers() -> Vec<&'static str> {
+        vec![
+            "nmID",
+            "WB наименование",
+            "Артикул 1С",
+            "Просмотры",
+            "Клики",
+            "CTR, %",
+            "CPC",
+            "В корзину",
+            "Заказы",
+            "Штуки",
+            "Расход",
+            "Выручка",
+            "CR, %",
+            "Отмены",
+        ]
+    }
+
+    fn to_csv_row(&self) -> Vec<String> {
+        vec![
+            self.nm_id.to_string(),
+            self.wb_name.clone(),
+            self.nomenclature_article
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            self.metrics.views.to_string(),
+            self.metrics.clicks.to_string(),
+            fmt_csv_decimal(self.metrics.ctr),
+            fmt_csv_decimal(self.metrics.cpc),
+            self.metrics.atbs.to_string(),
+            self.metrics.orders.to_string(),
+            self.metrics.shks.to_string(),
+            fmt_csv_decimal(self.metrics.sum),
+            fmt_csv_decimal(self.metrics.sum_price),
+            fmt_csv_decimal(self.metrics.cr),
+            self.metrics.canceled.to_string(),
+        ]
     }
 }
 
@@ -202,7 +203,13 @@ fn SortHeaderCell(
 
     view! {
         <TableHeaderCell resizable=false min_width=min_width class="resizable">
-            <div class="table__sortable-header" style=header_style on:click=move |_| on_toggle.run(field)>
+            <div class="table__sortable-header" style=header_style on:click=move |_| {
+                if was_just_resizing() {
+                    clear_resize_flag();
+                    return;
+                }
+                on_toggle.run(field)
+            }>
                 {label}
                 <span class=move || get_sort_class(&sort_field.get(), field)>
                     {move || get_sort_indicator(&sort_field.get(), field, sort_ascending.get())}
@@ -225,6 +232,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (journal_loaded, set_journal_loaded) = signal(false);
     let (lines_sort_field, set_lines_sort_field) = signal("wb_name".to_string());
     let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
+    let lines_resize_initialized = StoredValue::new(false);
 
     let load_doc = {
         let tabs = tabs.clone();
@@ -327,6 +335,16 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         }
     });
 
+    Effect::new(move |_| {
+        if tab.get() == "lines" && doc.get().is_some() && !lines_resize_initialized.get_value() {
+            lines_resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(LINES_TABLE_ID, LINES_COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
+
     let journal_id = Signal::derive(move || journal.get().first().map(|row| row.id.clone()));
 
     let run_post = {
@@ -370,7 +388,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         move |_| run_post.run("unpost")
     };
 
-    let open_journal = {
+    let open_journal = Callback::new({
         let tabs = tabs.clone();
         move |journal_id: String| {
             tabs.open_tab(
@@ -378,7 +396,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                 &format!("Главная книга {}", &journal_id[..journal_id.len().min(8)]),
             );
         }
-    };
+    });
 
     let toggle_lines_sort = Callback::new(move |field: &'static str| {
         if lines_sort_field.get_untracked() == field {
@@ -460,50 +478,90 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                     view! { <div class="alert alert--error">{err}</div> }.into_any()
                 } else if let Some(d) = doc.get() {
                     match tab.get().as_str() {
-                        "general" => view! {
-                            <div class="detail-grid">
+                        "general" => {
+                            let open_journal_general = open_journal.clone();
+                            view! {
+                                <div class="detail-grid">
                                 <div class="detail-grid__col">
-                                    <ReadField label="ID" value=d.id.clone() />
-                                    <ReadField label="Номер" value=d.document_no.clone() />
-                                    <ReadField label="Дата" value=fmt_date(&d.document_date) />
-                                    <ReadField label="Кампания (advert_id)" value=fmt_advert_id(d.advert_id) />
-                                    <ReadField label="Кабинет" value=d.connection_name.clone().unwrap_or(d.connection_id.clone()) />
-                                    <ReadField label="Организация" value=d.organization_name.clone().unwrap_or(d.organization_id.clone()) />
-                                    <ReadField label="Маркетплейс" value=d.marketplace_name.clone().unwrap_or(d.marketplace_id.clone()) />
-                                    <ReadField label="Источник" value=d.source.clone() />
-                                    <ReadField label="Загружено" value=fmt_dt(&d.fetched_at) />
-                                    <ReadField label="Создано" value=fmt_dt(&d.created_at) />
-                                    <ReadField label="Обновлено" value=fmt_dt(&d.updated_at) />
+                                    <CardAnimated delay_ms=0 nav_id="a026_wb_advert_daily_details_general_document">
+                                        <h4 class="details-section__title">"Документ"</h4>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                                            <ReadField label="Номер" value=d.document_no.clone() />
+                                            <ReadField label="Дата" value=fmt_date(&d.document_date) />
+                                        </div>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                                            <ReadField label="Кампания (advert_id)" value=fmt_advert_id(d.advert_id) />
+                                            <ReadField label="Статус" value=if d.is_posted { "Проведен".to_string() } else { "Не проведен".to_string() } />
+                                        </div>
+                                        <ReadField label="ID" value=d.id.clone() />
+                                    </CardAnimated>
+
+                                    <CardAnimated delay_ms=80 nav_id="a026_wb_advert_daily_details_general_links">
+                                        <h4 class="details-section__title">"Связи"</h4>
+                                        <ReadField label="Кабинет" value=d.connection_name.clone().unwrap_or(d.connection_id.clone()) />
+                                        <ReadField label="Организация" value=d.organization_name.clone().unwrap_or(d.organization_id.clone()) />
+                                        <ReadField label="Маркетплейс" value=d.marketplace_name.clone().unwrap_or(d.marketplace_id.clone()) />
+                                    </CardAnimated>
+
+                                </div>
+                                <div class="detail-grid__col">
+                                    <CardAnimated delay_ms=40 nav_id="a026_wb_advert_daily_details_general_metrics">
+                                        <h4 class="details-section__title">"Метрики"</h4>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                                            <ReadField label="Итоговый расход" value=fmt_money(d.totals.sum) />
+                                            <ReadField label="Не распределено" value=fmt_money(d.unattributed_totals.sum) />
+                                        </div>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--spacing-sm);">
+                                            <ReadField label="Просмотры" value=d.totals.views.to_string() />
+                                            <ReadField label="Клики" value=d.totals.clicks.to_string() />
+                                            <ReadField label="Заказы" value=d.totals.orders.to_string() />
+                                        </div>
+                                    </CardAnimated>
+
+                                    <CardAnimated delay_ms=120 nav_id="a026_wb_advert_daily_details_general_technical">
+                                        <h4 class="details-section__title">"Технические данные"</h4>
+                                        <ReadField label="Источник" value=d.source.clone() />
+                                        <ReadField label="Загружено" value=fmt_dt(&d.fetched_at) />
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                                            <ReadField label="Создано" value=fmt_dt(&d.created_at) />
+                                            <ReadField label="Обновлено" value=fmt_dt(&d.updated_at) />
+                                        </div>
                                     <Show when=move || journal_id.get().is_some()>
                                         {move || {
                                             let entry_id = journal_id.get().unwrap_or_default();
                                             view! {
-                                                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;">
-                                                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| open_journal(entry_id.clone())>
-                                                        "Открыть проводку"
-                                                    </Button>
-                                                </div>
+                                                <Button appearance=ButtonAppearance::Secondary on_click=move |_| open_journal_general.run(entry_id.clone())>
+                                                    "Открыть проводку"
+                                                </Button>
                                             }
                                         }}
                                     </Show>
+                                    </CardAnimated>
                                 </div>
-                                <div class="detail-grid__col">
-                                    <ReadField label="Итоговый расход" value=fmt_money(d.totals.sum) />
-                                    <ReadField label="Не распределено" value=fmt_money(d.unattributed_totals.sum) />
-                                    <ReadField label="Просмотры" value=d.totals.views.to_string() />
-                                    <ReadField label="Клики" value=d.totals.clicks.to_string() />
-                                    <ReadField label="Заказы" value=d.totals.orders.to_string() />
                                 </div>
-                            </div>
-                        }.into_any(),
+                            }.into_any()
+                        },
                         "lines" => {
                             let total_lines = d.lines.len();
                             let without_nomenclature =
                                 d.lines.iter().filter(|line| line.nomenclature_ref.is_none()).count();
 
+                            let export_filename = format!(
+                                "wb_advert_daily_positions_{}_{}.csv",
+                                d.document_date,
+                                d.document_no
+                            );
+                            let export_lines = move || {
+                                let lines = sorted_lines.get_untracked();
+                                if let Err(err) = export_to_excel(&lines, &export_filename) {
+                                    set_error.set(Some(format!("CSV: {}", err)));
+                                }
+                            };
+
                             view! {
-                                <div style="display:flex;flex-direction:column;gap:12px;">
-                                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                <CardAnimated delay_ms=0 nav_id="a026_wb_advert_daily_details_lines_table">
+                                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+                                        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
                                         <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
                                             {format!("Позиции: {}", total_lines)}
                                         </Badge>
@@ -523,21 +581,21 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                 "Все позиции сопоставлены".to_string()
                                             }}
                                         </Badge>
+                                        </div>
+                                        <Button appearance=ButtonAppearance::Secondary on_click=move |_| export_lines()>
+                                            {icon("download")}
+                                            "Excel (csv)"
+                                        </Button>
                                     </div>
 
                                     <div class="table-wrapper">
                                         <TableCrosshairHighlight table_id=LINES_TABLE_ID.to_string() />
-                                        <Table attr:id=LINES_TABLE_ID attr:style="width:100%;min-width:2200px;">
+                                        <Table attr:id=LINES_TABLE_ID attr:style="width:100%;min-width:1500px;">
                                             <TableHeader>
                                                 <TableRow>
                                                     <SortHeaderCell label="nmID" field="nm_id" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
                                                     <SortHeaderCell label="WB наименование" field="wb_name" min_width=240.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
                                                     <SortHeaderCell label="Артикул 1С" field="nomenclature_article" min_width=140.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
-                                                    <SortHeaderCell label="Номенклатура 1С" field="nomenclature_name" min_width=240.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
-                                                    <SortHeaderCell label="UUID номенклатуры" field="nomenclature_ref" min_width=270.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
-                                                    <SortHeaderCell label="Advert IDs" field="advert_ids" min_width=170.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
-                                                    <SortHeaderCell label="App types" field="app_types" min_width=140.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
-                                                    <SortHeaderCell label="Зоны показа" field="placements" min_width=170.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort />
                                                     <SortHeaderCell label="Просмотры" field="views" min_width=100.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
                                                     <SortHeaderCell label="Клики" field="clicks" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
                                                     <SortHeaderCell label="CTR, %" field="ctr" min_width=90.0 sort_field=lines_sort_field sort_ascending=lines_sort_ascending on_toggle=toggle_lines_sort numeric=true />
@@ -556,47 +614,13 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                     each=move || sorted_lines.get()
                                                     key=|line| format!("{}:{}", line.nm_id, line.nomenclature_ref.clone().unwrap_or_default())
                                                     children=move |line| {
-                                                        let tabs = tabs.clone();
                                                         let article = line.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
-                                                        let nomenclature_name = line.nomenclature_name.clone().unwrap_or_else(|| "—".to_string());
-                                                        let nomenclature_ref = line.nomenclature_ref.clone();
-                                                        let advert_ids = fmt_int_list(&line.advert_ids);
-                                                        let app_types = fmt_int_list(&line.app_types);
-                                                        let placements = fmt_placements(&line.placements);
 
                                                         view! {
                                                             <TableRow>
                                                                 <TableCell><TableCellLayout>{line.nm_id}</TableCellLayout></TableCell>
                                                                 <TableCell><TableCellLayout truncate=true>{line.wb_name}</TableCellLayout></TableCell>
                                                                 <TableCell><TableCellLayout truncate=true>{article}</TableCellLayout></TableCell>
-                                                                <TableCell><TableCellLayout truncate=true>{nomenclature_name}</TableCellLayout></TableCell>
-                                                                <TableCell>
-                                                                    <TableCellLayout truncate=true>
-                                                                        {if let Some(nom_ref) = nomenclature_ref {
-                                                                            let nom_ref_for_nav = nom_ref.clone();
-                                                                            view! {
-                                                                                <a
-                                                                                    href="#"
-                                                                                    class="table__link"
-                                                                                    on:click=move |e| {
-                                                                                        e.prevent_default();
-                                                                                        tabs.open_tab(
-                                                                                            &format!("a004_nomenclature_details_{}", nom_ref_for_nav.clone()),
-                                                                                            &format!("Номенклатура {}", nom_ref_for_nav.clone()),
-                                                                                        );
-                                                                                    }
-                                                                                >
-                                                                                    {nom_ref}
-                                                                                </a>
-                                                                            }.into_any()
-                                                                        } else {
-                                                                            view! { <span>"—"</span> }.into_any()
-                                                                        }}
-                                                                    </TableCellLayout>
-                                                                </TableCell>
-                                                                <TableCell><TableCellLayout truncate=true>{advert_ids}</TableCellLayout></TableCell>
-                                                                <TableCell><TableCellLayout truncate=true>{app_types}</TableCellLayout></TableCell>
-                                                                <TableCell><TableCellLayout truncate=true>{placements}</TableCellLayout></TableCell>
                                                                 <TableCell class="text-right"><TableCellLayout>{line.metrics.views}</TableCellLayout></TableCell>
                                                                 <TableCell class="text-right"><TableCellLayout>{line.metrics.clicks}</TableCellLayout></TableCell>
                                                                 <TableCell class="text-right"><TableCellLayout>{fmt_ratio(line.metrics.ctr)}</TableCellLayout></TableCell>
@@ -615,11 +639,13 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                             </TableBody>
                                         </Table>
                                     </div>
-                                </div>
+                                </CardAnimated>
                             }.into_any()
                         },
-                        "journal" => view! {
-                            <div class="table-wrapper">
+                        "journal" => {
+                            let open_journal_for_table = open_journal.clone();
+                            view! {
+                                <div class="table-wrapper">
                                 <Table attr:style="width:100%;min-width:950px;">
                                     <TableHeader>
                                         <TableRow>
@@ -638,7 +664,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                 <TableRow>
                                                     <TableCell>
                                                         <TableCellLayout>
-                                                            <a href="#" class="table__link" on:click=move |e| { e.prevent_default(); open_journal(jid.clone()); }>{r.id}</a>
+                                                            <a href="#" class="table__link" on:click=move |e| { e.prevent_default(); open_journal_for_table.run(jid.clone()); }>{r.id}</a>
                                                         </TableCellLayout>
                                                     </TableCell>
                                                     <TableCell><TableCellLayout>{r.entry_date}</TableCellLayout></TableCell>
@@ -651,8 +677,9 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                         } />
                                     </TableBody>
                                 </Table>
-                            </div>
-                        }.into_any(),
+                                </div>
+                            }.into_any()
+                        },
                         _ => view! { <div class="text-muted">"Нет данных"</div> }.into_any(),
                     }
                 } else {

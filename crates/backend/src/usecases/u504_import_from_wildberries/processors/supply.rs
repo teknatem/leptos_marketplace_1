@@ -1,5 +1,6 @@
 use super::super::wildberries_api_client::{WbStickerRow, WbSupplyRow};
 use crate::domain::a029_wb_supply;
+use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::WbOrders;
@@ -235,17 +236,6 @@ fn merge_stickers(rows: &mut [WbSupplyOrderRow], stickers: &[WbStickerRow]) {
         row.part_a = sticker.part_a.or(row.part_a);
         row.part_b = sticker.part_b.or(row.part_b);
     }
-}
-
-fn parse_wb_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&chrono::Utc))
-        .or_else(|| {
-            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc))
-        })
 }
 
 /// Map a WbOrders (from statistics API / a015) to WbSupplyOrderRow.

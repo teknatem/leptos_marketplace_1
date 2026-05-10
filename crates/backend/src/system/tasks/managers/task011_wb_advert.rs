@@ -51,7 +51,7 @@ static METADATA: TaskMetadata = TaskMetadata {
     external_apis: &[ExternalApiInfo {
         name: "WB Advert API",
         base_url: "https://advert-api.wildberries.ru/",
-        rate_limit_desc: "Принудительная задержка между батчами fullstats; чанки по 100 кампаний",
+        rate_limit_desc: "fullstats: лимит WB 3 запроса/мин, интервал 20 с, burst 1 на аккаунт продавца; задача ждёт 21 с между чанками и при 429 останавливает дальнейшие чанки текущего запуска",
     }],
     constraints: &[
         "Требует API-токена WB с правами на Advert API",

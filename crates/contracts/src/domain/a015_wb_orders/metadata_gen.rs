@@ -163,7 +163,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "order_dt",
         rust_type: "DateTime<Utc>",
-        field_type: FieldType::Datetime,
+        field_type: FieldType::Primitive,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Дата заказа",
@@ -308,7 +308,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "connection_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Подключение МП",

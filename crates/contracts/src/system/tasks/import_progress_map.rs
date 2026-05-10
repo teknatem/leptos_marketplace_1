@@ -146,7 +146,7 @@ fn import_status_to_task(s501: S501) -> TaskStatus {
         S501::Completed => TaskStatus::Completed,
         S501::CompletedWithErrors => TaskStatus::CompletedWithErrors,
         S501::Failed => TaskStatus::Failed,
-        S501::Cancelled => TaskStatus::Failed,
+        S501::Cancelled => TaskStatus::Cancelled,
     }
 }
 
@@ -156,7 +156,7 @@ fn import_status_to_task_502(s: S502) -> TaskStatus {
         S502::Completed => TaskStatus::Completed,
         S502::CompletedWithErrors => TaskStatus::CompletedWithErrors,
         S502::Failed => TaskStatus::Failed,
-        S502::Cancelled => TaskStatus::Failed,
+        S502::Cancelled => TaskStatus::Cancelled,
     }
 }
 
@@ -166,7 +166,7 @@ fn import_status_to_task_503(s: S503) -> TaskStatus {
         S503::Completed => TaskStatus::Completed,
         S503::CompletedWithErrors => TaskStatus::CompletedWithErrors,
         S503::Failed => TaskStatus::Failed,
-        S503::Cancelled => TaskStatus::Failed,
+        S503::Cancelled => TaskStatus::Cancelled,
     }
 }
 
@@ -176,7 +176,7 @@ fn import_status_to_task_504(s: S504) -> TaskStatus {
         S504::Completed => TaskStatus::Completed,
         S504::CompletedWithErrors => TaskStatus::CompletedWithErrors,
         S504::Failed => TaskStatus::Failed,
-        S504::Cancelled => TaskStatus::Failed,
+        S504::Cancelled => TaskStatus::Cancelled,
     }
 }
 
@@ -449,6 +449,13 @@ fn denormalize_legacy(
         TaskProgressDetail::Indeterminate { .. } => {
             if let Some(run) = n.aggregates.iter().find(|a| a.status == AggState::Running) {
                 current_item = run.current_item.clone();
+            } else if n.status != TaskStatus::Running {
+                processed_items = Some(n.total_processed);
+                let total: i32 = n.aggregates.iter().filter_map(|a| a.total).sum();
+                if total > 0 {
+                    total_items = Some(total);
+                }
+                current_item = n.aggregates.first().and_then(|a| a.current_item.clone());
             }
         }
     }

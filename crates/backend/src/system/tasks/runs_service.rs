@@ -123,6 +123,7 @@ pub async fn get_run_by_session(session_id: &str) -> Result<Option<TaskRun>> {
                 http_bytes_received: m.http_bytes_received,
                 task_code: None,
                 task_description: None,
+                task_comment: None,
             })
         })
         .map_err(|e| anyhow::anyhow!("Database error: {}", e))

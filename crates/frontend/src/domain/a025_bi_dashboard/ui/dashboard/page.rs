@@ -2967,6 +2967,27 @@ fn IndicatorDetailModal(
         }
     };
 
+    let open_timeline = Callback::new({
+        let tabs_store = tabs_store.clone();
+        let indicator_id = sel.id.clone();
+        let name = name.clone();
+        let ctx = ctx.clone();
+        let do_close = do_close.clone();
+        move |_| {
+            let tab_key = format!(
+                "bi_timeline__{}__{}__{}__{}__{}__{}",
+                indicator_id,
+                ctx.date_from,
+                ctx.date_to,
+                ctx.period2_from.clone().unwrap_or_default(),
+                ctx.period2_to.clone().unwrap_or_default(),
+                ctx.connection_mp_refs.join(",")
+            );
+            tabs_store.open_tab(&tab_key, &format!("Timeline · {}", name));
+            do_close.run(());
+        }
+    });
+
     view! {
         <div
             class=move || {
@@ -3026,6 +3047,31 @@ fn IndicatorDetailModal(
                         </div>
                     </div>
                     <div class="indicator-detail__header-actions">
+                        {move || {
+                            if !has_drilldown {
+                                return view! { <></> }.into_any();
+                            }
+                            let is_timeline_compatible = dv_dims
+                                .get()
+                                .map(|dims| {
+                                    dims.iter().any(|(id, _)| id == "date" || id == "entry_date")
+                                })
+                                .unwrap_or(false);
+                            if is_timeline_compatible {
+                                view! {
+                                    <button
+                                        type="button"
+                                        class="indicator-detail__edit-link"
+                                        on:click=move |_| open_timeline.run(())
+                                    >
+                                        "Timeline"
+                                    </button>
+                                }
+                                .into_any()
+                            } else {
+                                view! { <></> }.into_any()
+                            }
+                        }}
                         <button
                             type="button"
                             class="indicator-detail__edit-link"

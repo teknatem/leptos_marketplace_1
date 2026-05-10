@@ -14,6 +14,8 @@ pub struct BiIndicatorSaveDto {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
     pub status: String,
     pub owner_user_id: String,
     pub is_public: bool,

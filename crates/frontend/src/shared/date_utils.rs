@@ -1,4 +1,12 @@
-/// Utilities for date, time and size formatting
+/// Utilities for date, time and size formatting.
+///
+/// Date/time display rules:
+/// - `DateTime<Utc>` from API is an instant and must be displayed through
+///   `format_utc_local(&dt, fmt)`.
+/// - Date-only values (`NaiveDate`, `YYYY-MM-DD`) have no timezone and should be
+///   displayed as dates only.
+/// - `format_datetime(&str)` is a legacy string reshaper: it does not perform
+///   timezone conversion and must not be used for typed `DateTime<Utc>` values.
 use chrono::{DateTime, FixedOffset, Utc};
 
 /// Смещение часового пояса для отображения времени в UI (МСК = UTC+3).
@@ -12,6 +20,14 @@ pub fn format_utc_local(dt: &DateTime<Utc>, fmt: &str) -> String {
     let offset = FixedOffset::east_opt(TZ_OFFSET_HOURS * 3600)
         .unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
     dt.with_timezone(&offset).format(fmt).to_string()
+}
+
+/// Parses an RFC3339 datetime string and displays it using `format_utc_local`.
+/// Falls back to legacy string reshaping when the input is not RFC3339.
+pub fn format_datetime_utc_local(datetime_str: &str, fmt: &str) -> String {
+    DateTime::parse_from_rfc3339(datetime_str)
+        .map(|dt| format_utc_local(&dt.with_timezone(&Utc), fmt))
+        .unwrap_or_else(|_| format_datetime(datetime_str))
 }
 
 /// Format ISO datetime string to DD.MM.YYYY HH:MM:SS format

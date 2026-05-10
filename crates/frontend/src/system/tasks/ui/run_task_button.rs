@@ -1,4 +1,5 @@
 //! Кнопка ручного запуска регламентного задания по коду (`sys_tasks.code`), как из списка заданий.
+use crate::shared::date_utils::format_utc_local;
 use crate::shared::icons::icon;
 use crate::system::tasks::api::{self, RunTaskNowOutcome};
 use leptos::logging::log;
@@ -47,7 +48,7 @@ pub fn RunTaskButton(
                 Ok(RunTaskNowOutcome::AlreadyRunning(r)) => {
                     set_hint.set(Some(format!(
                         "Уже выполняется с {}",
-                        r.started_at.format("%d.%m.%Y %H:%M:%S")
+                        format_utc_local(&r.started_at, "%d.%m.%Y %H:%M:%S")
                     )));
                 }
                 Err(e) => {

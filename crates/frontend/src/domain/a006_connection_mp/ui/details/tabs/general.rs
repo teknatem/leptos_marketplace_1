@@ -6,6 +6,7 @@ use crate::domain::a005_marketplace::ui::{MarketplacePicker, MarketplacePickerIt
 use crate::domain::a006_connection_mp::ui::details::view_model::ConnectionMPDetailsVm;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
+use contracts::domain::a006_connection_mp::AuthorizationType;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -33,6 +34,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
     let vm_application_id = vm.clone();
     let vm_business_account_id = vm.clone();
     let vm_api_key_stats = vm.clone();
+    let vm_authorization_type = vm.clone();
     let vm_is_used = vm.clone();
     let vm_test_mode = vm.clone();
 
@@ -315,7 +317,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                             placeholder="Вставьте API ключ"
                         />
                         <small class="help-text help-text--tiny">
-                            {"• WB: Bearer • Ozon: Api-Key • Яндекс: OAuth"}
+                            {"• WB: Bearer • Ozon: Api-Key • Яндекс: API Key = Api-Key, OAuth 2.0 = Authorization: Bearer"}
                         </small>
                     </div>
 
@@ -408,6 +410,35 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                             }
                             placeholder="Опционально"
                         />
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">{"Тип авторизации"}</label>
+                        <select
+                            class="form__input"
+                            prop:value={
+                                let vm = vm_authorization_type.clone();
+                                move || vm.form.get().authorization_type.as_str().to_string()
+                            }
+                            on:change={
+                                let vm = vm_authorization_type.clone();
+                                move |ev| {
+                                    let authorization_type = match event_target_value(&ev).as_str() {
+                                        "OAuth 2.0" => AuthorizationType::OAuth2,
+                                        "Basic Auth" => AuthorizationType::BasicAuth,
+                                        _ => AuthorizationType::ApiKey,
+                                    };
+                                    vm.form.update(|f| f.authorization_type = authorization_type);
+                                }
+                            }
+                        >
+                            <option value="API Key">{"API Key"}</option>
+                            <option value="OAuth 2.0">{"OAuth 2.0"}</option>
+                            <option value="Basic Auth">{"Basic Auth"}</option>
+                        </select>
+                        <small class="help-text help-text--tiny">
+                            {"Для Яндекс.Маркет выберите API Key или OAuth 2.0."}
+                        </small>
                     </div>
                 </div>
             </div>

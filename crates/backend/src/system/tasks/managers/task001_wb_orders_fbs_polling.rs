@@ -6,6 +6,7 @@ use contracts::system::tasks::metadata::{
     ExternalApiInfo, TaskConfigField, TaskConfigFieldType, TaskMetadata,
 };
 use contracts::system::tasks::progress::TaskProgress;
+use contracts::usecases::u504_import_from_wildberries::progress::ImportStatus;
 use contracts::usecases::u504_import_from_wildberries::request::{ImportMode, ImportRequest};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -175,6 +176,24 @@ impl TaskManager for Task001WbOrdersFbsPollingManager {
             .await?;
 
         logger.write_log(session_id, "task001 WB orders FBS polling completed.")?;
+        let completed_with_errors = self
+            .executor
+            .get_progress(session_id)
+            .map(|p| {
+                p.total_errors > 0
+                    || matches!(
+                        p.status,
+                        ImportStatus::CompletedWithErrors | ImportStatus::Failed
+                    )
+            })
+            .unwrap_or(false);
+        if completed_with_errors {
+            logger.write_log(
+                session_id,
+                "task001 completed with errors; see progress/errors for API diagnostics.",
+            )?;
+            return Ok(TaskRunOutcome::completed_with_errors());
+        }
         Ok(TaskRunOutcome::completed())
     }
 

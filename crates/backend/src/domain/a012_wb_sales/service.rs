@@ -5,6 +5,8 @@ use contracts::domain::common::AggregateId;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date;
+
 const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
 #[derive(Default)]
@@ -429,7 +431,7 @@ pub async fn preload_prod_cost_context_for_documents(
         return Ok(());
     }
 
-    let sale_date = documents[0].state.sale_dt.format("%Y-%m-%d").to_string();
+    let sale_date = wb_business_date(&documents[0].state.sale_dt).to_string();
     let document_nom_refs: BTreeSet<String> = documents
         .iter()
         .filter_map(|document| document.nomenclature_ref.clone())
@@ -587,7 +589,7 @@ pub async fn resolve_prod_cost_cached(
         ));
     }
 
-    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+    let sale_date = wb_business_date(&document.state.sale_dt).to_string();
     let Some(nomenclature) = cache.get_nomenclature(nomenclature_ref).await? else {
         let message = format!(
             "Номенклатура {} не найдена. Prod-себестоимость не рассчитана на дату {}",
@@ -858,7 +860,7 @@ pub async fn fill_dealer_price_resolved_cached(
         return Ok(false);
     }
 
-    let sale_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+    let sale_date = wb_business_date(&document.state.sale_dt).to_string();
     let resolved = cache.resolve_price(nom_ref, &sale_date).await?;
 
     if let Some(ref resolved_price) = resolved {
@@ -964,6 +966,24 @@ pub async fn prepare_document_for_posting(document: &mut WbSales) -> Result<bool
 }
 
 pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> Result<Uuid> {
+    let mut cache = PostingPreparationCache::default();
+    let (id, _is_new) =
+        store_document_with_raw_shared_cache(&mut document, raw_json, &mut cache, None).await?;
+    Ok(id)
+}
+
+/// Hot-path variant used by the bulk import loop.  Accepts a shared
+/// `PostingPreparationCache` (avoids repeated lookups for the same products /
+/// organisations / prices) and a pre-loaded `existing_uuid` (avoids an extra
+/// SELECT per row).  Returns `(uuid, is_new)`.
+pub async fn store_document_with_raw_shared_cache(
+    document: &mut WbSales,
+    raw_json: &str,
+    cache: &mut PostingPreparationCache,
+    existing_uuid: Option<uuid::Uuid>,
+) -> Result<(uuid::Uuid, bool)> {
+    let is_new = existing_uuid.is_none();
+
     let raw_ref = crate::shared::data::raw_storage::save_raw_json(
         "WB",
         "WB_Sales",
@@ -974,17 +994,16 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
     .await?;
 
     document.source_meta.raw_payload_ref = raw_ref;
-    let mut cache = PostingPreparationCache::default();
-    prepare_document_for_posting_cached(&mut document, &mut cache).await?;
-    let prod_cost_resolution = resolve_prod_cost_cached(&document, &mut cache).await?;
-    apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
+    prepare_document_for_posting_cached(document, cache).await?;
+    let prod_cost_resolution = resolve_prod_cost_cached(document, cache).await?;
+    apply_prod_cost_diagnostics(document, &prod_cost_resolution);
 
     document
         .validate()
         .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
     document.before_write();
 
-    let id = repository::upsert_document(&document).await?;
+    let id = repository::upsert_document_knowing_existence(document, existing_uuid).await?;
 
     if document.is_posted {
         if let Err(e) = super::posting::post_document(id).await {
@@ -1009,7 +1028,7 @@ pub async fn store_document_with_raw(mut document: WbSales, raw_json: &str) -> R
         }
     }
 
-    Ok(id)
+    Ok((id, is_new))
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbSales>> {

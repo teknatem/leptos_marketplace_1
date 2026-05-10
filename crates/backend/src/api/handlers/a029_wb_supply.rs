@@ -206,6 +206,13 @@ pub struct PaginatedWbSupplyResponse {
     pub total_pages: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct WbSupplyLinkDto {
+    pub id: String,
+    pub supply_id: String,
+    pub name: Option<String>,
+}
+
 pub async fn list_supplies(
     Query(query): Query<ListSuppliesQuery>,
 ) -> Result<Json<PaginatedWbSupplyResponse>, axum::http::StatusCode> {
@@ -333,6 +340,37 @@ pub async fn get_supply_by_wb_id(
     }
 
     Ok(Json(item))
+}
+
+pub async fn get_supply_for_order(
+    axum::extract::Path(order_id): axum::extract::Path<String>,
+) -> Result<Json<WbSupplyLinkDto>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&order_id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let order = crate::domain::a015_wb_orders::service::get_by_id(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                "Failed to get WB order {} for supply lookup: {}",
+                order_id,
+                e
+            );
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    let supply = a029_wb_supply::service::get_for_order(&order)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to find WB supply for order {}: {}", order_id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    Ok(Json(WbSupplyLinkDto {
+        id: supply.base.id.value().to_string(),
+        supply_id: supply.header.supply_id,
+        name: supply.info.name,
+    }))
 }
 
 /// Returns the stored supply orders from the aggregate (no live WB call).

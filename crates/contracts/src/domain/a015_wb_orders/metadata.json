@@ -69,7 +69,7 @@
     {
       "name": "order_dt",
       "rust_type": "DateTime<Utc>",
-      "field_type": "datetime",
+      "field_type": "primitive",
       "source": "specific",
       "ui": { "label": "Дата заказа", "label_en": "Order Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
       "validation": { "required": true }
@@ -109,7 +109,7 @@
     {
       "name": "connection_id",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },
