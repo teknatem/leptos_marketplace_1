@@ -10,7 +10,7 @@ path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 # path = "data/app.db"
 
 [scheduled_tasks]
-enabled = true
+enabled = false
 
 [llm]
 # Директория с Obsidian-совместимыми MD-файлами базы знаний.

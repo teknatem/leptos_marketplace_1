@@ -1,6 +1,7 @@
 use crate::shared::data::db::get_connection;
 use chrono::Utc;
 use contracts::system::tasks::aggregate::ScheduledTaskId;
+use contracts::system::tasks::history::{TaskHistoryMetric, TaskHistoryScale};
 use contracts::system::tasks::runs::TaskRun;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, Set, Statement};
@@ -84,6 +85,21 @@ struct TaskRunJoinRow {
     task_code: Option<String>,
     task_description: Option<String>,
     task_comment: Option<String>,
+}
+
+#[derive(Debug, Clone, FromQueryResult)]
+pub struct TaskHistoryBucketRow {
+    pub bucket: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, FromQueryResult)]
+pub struct TaskHistoryRunRow {
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub http_request_count: Option<i64>,
+    pub http_bytes_sent: Option<i64>,
+    pub http_bytes_received: Option<i64>,
 }
 
 fn join_row_to_task_run(row: TaskRunJoinRow) -> TaskRun {
@@ -298,4 +314,95 @@ pub async fn list_for_task(task_id: &str, limit: u64) -> Result<Vec<TaskRun>, Db
 
 pub async fn list_recent(limit: u64) -> Result<Vec<TaskRun>, DbErr> {
     list_recent_enriched(limit).await
+}
+
+pub async fn query_history_buckets(
+    scale: TaskHistoryScale,
+    metric: TaskHistoryMetric,
+    date_from: &str,
+    date_to: &str,
+    task_ids: Option<&[String]>,
+) -> Result<Vec<TaskHistoryBucketRow>, DbErr> {
+    let db = get_connection();
+    let bucket_expr = match scale {
+        TaskHistoryScale::Day => {
+            "strftime('%Y-%m-%dT%H:%M:00Z', datetime(r.started_at))"
+        }
+        TaskHistoryScale::Week => {
+            "strftime('%Y-%m-%dT%H:', datetime(r.started_at)) || printf('%02d', (CAST(strftime('%M', datetime(r.started_at)) AS INTEGER) / 5) * 5) || ':00Z'"
+        }
+        TaskHistoryScale::Month => {
+            "strftime('%Y-%m-%dT%H:00:00Z', datetime(r.started_at))"
+        }
+    };
+    let value_expr = match metric {
+        TaskHistoryMetric::TaskCount => "CAST(COUNT(*) AS REAL)",
+        TaskHistoryMetric::RequestCount => "CAST(SUM(COALESCE(r.http_request_count, 0)) AS REAL)",
+        TaskHistoryMetric::TrafficBytes => {
+            "CAST(SUM(COALESCE(r.http_bytes_sent, 0) + COALESCE(r.http_bytes_received, 0)) AS REAL)"
+        }
+    };
+
+    let mut sql = format!(
+        "SELECT {bucket_expr} AS bucket, {value_expr} AS value \
+         FROM sys_task_runs r \
+         WHERE datetime(r.started_at) >= datetime(?) \
+           AND datetime(r.started_at) < datetime(?)"
+    );
+    let mut values: Vec<sea_orm::Value> = vec![date_from.into(), date_to.into()];
+
+    if let Some(ids) = task_ids.filter(|ids| !ids.is_empty()) {
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        sql.push_str(&format!(" AND r.task_id IN ({})", placeholders));
+        values.extend(ids.iter().cloned().map(Into::into));
+    }
+
+    sql.push_str(" GROUP BY bucket ORDER BY bucket");
+
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, values);
+    let rows = db.query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| TaskHistoryBucketRow::from_query_result(&row, "").ok())
+        .collect())
+}
+
+pub async fn query_history_runs(
+    date_from_utc: &str,
+    date_to_utc: &str,
+    task_ids: Option<&[String]>,
+) -> Result<Vec<TaskHistoryRunRow>, DbErr> {
+    let db = get_connection();
+    let mut sql = "SELECT \
+         r.started_at AS started_at, \
+         r.finished_at AS finished_at, \
+         r.http_request_count AS http_request_count, \
+         r.http_bytes_sent AS http_bytes_sent, \
+         r.http_bytes_received AS http_bytes_received \
+         FROM sys_task_runs r \
+         WHERE datetime(r.started_at) < datetime(?) \
+           AND datetime(COALESCE(r.finished_at, 'now')) >= datetime(?)"
+        .to_string();
+    let mut values: Vec<sea_orm::Value> = vec![date_to_utc.into(), date_from_utc.into()];
+
+    if let Some(ids) = task_ids.filter(|ids| !ids.is_empty()) {
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        sql.push_str(&format!(" AND r.task_id IN ({})", placeholders));
+        values.extend(ids.iter().cloned().map(Into::into));
+    }
+
+    sql.push_str(" ORDER BY r.started_at");
+
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, values);
+    let rows = db.query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| TaskHistoryRunRow::from_query_result(&row, "").ok())
+        .collect())
 }

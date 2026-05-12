@@ -29,13 +29,16 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 /// Максимальное число итераций tool calling в одном запросе.
 /// Увеличено до 6: knowledge-flow требует до 3 шагов
 /// (search_knowledge → get_knowledge → get_entity_schema) перед финальным ответом.
-const MAX_TOOL_ITERATIONS: usize = 6;
+const MAX_TOOL_ITERATIONS: usize = 10;
 
 /// Системный промпт по умолчанию (бизнес-аналитик).
 const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompts/default_agent.md");
 
 /// Системный промпт для агента-администратора системы.
 const SYSTEM_ADMIN_PROMPT: &str = include_str!("prompts/system_admin_agent.md");
+
+/// Системный промпт для администратора базы знаний (диалог/анализ).
+const KB_ADMIN_PROMPT: &str = include_str!("prompts/kb_admin_analyze.md");
 
 /// Максимальное число не-системных сообщений в контексте (sliding window)
 const MAX_HISTORY_MESSAGES: usize = 20;
@@ -321,6 +324,7 @@ pub async fn send_message(
     use contracts::domain::a017_llm_agent::aggregate::AgentType;
     let fallback_prompt = match agent.agent_type {
         AgentType::SystemAdmin => SYSTEM_ADMIN_PROMPT,
+        AgentType::KbAdmin => KB_ADMIN_PROMPT,
         _ => DEFAULT_SYSTEM_PROMPT,
     };
     let system_prompt = agent.system_prompt.as_deref().unwrap_or(fallback_prompt);

@@ -1,7 +1,8 @@
-//! База знаний для LLM в формате Obsidian.
+//! База знаний для LLM: Obsidian-бизнес-слой + встроенная документация приложения.
 //!
-//! Сканирует директорию `knowledge_base_path` из конфига, парсит YAML frontmatter
-//! каждого MD-файла и строит in-memory индекс `tag → [doc_id]`.
+//! Сканирует бизнес-директорию `knowledge_base_path` из конфига, добавляет embedded
+//! markdown-документы приложения, парсит YAML frontmatter каждого MD-файла и строит
+//! in-memory индекс `tag → [doc_id]`.
 //!
 //! Инструменты LLM:
 //! - `search_knowledge(tags)` — поиск по тегам, возвращает список (id, title)
@@ -9,7 +10,8 @@
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
 // ─── Структуры ───────────────────────────────────────────────────────────────
 
@@ -39,7 +41,10 @@ pub struct KnowledgeBase {
 
 // ─── Глобальный синглтон ─────────────────────────────────────────────────────
 
-pub static KNOWLEDGE_BASE: Lazy<KnowledgeBase> = Lazy::new(|| {
+pub static KNOWLEDGE_BASE: Lazy<Arc<RwLock<KnowledgeBase>>> =
+    Lazy::new(|| Arc::new(RwLock::new(KnowledgeBase::load(&knowledge_base_dir()))));
+
+pub fn knowledge_base_dir() -> PathBuf {
     let path = match crate::shared::config::load_config() {
         Ok(cfg) => crate::shared::config::get_knowledge_base_path(&cfg),
         Err(e) => {
@@ -50,8 +55,29 @@ pub static KNOWLEDGE_BASE: Lazy<KnowledgeBase> = Lazy::new(|| {
             std::path::PathBuf::from("data/knowledge")
         }
     };
-    KnowledgeBase::load(&path)
-});
+    path
+}
+
+pub fn reload_knowledge_base() -> anyhow::Result<()> {
+    let path = knowledge_base_dir();
+    let loaded = KnowledgeBase::load(&path);
+    let mut guard = KNOWLEDGE_BASE
+        .write()
+        .map_err(|_| anyhow::anyhow!("KnowledgeBase lock poisoned"))?;
+    *guard = loaded;
+    Ok(())
+}
+
+pub fn write_kb_document(relative_path: &str, content: &str) -> anyhow::Result<PathBuf> {
+    let relative = sanitize_relative_kb_path(relative_path)?;
+    let base = knowledge_base_dir();
+    let target = base.join(relative);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&target, content)?;
+    Ok(target)
+}
 
 struct EmbeddedKnowledgeSource {
     id: &'static str,
@@ -99,6 +125,26 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         id: "domain-a025_bi_dashboard",
         source_path: "crates/backend/src/domain/a025_bi_dashboard/llm.md",
         raw: include_str!("../../domain/a025_bi_dashboard/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-bi-indicators",
+        source_path: "crates/backend/src/shared/llm/docs/bi_indicators.md",
+        raw: include_str!("docs/bi_indicators.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-data-view",
+        source_path: "crates/backend/src/shared/llm/docs/data_view.md",
+        raw: include_str!("docs/data_view.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-dev-notes",
+        source_path: "crates/backend/src/shared/llm/docs/dev_notes.md",
+        raw: include_str!("docs/dev_notes.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-p909-p910-projections",
+        source_path: "crates/backend/src/shared/llm/docs/p909_p910_projections.md",
+        raw: include_str!("docs/p909_p910_projections.md"),
     },
 ];
 
@@ -243,6 +289,39 @@ fn build_doc_id(base_dir: &Path, path: &Path) -> String {
     } else {
         segments.join("__")
     }
+}
+
+fn sanitize_relative_kb_path(relative_path: &str) -> anyhow::Result<PathBuf> {
+    let path = Path::new(relative_path);
+    if path.is_absolute() {
+        return Err(anyhow::anyhow!(
+            "Knowledge document path must be relative: {}",
+            relative_path
+        ));
+    }
+
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => clean.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(anyhow::anyhow!(
+                    "Knowledge document path contains forbidden component: {}",
+                    relative_path
+                ));
+            }
+        }
+    }
+
+    if clean.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return Err(anyhow::anyhow!(
+            "Knowledge document path must end with .md: {}",
+            relative_path
+        ));
+    }
+
+    Ok(clean)
 }
 
 // ─── Парсинг frontmatter ─────────────────────────────────────────────────────

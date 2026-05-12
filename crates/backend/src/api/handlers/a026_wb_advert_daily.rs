@@ -107,6 +107,26 @@ pub struct WbAdvertDailyLineDetailsDto {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct WbAdvertFoundOrderDto {
+    pub order_key: String,
+    pub nomenclature_ref: Option<String>,
+    pub finished_price: Option<f64>,
+    pub is_cancel: bool,
+    pub is_allocated: bool,
+    pub allocation_ratio: f64,
+    pub allocated_cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WbAdvertLinkedOrdersByNmDto {
+    pub nm_id: i64,
+    pub nm_name: String,
+    pub wb_reported_orders: i64,
+    pub wb_advert_sum: f64,
+    pub found_orders: Vec<WbAdvertFoundOrderDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct WbAdvertDailyDetailsDto {
     pub id: String,
     pub document_no: String,
@@ -126,6 +146,9 @@ pub struct WbAdvertDailyDetailsDto {
     pub updated_at: String,
     pub is_posted: bool,
     pub lines: Vec<WbAdvertDailyLineDetailsDto>,
+    pub has_linked_orders: bool,
+    pub linked_orders_count: i64,
+    pub linked_orders: Vec<WbAdvertLinkedOrdersByNmDto>,
 }
 
 pub async fn list_paginated(
@@ -630,6 +653,30 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
         })
         .collect();
 
+    let linked_orders = doc
+        .linked_orders
+        .iter()
+        .map(|group| WbAdvertLinkedOrdersByNmDto {
+            nm_id: group.nm_id,
+            nm_name: group.nm_name.clone(),
+            wb_reported_orders: group.wb_reported_orders,
+            wb_advert_sum: group.wb_advert_sum,
+            found_orders: group
+                .found_orders
+                .iter()
+                .map(|order| WbAdvertFoundOrderDto {
+                    order_key: order.order_key.clone(),
+                    nomenclature_ref: order.nomenclature_ref.clone(),
+                    finished_price: order.finished_price,
+                    is_cancel: order.is_cancel,
+                    is_allocated: order.is_allocated,
+                    allocation_ratio: order.allocation_ratio,
+                    allocated_cost: order.allocated_cost,
+                })
+                .collect(),
+        })
+        .collect();
+
     Ok(WbAdvertDailyDetailsDto {
         id: doc.base.id.as_string(),
         document_no: doc.header.document_no.clone(),
@@ -649,6 +696,9 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
         updated_at: doc.base.metadata.updated_at.to_rfc3339(),
         is_posted: doc.is_posted || doc.base.metadata.is_posted,
         lines,
+        has_linked_orders: doc.has_linked_orders,
+        linked_orders_count: doc.linked_orders_count,
+        linked_orders,
     })
 }
 

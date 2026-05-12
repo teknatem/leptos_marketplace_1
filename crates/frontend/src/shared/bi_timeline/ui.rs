@@ -426,7 +426,7 @@ pub fn BiTimelinePage(initial: BiTimelineInitial) -> impl IntoView {
                 <div class="page__header-left">
                     <h1 class="page__title">"BI Timeline"</h1>
                     <div class="page__subtitle">
-                        "Дневная проверка совместимых BI-индикаторов по двум периодам"
+                        "Просмотр динамики BI-индикаторов"
                     </div>
                 </div>
                 <div class="page__header-right">

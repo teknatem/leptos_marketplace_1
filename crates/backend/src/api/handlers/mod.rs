@@ -29,6 +29,8 @@ pub mod a027_wb_documents;
 pub mod a028_missing_cost_registry;
 pub mod a029_wb_supply;
 pub mod a030_wb_advert_campaign;
+pub mod a031_kb_edit;
+pub mod a032_wb_returns_claims;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -70,4 +72,5 @@ pub mod ext_1c_wb_supply;
 
 // Debug endpoints (dev only)
 pub mod debug;
+pub mod kb_read;
 pub mod llm_knowledge;

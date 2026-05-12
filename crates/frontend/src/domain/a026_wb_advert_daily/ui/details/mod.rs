@@ -76,6 +76,9 @@ fn cmp_float(a: f64, b: f64) -> Ordering {
 
 const LINES_TABLE_ID: &str = "a026-wb-advert-daily-lines-table";
 const LINES_COLUMN_WIDTHS_KEY: &str = "a026_wb_advert_daily_details_lines_column_widths";
+const LINKED_ORDERS_TABLE_ID: &str = "a026-wb-advert-daily-linked-orders-table";
+const LINKED_ORDERS_COLUMN_WIDTHS_KEY: &str =
+    "a026_wb_advert_daily_details_linked_orders_column_widths";
 
 #[derive(Debug, Clone, Deserialize)]
 struct LineDto {
@@ -153,6 +156,35 @@ impl ExcelExportable for LineDto {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct FoundOrderDto {
+    order_key: String,
+    #[serde(default)]
+    nomenclature_ref: Option<String>,
+    #[serde(default)]
+    finished_price: Option<f64>,
+    #[serde(default)]
+    is_cancel: bool,
+    #[serde(default)]
+    is_allocated: bool,
+    #[serde(default)]
+    allocation_ratio: f64,
+    #[serde(default)]
+    allocated_cost: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LinkedOrdersByNmDto {
+    nm_id: i64,
+    nm_name: String,
+    #[serde(default)]
+    wb_reported_orders: i64,
+    #[serde(default)]
+    wb_advert_sum: f64,
+    #[serde(default)]
+    found_orders: Vec<FoundOrderDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct DetailsDto {
     id: String,
     document_no: String,
@@ -173,6 +205,12 @@ struct DetailsDto {
     updated_at: String,
     is_posted: bool,
     lines: Vec<LineDto>,
+    #[serde(default)]
+    has_linked_orders: bool,
+    #[serde(default)]
+    linked_orders_count: i64,
+    #[serde(default)]
+    linked_orders: Vec<LinkedOrdersByNmDto>,
 }
 
 #[component]
@@ -233,6 +271,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (lines_sort_field, set_lines_sort_field) = signal("wb_name".to_string());
     let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
     let lines_resize_initialized = StoredValue::new(false);
+    let linked_orders_resize_initialized = StoredValue::new(false);
 
     let load_doc = {
         let tabs = tabs.clone();
@@ -341,6 +380,19 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
             spawn_local(async move {
                 gloo_timers::future::TimeoutFuture::new(100).await;
                 init_column_resize(LINES_TABLE_ID, LINES_COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
+
+    Effect::new(move |_| {
+        if tab.get() == "linked_orders"
+            && doc.get().is_some()
+            && !linked_orders_resize_initialized.get_value()
+        {
+            linked_orders_resize_initialized.set_value(true);
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(LINKED_ORDERS_TABLE_ID, LINKED_ORDERS_COLUMN_WIDTHS_KEY);
             });
         }
     });
@@ -460,6 +512,9 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                 </button>
                 <button class="page__tab" class:page__tab--active=move || tab.get() == "lines" on:click=move |_| set_tab.set("lines".to_string())>
                     "Позиции"
+                </button>
+                <button class="page__tab" class:page__tab--active=move || tab.get() == "linked_orders" on:click=move |_| set_tab.set("linked_orders".to_string())>
+                    "Связанные заказы"
                 </button>
                 <button class="page__tab" class:page__tab--active=move || tab.get() == "journal" on:click=move |_| set_tab.set("journal".to_string())>
                     "Журнал"
@@ -640,6 +695,147 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                         </Table>
                                     </div>
                                 </CardAnimated>
+                            }.into_any()
+                        },
+                        "linked_orders" => {
+                            let has_linked = d.has_linked_orders;
+                            let count = d.linked_orders_count;
+                            let wb_orders_total: i64 = d.linked_orders.iter().map(|g| g.wb_reported_orders).sum();
+                            let groups = d.linked_orders.clone();
+                            let posted = d.is_posted;
+
+                            view! {
+                                <div style="display:flex;flex-direction:column;gap:var(--spacing-md);width:100%;">
+                                    <CardAnimated delay_ms=0 nav_id="a026_wb_advert_daily_details_linked_orders_summary">
+                                        <h4 class="details-section__title">"Сводка"</h4>
+                                        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                            <Badge
+                                                appearance=BadgeAppearance::Tint
+                                                color={ if has_linked { BadgeColor::Success } else if posted { BadgeColor::Warning } else { BadgeColor::Informative } }
+                                            >
+                                                { if !posted {
+                                                    "Документ не проведён".to_string()
+                                                } else if has_linked {
+                                                    "Найдены связанные заказы".to_string()
+                                                } else {
+                                                    "Связанные заказы не найдены".to_string()
+                                                } }
+                                            </Badge>
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
+                                                {format!("Найдено: {}", count)}
+                                            </Badge>
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                                                {format!("По данным WB: {}", wb_orders_total)}
+                                            </Badge>
+                                        </div>
+                                        <Show when=move || !posted>
+                                            <div class="form__hint">
+                                                "Поиск связанных заказов выполняется при проведении документа. Проведите документ, чтобы увидеть результат."
+                                            </div>
+                                        </Show>
+                                        <Show when=move || posted && !has_linked>
+                                            <div class="form__hint">
+                                                "За дату документа в выбранном кабинете нет проведённых заказов a015 по соответствующим nm_id."
+                                            </div>
+                                        </Show>
+                                    </CardAnimated>
+                                    <CardAnimated delay_ms=40 nav_id="a026_wb_advert_daily_details_linked_orders_table">
+                                        <h4 class="details-section__title">"Найденные заказы по позициям"</h4>
+                                        {
+                                            if groups.is_empty() {
+                                                view! {
+                                                    <div class="text-muted">"Нет данных для отображения."</div>
+                                                }.into_any()
+                                            } else {
+                                                let groups_for_each = groups.clone();
+                                                view! {
+                                                    <div class="table-wrapper">
+                                                        <Table attr:id=LINKED_ORDERS_TABLE_ID attr:style="width:100%;min-width:1130px;table-layout:fixed;">
+                                                            <TableHeader>
+                                                                <TableRow>
+                                                                    <TableHeaderCell resizable=false min_width=220.0 class="resizable">"nmID / Заказ"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=280.0 class="resizable">"Наименование"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=90.0 class="resizable text-right">"Заказы WB"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=120.0 class="resizable text-right">"Найдено"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=100.0 class="resizable">"Статус"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=110.0 class="resizable text-right">"Цена"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=120.0 class="resizable text-right">"Расход"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=90.0 class="resizable text-right">"Доля, %"</TableHeaderCell>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                <For
+                                                                    each=move || groups_for_each.clone()
+                                                                    key=|group| group.nm_id
+                                                                    children=move |group| {
+                                                                        let header_nm_id = group.nm_id;
+                                                                        let header_name = group.nm_name.clone();
+                                                                        let wb_reported = group.wb_reported_orders;
+                                                                        let wb_advert_sum = group.wb_advert_sum;
+                                                                        let found_count = group.found_orders.len() as i64;
+                                                                        let allocated_count = group.found_orders.iter().filter(|o| o.is_allocated).count() as i64;
+                                                                        let extra_count = found_count - allocated_count;
+                                                                        let header_summary = if extra_count > 0 {
+                                                                            format!("{} (+{} доп.)", allocated_count, extra_count)
+                                                                        } else {
+                                                                            allocated_count.to_string()
+                                                                        };
+                                                                        let orders_for_each = group.found_orders.clone();
+
+                                                                        view! {
+                                                                            <TableRow>
+                                                                                <TableCell><TableCellLayout truncate=true><strong>{header_nm_id}</strong></TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout truncate=true><strong>{header_name}</strong></TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>{wb_reported}</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>{header_summary}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>"—"</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout truncate=true><strong>{fmt_money(wb_advert_sum)}</strong></TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>"100,00"</TableCellLayout></TableCell>
+                                                                            </TableRow>
+                                                                            <For
+                                                                                each=move || orders_for_each.clone()
+                                                                                key=|order| order.order_key.clone()
+                                                                                children=move |order| {
+                                                                                    let price = order.finished_price.map(fmt_money).unwrap_or_else(|| "—".to_string());
+                                                                                    let ratio_pct = order.allocation_ratio * 100.0;
+                                                                                    let allocated = fmt_money(order.allocated_cost);
+                                                                                    let (status_color, status_label) = if order.is_cancel {
+                                                                                        (BadgeColor::Danger, "Отменён")
+                                                                                    } else if !order.is_allocated {
+                                                                                        (BadgeColor::Warning, "Не в выборке")
+                                                                                    } else {
+                                                                                        (BadgeColor::Success, "Активен")
+                                                                                    };
+                                                                                    view! {
+                                                                                        <TableRow>
+                                                                                            <TableCell><TableCellLayout truncate=true><span class="text-muted">"↳"</span> {order.order_key}</TableCellLayout></TableCell>
+                                                                                            <TableCell><TableCellLayout truncate=true>{order.nomenclature_ref.unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                            <TableCell>
+                                                                                                <TableCellLayout truncate=true>
+                                                                                                    <Badge appearance=BadgeAppearance::Tint color=status_color>{status_label}</Badge>
+                                                                                                </TableCellLayout>
+                                                                                            </TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{price}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{allocated}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{fmt_ratio(ratio_pct)}</TableCellLayout></TableCell>
+                                                                                        </TableRow>
+                                                                                    }
+                                                                                }
+                                                                            />
+                                                                        }
+                                                                    }
+                                                                />
+                                                            </TableBody>
+                                                        </Table>
+                                                    </div>
+                                                }.into_any()
+                                            }
+                                        }
+                                    </CardAnimated>
+                                </div>
                             }.into_any()
                         },
                         "journal" => {

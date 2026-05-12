@@ -37,6 +37,8 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a028_missing_cost_registry", "all"),
     ("a029_wb_supply", "all"),
     ("a030_wb_advert_campaign", "all"),
+    ("a031_kb_edit", "all"),
+    ("a032_wb_returns_claims", "all"),
     // Projections
     ("p900_mp_sales_register", "all"),
     ("p901_nomenclature_barcodes", "all"),
@@ -62,6 +64,7 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("data_view", "all"),
     ("bi_timeline", "all"),
     ("dashboard", "all"),
+    ("knowledge_base", "all"),
 ];
 
 /// Default scope grants for the `operator` role.
@@ -93,6 +96,7 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a027_wb_documents", "all"),
     ("a029_wb_supply", "all"),
     ("a030_wb_advert_campaign", "all"),
+    ("a032_wb_returns_claims", "all"),
     // Projections — read access to analytics
     ("p900_mp_sales_register", "read"),
     ("p901_nomenclature_barcodes", "read"),

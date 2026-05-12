@@ -656,8 +656,8 @@ pub fn ImportWidget() -> impl IntoView {
                     </TaskSection>
 
                     <TaskSection
-                        title="Финансы"
-                        subtitle="Продажи, финансовый отчет и актуальные комиссии."
+                        title="Финансы и возвраты"
+                        subtitle="Продажи, заявки на возврат, финансовый отчет и актуальные комиссии."
                     >
                         <ServiceRow
                             row_id="a012"
@@ -665,6 +665,13 @@ pub fn ImportWidget() -> impl IntoView {
                             details_text="Загружает продажи и возвраты Wildberries с финансовыми полями, чтобы в системе появились данные для выручки, скидок, комиссий и последующего расчета финансового результата."
                             aggregate="a012_wb_sales"
                             needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="a032"
+                            title="Заявки на возврат WB"
+                            details_text="Загружает заявки покупателей на возврат товара из returns-api.wildberries.ru/api/v1/claims. API возвращает данные только за последние 14 дней — без выбора периода. Опрашиваются активные и архивные заявки. Upsert по (claim_id, connection_id). Требует токена с категорией «Buyers Returns»."
+                            aggregate="a032_wb_returns_claims"
                             selected_connection=selected_connection
                         />
                         <ServiceRow

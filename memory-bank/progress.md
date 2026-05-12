@@ -1,6 +1,6 @@
 # Progress Tracker
 
-_Последнее обновление: 2026-04-26_
+_Последнее обновление: 2026-05-11_
 
 ## ✅ Реализовано и работает
 
@@ -244,6 +244,12 @@ _Последнее обновление: 2026-04-26_
   - Агенты (a017) с настраиваемым system_prompt
   - История чатов (a018) и артефакты (a019)
   - System prompt: `crates/backend/src/domain/a018_llm_chat/prompts/default_agent.md`
+- ✅ **Read-only Knowledge Base UI**
+  - Backend API: `/api/kb/stats`, `/api/kb/tree`, `/api/kb/articles/:id`
+  - Frontend: отдельный раздел “База знаний” со статистикой, деревом статей и просмотром markdown как безопасного текста
+  - Внутренние ссылки `kb://article/{id}` открывают вкладку статьи из чата и KB-контента
+  - Access scope: `knowledge_base`
+  - KB разделена на два слоя: Obsidian (`data/knowledge/`) хранит только бизнес-знания организации, embedded-документы приложения хранят технический контекст (DataView, BI, projections, tool notes)
 
 
 ### Database

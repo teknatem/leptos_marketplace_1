@@ -74,8 +74,7 @@
               "title": "Bookmarks"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "horizontal",
@@ -184,7 +183,7 @@
       "bases:Create new base": false
     }
   },
-  "active": "9c30de20229ba662",
+  "active": "d6c6b2981837ba9a",
   "lastOpenFiles": [
     "runbooks/RB-thaw-ui-migration-v1.md",
     "lessons/LL__check-imports-before-refactoring__2026-01-11.md",

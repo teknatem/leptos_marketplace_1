@@ -111,6 +111,11 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         .route(
+            "/api/sys/tasks/history",
+            get(handlers::tasks::task_history)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
             "/api/sys/tasks/runs/active/progress",
             get(handlers::tasks::list_active_runs_with_progress)
                 .layer(middleware::from_fn(auth::middleware::require_auth)),

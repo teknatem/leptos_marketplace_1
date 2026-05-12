@@ -6,10 +6,11 @@ use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::date_utils::{
     format_duration_ms, format_http_traffic, format_utc_local, TZ_OFFSET_HOURS,
 };
-use chrono::Utc;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::system::tasks::api::{self, RunTaskNowOutcome};
+use crate::system::tasks::ui::history::TaskHistoryView;
+use chrono::Utc;
 use contracts::system::tasks::progress::{task_progress_detail_caption_ru, TaskProgressResponse};
 use contracts::system::tasks::response::ScheduledTaskResponse;
 use contracts::system::tasks::runs::{LiveMemoryProgressItem, TaskRun};
@@ -257,7 +258,7 @@ fn SortHeaderCell(
         <TableHeaderCell resizable=resizable min_width=min_width>
             <div
                 class="table__sortable-header"
-                style="cursor:pointer;display:flex;align-items:center;gap:4px;user-select:none;"
+                style="cursor:pointer;user-select:none;"
                 on:click=move |_| on_toggle.run(field)
             >
                 {label}
@@ -310,10 +311,10 @@ fn LiveMemoryProgressRow(item: LiveMemoryProgressItem, on_aborted: Callback<()>)
     view! {
         <TableRow>
             <TableCell>
-                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                <Flex vertical=true gap=FlexGap::Small style="min-width:0;">
                     <span style="font-size:13px;font-weight:600;">{item.task_display_name.clone()}</span>
                     <span style="font-size:11px;color:var(--color-text-secondary);font-family:monospace;">{item.task_type.clone()}</span>
-                </div>
+                </Flex>
             </TableCell>
             <TableCell>
                 <span style="font-size:11px;font-family:monospace;color:var(--color-text-secondary);word-break:break-all;">{sid}</span>
@@ -497,9 +498,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
     }
 
     fn ls_save_scheduler_ts(val: &str) {
-        if let Some(storage) = web_sys::window()
-            .and_then(|w| w.local_storage().ok().flatten())
-        {
+        if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
             let _ = storage.set_item("sys_tasks_scheduler_last_action", val);
         }
     }
@@ -809,37 +808,9 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     view! {
         <div id="sys_tasks--list" data-page-category="legacy" class="scheduled-task-list" style="padding: 20px;">
-            <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-                // Левая колонка: заголовок
+            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center gap=FlexGap::Medium style="margin-bottom:16px;">
                 <h2 style="margin:0;font-size:24px;font-weight:bold;flex-shrink:0;">"Регламентные задания"</h2>
 
-                // Центральная зона: занимает всё свободное место, MessageBar внутри — по центру
-                <div style="flex:1;display:flex;justify-content:center;">
-                {move || {
-                    let intent = if scheduler_enabled.get() {
-                        MessageBarIntent::Success
-                    } else {
-                        MessageBarIntent::Warning
-                    };
-                    let label = if scheduler_enabled.get() { "Планировщик включён" } else { "Планировщик выключен" };
-                    let ts = scheduler_last_action.get();
-                    view! {
-                        <MessageBar intent>
-                            <div style="display:flex;align-items:center;gap:10px;padding:0 8px;">
-                                <Switch checked=scheduler_enabled/>
-                                <span style="font-size:13px;font-weight:500;user-select:none;">{label}</span>
-                                {ts.map(|dt| view! {
-                                    <span style="font-size:12px;opacity:0.7;user-select:none;">
-                                        {dt}
-                                    </span>
-                                })}
-                            </div>
-                        </MessageBar>
-                    }
-                }}
-                </div>
-
-                // Правая колонка: кнопки действий
                 <div style="flex-shrink:0;">
                 {move || match active_tab.get().as_str() {
                     "tasks" => view! {
@@ -877,66 +848,62 @@ pub fn ScheduledTaskList() -> impl IntoView {
                         </Space>
                     }.into_any(),
                     "active" => view! {
-                        <Flex gap=FlexGap::Small align=FlexAlign::Center>
-                            <Button
-                                appearance=ButtonAppearance::Secondary
-                                on_click=move |_| load_active_tab()
-                                disabled=runs_loading
-                            >
-                                <Flex gap=FlexGap::Small align=FlexAlign::Center>
-                                    {icon("refresh-cw")}
-                                    <span>"Обновить"</span>
-                                </Flex>
-                            </Button>
-                        </Flex>
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            on_click=move |_| load_active_tab()
+                            disabled=runs_loading
+                        >
+                            <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                                {icon("refresh-cw")}
+                                <span>"Обновить"</span>
+                            </Flex>
+                        </Button>
                     }.into_any(),
                     "monitoring" => view! {
-                        <Flex gap=FlexGap::Small align=FlexAlign::Center>
-                            <Button
-                                appearance=ButtonAppearance::Secondary
-                                on_click=move |_| load_monitoring_recent()
-                                disabled=runs_loading
-                            >
-                                <Flex gap=FlexGap::Small align=FlexAlign::Center>
-                                    {icon("refresh-cw")}
-                                    <span>"Обновить"</span>
-                                </Flex>
-                            </Button>
-                        </Flex>
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            on_click=move |_| load_monitoring_recent()
+                            disabled=runs_loading
+                        >
+                            <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                                {icon("refresh-cw")}
+                                <span>"Обновить"</span>
+                            </Flex>
+                        </Button>
                     }.into_any(),
                     _ => view! { <></> }.into_any(),
                 }}
                 </div>
-            </div>
+            </Flex>
 
             <div style="margin-bottom: 16px;">
                 <TabList selected_value=active_tab>
-                    <Tab value="tasks".to_string()>"Задания"</Tab>
+                    <Tab value="tasks".to_string()>"Все"</Tab>
                     <Tab value="active".to_string()>
                         {move || {
                             let count = live_memory_items.get().len();
                             if count > 0 {
-                                format!("Активные задачи ({})", count)
+                                format!("Активные ({})", count)
                             } else {
-                                "Активные задачи".to_string()
+                                "Активные".to_string()
                             }
                         }}
                     </Tab>
-                    <Tab value="monitoring".to_string()>"Мониторинг запусков"</Tab>
+                    <Tab value="monitoring".to_string()>"Мониторинг"</Tab>
+                    <Tab value="history".to_string()>"История"</Tab>
                 </TabList>
             </div>
 
             {move || error.get().map(|err| view! {
-                <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-                    <span style="color: var(--color-error); font-size: 18px;">"⚠"</span>
-                    <span style="color: var(--color-error);">{err}</span>
-                </div>
+                <MessageBar intent=MessageBarIntent::Error>
+                    {err}
+                </MessageBar>
             })}
 
             {move || batch_warning.get().map(|w| view! {
-                <div style="padding: 12px; background: var(--colorPaletteYellowBackground2); border: 1px solid var(--colorPaletteYellowForeground2); border-radius: 8px; margin-bottom: 16px; font-size: 13px; color: var(--color-text-primary);">
+                <MessageBar intent=MessageBarIntent::Warning>
                     {w}
-                </div>
+                </MessageBar>
             })}
 
             // Tasks tab
@@ -944,7 +911,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                 view! {
                     <div>
                         // Фильтры
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <Flex gap=FlexGap::Small align=FlexAlign::Center style="flex-wrap:wrap;margin-bottom:10px;">
                             <div style="position:relative;flex:1;min-width:180px;max-width:360px;">
                                 <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary);pointer-events:none;font-size:14px;">
                                     "🔍"
@@ -986,14 +953,16 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     || !filter_status.get().is_empty();
                                 if has_filter {
                                     view! {
-                                        <button
-                                            style="padding:5px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground2);color:var(--color-text-secondary);font-size:12px;cursor:pointer;"
-                                            on:click=move |_| {
+                                        <Button
+                                            appearance=ButtonAppearance::Secondary
+                                            on_click=move |_| {
                                                 set_filter_text.set(String::new());
                                                 set_filter_type.set(String::new());
                                                 set_filter_status.set(String::new());
                                             }
-                                        >"✕ Сбросить"</button>
+                                        >
+                                            "Сбросить"
+                                        </Button>
                                     }.into_any()
                                 } else {
                                     view! { <></> }.into_any()
@@ -1015,7 +984,25 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     view! { <span style="font-size:12px;color:var(--color-text-secondary);">{format!("{} заданий", total)}</span> }.into_any()
                                 }
                             }}
-                        </div>
+                            <Flex align=FlexAlign::Center gap=FlexGap::Small style="margin-left:auto;flex-shrink:0;">
+                                <Switch checked=scheduler_enabled />
+                                <span style=move || {
+                                    let color = if scheduler_enabled.get() {
+                                        "var(--colorPaletteGreenForeground1)"
+                                    } else {
+                                        "var(--color-error)"
+                                    };
+                                    format!("font-size:14px;font-weight:600;user-select:none;color:{color};")
+                                }>
+                                    {move || if scheduler_enabled.get() { "Планировщик работает" } else { "Планировщик выключен" }}
+                                </span>
+                                {move || scheduler_last_action.get().map(|ts| view! {
+                                    <span style="font-size:11px;opacity:0.65;user-select:none;">
+                                        {ts}
+                                    </span>
+                                })}
+                            </Flex>
+                        </Flex>
 
                         <div class="table-wrapper">
                         <Table>
@@ -1197,16 +1184,14 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
                                                         // Вкл
                                                         <TableCell>
-                                                            <div style="text-align:center;">
-                                                                <div
-                                                                    on:click=move |e: MouseEvent| {
-                                                                        e.stop_propagation();
-                                                                        toggle_enabled(task_id_toggle.clone(), is_enabled);
-                                                                    }
-                                                                    style="cursor:pointer;display:inline-block;"
-                                                                >
-                                                                    <Checkbox checked=is_enabled attr:disabled=true />
-                                                                </div>
+                                                            <div
+                                                                on:click=move |e: MouseEvent| {
+                                                                    e.stop_propagation();
+                                                                    toggle_enabled(task_id_toggle.clone(), is_enabled);
+                                                                }
+                                                                style="text-align:center;cursor:pointer;"
+                                                            >
+                                                                <Checkbox checked=is_enabled attr:disabled=true />
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>
@@ -1228,9 +1213,9 @@ pub fn ScheduledTaskList() -> impl IntoView {
             {move || if active_tab.get() == "active" {
                 view! {
                     <div>
-                        <div style="margin-bottom:12px;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--color-text-secondary);background:var(--colorNeutralBackground2);border:1px solid var(--color-border);border-radius:var(--radius-md);">
-                               "Все серверные задачи. Обновляется каждые 2 с, пока открыта вкладка. Показаны сессии «Running» в трекерах. История во вкладке «Мониторинг запусков»"
-                        </div>
+                        <MessageBar intent=MessageBarIntent::Info>
+                               "Все серверные задачи. Обновляется каждые 2 с, пока открыта вкладка. Показаны сессии «Running» в трекерах. История во вкладке «Мониторинг»"
+                        </MessageBar>
                         {move || if runs_loading.get() {
                             view! {
                                 <Flex justify=FlexJustify::Center align=FlexAlign::Center style="padding:32px;">
@@ -1249,6 +1234,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     </div>
                                 }.into_any()
                             } else {
+                                let active_len = active.len();
                                 let total_http: i32 = active
                                     .iter()
                                     .map(|item| item.progress.http_request_count.unwrap_or(0))
@@ -1264,12 +1250,12 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                 let total_traffic = format_http_traffic(total_sent, total_received)
                                     .unwrap_or_else(|| "—".to_string());
                                 view! {
-                                    <div style="display:flex;flex-direction:column;gap:8px;">
-                                        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground2);font-size:12px;color:var(--color-text-secondary);">
-                                            <span>{format!("Активных сессий: {}", active.len())}</span>
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Flex gap=FlexGap::Medium align=FlexAlign::Center style="flex-wrap:wrap;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground2);font-size:12px;color:var(--color-text-secondary);">
+                                            <span>{format!("Активных сессий: {}", active_len)}</span>
                                             <span style="font-family:monospace;">{format!("HTTP: {}", total_http)}</span>
                                             <span style="font-family:monospace;">{format!("Трафик: {}", total_traffic)}</span>
-                                        </div>
+                                        </Flex>
                                         <div class="table-wrapper">
                                             <Table>
                                                 <TableHeader>
@@ -1283,7 +1269,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                             <span title="Число отправленных HTTP-запросов внешнего API">"HTTP"</span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell min_width=140.0>
-                                                            <span title="Суммарный размер тел запросов и ответов, без сетевых заголовков">"Трафик"</span>
+                                                            <span title="Суммарный размер запросов и ответов, без сетевых заголовков">"Трафик"</span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell attr:style="width:100px;"></TableHeaderCell>
                                                     </TableRow>
@@ -1300,11 +1286,20 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                 </TableBody>
                                             </Table>
                                         </div>
-                                    </div>
+                                    </Flex>
                                 }.into_any()
                             }
                         }}
                     </div>
+                }.into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
+
+            // Вкладка «История» — график агрегированной истории запусков.
+            {move || if active_tab.get() == "history" {
+                view! {
+                    <TaskHistoryView />
                 }.into_any()
             } else {
                 view! { <></> }.into_any()
@@ -1315,7 +1310,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                 view! {
                     <div>
                         // Фильтры
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <Flex gap=FlexGap::Small align=FlexAlign::Center style="flex-wrap:wrap;margin-bottom:10px;">
                             <div style="position:relative;flex:1;min-width:180px;max-width:360px;">
                                 <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary);pointer-events:none;font-size:14px;">
                                     "🔍"
@@ -1343,13 +1338,15 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                 let has_filter = !mon_filter_text.get().is_empty() || !mon_filter_status.get().is_empty();
                                 if has_filter {
                                     view! {
-                                        <button
-                                            style="padding:5px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground2);color:var(--color-text-secondary);font-size:12px;cursor:pointer;"
-                                            on:click=move |_| {
+                                        <Button
+                                            appearance=ButtonAppearance::Secondary
+                                            on_click=move |_| {
                                                 set_mon_filter_text.set(String::new());
                                                 set_mon_filter_status.set(String::new());
                                             }
-                                        >"✕ Сбросить"</button>
+                                        >
+                                            "Сбросить"
+                                        </Button>
                                     }.into_any()
                                 } else {
                                     view! { <></> }.into_any()
@@ -1369,7 +1366,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     view! { <span style="font-size:12px;color:var(--color-text-secondary);">{format!("{} запусков", total)}</span> }.into_any()
                                 }
                             }}
-                        </div>
+                        </Flex>
 
                         {move || if runs_loading.get() {
                             view! {

@@ -11,7 +11,62 @@ static NEXT_INFO_POPOVER_ID: AtomicUsize = AtomicUsize::new(1);
 
 thread_local! {
     static ACTIVE_INFO_POPOVER: RefCell<Option<InfoPopoverDom>> = const { RefCell::new(None) };
+    /// Single <div> reused for nav-tooltip portal (created lazily, stays in DOM).
+    static NAV_TOOLTIP_EL: RefCell<Option<web_sys::Element>> = const { RefCell::new(None) };
 }
+
+// ── Nav tooltip portal ────────────────────────────────────────────────────────
+
+/// Ensure the tooltip `<div>` exists in `<body>` and return a reference to it.
+fn ensure_nav_tooltip_el(document: &web_sys::Document) -> Option<web_sys::Element> {
+    NAV_TOOLTIP_EL.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        if let Some(ref el) = *borrow {
+            return Some(el.clone());
+        }
+        let Ok(el) = document.create_element("div") else {
+            return None;
+        };
+        el.set_class_name("nav-tooltip-portal");
+        let _ = el.set_attribute("role", "tooltip");
+        let _ = el.set_attribute("aria-live", "off");
+        if let Some(body) = document.body() {
+            let _ = body.append_child(&el);
+        }
+        *borrow = Some(el.clone());
+        Some(el)
+    })
+}
+
+/// Show a lightweight body-level tooltip near the cursor (used for brief links).
+pub fn show_nav_tooltip(text: &str, client_x: i32, client_y: i32) {
+    let Some(window) = web_sys::window() else { return };
+    let Some(document) = window.document() else { return };
+    let Some(el) = ensure_nav_tooltip_el(&document) else { return };
+
+    let vw = window.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1024.0);
+    let vh = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(768.0);
+    let left = ((client_x as f64) + 12.0).min(vw - 320.0).max(8.0);
+    let top  = ((client_y as f64) + 18.0).min(vh - 100.0).max(8.0);
+
+    el.set_text_content(Some(text));
+    let _ = el.set_attribute(
+        "style",
+        &format!("display:block; left:{left:.0}px; top:{top:.0}px;"),
+    );
+}
+
+/// Hide the nav tooltip.
+pub fn hide_nav_tooltip() {
+    NAV_TOOLTIP_EL.with(|cell| {
+        if let Some(ref el) = *cell.borrow() {
+            let _ = el.set_attribute("style", "display:none;");
+        }
+    });
+}
+
+// ── Info popover (existing) ───────────────────────────────────────────────────
+
 
 struct InfoPopoverDom {
     id: String,

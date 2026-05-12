@@ -42,6 +42,8 @@ pub enum AgentType {
     SystemAdmin,
     /// Общий агент: доступ ко всем инструментам
     General,
+    /// Администратор базы знаний: анализирует пробелы и готовит обновления KB
+    KbAdmin,
 }
 
 impl AgentType {
@@ -49,6 +51,7 @@ impl AgentType {
         match s {
             "system_admin" => AgentType::SystemAdmin,
             "general" => AgentType::General,
+            "kb_admin" => AgentType::KbAdmin,
             _ => AgentType::BusinessAnalyst,
         }
     }
@@ -58,6 +61,7 @@ impl AgentType {
             AgentType::BusinessAnalyst => "business_analyst",
             AgentType::SystemAdmin => "system_admin",
             AgentType::General => "general",
+            AgentType::KbAdmin => "kb_admin",
         }
     }
 
@@ -66,6 +70,7 @@ impl AgentType {
             AgentType::BusinessAnalyst => "Бизнес-аналитик",
             AgentType::SystemAdmin => "Системный администратор",
             AgentType::General => "Общий",
+            AgentType::KbAdmin => "Администратор базы знаний",
         }
     }
 }

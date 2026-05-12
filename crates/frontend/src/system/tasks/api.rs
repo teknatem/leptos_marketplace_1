@@ -1,5 +1,8 @@
 use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
+use contracts::system::tasks::history::{
+    TaskHistoryMetric, TaskHistoryResponse, TaskHistoryScale,
+};
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::TaskProgressResponse;
 use contracts::system::tasks::request::{
@@ -15,6 +18,22 @@ use serde_json;
 
 fn get_auth_header() -> Option<String> {
     storage::get_access_token().map(|token| format!("Bearer {}", token))
+}
+
+fn history_scale_param(scale: TaskHistoryScale) -> &'static str {
+    match scale {
+        TaskHistoryScale::Day => "day",
+        TaskHistoryScale::Week => "week",
+        TaskHistoryScale::Month => "month",
+    }
+}
+
+fn history_metric_param(metric: TaskHistoryMetric) -> &'static str {
+    match metric {
+        TaskHistoryMetric::TaskCount => "task_count",
+        TaskHistoryMetric::RequestCount => "request_count",
+        TaskHistoryMetric::TrafficBytes => "traffic_bytes",
+    }
 }
 
 /// Fetch all scheduled tasks
@@ -318,6 +337,40 @@ pub async fn get_recent_runs(limit: Option<u32>) -> Result<RecentRunsResponse, S
     if !response.ok() {
         return Err(format!(
             "Failed to fetch recent runs: {}",
+            response.status()
+        ));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Get aggregated run history for the sys_tasks History tab.
+pub async fn fetch_history(
+    scale: TaskHistoryScale,
+    metric: TaskHistoryMetric,
+    date_from: &str,
+) -> Result<TaskHistoryResponse, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+    let url = format!(
+        "{}/api/sys/tasks/history?scale={}&metric={}&date_from={}",
+        api_base(),
+        history_scale_param(scale),
+        history_metric_param(metric),
+        date_from
+    );
+
+    let response = Request::get(&url)
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Failed to fetch task history: {}",
             response.status()
         ));
     }

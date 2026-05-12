@@ -51,6 +51,17 @@ struct MenuGroup {
 fn get_menu_groups() -> Vec<MenuGroup> {
     vec![
         MenuGroup {
+            id: "navigator",
+            label: "Навигация",
+            icon: "compass",
+            items: vec![SidebarItem::new(
+                "navigator_marketplace",
+                tab_label_for_key("navigator_marketplace"),
+                "store",
+            )],
+            admin_only: false,
+        },
+        MenuGroup {
             id: "dashboards",
             label: "Дашборды",
             icon: "bar-chart",
@@ -75,38 +86,22 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             admin_only: false,
         },
         MenuGroup {
-            id: "settings",
-            label: "Настройки",
-            icon: "settings",
+            id: "knowledge_base",
+            label: "База знаний",
+            icon: "book-open",
             items: vec![
-                SidebarItem::new(
-                    "d400_monthly_summary",
-                    tab_label_for_key("d400_monthly_summary"),
-                    "bar-chart",
+                SidebarItem::with_scope(
+                    "knowledge_base",
+                    tab_label_for_key("knowledge_base"),
+                    "book-open-text",
                 ),
-                SidebarItem::new(
-                    "d401_metadata_dashboard",
-                    tab_label_for_key("d401_metadata_dashboard"),
-                    "layout-dashboard",
-                ),
-                SidebarItem::new(
-                    "drilldown__new",
-                    tab_label_for_key("drilldown__new"),
-                    "zoom-in",
-                ),
-                SidebarItem::new(
-                    "universal_dashboard",
-                    tab_label_for_key("universal_dashboard"),
-                    "table-pivot",
-                ),
-                SidebarItem::new("all_reports", tab_label_for_key("all_reports"), "table"),
-                SidebarItem::new(
-                    "schema_browser",
-                    tab_label_for_key("schema_browser"),
-                    "database-cog",
+                SidebarItem::with_scope(
+                    "a031_kb_edit",
+                    tab_label_for_key("a031_kb_edit"),
+                    "book-open",
                 ),
             ],
-            admin_only: true,
+            admin_only: false,
         },
         MenuGroup {
             id: "references",
@@ -197,6 +192,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a029_wb_supply",
                     tab_label_for_key("a029_wb_supply"),
                     "package",
+                ),
+                SidebarItem::with_scope(
+                    "a032_wb_returns_claims",
+                    tab_label_for_key("a032_wb_returns_claims"),
+                    "rotate-ccw",
                 ),
                 SidebarItem::with_scope(
                     "a020_wb_promotion",
@@ -410,8 +410,42 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             admin_only: false,
         },
         MenuGroup {
+            id: "settings",
+            label: "Настройки",
+            icon: "settings",
+            items: vec![
+                SidebarItem::new(
+                    "d400_monthly_summary",
+                    tab_label_for_key("d400_monthly_summary"),
+                    "bar-chart",
+                ),
+                SidebarItem::new(
+                    "d401_metadata_dashboard",
+                    tab_label_for_key("d401_metadata_dashboard"),
+                    "layout-dashboard",
+                ),
+                SidebarItem::new(
+                    "drilldown__new",
+                    tab_label_for_key("drilldown__new"),
+                    "zoom-in",
+                ),
+                SidebarItem::new(
+                    "universal_dashboard",
+                    tab_label_for_key("universal_dashboard"),
+                    "table-pivot",
+                ),
+                SidebarItem::new("all_reports", tab_label_for_key("all_reports"), "table"),
+                SidebarItem::new(
+                    "schema_browser",
+                    tab_label_for_key("schema_browser"),
+                    "database-cog",
+                ),
+            ],
+            admin_only: true,
+        },
+        MenuGroup {
             id: "administration",
-            label: "Администрирование",
+            label: "Система",
             icon: "shield",
             items: vec![
                 SidebarItem::new("sys_users", tab_label_for_key("sys_users"), "users"),

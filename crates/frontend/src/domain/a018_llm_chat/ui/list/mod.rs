@@ -448,6 +448,7 @@ fn agent_type_color(agent_type: &AgentType) -> &'static str {
         AgentType::BusinessAnalyst => "var(--colorBrandBackground)",
         AgentType::SystemAdmin => "#8b5cf6",
         AgentType::General => "#059669",
+        AgentType::KbAdmin => "#0f766e",
     }
 }
 

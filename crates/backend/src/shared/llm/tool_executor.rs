@@ -5,6 +5,7 @@
 //! - диспетчер выполнения (`execute_tool_call`)
 
 use super::admin_tools::{admin_tool_definitions, execute_admin_tool};
+use super::kb_admin_tools::{execute_kb_admin_tool, kb_admin_tool_definitions};
 use super::knowledge_base::KNOWLEDGE_BASE;
 use super::metadata_registry::METADATA_REGISTRY;
 use super::types::{ToolCall, ToolDefinition};
@@ -40,6 +41,13 @@ pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
             let mut tools = shared;
             tools.extend(analyst_tool_definitions());
             tools.extend(admin_tool_definitions());
+            tools.extend(kb_admin_tool_definitions());
+            tools
+        }
+        AgentType::KbAdmin => {
+            let mut tools = shared;
+            tools.extend(kb_admin_tool_definitions());
+            tools.push(execute_query_tool_definition());
             tools
         }
     }
@@ -144,9 +152,10 @@ fn analyst_tool_definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "search_knowledge".into(),
-            description: "Поиск справочных материалов по тегам (база знаний Obsidian). \
-                          Используй когда нужно понять бизнес-термин, метрику или получить \
-                          контекст о сущности домена. \
+            description: "Поиск справочных материалов по тегам. Obsidian-часть содержит \
+                          бизнес-знания организации; embedded-документы содержат технический \
+                          контекст приложения. Используй когда нужно понять бизнес-термин, \
+                          метрику или получить контекст о сущности домена. \
                           Теги совпадают с entity_index (a020, a012, ...) и ключевыми словами: \
                           'drr', 'cpm', 'roas', 'акции', 'скидки', 'комиссии', 'wildberries', 'ozon'. \
                           Возвращает список документов (id, title) — затем вызывай get_knowledge(id)."
@@ -254,6 +263,35 @@ fn analyst_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+fn execute_query_tool_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: "execute_query".into(),
+        description: "Выполнить SQL SELECT-запрос к базе данных и получить результат. \
+                      ТОЛЬКО SELECT (WITH ... SELECT тоже разрешён). \
+                      Используй для анализа чатов, tool_trace и структуры данных перед созданием тикетов KB. \
+                      База данных — SQLite: используй datetime('now', '-7 days'), а не NOW()/INTERVAL. \
+                      LLM-история: a018_llm_chat и a018_llm_chat_message \
+                      (created_at, role, content, tool_trace_json)."
+            .into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "sql": {
+                    "type": "string",
+                    "description": "SQL SELECT-запрос SQLite. Автоматически добавляется LIMIT 50 если не указан. \
+                                    Пример: SELECT role, content, tool_trace_json FROM a018_llm_chat_message \
+                                    WHERE created_at >= datetime('now', '-7 days') ORDER BY created_at DESC"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Описание запроса."
+                }
+            },
+            "required": ["sql", "description"]
+        }),
+    }
+}
+
 // ─── Диспетчер ───────────────────────────────────────────────────────────────
 
 /// Выполнить tool call и вернуть результат в виде JSON-строки.
@@ -267,6 +305,38 @@ pub async fn execute_tool_call(
     agent_id: &str,
     agent_type: &AgentType,
 ) -> String {
+    if matches!(
+        call.name.as_str(),
+        "list_kb_documents"
+            | "get_kb_document"
+            | "create_kb_edit"
+            | "update_kb_edit_articles"
+            | "list_open_kb_edits"
+            | "write_kb_document"
+    ) {
+        let result = if matches!(agent_type, AgentType::KbAdmin | AgentType::General) {
+            execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await
+        } else {
+            serde_json::json!({
+                "error": format!(
+                    "Tool '{}' is only available for KbAdmin and General agents.",
+                    call.name
+                )
+            })
+        };
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     // Admin-only tools — dispatch to admin_tools module
     if matches!(
         call.name.as_str(),
@@ -361,7 +431,8 @@ pub async fn execute_tool_call(
                 })
             } else {
                 let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-                let results = KNOWLEDGE_BASE.search_by_tags(&tag_refs);
+                let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+                let results = kb.search_by_tags(&tag_refs);
                 let items: Vec<serde_json::Value> = results
                     .iter()
                     .map(|doc| {
@@ -384,7 +455,8 @@ pub async fn execute_tool_call(
 
         "get_knowledge" => {
             let id = parse_string_arg(&call.arguments, "id").unwrap_or_default();
-            match KNOWLEDGE_BASE.get(&id) {
+            let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+            match kb.get(&id) {
                 Some(doc) => serde_json::json!({
                     "id":      doc.id,
                     "title":   doc.title,
@@ -394,11 +466,8 @@ pub async fn execute_tool_call(
                     "content": doc.content,
                 }),
                 None => {
-                    let available: Vec<&str> = KNOWLEDGE_BASE
-                        .all_docs()
-                        .iter()
-                        .map(|d| d.id.as_str())
-                        .collect();
+                    let available: Vec<&str> =
+                        kb.all_docs().iter().map(|d| d.id.as_str()).collect();
                     serde_json::json!({
                         "error": format!("Document '{}' not found.", id),
                         "available_ids": available,

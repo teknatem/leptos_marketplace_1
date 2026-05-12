@@ -58,11 +58,16 @@ use crate::domain::a029_wb_supply::ui::details::WbSupplyDetails;
 use crate::domain::a029_wb_supply::ui::list::WbSupplyList;
 use crate::domain::a030_wb_advert_campaign::ui::details::WbAdvertCampaignDetails;
 use crate::domain::a030_wb_advert_campaign::ui::list::WbAdvertCampaignList;
+use crate::domain::a031_kb_edit::ui::details::KbEditDetails;
+use crate::domain::a031_kb_edit::ui::list::KbEditList;
+use crate::domain::a032_wb_returns_claims::ui::details::WbReturnsClaimsDetails;
+use crate::domain::a032_wb_returns_claims::ui::list::WbReturnsClaimsList;
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerReportPage,
     GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
+use crate::navigator::marketplace::MarketplaceNavigator;
 use crate::projections::p900_mp_sales_register::ui::list::SalesRegisterList;
 use crate::projections::p901_nomenclature_barcodes::ui::list::BarcodesList;
 use crate::projections::p902_ozon_finance_realization::ui::list::OzonFinanceRealizationList;
@@ -77,6 +82,7 @@ use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::shared::bi_timeline::ui::{BiTimelineInitial, BiTimelinePage};
 use crate::shared::drilldown_report::DrilldownReportPage;
+use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
@@ -536,6 +542,58 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             .into_any()
         }
 
+        "a031_kb_edit" => view! { <KbEditList /> }.into_any(),
+        k if k.starts_with("a031_kb_edit_details_") => {
+            let id = k.strip_prefix("a031_kb_edit_details_").unwrap().to_string();
+            view! {
+                <KbEditDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "a032_wb_returns_claims" => view! { <WbReturnsClaimsList /> }.into_any(),
+        k if k.starts_with("a032_wb_returns_claims_details_") => {
+            let id = k
+                .strip_prefix("a032_wb_returns_claims_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbReturnsClaimsDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "knowledge_base" => view! { <KnowledgeBaseWorkspace /> }.into_any(),
+        k if k.starts_with("kb_article_") => {
+            let id = k.strip_prefix("kb_article_").unwrap().to_string();
+            view! {
+                <KnowledgeArticlePage
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
         // a016: Yandex Market Returns
         "a016_ym_returns" => view! { <YmReturnsList /> }.into_any(),
         k if k.starts_with("a016_ym_returns_details_") => {
@@ -771,6 +829,14 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 />
             }
             .into_any()
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Navigator (cross-domain landing pages)
+        // ═══════════════════════════════════════════════════════════════════
+        "navigator_marketplace" => {
+            log!("✅ Creating MarketplaceNavigator");
+            view! { <MarketplaceNavigator /> }.into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════
