@@ -47,6 +47,9 @@ pub struct Model {
     pub fetched_at: String,
     pub is_deleted: bool,
     pub is_posted: bool,
+    pub has_linked_orders: bool,
+    pub linked_orders_count: i64,
+    pub linked_orders_json: String,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub version: i32,
@@ -87,6 +90,8 @@ impl From<Model> for WbAdvertDaily {
                 fetched_at: m.fetched_at.clone(),
             });
 
+        let linked_orders = serde_json::from_str(&m.linked_orders_json).unwrap_or_default();
+
         WbAdvertDaily {
             base: BaseAggregate::with_metadata(
                 WbAdvertDailyId::new(uuid),
@@ -101,6 +106,9 @@ impl From<Model> for WbAdvertDaily {
             lines,
             source_meta,
             is_posted: m.is_posted,
+            has_linked_orders: m.has_linked_orders,
+            linked_orders_count: m.linked_orders_count,
+            linked_orders,
         }
     }
 }
@@ -240,6 +248,7 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
     let unattributed_totals_json = serde_json::to_string(&document.unattributed_totals)?;
     let lines_json = serde_json::to_string(&document.lines)?;
     let source_meta_json = serde_json::to_string(&document.source_meta)?;
+    let linked_orders_json = serde_json::to_string(&document.linked_orders)?;
 
     let active_model = ActiveModel {
         id: Set(document.base.id.value().to_string()),
@@ -266,6 +275,9 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
         fetched_at: Set(document.source_meta.fetched_at.clone()),
         is_deleted: Set(false),
         is_posted: Set(document.is_posted),
+        has_linked_orders: Set(document.has_linked_orders),
+        linked_orders_count: Set(document.linked_orders_count),
+        linked_orders_json: Set(linked_orders_json),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
         version: Set(1),
@@ -286,6 +298,7 @@ pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
     let unattributed_totals_json = serde_json::to_string(&document.unattributed_totals)?;
     let lines_json = serde_json::to_string(&document.lines)?;
     let source_meta_json = serde_json::to_string(&document.source_meta)?;
+    let linked_orders_json = serde_json::to_string(&document.linked_orders)?;
 
     let created_at = existing
         .as_ref()
@@ -317,6 +330,9 @@ pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
         fetched_at: Set(document.source_meta.fetched_at.clone()),
         is_deleted: Set(document.base.metadata.is_deleted),
         is_posted: Set(document.base.metadata.is_posted || document.is_posted),
+        has_linked_orders: Set(document.has_linked_orders),
+        linked_orders_count: Set(document.linked_orders_count),
+        linked_orders_json: Set(linked_orders_json),
         created_at: Set(created_at),
         updated_at: Set(Some(Utc::now())),
         version: Set(document.base.metadata.version),

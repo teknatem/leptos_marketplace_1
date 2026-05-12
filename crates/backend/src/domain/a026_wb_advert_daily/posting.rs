@@ -1,11 +1,14 @@
 use anyhow::Result;
 use chrono::Utc;
-use contracts::domain::a026_wb_advert_daily::aggregate::{WbAdvertDaily, WbAdvertDailyLine};
+use contracts::domain::a026_wb_advert_daily::aggregate::{
+    WbAdvertDaily, WbAdvertDailyLine, WbAdvertFoundOrder, WbAdvertLinkedOrdersByNm,
+};
 use contracts::shared::analytics::TurnoverLayer;
 use sea_orm::TransactionTrait;
 use uuid::Uuid;
 
 use super::repository;
+use crate::domain::a015_wb_orders;
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
 use crate::projections::p911_wb_advert_by_items::repository::Model as WbAdvertByItemModel;
@@ -109,15 +112,157 @@ fn build_projection_entries(
         .collect()
 }
 
+/// Находит и возвращает группы связанных заказов по позициям рекламного отчёта.
+/// Возвращает (всего_найдено_заказов, группы_по_nm_id).
+async fn build_linked_orders(
+    document: &WbAdvertDaily,
+) -> Result<(i64, Vec<WbAdvertLinkedOrdersByNm>)> {
+    let mut groups = Vec::with_capacity(document.lines.len());
+    let mut total_found: i64 = 0;
+
+    for line in &document.lines {
+        // Ищем заказы только по позициям, по которым WB зарегистрировал заказы.
+        // metrics.orders > 0 эквивалентно sum_price > 0 — это позиции с
+        // фактической выручкой от рекламы, остальные nm_id рекламировались, но
+        // заказов не принесли и привязка к ним смысла не имеет.
+        if line.metrics.orders <= 0 {
+            continue;
+        }
+
+        let raw_candidates = a015_wb_orders::repository::list_for_advert_attribution(
+            line.nm_id,
+            &document.header.connection_id,
+            &document.header.document_date,
+        )
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(
+                "a026 linked orders lookup failed for nm_id={}: {}",
+                line.nm_id,
+                err
+            );
+            Vec::new()
+        });
+
+        // Первые N (по хронологии ASC) участвуют в аллокации расхода.
+        // Остальные показываются в UI с is_allocated=false, allocated_cost=0.
+        let wb_reported = line.metrics.orders.max(0) as usize;
+        let selected = &raw_candidates[..raw_candidates.len().min(wb_reported)];
+
+        // basis считаем только по выбранным N.
+        let basis_selected: Vec<f64> = selected
+            .iter()
+            .map(|order| {
+                order
+                    .line
+                    .finished_price
+                    .or(order.line.price_with_disc)
+                    .unwrap_or(0.0)
+            })
+            .collect();
+        let total_basis: f64 = basis_selected.iter().copied().sum();
+
+        let wb_advert_sum = line.metrics.sum;
+        let n_selected = selected.len();
+
+        // Аллокация с last-residual округлением до копейки.
+        let mut allocated_costs: Vec<f64> = Vec::with_capacity(n_selected);
+        let mut accumulated = 0.0_f64;
+        for (idx, &basis) in basis_selected.iter().enumerate() {
+            let cost = if idx + 1 == n_selected {
+                round_kopeyka(wb_advert_sum - accumulated)
+            } else {
+                let raw = if total_basis > f64::EPSILON {
+                    wb_advert_sum * (basis / total_basis)
+                } else if n_selected > 0 {
+                    wb_advert_sum / n_selected as f64
+                } else {
+                    0.0
+                };
+                let rounded = round_kopeyka(raw);
+                accumulated += rounded;
+                rounded
+            };
+            allocated_costs.push(cost);
+        }
+
+        // Строим итоговый список: сначала выбранные (с расходом), затем лишние.
+        let mut found_orders: Vec<WbAdvertFoundOrder> = selected
+            .iter()
+            .zip(basis_selected.iter())
+            .zip(allocated_costs.iter())
+            .map(|((order, &basis), &allocated_cost)| {
+                let allocation_ratio = if total_basis > f64::EPSILON {
+                    basis / total_basis
+                } else if n_selected > 0 {
+                    1.0 / n_selected as f64
+                } else {
+                    0.0
+                };
+                WbAdvertFoundOrder {
+                    order_key: order.header.document_no.clone(),
+                    nomenclature_ref: order.nomenclature_ref.clone(),
+                    finished_price: order.line.finished_price,
+                    is_cancel: order.state.is_cancel,
+                    is_allocated: true,
+                    allocation_ratio,
+                    allocated_cost,
+                }
+            })
+            .collect();
+
+        // Лишние кандидаты (за пределами N): видны в UI, расход = 0.
+        for order in raw_candidates.iter().skip(wb_reported) {
+            found_orders.push(WbAdvertFoundOrder {
+                order_key: order.header.document_no.clone(),
+                nomenclature_ref: order.nomenclature_ref.clone(),
+                finished_price: order.line.finished_price,
+                is_cancel: order.state.is_cancel,
+                is_allocated: false,
+                allocation_ratio: 0.0,
+                allocated_cost: 0.0,
+            });
+        }
+
+        total_found += n_selected as i64;
+
+        groups.push(WbAdvertLinkedOrdersByNm {
+            nm_id: line.nm_id,
+            nm_name: line.nm_name.clone(),
+            wb_reported_orders: line.metrics.orders,
+            wb_advert_sum,
+            found_orders,
+        });
+    }
+
+    Ok((total_found, groups))
+}
+
+/// Округление до копейки (2 знака после запятой), bankers-friendly через f64.
+fn round_kopeyka(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
 pub async fn post_document(id: Uuid) -> Result<()> {
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
+    let (total_found, linked_orders) = build_linked_orders(&document).await?;
+    document.linked_orders_count = total_found;
+    document.has_linked_orders = total_found > 0;
+    document.linked_orders = linked_orders;
+
     document.is_posted = true;
     document.base.metadata.is_posted = true;
     document.before_write();
     repository::upsert_document(&document).await?;
+
+    tracing::info!(
+        "a026 post_document: linked orders found={} for document_id={}",
+        total_found,
+        id
+    );
 
     let registrator_ref = id.to_string();
     let projection_ref = projection_registrator_ref(id);
@@ -187,6 +332,9 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     document.is_posted = false;
     document.base.metadata.is_posted = false;
+    document.has_linked_orders = false;
+    document.linked_orders_count = 0;
+    document.linked_orders.clear();
     document.before_write();
     repository::upsert_document(&document).await?;
 

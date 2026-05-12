@@ -579,6 +579,42 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a031-kb-edit",
+        scope_id: Some("a031_kb_edit"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a031-kb-edit/:id",
+        scope_id: Some("a031_kb_edit"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a031-kb-edit/:id/approve",
+        scope_id: Some("a031_kb_edit"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a031-kb-edit/:id/cancel",
+        scope_id: Some("a031_kb_edit"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/a032/wb-returns-claims",
+        scope_id: Some("a032_wb_returns_claims"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/a032/wb-returns-claims/:id",
+        scope_id: Some("a032_wb_returns_claims"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/bi-timeline/indicators",
         scope_id: Some("bi_timeline"),
         mode: PolicyMode::ReadOnly,
@@ -1191,6 +1227,25 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "*",
         path: "/api/llm-knowledge/:id",
         scope_id: Some("a018_llm_chat"),
+        mode: PolicyMode::ReadOnly,
+    },
+    // Knowledge Base workspace (read-only)
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/stats",
+        scope_id: Some("knowledge_base"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/tree",
+        scope_id: Some("knowledge_base"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/articles/:id",
+        scope_id: Some("knowledge_base"),
         mode: PolicyMode::ReadOnly,
     },
     // Sys-drilldown session store (internal; tied to data_view usage)

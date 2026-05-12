@@ -5068,6 +5068,109 @@ impl WildberriesApiClient {
         );
         Ok(all_orders)
     }
+
+    /// GET https://returns-api.wildberries.ru/api/v1/claims
+    ///
+    /// Загружает заявки покупателей на возврат товара.
+    /// Requires: WB token with "Buyers Returns" category.
+    /// Returns last 14 days only. Fetches both is_archive=false and is_archive=true.
+    pub async fn fetch_claims(
+        &self,
+        connection: &ConnectionMP,
+    ) -> Result<Vec<WbClaimRow>> {
+        const BASE_URL: &str = "https://returns-api.wildberries.ru/api/v1/claims";
+        const PAGE_LIMIT: u32 = 200;
+
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("API Key is required for WB Buyers Returns API");
+        }
+
+        let mut all_claims: Vec<WbClaimRow> = Vec::new();
+
+        for is_archive in [false, true] {
+            let archive_label = if is_archive { "archive" } else { "active" };
+            let mut offset: u32 = 0;
+            let mut page = 0u32;
+
+            loop {
+                page += 1;
+                self.log_to_file(&format!(
+                    "=== WB Claims ({archive_label}) page {page} offset={offset} ==="
+                ));
+                self.record_http_request_attempt(0);
+
+                let resp = match self
+                    .client
+                    .get(BASE_URL)
+                    .header("Authorization", connection.api_key.trim())
+                    .query(&[
+                        ("is_archive", is_archive.to_string()),
+                        ("limit", PAGE_LIMIT.to_string()),
+                        ("offset", offset.to_string()),
+                    ])
+                    .send()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        anyhow::bail!("WB Claims API request failed: {}", e);
+                    }
+                };
+
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                self.record_http_response_body(body.len() as u64);
+
+                if status == 429 {
+                    tracing::warn!("WB Claims API rate limit hit, sleeping 60s");
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    continue;
+                }
+
+                if status == 404 {
+                    // 404 from feedbacks-api auth gateway means the API key
+                    // lacks the "Buyers Returns" token category.
+                    tracing::warn!(
+                        "WB Claims API: 404 Not Found — API key does not have \
+                         'Buyers Returns' (Возвраты покупателей) permission. \
+                         Skipping claims import. Response: {}",
+                        &body[..body.len().min(300)]
+                    );
+                    return Ok(all_claims);
+                }
+
+                if !status.is_success() {
+                    anyhow::bail!(
+                        "WB Claims API returned status {}: {}",
+                        status,
+                        &body[..body.len().min(500)]
+                    );
+                }
+
+                let parsed: WbClaimsResponse = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        anyhow::bail!("Failed to parse WB Claims response: {}: {}", e, &body[..body.len().min(500)]);
+                    }
+                };
+
+                let page_len = parsed.claims.len();
+                self.log_to_file(&format!(
+                    "WB Claims ({archive_label}) page {page}: {page_len} items"
+                ));
+
+                all_claims.extend(parsed.claims);
+
+                if page_len < PAGE_LIMIT as usize {
+                    break;
+                }
+                offset += PAGE_LIMIT;
+            }
+        }
+
+        tracing::info!("WB Claims: fetched {} total", all_claims.len());
+        Ok(all_claims)
+    }
 }
 
 /// Order from /api/v3/orders — marketplace FBS orders with real-time supplyId.
@@ -5123,4 +5226,52 @@ struct WbMarketplaceOrdersResponse {
     pub next: i64,
     #[serde(default)]
     pub orders: Vec<WbMarketplaceOrderRow>,
+}
+
+/// Заявка покупателя на возврат из GET /api/v1/claims
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbClaimRow {
+    pub id: String,
+    #[serde(rename = "claim_type", default)]
+    pub claim_type: Option<i32>,
+    #[serde(default)]
+    pub status: Option<i32>,
+    #[serde(rename = "status_ex", default)]
+    pub status_ex: Option<i32>,
+    #[serde(rename = "nm_id", default)]
+    pub nm_id: Option<i64>,
+    #[serde(rename = "imt_name", default)]
+    pub imt_name: Option<String>,
+    #[serde(rename = "user_comment", default)]
+    pub user_comment: Option<String>,
+    #[serde(rename = "wb_comment", default)]
+    pub wb_comment: Option<String>,
+    #[serde(default)]
+    pub dt: Option<String>,
+    #[serde(rename = "order_dt", default)]
+    pub order_dt: Option<String>,
+    #[serde(rename = "dt_update", default)]
+    pub dt_update: Option<String>,
+    #[serde(rename = "delivery_dt", default)]
+    pub delivery_dt: Option<String>,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(rename = "currency_code", default)]
+    pub currency_code: Option<String>,
+    #[serde(default)]
+    pub srid: Option<String>,
+    #[serde(rename = "origin_id_info", default)]
+    pub origin_id_info: Option<String>,
+    #[serde(default)]
+    pub actions: Option<Vec<String>>,
+    #[serde(rename = "is_archive", default)]
+    pub is_archive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WbClaimsResponse {
+    #[serde(default)]
+    pub claims: Vec<WbClaimRow>,
+    #[serde(default)]
+    pub total: Option<i64>,
 }

@@ -1,4 +1,5 @@
 pub mod aggregate;
+pub mod history;
 pub mod import_progress_map;
 pub mod metadata;
 pub mod progress;

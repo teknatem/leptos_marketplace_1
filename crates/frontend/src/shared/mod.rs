@@ -16,6 +16,7 @@ pub mod filters;
 pub mod icons;
 pub mod indicator_format;
 pub mod json_viewer;
+pub mod knowledge_base;
 pub mod list_utils;
 pub mod modal_frame;
 pub mod modal_stack;

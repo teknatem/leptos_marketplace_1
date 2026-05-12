@@ -9,6 +9,9 @@ use axum::{extract::Path, extract::Query, response::IntoResponse, Json};
 use chrono::Utc;
 use contracts::domain::common::AggregateId;
 use contracts::system::tasks::aggregate::ScheduledTaskId;
+use contracts::system::tasks::history::{
+    TaskHistoryMetric, TaskHistoryRequest, TaskHistoryResponse, TaskHistoryScale,
+};
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::{TaskProgressResponse, TaskStatus};
 use contracts::system::tasks::request::{
@@ -332,6 +335,42 @@ pub async fn list_recent_runs(
         Ok(runs) => Ok(Json(RecentRunsResponse { runs })),
         Err(e) => {
             tracing::error!("Failed to list recent runs: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /api/sys/tasks/history — агрегированная история запусков для графика.
+#[derive(Deserialize)]
+pub struct TaskHistoryQuery {
+    pub scale: TaskHistoryScale,
+    pub metric: TaskHistoryMetric,
+    pub date_from: String,
+    /// Необязательный CSV-фильтр по id задач.
+    pub task_ids: Option<String>,
+}
+
+pub async fn task_history(
+    Query(q): Query<TaskHistoryQuery>,
+) -> Result<Json<TaskHistoryResponse>, axum::http::StatusCode> {
+    let task_ids = q.task_ids.map(|ids| {
+        ids.split(',')
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    });
+    let req = TaskHistoryRequest {
+        scale: q.scale,
+        metric: q.metric,
+        date_from: q.date_from,
+        task_ids,
+    };
+
+    match runs_service::query_history(req).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            tracing::error!("Failed to query task history: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

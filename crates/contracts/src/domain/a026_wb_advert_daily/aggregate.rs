@@ -79,6 +79,47 @@ pub struct WbAdvertDailySourceMeta {
     pub fetched_at: String,
 }
 
+/// Связанный заказ a015, найденный по тому же nm_id, connection и дате.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertFoundOrder {
+    /// srid из a015 (header.document_no).
+    pub order_key: String,
+    pub nomenclature_ref: Option<String>,
+    pub finished_price: Option<f64>,
+    /// Заказ отменён (a015.state.is_cancel = true). Отображаем как
+    /// информацию; в распределении рекламного расхода участвует наравне с
+    /// активными — последующая обработка отмен идёт отдельным процессом.
+    #[serde(default)]
+    pub is_cancel: bool,
+    /// true — заказ попал в расчёт аллокации (первые N по хронологии, где
+    /// N = wb_reported_orders). false — заказ найден в БД, но выходит за
+    /// пределы N; показываем для информации, расход = 0.
+    #[serde(default)]
+    pub is_allocated: bool,
+    /// Доля basis заказа в сумме basis выбранных N заказов (0..1).
+    /// Для неаллоцированных = 0.
+    pub allocation_ratio: f64,
+    /// Распределённая сумма расхода (RUB) на этот заказ. Сумма по группе
+    /// nm_id равна `wb_advert_sum` (с округлением до копейки через
+    /// last-residual). Для неаллоцированных = 0.
+    #[serde(default)]
+    pub allocated_cost: f64,
+}
+
+/// Группа найденных заказов для одной позиции (nm_id) рекламного отчёта.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbAdvertLinkedOrdersByNm {
+    pub nm_id: i64,
+    pub nm_name: String,
+    /// Сколько заказов привязал WB по своей метрике (line.metrics.orders).
+    pub wb_reported_orders: i64,
+    /// Расход WB на эту позицию (line.metrics.sum), который распределяется
+    /// между `found_orders`.
+    #[serde(default)]
+    pub wb_advert_sum: f64,
+    pub found_orders: Vec<WbAdvertFoundOrder>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbAdvertDaily {
     #[serde(flatten)]
@@ -89,6 +130,15 @@ pub struct WbAdvertDaily {
     pub lines: Vec<WbAdvertDailyLine>,
     pub source_meta: WbAdvertDailySourceMeta,
     pub is_posted: bool,
+    /// true, если найден хотя бы один связанный заказ при последнем проведении.
+    #[serde(default)]
+    pub has_linked_orders: bool,
+    /// Суммарное количество найденных заказов по всем nm_id.
+    #[serde(default)]
+    pub linked_orders_count: i64,
+    /// Сгруппированный список найденных заказов по позициям рекламного отчёта.
+    #[serde(default)]
+    pub linked_orders: Vec<WbAdvertLinkedOrdersByNm>,
 }
 
 impl WbAdvertDaily {
@@ -117,6 +167,9 @@ impl WbAdvertDaily {
             lines,
             source_meta,
             is_posted: false,
+            has_linked_orders: false,
+            linked_orders_count: 0,
+            linked_orders: Vec::new(),
         }
     }
 

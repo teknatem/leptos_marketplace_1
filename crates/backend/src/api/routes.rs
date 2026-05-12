@@ -44,6 +44,8 @@ pub fn configure_business_routes() -> Router {
         .merge(a028_routes())
         .merge(a029_routes())
         .merge(a030_routes())
+        .merge(a031_routes())
+        .merge(a032_routes())
         // External integrations (API-key auth, no JWT required)
         .merge(ext_1c_routes())
         // Usecases — each with their own scope
@@ -71,6 +73,7 @@ pub fn configure_business_routes() -> Router {
         .merge(data_view_routes())
         .merge(bi_timeline_routes())
         .merge(general_ledger_routes())
+        .merge(kb_read_routes())
         .merge(misc_routes())
 }
 
@@ -915,6 +918,54 @@ fn a025_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a025_bi_dashboard", req, next).await
+            },
+        ))
+}
+
+fn a031_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a031-kb-edit",
+            get(handlers::a031_kb_edit::list_paginated).post(handlers::a031_kb_edit::upsert),
+        )
+        .route(
+            "/api/a031-kb-edit/list",
+            get(handlers::a031_kb_edit::list_paginated),
+        )
+        .route(
+            "/api/a031-kb-edit/:id",
+            get(handlers::a031_kb_edit::get_by_id)
+                .put(handlers::a031_kb_edit::upsert)
+                .delete(handlers::a031_kb_edit::delete),
+        )
+        .route(
+            "/api/a031-kb-edit/:id/approve",
+            post(handlers::a031_kb_edit::approve),
+        )
+        .route(
+            "/api/a031-kb-edit/:id/cancel",
+            post(handlers::a031_kb_edit::cancel),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a031_kb_edit", req, next).await
+            },
+        ))
+}
+
+fn a032_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a032/wb-returns-claims",
+            get(handlers::a032_wb_returns_claims::list_returns_claims),
+        )
+        .route(
+            "/api/a032/wb-returns-claims/:id",
+            get(handlers::a032_wb_returns_claims::get_returns_claim_detail),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a032_wb_returns_claims", req, next).await
             },
         ))
 }
@@ -1770,4 +1821,16 @@ fn misc_routes() -> Router {
     let debug = Router::new().route("/api/debug/tool-test", get(handlers::debug::tool_test));
 
     llm_knowledge.merge(debug)
+}
+
+fn kb_read_routes() -> Router {
+    Router::new()
+        .route("/api/kb/stats", get(handlers::kb_read::stats))
+        .route("/api/kb/tree", get(handlers::kb_read::tree))
+        .route("/api/kb/articles/:id", get(handlers::kb_read::get_article))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("knowledge_base", req, next).await
+            },
+        ))
 }

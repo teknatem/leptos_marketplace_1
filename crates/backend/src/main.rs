@@ -123,26 +123,31 @@ async fn main() -> anyhow::Result<()> {
         }
     );
 
-    if scheduled_task_worker_enabled {
-        println!("Step 6: Initializing scheduled tasks...");
-        let worker = match system::tasks::initialization::initialize_scheduled_tasks().await {
-            Ok(w) => {
-                println!("✓ Scheduled tasks initialized\n");
-                w
-            }
-            Err(e) => {
-                println!("✗ ERROR: Scheduled tasks initialization failed: {}\n", e);
-                return Err(e);
-            }
-        };
+    // Always initialize the task manager registry so that task type metadata
+    // is available via /api/sys/tasks/task_types regardless of whether the
+    // background scheduler is enabled.
+    println!("Step 6: Initializing task manager registry...");
+    let worker = match system::tasks::initialization::initialize_scheduled_tasks().await {
+        Ok(w) => {
+            println!("✓ Task manager registry initialized\n");
+            w
+        }
+        Err(e) => {
+            println!("✗ ERROR: Task manager registry initialization failed: {}\n", e);
+            return Err(e);
+        }
+    };
 
+    if scheduled_task_worker_enabled {
         println!("Step 7: Starting background worker...");
         tokio::spawn(async move {
             worker.run_loop().await;
         });
         println!("✓ Background worker started\n");
     } else {
-        println!("Step 6: Scheduled task worker disabled by configuration\n");
+        println!("Step 7: Background worker disabled by configuration — registry loaded, scheduler inactive\n");
+        // Keep `worker` alive (drop at end of main) so the registry Arc stays valid.
+        drop(worker);
     }
 
     // 5. Configure CORS

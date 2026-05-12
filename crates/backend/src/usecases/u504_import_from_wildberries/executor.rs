@@ -185,6 +185,7 @@ impl ImportExecutor {
                 "a020_wb_promotion" => "Акции WB (Календарь)",
                 "a030_wb_advert_campaign" => "Рекламные кампании WB",
                 "wb_advert_stats" | "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
+                "a032_wb_returns_claims" => "Заявки на возврат WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -249,6 +250,7 @@ impl ImportExecutor {
             "a029_wb_supply" => "Поставки WB",
             "a015_wb_orders_new" => "Новые заказы WB (оперативно)",
             "a015_wb_orders_supply_link" => "Связь заказов с поставками",
+            "a032_wb_returns_claims" => "Заявки на возврат WB",
             _ => "Unknown",
         }
     }
@@ -436,6 +438,10 @@ impl ImportExecutor {
                         request.date_to,
                     )
                     .await?;
+                }
+                "a032_wb_returns_claims" => {
+                    self.import_wb_returns_claims(session_id, connection)
+                        .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -2867,6 +2873,170 @@ impl ImportExecutor {
             .await?;
         cache.insert(nm_id, resolved.clone());
         Ok(resolved)
+    }
+
+    /// Загрузка заявок покупателей на возврат WB.
+    /// API: GET https://feedbacks-api.wildberries.ru/api/v1/claims
+    /// Требует токена с категорией "Buyers Returns".
+    async fn import_wb_returns_claims(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+        use crate::domain::a032_wb_returns_claims;
+        use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
+        use chrono::Utc;
+        use contracts::domain::a032_wb_returns_claims::aggregate::WbReturnsClaims;
+
+        let aggregate_index = "a032_wb_returns_claims";
+        let mut total_inserted = 0i32;
+        let mut total_updated = 0i32;
+
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 0, None, 0, 0);
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Запрос WB feedbacks-api /api/v1/claims".to_string()),
+        );
+
+        // Разрешаем organization_id и marketplace_id из подключения
+        let organization_id =
+            match uuid::Uuid::parse_str(&connection.organization_ref) {
+                Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                    Some(org) => org.base.id.as_string(),
+                    None => {
+                        let msg = format!(
+                            "Организация '{}' не найдена",
+                            connection.organization_ref
+                        );
+                        self.progress_tracker
+                            .fail_aggregate(session_id, aggregate_index, msg.clone());
+                        anyhow::bail!("{}", msg);
+                    }
+                },
+                Err(_) => {
+                    let msg = format!(
+                        "Некорректный organization_ref: '{}'",
+                        connection.organization_ref
+                    );
+                    self.progress_tracker
+                        .fail_aggregate(session_id, aggregate_index, msg.clone());
+                    anyhow::bail!("{}", msg);
+                }
+            };
+
+        let marketplace_id = connection.marketplace_id.clone();
+
+        let claim_rows = match self.api_client.fetch_claims(connection).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                let msg = format!("Не удалось получить заявки на возврат WB: {}", e);
+                self.progress_tracker
+                    .fail_aggregate(session_id, aggregate_index, msg.clone());
+                anyhow::bail!("{}", msg);
+            }
+        };
+
+        let total = claim_rows.len() as i32;
+        tracing::info!("WB Returns Claims: received {} rows", total);
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            0,
+            Some(total),
+            0,
+            0,
+        );
+
+        let connection_id = connection.to_string_id();
+
+        for (idx, row) in claim_rows.iter().enumerate() {
+            let nm_id = row.nm_id.unwrap_or(0);
+
+            let parse_dt = |s: &Option<String>| -> Option<chrono::DateTime<Utc>> {
+                s.as_deref().and_then(parse_wb_datetime)
+            };
+
+            let dt = parse_dt(&row.dt).unwrap_or_else(Utc::now);
+            let code = format!("WB-RC-{}", &row.id);
+            let description = row
+                .imt_name
+                .clone()
+                .unwrap_or_else(|| format!("Заявка {}", row.id));
+
+            let actions_json = row.actions.as_ref().and_then(|a| {
+                if a.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(a).ok()
+                }
+            });
+
+            let agg = WbReturnsClaims::new_for_insert(
+                code,
+                description,
+                connection_id.clone(),
+                organization_id.clone(),
+                marketplace_id.clone(),
+                row.id.clone(),
+                row.claim_type,
+                row.status,
+                row.status_ex,
+                nm_id,
+                row.imt_name.clone(),
+                row.user_comment.clone(),
+                row.wb_comment.clone(),
+                dt,
+                parse_dt(&row.order_dt),
+                parse_dt(&row.dt_update),
+                parse_dt(&row.delivery_dt),
+                row.price,
+                row.currency_code.clone(),
+                row.srid.clone(),
+                row.origin_id_info.clone(),
+                actions_json,
+                row.is_archive,
+            );
+
+            match a032_wb_returns_claims::service::upsert(&agg).await {
+                Ok((_, inserted)) => {
+                    if inserted {
+                        total_inserted += 1;
+                    } else {
+                        total_updated += 1;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("WB Returns Claims upsert error for {}: {}", row.id, e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Upsert error for claim_id={}: {}", row.id, e),
+                        None,
+                    );
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                (idx + 1) as i32,
+                Some(total),
+                total_inserted,
+                total_updated,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Returns Claims import done: inserted={}, updated={}",
+            total_inserted,
+            total_updated
+        );
+        Ok(())
     }
 }
 

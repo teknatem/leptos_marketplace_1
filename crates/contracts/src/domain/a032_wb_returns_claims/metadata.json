@@ -1,0 +1,144 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbReturnsClaims",
+  "entity_index": "a032",
+  "collection_name": "wb_returns_claims",
+  "table_name": "a032_wb_returns_claims",
+
+  "ui": {
+    "element_name": "Заявка на возврат WB",
+    "element_name_en": "WB Return Claim",
+    "list_name": "Заявки на возврат WB",
+    "list_name_en": "WB Return Claims",
+    "icon": "rotate-ccw"
+  },
+
+  "ai": {
+    "description": "Заявка покупателя на возврат товара WB. Загружается из feedbacks-api.wildberries.ru/api/v1/claims. Содержит ID заявки, nmId, название товара, статус, комментарии покупателя и WB, даты создания/обновления, цену, srid заказа и доступные действия продавца.",
+    "questions": [
+      "Сколько заявок на возврат поступило за период?",
+      "Какие заявки находятся в обработке?",
+      "Какие товары чаще всего возвращают?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a005_marketplace",
+      "a012_wb_sales",
+      "a015_wb_orders"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbReturnsClaimsId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "claim_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "ID заявки WB", "label_en": "Claim ID", "visible_in_list": true, "visible_in_form": true, "column_width": 200 },
+      "validation": { "required": true },
+      "ai_hint": "UUID заявки из WB API (поле id в ответе /api/v1/claims)."
+    },
+    {
+      "name": "nm_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "nmId (WB)", "label_en": "nmId (WB)", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
+      "validation": { "required": true },
+      "ai_hint": "Числовой идентификатор номенклатуры Wildberries."
+    },
+    {
+      "name": "imt_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Наименование товара", "label_en": "Product Name", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "status",
+      "rust_type": "Option<i32>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Статус", "label_en": "Status", "visible_in_list": true, "visible_in_form": true, "column_width": 90 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "dt",
+      "rust_type": "DateTime<Utc>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Дата заявки", "label_en": "Claim Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": true }
+    },
+    {
+      "name": "order_dt",
+      "rust_type": "Option<DateTime<Utc>>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Дата заказа", "label_en": "Order Date", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Цена", "label_en": "Price", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
+      "validation": { "required": false }
+    },
+    {
+      "name": "srid",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "srid заказа", "label_en": "Order srid", "visible_in_list": true, "visible_in_form": true, "column_width": 200 },
+      "validation": { "required": false },
+      "ai_hint": "srid — уникальный ID строки заказа WB, связывает заявку с a012_wb_sales / a015_wb_orders."
+    },
+    {
+      "name": "user_comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Комментарий покупателя", "label_en": "User Comment", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": false }
+    },
+    {
+      "name": "is_archive",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Архив", "label_en": "Is Archive", "visible_in_list": true, "visible_in_form": false, "column_width": 80, "widget": "checkbox" },
+      "validation": { "required": false }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
+      "validation": { "required": true },
+      "ref_aggregate": "a006_connection_mp"
+    }
+  ],
+
+  "access": {
+    "scope_id": "a032_wb_returns_claims",
+    "operations": [
+      { "id": "list", "required_mode": "read" },
+      { "id": "get",  "required_mode": "read" }
+    ]
+  }
+}

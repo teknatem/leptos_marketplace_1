@@ -1,0 +1,617 @@
+use super::api::{
+    fetch_kb_article, fetch_kb_stats, fetch_kb_tree, KbArticleDetail, KbArticleSummary,
+    KbStatsResponse, KbTreeNode,
+};
+use super::links::KbLinkedText;
+use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::close_page_button::ClosePageButton;
+use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
+use crate::shared::page_standard::{PAGE_CAT_DETAIL, PAGE_CAT_LIST};
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use std::collections::BTreeSet;
+use thaw::*;
+
+#[component]
+pub fn KnowledgeBaseWorkspace() -> impl IntoView {
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let (stats, set_stats) = signal::<Option<KbStatsResponse>>(None);
+    let (tree, set_tree) = signal::<Vec<KbTreeNode>>(Vec::new());
+    let (selected, set_selected) = signal::<Option<KbArticleDetail>>(None);
+    let (loading, set_loading) = signal(false);
+    let (error, set_error) = signal::<Option<String>>(None);
+    let collapsed_paths = RwSignal::new(BTreeSet::<String>::new());
+    let tab = RwSignal::new("obsidian".to_string());
+
+    let open_article_tab = move |article: KbArticleSummary| {
+        tabs_store.open_tab(
+            &format!("kb_article_{}", article.id),
+            &format!("KB {}", article.title),
+        );
+    };
+
+    let select_article = Callback::new(move |article: KbArticleSummary| {
+        spawn_local(async move {
+            set_error.set(None);
+            match fetch_kb_article(&article.id).await {
+                Ok(detail) => set_selected.set(Some(detail)),
+                Err(err) => set_error.set(Some(err)),
+            }
+        });
+    });
+
+    let load = move || {
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            match fetch_kb_stats().await {
+                Ok(payload) => set_stats.set(Some(payload)),
+                Err(err) => set_error.set(Some(err)),
+            }
+            match fetch_kb_tree().await {
+                Ok(payload) => set_tree.set(payload.roots),
+                Err(err) => set_error.set(Some(err)),
+            }
+            set_loading.set(false);
+        });
+    };
+
+    Effect::new(move |_| load());
+
+    view! {
+        <PageFrame page_id="knowledge_base--list" category=PAGE_CAT_LIST>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                        <h2 class="page__title" style="font-size: 20px; line-height: 1.2; margin: 0;">"База знаний"</h2>
+                        <UiBadge variant="primary".to_string()>
+                            {move || stats.get().map(|s| s.total_articles).unwrap_or(0).to_string()}
+                        </UiBadge>
+                        {move || stats.get().map(|s| view! {
+                            <span style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                                {format!("{} бизнес · {} приложение", s.file_articles, s.embedded_articles)}
+                            </span>
+                        })}
+                    </div>
+                </div>
+                <div class="page__header-right">
+                    <Space>
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            on_click=move |_| load()
+                            disabled=Signal::derive(move || loading.get())
+                        >
+                            {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                        </Button>
+                        <ClosePageButton />
+                    </Space>
+                </div>
+            </div>
+
+            <div class="page__content">
+                {move || error.get().map(|msg| view! { <div class="alert alert--error">{msg}</div> })}
+
+                <div class="detail-grid">
+                    <div class="detail-grid__col">
+                        <Card>
+                            <TabList selected_value=tab>
+                                <Tab value="obsidian">
+                                    "Obsidian: бизнес"
+                                    {move || stats.get().map(|s| format!(" ({})", s.file_articles)).unwrap_or_default()}
+                                </Tab>
+                                <Tab value="embedded">
+                                    "Документация приложения"
+                                    {move || stats.get().map(|s| format!(" ({})", s.embedded_articles)).unwrap_or_default()}
+                                </Tab>
+                            </TabList>
+                            <div style="display: flex; gap: var(--spacing-xs); margin: var(--spacing-xs) 0;">
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    on_click=move |_| collapsed_paths.set(BTreeSet::new())
+                                >
+                                    "Развернуть"
+                                </Button>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    on_click=move |_| {
+                                        let is_embedded = tab.get_untracked() == "embedded";
+                                        let current_tree = filter_tree_by_source(
+                                            &tree.get(),
+                                            is_embedded,
+                                        );
+                                        collapsed_paths.set(collect_folder_paths(&current_tree));
+                                    }
+                                >
+                                    "Свернуть"
+                                </Button>
+                            </div>
+                            {move || if loading.get() && tree.get().is_empty() {
+                                view! {
+                                    <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                                        <Spinner />
+                                        <span>"Загрузка..."</span>
+                                    </Flex>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="kb-tree">
+                                        {move || {
+                                            let is_embedded = tab.get() == "embedded";
+                                            let current_tree = filter_tree_by_source(
+                                                &tree.get(),
+                                                is_embedded,
+                                            );
+                                            if current_tree.is_empty() {
+                                                view! {
+                                                    <p style="color: var(--colorNeutralForeground3);">
+                                                        {if is_embedded {
+                                                            "Встроенная документация приложения не найдена."
+                                                        } else {
+                                                            "В Obsidian-базе пока нет бизнес-статей организации."
+                                                        }}
+                                                    </p>
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    {flatten_visible_tree(&current_tree, &collapsed_paths.get()).into_iter().map(|node| view! {
+                                                        <KbTreeRow
+                                                            node=node
+                                                            collapsed_paths=collapsed_paths
+                                                            on_select=select_article
+                                                        />
+                                                    }).collect_view()}
+                                                }.into_any()
+                                            }
+                                        }}
+                                    </div>
+                                }.into_any()
+                            }}
+                        </Card>
+                    </div>
+
+                    <div class="detail-grid__col">
+                        {move || {
+                            if let Some(article) = selected.get() {
+                                let summary = article_summary(&article);
+                                view! {
+                                    <KnowledgeArticlePanel
+                                        article=article
+                                        show_header=true
+                                        on_open=Callback::new(move |_| open_article_tab(summary.clone()))
+                                    />
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <Card>
+                                        <p style="color: var(--colorNeutralForeground3); margin: 0;">"Выберите статью в дереве слева."</p>
+                                    </Card>
+                                }.into_any()
+                            }
+                        }}
+                    </div>
+                </div>
+            </div>
+        </PageFrame>
+    }
+}
+
+#[component]
+pub fn KnowledgeArticlePage(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let (article, set_article) = signal::<Option<KbArticleDetail>>(None);
+    let (loading, set_loading) = signal(true);
+    let (error, set_error) = signal::<Option<String>>(None);
+    let id_store = StoredValue::new(id.clone());
+
+    let load = move || {
+        let id = id_store.get_value();
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            match fetch_kb_article(&id).await {
+                Ok(payload) => {
+                    tabs_store.update_tab_title(
+                        &format!("kb_article_{}", payload.id),
+                        &format!("KB {}", payload.title),
+                    );
+                    set_article.set(Some(payload));
+                }
+                Err(err) => set_error.set(Some(err)),
+            }
+            set_loading.set(false);
+        });
+    };
+
+    Effect::new(move |_| load());
+
+    view! {
+        <PageFrame page_id="knowledge_base--article" category=PAGE_CAT_DETAIL>
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">
+                        {move || article.get().map(|a| a.title).unwrap_or_else(|| "Статья базы знаний".to_string())}
+                    </h1>
+                </div>
+                <div class="page__header-right">
+                    <Space>
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            on_click=move |_| load()
+                            disabled=Signal::derive(move || loading.get())
+                        >
+                            "Обновить"
+                        </Button>
+                        <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_close.run(())>
+                            "Закрыть"
+                        </Button>
+                    </Space>
+                </div>
+            </div>
+            <div class="page__content">
+                {move || {
+                    if loading.get() {
+                        return view! {
+                            <Flex gap=FlexGap::Small style="align-items: center; padding: var(--spacing-4xl); justify-content: center;">
+                                <Spinner />
+                                <span>"Загрузка..."</span>
+                            </Flex>
+                        }.into_any();
+                    }
+                    if let Some(err) = error.get() {
+                        return view! { <div class="alert alert--error">{err}</div> }.into_any();
+                    }
+                    if let Some(article) = article.get() {
+                        view! {
+                            <KnowledgeArticlePanel article=article show_header=false on_open=Callback::new(|_| {}) />
+                        }.into_any()
+                    } else {
+                        view! { <p>"Статья не найдена."</p> }.into_any()
+                    }
+                }}
+            </div>
+        </PageFrame>
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FlatKbTreeNode {
+    level: usize,
+    name: String,
+    path: String,
+    article: Option<KbArticleSummary>,
+    is_collapsed: bool,
+}
+
+#[component]
+fn KbTreeRow(
+    node: FlatKbTreeNode,
+    collapsed_paths: RwSignal<BTreeSet<String>>,
+    on_select: Callback<KbArticleSummary>,
+) -> impl IntoView {
+    let is_article = node.article.is_some();
+    let article = node.article.clone();
+    let padding = format!("margin-left: {}px;", node.level * 16);
+    view! {
+        <div style=padding>
+            {if is_article {
+                let article = article.expect("article node must have article");
+                view! {
+                    <button
+                        class="page__tab"
+                        style="border: none; background: transparent; padding: 2px 0; cursor: pointer;"
+                        on:click=move |_| on_select.run(article.clone())
+                    >
+                        {icon("file-text")} {node.name.clone()}
+                    </button>
+                }.into_any()
+            } else {
+                let path = node.path.clone();
+                let icon_name = if node.is_collapsed {
+                    "chevron-right"
+                } else {
+                    "chevron-down"
+                };
+                view! {
+                    <button
+                        class="page__tab"
+                        style="border: none; background: transparent; padding: 2px 0; cursor: pointer; font-weight: 600;"
+                        on:click=move |_| {
+                            collapsed_paths.update(|paths| {
+                                if !paths.insert(path.clone()) {
+                                    paths.remove(&path);
+                                }
+                            });
+                        }
+                    >
+                        {icon(icon_name)} {icon("folder")} {node.name.clone()}
+                    </button>
+                }.into_any()
+            }}
+        </div>
+    }
+}
+
+#[component]
+fn KnowledgeArticlePanel(
+    article: KbArticleDetail,
+    /// Show the article title as a clickable link (set false when the page header already shows it).
+    #[prop(default = true)]
+    show_header: bool,
+    on_open: Callback<()>,
+) -> impl IntoView {
+    let tags = article.tags.clone();
+    let content = article.content.clone();
+    let display_path_title = article.display_path.clone();
+    view! {
+        <Card>
+            // ── Compact article header ─────────────────────────────────────
+            <div style="margin-bottom: var(--spacing-sm);">
+                {if show_header {
+                    view! {
+                        <div style="margin-bottom: 2px;">
+                            <a
+                                href="#"
+                                class="table__link"
+                                style="font-size: 0.95em; font-weight: 600;"
+                                on:click=move |ev| { ev.prevent_default(); on_open.run(()); }
+                            >
+                                {article.title.clone()}
+                            </a>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <span></span> }.into_any()
+                }}
+                // Single-row: ID · path · type · [tags]
+                <div style="font-size: 11px; color: var(--colorNeutralForeground3); display: flex; align-items: center; flex-wrap: wrap; gap: 3px; line-height: 1.6;">
+                    <span>"ID"</span>
+                    <code style="font-size: 11px; color: var(--colorNeutralForeground2);">{article.id.clone()}</code>
+                    <span style="padding: 0 2px; color: var(--colorNeutralStroke1);">"·"</span>
+                    <code
+                        style="font-size: 11px; color: var(--colorNeutralForeground2); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                        title=display_path_title
+                    >
+                        {article.display_path.clone()}
+                    </code>
+                    <span style="padding: 0 2px; color: var(--colorNeutralStroke1);">"·"</span>
+                    <span>{if article.is_embedded { "встроенная" } else { "файл" }}</span>
+                    {if !tags.is_empty() {
+                        view! {
+                            <span style="padding: 0 2px; color: var(--colorNeutralStroke1);">"·"</span>
+                            {tags.into_iter().map(|tag| view! {
+                                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>{tag}</Badge>
+                            }).collect_view()}
+                        }.into_any()
+                    } else {
+                        view! { <span></span> }.into_any()
+                    }}
+                </div>
+            </div>
+            // ── Content ────────────────────────────────────────────────────
+            <KbMarkdown text=content />
+        </Card>
+    }
+}
+
+// ── Minimal Markdown renderer ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+enum MdBlock {
+    H1(String),
+    H2(String),
+    H3(String),
+    List(Vec<String>),
+    Code(Vec<String>),
+    Text(String),
+    Empty,
+}
+
+fn parse_md_blocks(text: &str) -> Vec<MdBlock> {
+    let mut blocks: Vec<MdBlock> = Vec::new();
+    let mut list_buf: Vec<String> = Vec::new();
+    let mut code_buf: Option<Vec<String>> = None;
+
+    let flush_list = |blocks: &mut Vec<MdBlock>, list_buf: &mut Vec<String>| {
+        if !list_buf.is_empty() {
+            blocks.push(MdBlock::List(std::mem::take(list_buf)));
+        }
+    };
+
+    for line in text.lines() {
+        // Toggle code block.
+        if line.starts_with("```") {
+            if let Some(lines) = code_buf.take() {
+                flush_list(&mut blocks, &mut list_buf);
+                blocks.push(MdBlock::Code(lines));
+            } else {
+                flush_list(&mut blocks, &mut list_buf);
+                code_buf = Some(Vec::new());
+            }
+            continue;
+        }
+
+        if let Some(buf) = &mut code_buf {
+            buf.push(line.to_string());
+            continue;
+        }
+
+        // Headings.
+        if let Some(rest) = line
+            .strip_prefix("#### ")
+            .or_else(|| line.strip_prefix("### "))
+        {
+            flush_list(&mut blocks, &mut list_buf);
+            blocks.push(MdBlock::H3(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix("## ") {
+            flush_list(&mut blocks, &mut list_buf);
+            blocks.push(MdBlock::H2(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix("# ") {
+            flush_list(&mut blocks, &mut list_buf);
+            blocks.push(MdBlock::H1(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
+            list_buf.push(rest.to_string());
+        } else if line.is_empty() {
+            flush_list(&mut blocks, &mut list_buf);
+            // Collapse consecutive empties.
+            if !matches!(blocks.last(), Some(MdBlock::Empty)) {
+                blocks.push(MdBlock::Empty);
+            }
+        } else {
+            flush_list(&mut blocks, &mut list_buf);
+            blocks.push(MdBlock::Text(line.to_string()));
+        }
+    }
+
+    flush_list(&mut blocks, &mut list_buf);
+    if let Some(lines) = code_buf.take() {
+        blocks.push(MdBlock::Code(lines));
+    }
+
+    blocks
+}
+
+#[component]
+fn KbMarkdown(text: String) -> impl IntoView {
+    let blocks = parse_md_blocks(&text);
+    view! {
+        <div>
+            {blocks.into_iter().map(|block| match block {
+                MdBlock::H1(t) => view! {
+                    <div style="color: var(--colorBrandForeground1); font-size: 1.15em; font-weight: 700; margin: 0.6em 0 0.2em; padding-bottom: 2px; border-bottom: 1px solid var(--colorNeutralStroke2);">
+                        <KbLinkedText text=t />
+                    </div>
+                }.into_any(),
+                MdBlock::H2(t) => view! {
+                    <div style="color: var(--colorBrandForeground2); font-size: 1.05em; font-weight: 600; margin: 0.5em 0 0.15em;">
+                        <KbLinkedText text=t />
+                    </div>
+                }.into_any(),
+                MdBlock::H3(t) => view! {
+                    <div style="color: var(--colorNeutralForeground1); font-size: 0.95em; font-weight: 600; margin: 0.4em 0 0.1em;">
+                        <KbLinkedText text=t />
+                    </div>
+                }.into_any(),
+                MdBlock::List(items) => view! {
+                    <ul style="margin: 0.2em 0 0.2em 1.2em; padding: 0; list-style: disc;">
+                        {items.into_iter().map(|item| view! {
+                            <li style="margin: 0.1em 0; color: var(--colorNeutralForeground1);">
+                                <KbLinkedText text=item />
+                            </li>
+                        }).collect_view()}
+                    </ul>
+                }.into_any(),
+                MdBlock::Code(lines) => view! {
+                    <pre style="background: var(--colorNeutralBackground2); padding: 4px 8px; border-radius: 4px; font-family: var(--font-family-monospace, monospace); font-size: 0.82em; overflow-x: auto; margin: 0.25em 0; white-space: pre;">
+                        {lines.join("\n")}
+                    </pre>
+                }.into_any(),
+                MdBlock::Text(t) => view! {
+                    <div style="margin: 0.05em 0; line-height: 1.5;">
+                        <KbLinkedText text=t />
+                    </div>
+                }.into_any(),
+                MdBlock::Empty => view! {
+                    <div style="height: 0.35em;"></div>
+                }.into_any(),
+            }).collect_view()}
+        </div>
+    }
+}
+
+// ── Tree helpers ──────────────────────────────────────────────────────────────
+
+fn flatten_visible_tree(
+    nodes: &[KbTreeNode],
+    collapsed_paths: &BTreeSet<String>,
+) -> Vec<FlatKbTreeNode> {
+    let mut result = Vec::new();
+    for node in nodes {
+        flatten_visible_tree_node(node, 0, collapsed_paths, &mut result);
+    }
+    result
+}
+
+fn filter_tree_by_source(nodes: &[KbTreeNode], is_embedded: bool) -> Vec<KbTreeNode> {
+    nodes
+        .iter()
+        .filter_map(|node| filter_tree_node_by_source(node, is_embedded))
+        .collect()
+}
+
+fn filter_tree_node_by_source(node: &KbTreeNode, is_embedded: bool) -> Option<KbTreeNode> {
+    if let Some(article) = &node.article {
+        return if article.is_embedded == is_embedded {
+            Some(node.clone())
+        } else {
+            None
+        };
+    }
+
+    let children = filter_tree_by_source(&node.children, is_embedded);
+    if children.is_empty() {
+        None
+    } else {
+        Some(KbTreeNode {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            node_type: node.node_type.clone(),
+            article: None,
+            children,
+        })
+    }
+}
+
+fn flatten_visible_tree_node(
+    node: &KbTreeNode,
+    level: usize,
+    collapsed_paths: &BTreeSet<String>,
+    result: &mut Vec<FlatKbTreeNode>,
+) {
+    let is_collapsed = collapsed_paths.contains(&node.path);
+    result.push(FlatKbTreeNode {
+        level,
+        name: node.name.clone(),
+        path: node.path.clone(),
+        article: node.article.clone(),
+        is_collapsed,
+    });
+    if is_collapsed {
+        return;
+    }
+    for child in &node.children {
+        flatten_visible_tree_node(child, level + 1, collapsed_paths, result);
+    }
+}
+
+fn collect_folder_paths(nodes: &[KbTreeNode]) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for node in nodes {
+        collect_folder_paths_node(node, &mut paths);
+    }
+    paths
+}
+
+fn collect_folder_paths_node(node: &KbTreeNode, paths: &mut BTreeSet<String>) {
+    if node.article.is_none() && !node.children.is_empty() {
+        paths.insert(node.path.clone());
+    }
+    for child in &node.children {
+        collect_folder_paths_node(child, paths);
+    }
+}
+
+fn article_summary(article: &KbArticleDetail) -> KbArticleSummary {
+    KbArticleSummary {
+        id: article.id.clone(),
+        title: article.title.clone(),
+        tags: article.tags.clone(),
+        related: article.related.clone(),
+        source_path: article.source_path.clone(),
+        display_path: article.display_path.clone(),
+        is_embedded: article.is_embedded,
+    }
+}

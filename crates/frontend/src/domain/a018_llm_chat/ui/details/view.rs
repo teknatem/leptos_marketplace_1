@@ -8,6 +8,7 @@ use super::model::{fetch_chat, fetch_messages, poll_until_done, send_message};
 use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
 use crate::shared::icons::icon;
+use crate::shared::knowledge_base::links::KbLinkedText;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use contracts::domain::a018_llm_chat::aggregate::LlmChatMessage;
@@ -233,7 +234,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                         "background: var(--colorNeutralBackground2); padding: 10px 14px; border-radius: 12px;"
                                     }
                                 >
-                                    <div style="white-space: pre-wrap;">{msg.content.clone()}</div>
+                                    <KbLinkedText text=msg.content.clone() />
                                     {move || {
                                         let mut meta_parts = Vec::new();
                                         if let Some(t) = tokens {

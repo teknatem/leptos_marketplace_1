@@ -33,11 +33,12 @@ pub struct LlmKnowledgeDetailResponse {
 }
 
 pub async fn list(Query(params): Query<LlmKnowledgeListParams>) -> Json<Vec<LlmKnowledgeListItem>> {
+    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
     let docs: Vec<&KnowledgeDoc> = if params.tag.is_empty() {
-        KNOWLEDGE_BASE.all_docs()
+        kb.all_docs()
     } else {
         let tags: Vec<&str> = params.tag.iter().map(String::as_str).collect();
-        KNOWLEDGE_BASE.search_by_tags(&tags)
+        kb.search_by_tags(&tags)
     };
 
     let mut items: Vec<LlmKnowledgeListItem> = docs
@@ -58,7 +59,8 @@ pub async fn list(Query(params): Query<LlmKnowledgeListParams>) -> Json<Vec<LlmK
 pub async fn get_by_id(
     Path(id): Path<String>,
 ) -> Result<Json<LlmKnowledgeDetailResponse>, StatusCode> {
-    let Some(doc) = KNOWLEDGE_BASE.get(&id) else {
+    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let Some(doc) = kb.get(&id) else {
         return Err(StatusCode::NOT_FOUND);
     };
 

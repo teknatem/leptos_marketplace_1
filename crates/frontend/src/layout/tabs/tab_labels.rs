@@ -77,6 +77,12 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         k if k.starts_with("a029_wb_supply_details_") => "Поставка WB",
         "a030_wb_advert_campaign" => "Рекламные кампании WB",
         k if k.starts_with("a030_wb_advert_campaign_details_") => "Рекламная кампания WB",
+        "a031_kb_edit" => "Редактирование базы знаний",
+        k if k.starts_with("a031_kb_edit_details_") => "Редактирование KB",
+        "a032_wb_returns_claims" => "Заявки на возврат WB",
+        k if k.starts_with("a032_wb_returns_claims_details_") => "Заявка на возврат WB",
+        "knowledge_base" => "База знаний",
+        k if k.starts_with("kb_article_") => "Статья KB",
 
         "p900_sales_register" => "Регистр продаж",
         "p901_barcodes" => "Штрихкоды номенклатуры",
@@ -114,6 +120,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "data_view" => "DataView",
         "filter_registry" => "Реестр фильтров",
         "drilldown__new" => "Детализация",
+
+        "navigator_marketplace" => "Маркетплейсы (навигатор)",
+
         _ => "",
     }
 }

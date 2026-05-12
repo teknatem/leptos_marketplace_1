@@ -1,6 +1,6 @@
 # Active Context
 
-_Последнее обновление: 2026-05-05_
+_Последнее обновление: 2026-05-11_
 
 ## 🎯 Текущий фокус
 
@@ -18,6 +18,8 @@ _Последнее обновление: 2026-05-05_
 - **General Ledger** (2026-03): независимая система в `crates/*/src/general_ledger/`
 - **Scheduled Tasks**: tokio background worker, file-based logging
 - **LLM Chat**: a017-a019, tool_executor, knowledge base, default_agent.md
+- **Read-only Knowledge Base UI** (2026-05-10): добавлен отдельный scope `knowledge_base`, backend API `/api/kb/stats|tree|articles/:id`, frontend workspace “База знаний”, вкладки статей `kb_article_{id}` и кликабельные внутренние ссылки `kb://article/{id}` в чате.
+- **Разделение KB слоёв** (2026-05-11): `data/knowledge/` закреплён как Obsidian-база только для бизнес-знаний организации; технические сведения приложения перенесены во встроенные `llm.md`/embedded docs и отображаются во вкладке “Документация приложения”.
 
 ## 🔄 Следующие шаги
 
@@ -30,6 +32,7 @@ _Последнее обновление: 2026-05-05_
 
 - **General Ledger** — отдельная система: `crates/*/src/general_ledger/`, НЕ в `domain/`
 - **Shell**: PowerShell, никогда не использовать `&&`, только `;`
+- **Knowledge Base**: Obsidian (`data/knowledge/`) — только бизнес-процессы организации; SQL, DataView, агрегаты, API и tool usage должны быть embedded-документацией приложения.
 
 ## 📚 Полезные документы
 

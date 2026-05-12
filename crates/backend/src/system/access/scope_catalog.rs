@@ -331,6 +331,38 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         read_label: "Просмотр артефактов",
         all_label: "Управление артефактами",
     },
+    ScopeDescriptor {
+        scope_id: "a031_kb_edit",
+        scope_type: ScopeType::Aggregate,
+        label: "Редактирование базы знаний",
+        description:
+            "Тикеты администратора базы знаний: предложения, обсуждения и публикация статей",
+        icon: "book-open",
+        category: "ai",
+        read_label: "Просмотр редактирований базы знаний",
+        all_label: "Управление редактированиями базы знаний",
+    },
+    ScopeDescriptor {
+        scope_id: "a032_wb_returns_claims",
+        scope_type: ScopeType::Aggregate,
+        label: "Заявки на возврат WB",
+        description:
+            "Заявки покупателей на возврат товара Wildberries (feedbacks-api /api/v1/claims)",
+        icon: "rotate-ccw",
+        category: "wildberries",
+        read_label: "Просмотр заявок на возврат WB",
+        all_label: "Управление заявками на возврат WB",
+    },
+    ScopeDescriptor {
+        scope_id: "knowledge_base",
+        scope_type: ScopeType::System,
+        label: "База знаний",
+        description: "Read-only просмотр статей базы знаний, дерева каталогов и статистики",
+        icon: "book-open-text",
+        category: "ai",
+        read_label: "Просмотр базы знаний",
+        all_label: "Просмотр и управление базой знаний",
+    },
     // ========================================================================
     // PROJECTIONS — Analytics / Аналитика
     // ========================================================================

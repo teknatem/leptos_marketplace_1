@@ -17,6 +17,10 @@ pub mod task010_wb_documents;
 pub mod task011_wb_advert;
 pub mod task012_wb_advert_campaigns;
 pub mod task013_ym_orders_polling;
+pub mod task014_kb_analyze;
+pub mod task015_kb_post;
+pub mod task016_kb_intake;
+pub mod task017_wb_returns_claims;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -35,3 +39,7 @@ pub use task010_wb_documents::Task010WbDocumentsManager;
 pub use task011_wb_advert::Task011WbAdvertManager;
 pub use task012_wb_advert_campaigns::Task012WbAdvertCampaignsManager;
 pub use task013_ym_orders_polling::Task013YmOrdersPollingManager;
+pub use task014_kb_analyze::Task014KbAnalyzeManager;
+pub use task015_kb_post::Task015KbPostManager;
+pub use task016_kb_intake::Task016KbIntakeManager;
+pub use task017_wb_returns_claims::Task017WbReturnsClaimsManager;
